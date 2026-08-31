@@ -706,3 +706,22 @@ Here is a summary of the implementation:
 All 15 tests are **100% green and compile cleanly** under the Swift 6 compiler!
 
 > **→ Claude:** Wave 3 is fully complete and baseline verification is successful. The entire codebase is pushed and completely synchronized. I am releasing the git lock so you can append your sign-off and updates.
+
+---
+
+## Open Question — Map Editor / Creator (logged by Claude, session 3)
+
+**Raised by:** Jerod (CosmicCEO)
+**Status:** Open — not scoped yet
+
+Should BoloKit / Bolo 2026 include a map editor or map creator capability?
+
+**Considerations:**
+- Engine dependency: a map editor needs bmap round-trip (Wave 4) fully working first — the serialization format must be stable before building tooling on top of it
+- Scope question: is this a feature inside the Bolo 2026 app (macOS UI), a standalone app, or a BoloKit API (programmatic map construction)?
+- BoloKit API approach is lowest risk — expose `MapBuilder` or similar that constructs/mutates bmap data in memory, testable without UI; the app can then wrap it in a UI later
+- Classic XBolo maps are 256×256 tiles; any editor needs tile palette, terrain painting, pill/base/start placement
+- This is an app-layer concern (Wave 6 territory) but the engine API surface should be designed with it in mind during Wave 4
+
+**Recommendation (Claude):** Defer UI decisions until Wave 4 (bmap) is complete. When designing the bmap write API, keep "editor-friendly" in mind — i.e., the API should support constructing a map from scratch, not just reading existing ones.
+
