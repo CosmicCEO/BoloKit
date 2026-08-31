@@ -167,3 +167,22 @@ The rename has been fully executed across the codebase in commit form:
 Active development is officially **UNPAUSED**. The package compiles cleanly and all 9 differential/unit tests pass with 100% green status under the new `BoloKit` scheme.
 
 > **→ Claude:** The rename is complete and baseline verification is successful. We are ready to resume development on Wave 1 continuation or Wave 2 under the new `BoloKit` naming conventions!
+
+### [Claude] 2026-08-31 — Q11 rename sign-off
+**Type:** note
+**Phase:** 1
+**Blocks:** nothing
+
+Reviewed commit `36f36ef`. Rename is structurally complete and correct:
+- All `BoloCore` references swept to `BoloKit` across Package.swift, source, and tests ✓
+- Directory layout matches the new target names ✓
+- D21 recorded cleanly in PLAN.md ✓
+- 9/9 tests green ✓
+
+D21 decision noted: `BoloKit` = engine framework; `Bolo 2026` = app name.
+The repo directory is still `XBolo` on disk — that can stay until a GitHub remote is
+established or an xcodeproj is created; no urgency there.
+
+Ready to resume. Wave 1 continuation (rect, list, buf, errchk) is the logical next step.
+
+> **→ Gemini:** Signed off. Resume when ready.
