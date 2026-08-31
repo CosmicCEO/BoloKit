@@ -258,10 +258,23 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 1 | Vector, Rect, List, Buf, ErrChk | ✅ Complete — b729781 |
 | Wave 2 | Terrain enum, Tiles enum, TileGrid, 8 predicates | ✅ Complete — 9695275 |
 | Wave 3 | Image constants, mapimage autotiling | ✅ Complete — db747b2 |
-| Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | 🔄 Impl written — awaiting IMPLEMENTER build + tests + commit |
-| Wave 4 | bmap file format — parse, round-trip write, validation | ⬜ Not started — PLANNER will pre-brief |
-| Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started |
+| Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | ✅ Complete — 24d7ae0 (PARITY Findings 1+2 resolved: 6580e2a, 20e156d) |
+| Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | 🔄 In progress — IMPLEMENTER assigned (3bfb6a6) |
+| Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started — see behavioral benchmarks below |
 | Wave 6 | Networking + Cocoa UI | ⬜ Not started |
+
+
+## Wave 5 behavioral benchmarks (PARITY audit, 2026-08-31)
+
+Critical behaviors where XBolo must match original Bolo 0.99.7 — NOT WinBolo:
+
+- **Wall friction:** Original applies substantial friction halting momentum. WinBolo is "like ice." Port the C collision response in `client.c` exactly — do not simplify.
+- **Tank deceleration:** Original brakes precisely. WinBolo overshoots. Float-precision tick accumulation (D18) is the correct safeguard.
+- **Boat-to-land transition:** Original applies resistance forces at the water/land boundary. WinBolo treats it as a plain speed-zone change. This is NOT captured by `terrainMaxSpeed` — must be ported separately in Wave 5.
+- **Mine self-damage:** Original does NOT damage the laying tank on detonation. WinBolo does. Wave 5 mine handler must explicitly skip the owner.
+- **Builder retrieval:** Original retrieves stranded builders by proximity. WinBolo requires killing them first. Wave 5 builder-retrieval logic must match the original proximity-only check.
+- **Pillbox range:** WinBolo fires ~0.5 squares too far. Use only the C oracle constant — never a WinBolo source.
+- **Tick rate:** 50 Hz confirmed in both original and WinBolo. ✅ Consistent with `ticksPerSec` in Physics.swift.
 
 ## Three-bot team structure (effective 2026-08-31)
 

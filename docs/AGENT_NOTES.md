@@ -1134,3 +1134,55 @@ No logic — pure data carriers. No differential tests needed for structs.
 **Commit message:** `"Wave 4: terrainToTile, defaultTerrain/Tile, BMAP format structs"`
 
 **Report back** in AGENT_NOTES with [TO: PLANNER] when done.
+
+---
+
+### [PARITY] 2026-08-31 — Wave 3.1 closure audit + Wave 4 pre-audit + behavioral benchmark
+
+**Type:** audit
+**Phase:** Wave 3.1 closed / Wave 4 pre-flight
+**Protocol note:** Effective this entry, PARITY audit reports are written directly to AGENT_NOTES (per Jerod, 2026-08-31). No manual relay required.
+
+#### Wave 3.1 — Findings resolved
+
+- **Finding 1 (grass builder speed):** ✅ Confirmed fixed in committed `Terrain.swift`. Grass → `builderMaxSpeed` (full), forest → `builderMaxSpeed * 0.5`. Comment cites correct C line range.
+- **Finding 2 (TerrainGrid bounds guard):** ✅ Confirmed fixed. Getter and setter both guard on `x/y ∈ [0,255]`, returning `nil`/no-op. Contract now matches `Terrain?` return type.
+- **Finding 3 (import Darwin unused):** ⚠️ Still present in `Physics.swift` and `Terrain.swift`. No Darwin symbols used in either file. Low severity; recommend removal to prevent silent dependency creep.
+
+#### Wave 4 — Pre-audit findings (before IMPLEMENTER commits)
+
+**A — `TerrainGrid.init()` default terrain is wrong (CRITICAL)**
+
+`clientloadmap` in `bmap_client.c` initializes every cell via `defaultterrain(x, y)` before applying run data:
+```c
+// bolo.h: X_MIN_MINE=10, Y_MIN_MINE=10, X_MAX_MINE=245, Y_MAX_MINE=245
+int defaultterrain(int x, int y) {
+  return (y >= 10 && y <= 245 && x >= 10 && x <= 245) ? kSeaTerrain : kMinedSeaTerrain;
+}
+```
+The outer 10-cell border ring (6,240 cells) defaults to `kMinedSeaTerrain`. Current Swift `TerrainGrid.init()` fills all 65,536 cells with `.sea` — incorrect for the border. Because the BMAP run encoder skips cells that already match `defaulttile(x, y)`, the border ring is typically absent from run data and will never be corrected by run application. Map load DifferentialTests will silently diverge on any map with sparse border runs.
+
+**Status:** PLANNER's Wave 4 assignment already includes `defaultTerrain(x:y:)` and `defaultTile(x:y:)` as explicit deliverables. ✅ Pre-empted. IMPLEMENTER must ensure `TerrainGrid.init()` is updated to call `defaultTerrain` per cell, or document that `TerrainGrid.init()` is an empty grid only and `clientLoadMap` is responsible for the correct initial state.
+
+**B — `terraintotile` default case: debug semantic mismatch**
+
+C oracle: `default: assert(0); return -1;` — aborts in debug builds. Swift spec: `default: return -1` — silent. If the DifferentialTest harness feeds an invalid terrain raw value in a debug build of the C oracle, the C process will `abort()` rather than return -1, and the test harness may misreport the outcome. Test fixture must never pass invalid raw terrain values. Document this constraint in `BMapTests.swift`.
+
+**C — BMAP run termination sentinel must check all four fields**
+
+The map run stream ends with sentinel `{datalen=4, y=0xff, startx=0xff, endx=0xff}`. All four fields must be checked simultaneously. Checking any subset risks false termination on valid run data.
+
+#### Behavioral benchmark — Bolo 0.99.7 vs WinBolo (D3 fidelity target)
+
+Research confirms XBolo must preserve the following original Bolo behaviors that WinBolo gets wrong (relevant to Wave 5+):
+
+- **Wall friction:** Original applies substantial friction halting momentum. WinBolo is "like ice." The C collision response in `client.c` must be ported exactly — do not simplify.
+- **Tank deceleration:** Original brakes precisely. WinBolo overshoots. Float-precision tick accumulation (D18) is the correct safeguard.
+- **Boat-to-land transition:** Original applies resistance forces at the water/land boundary. WinBolo treats it as a plain speed-zone change. This logic is NOT captured by `terrainMaxSpeed` and must be separately ported in Wave 5.
+- **Mine self-damage:** Original does NOT damage the laying tank on detonation. WinBolo does. Wave 5 mine handler must explicitly skip the owner.
+- **Builder retrieval:** Original retrieves stranded builders by proximity. WinBolo requires killing them first. Wave 5 builder-retrieval logic must match the original proximity-only check.
+- **Pillbox range:** WinBolo fires ~0.5 squares too far. Use only the C oracle constant — never a WinBolo source.
+- **Tick rate:** 50 Hz confirmed in both original and WinBolo (`TICKSPERSEC = 50`). Consistent. ✅
+
+[TO: PLANNER] Wave 3.1 audit closed. Wave 4 pre-audit complete — primary concern (defaultTerrain) already addressed in your assignment. Finding 3 (import Darwin) is open housekeeping. Behavioral benchmark documented above for Wave 5 planning reference.
+[TO: IMPLEMENTER] See Finding B and C above before writing `BMapTests.swift`. No blockers on Wave 4 start.
