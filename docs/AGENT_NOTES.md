@@ -1261,3 +1261,235 @@ public func writeRun(_ run: BMapRun, data: [UInt8], into grid: inout TerrainGrid
 **Commit message:** `"Wave 4.1: BMAP RLE codec — readRun/writeRun + nibble helpers"`
 
 **Report back** in AGENT_NOTES with [TO: PLANNER] when done.
+
+---
+
+### [PARITY] 2026-08-31 — Respawn & regeneration mechanics audit
+
+**Type:** audit / behavioral benchmark
+**Phase:** pre-Wave 5 reference (tank sim, net)
+**Source files:** client.c, server.c, bolo.h
+
+---
+
+#### 1. Tank Respawn
+
+**Death entry points:** `killtank()`, `drown()`, `smallboom()`, `superboom()` — all set
+`dead = 1`, `boat = 0`, `respawncounter = 0`. `drown()` additionally skips to
+`respawncounter = EXPLODETICKS + 1` (no explosion phase — tank just sinks).
+
+**Respawn tick sequence (TICKSPERSEC = 50):**
+
+| Ticks | Real time | Behavior |
+|---|---|---|
+| 0–44 | 0.0–0.88s | Corpse drifts via `kickdir`/`kickspeed`; explosion particle spawned every 5 ticks (skipped over sea/minedSea tiles) |
+| 45 (== EXPLODETICKS) | 0.9s | Detonation: ≥32 mines → `superboom()`; any mines or shells → `smallboom()` |
+| 46–149 | 0.92–2.98s | Waiting — nothing happens |
+| ≥150 (RESPAWN_TICKS) | 3.0s | `spawn()` called each tick until it returns success |
+
+**`spawn()` start selection — weighted random:**
+- All starts begin at weight 1
+- Friendly base within 8.5 squares → weight raised to 3 (if not already ≥ 3)
+- Friendly base within 17 squares → weight raised to 2 (if not already ≥ 2)
+- Enemy pillbox within 8.5 squares → weight forced to **0** ("spiked")
+- If total range == 0 (all starts spiked): **retry with base-proximity weights only** — pill penalty dropped entirely. This guarantees a spawn always occurs.
+
+**On spawn:**
+- `dead = 0`, position = `start.x + 0.5, start.y + 0.5`
+- `dir = start.dir * (π/8.0)` — start direction is a 0–15 compass value
+- `speed = 0, turnspeed = 0, kickspeed = 0, kickdir = 0`
+- `range = MAXRANGE` (7.0)
+- **`boat = 1` always** — every respawn begins on a boat regardless of start terrain
+
+**Parity risks for Wave 5:**
+- Drown skips the explosion phase entirely — a drowned tank goes straight to the wait phase. Swift must handle this separately from `killtank`.
+- The two-pass spawn selection (retry without pill penalty) must be reproduced exactly. A single-pass implementation that merely ignores pills when all weights are zero is NOT equivalent — the first pass must complete and fail before the second begins.
+- `dir = start.dir * (kPif/8.0)` uses `kPif` (Float π), not `M_PI` (Double). Must be Float arithmetic per D18.
+- Tank always spawns with `boat = 1`. Immediately subsequent terrain checks will treat the tank as being on a boat even if the start tile is road/grass.
+
+---
+
+#### 2. Forest Growth (server-side; client receives SRGROW)
+
+**Algorithm — `growtrees(nplayers)` called every server tick:**
+
+Runs a best-of tournament. Each call performs:
+```
+nplayers × (TREESBESTOF / (TREESPLANTRATE × TICKSPERSEC))
+= nplayers × (4200 / (10 × 50))
+= nplayers × 8   ← C INTEGER DIVISION: 4200/500 = 8, not 8.4
+```
+iterations. Each iteration:
+1. Pick random (x, y) from full 256×256 space
+2. If `treescore(x, y) > treescore(growx, growy)`: replace candidate
+3. Increment `growbestof`
+4. If `growbestof >= 4200`: attempt to plant at `(growx, growy)`, reset counter, reset candidate to new random position
+
+**Plant rate:** 4200 ticks-of-credit / (8/tick × 50 ticks/s) = **~10.5 seconds per tree** at 1 player. Scales linearly: 2 players → 5.25s, N players → 10.5/N seconds.
+
+**Growable terrain (server.terrain at `growx/growy`):**
+- grass0–3, rubble0–3, crater, swamp0–3, road → `kForestTerrain`
+- mined variants of above → `kMinedForestTerrain`
+- All others (wall, sea, existing forest, river, boat, minedSea) → no-op
+
+**treescore formula:**
+```
+basescore(x,y) × (2×(N+S+E+W adjacency) + (NE+NW+SE+SW adjacency))
+```
+`basescore`: grass=5, swamp=4, crater=3, rubble=2, road=1, forest/wall/sea/pill/base=0.
+`adjacentscore`: existing forest (any variant) = 1, everything else = 0.
+Trees prefer to grow next to existing forest on high-value terrain. Open-field grass scores highest; road scores lowest among growable tiles.
+
+**🔴 C BUG — must be reproduced faithfully:**
+```c
+if (server.growbestof >= TREESBESTOF) {
+    server.growbestof = 0;
+    if (findpill(x, y) == -1 && findbase(x, y) == -1) {  // ← checks x,y: LAST RANDOM CANDIDATE
+        switch (server.terrain[server.growy][server.growx]) {  // ← plants at growx/growy: BEST CANDIDATE
+```
+The outer pill/base guard checks `(x, y)` — the coordinates of the **last sampled random cell**, not `(growx, growy)` — the actual winning candidate. If the final iteration of the loop happened to land on a pill or base cell, tree planting is **skipped entirely** even if the winning location is clear. The inner guard (inside the switch) then correctly checks `(growx, growy)`. The net behavior: planting can be randomly suppressed with probability ≈ (npills + nbases) / 65536 per plant cycle. This is a C source bug but must be replicated for behavioral parity.
+
+**Client-side `recvsrgrow()`:**
+- Converts growable terrain to forest/minedForest
+- `default: break` — silently ignores SRGROW on non-growable terrain (wall, sea, already-forest, etc.)
+- **Must not assert or return error on unrecognized terrain.** WinBolo reportedly handles this differently; the XBolo C behavior is silent no-op.
+
+---
+
+#### 3. Tree Removal (`recvsrgrabtrees`)
+
+When a builder grabs trees:
+- `kMinedForestTerrain` → `kMinedGrassTerrain`
+- Any other forest → **`kGrassTerrain0` always** (never grass1/2/3 — always variant 0)
+
+**Parity risk:** The Swift port must produce exactly `.grass0`. A randomized variant selection would be wrong.
+
+---
+
+#### 4. Pillbox Regeneration
+
+Pills do NOT self-repair armour. Only builders repair pills.
+
+What does regenerate per tick (for non-ONBOARD pills):
+- `counter++` each tick
+- Every 32 ticks (COOLPILLTICKS): if `speed < MAXTICKSPERSHOT` (100), `speed += 1` and counter resets
+- `speed` = ticks between shots. Higher = slower/calmer. Lower = faster/angrier.
+- Damaged/captured pills start at low speed (firing fast); speed recovers at **1 step per 0.64 seconds**
+
+**Parity note:** Pill armour can only increase via `CLREPAIRPILL` from a builder. There is no passive armour regen. Any Swift simulation that auto-repairs pill armour without a builder action is wrong.
+
+---
+
+#### 5. Base Regeneration
+
+**Per tick:** `bases[i].counter += nplayers`
+
+**Every REPLENISHBASETICKS (600) counter-points:**
+- `armour++` (capped at MAXBASEARMOUR = 90)
+- `mines++` (capped at MAXBASEMINES = 90)
+- `shells++` (capped at MAXBASESHELLS = 90)
+
+**Rate:** 600 / nplayers ticks = 12/N seconds per armour/mine/shell step.
+- 1 player: **12.0 seconds** per step
+- 2 players: 6.0 seconds
+- 4 players: 3.0 seconds
+
+**Critical parity note — WinBolo divergence:** The WinBolo wiki explicitly flags base regeneration as faster in WinBolo "particularly with more players." The C formula `counter += nplayers` is the authoritative behavior — bases replenish faster the more players are in the game. Any Wave 5/6 implementation must use player-count-scaled counter increments, not a fixed rate.
+
+---
+
+#### Summary for PLANNER
+
+[TO: PLANNER] All of the above is pre-Wave 5 reference material — none requires action now. Flagging two items for Wave 5 planning attention:
+
+1. **Spawn logic** is non-trivial (two-pass weighted selection, drown special case, always-boat). Recommend a dedicated `Spawn.swift` or a well-isolated `spawn()` function in the tank simulation, with exhaustive unit tests covering: all-spiked fallback, proximity weighting, boat=1 guarantee.
+
+2. **`growtrees` C bug** (outer pill guard checks wrong coordinates): must be replicated. When writing DifferentialTests for tree growth, include a test case where the last-sampled random cell is blocked — verify Swift and C both skip the plant.
+
+[TO: IMPLEMENTER] No action required now. This is reference for Wave 5. File it.
+
+### [PLANNER] 2026-08-31 — Wave 5 pre-read: tank physics tick loop
+**Type:** research / pre-brief
+**Phase:** 1 / Wave 5 pre-planning
+**Blocks:** nothing (Wave 4.1 still in progress)
+
+Pre-read of `client.c` functions: `runclient`, `tankmovelogic`, `tanklocallogic`,
+`tankcollision`, `maxspeed`, `maxturnspeed`, `rounddir`.
+
+#### Tick loop order — `runclient()` (line 425)
+
+Called at 50 Hz. Per tick:
+1. `tankmovelogic(i)` — all connected players
+2. `tanklocallogic(old)` — local player only (tank-tank collisions, base/pill touch)
+3. `builderlogic(i)` — all players
+4. `pilllogic(old)` — pillbox AI
+5. `shelllogic(i)` — all players
+6. `explosionlogic(i)` — all players + neutral (-1)
+7. `sendclupdate()` — every 5 ticks
+
+#### `tankmovelogic` physics — key findings
+
+**Position update (alive tank, line 4113):**
+```
+tank += (dir2vec(rounddir(dir)) * speed + dir2vec(kickdir) * kickspeed) / TICKSPERSEC
+```
+`rounddir` snaps the moving direction to 16 discrete headings (π/8 radian steps):
+```c
+float rounddir(float dir) {
+  return (kPif/8.0) * floor(dir/(kPif/8.0) + 0.5);
+}
+```
+Direction is stored continuously (for smooth turning) but movement is quantized to 16 headings.
+**This is a fidelity-critical detail — do not drop `rounddir` in Wave 5.**
+
+**KickSpeed decay:** `kickspeed -= 12.0/TICKSPERSEC` per tick (clamped at 0). Needs `kickSpeedDecay: Float = 12.0` constant in Physics.swift.
+
+**Turning:** Angular acceleration to/from `maxturnspeed(x,y)` (or `MAXANGULARVELOCITY=2.5` on boat). Direction zeroed immediately on no-input (no momentum). Direction wrapped to [0, 2π].
+
+**Shore push (boat near land):** 8-case vector geometry applying `PUSHFORCE=1.5625` per tick when boat is within `TANKRADIUS=0.375` of a shore cell. If not accelerating forward, also brakes by `ACCEL/TICKSPERSEC`. This is the boat-to-land transition force PARITY flagged — must be ported exactly.
+
+**Wall collision:** `collisiondetect(tank, TANKRADIUS, tankcollision)` — circular-radius collision with a callback. `tankcollision` returns solid for: out-of-bounds, armed pills, hostile bases, walls, damagedWalls. All other terrain passable.
+
+**Dead tank:** Moves along kickdir, collides with terrain, spawns explosion particles every 5 ticks. After `EXPLODETICKS=45` ticks: superboom (≥32 mines) or smallboom. After `RESPAWN_TICKS=150` ticks: calls `spawn()`.
+
+#### `maxspeed(x,y)` — pill/base overrides (line 3594)
+
+Our Wave 3.1 `terrainMaxSpeed` is only the terrain portion. The full C `maxspeed()`:
+1. If an armed pill is at (x,y) → `0.0` (blocked)
+2. If a dead pill is at (x,y) → `3.125` (road speed — passable)
+3. If a base is at (x,y) → `3.125`
+4. Otherwise → terrain switch (matches Wave 3.1)
+
+**Wave 5.0 must port this complete form as `maxSpeed(x:y:terrain:pills:bases:) -> Float`.** The Wave 3.1 `terrainMaxSpeed` stays as an internal building block.
+
+#### Additional bolo.h constants needed in Physics.swift
+
+```swift
+public let tankRadius: Float = 0.375
+public let maxAngularVelocity: Float = 2.5       // boat turn speed cap
+public let pushForce: Float = 1.5625             // shore push force (squares/sec)
+public let kickSpeedDecay: Float = 12.0          // kickspeed decrease per second
+public let explodeTicks: Int = 45                // death explosion duration
+public let respawnTicks: Int = 150               // ticks before respawn
+```
+
+#### Architectural note: decoupling from `client`
+
+ALL physics functions (`tankmovelogic`, `shelllogic`, etc.) read/write the global `client` struct.
+Wave 5 requires defining a Swift `GameState` (or equivalent) that replaces the global.
+This is the biggest architectural challenge in the port. PLANNER will scope the model in a
+separate entry before issuing Wave 5.0. Do NOT start Wave 5 without that model definition.
+
+#### Wave 5 sub-wave plan (preliminary)
+
+| Sub-wave | Scope |
+|---|---|
+| Wave 5.0 | Physics constants additions, `roundDir()`, `maxSpeed(x:y:terrain:pills:bases:)`, `maxTurnSpeed(...)` |
+| Wave 5.1 | `GameState` model — Swift equivalent of `client` struct (tanks, pills, bases, shells, builders) |
+| Wave 5.2 | `tankMoveTick` — core tank physics (turning, accel, shore push, collision, kickspeed) |
+| Wave 5.3 | `shellTick` — shell movement, collision, damage |
+| Wave 5.4 | `builderTick` — LGM movement, build actions |
+| Wave 5.5 | `pillTick` — pillbox AI; `explosionTick` |
+| Wave 5.6 | `killtank`, `spawn` — respawn system |
+
+[TO: PARITY] Review this pre-read for fidelity gaps before Wave 5.0 is assigned.

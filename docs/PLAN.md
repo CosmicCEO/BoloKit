@@ -261,6 +261,14 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | ✅ Complete — 24d7ae0 (PARITY Findings 1+2 resolved: 6580e2a, 20e156d) |
 | Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | ✅ Complete — 8044fb0 (35 tests green) |
 | Wave 4.1 | BMAP RLE codec — readRun/writeRun, nibble helpers | 🔄 In progress — IMPLEMENTER assigned |
+| Wave 5.0 | Physics constants additions, roundDir, maxSpeed/maxTurnSpeed w/ pill/base overrides | ⬜ Not started — pre-read complete |
+| Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | ⬜ Not started |
+| Wave 5.2 | tankMoveTick — turning, accel, shore push, collision, kickspeed | ⬜ Not started |
+| Wave 5.3 | shellTick | ⬜ Not started |
+| Wave 5.4 | builderTick | ⬜ Not started |
+| Wave 5.5 | pillTick, explosionTick | ⬜ Not started |
+| Wave 5.6 | spawn() — two-pass weighted selection, Spawn.swift; killtank, drown | ⬜ Not started |
+| Wave 5.7 | growtrees, recvsrgrow, base/pill regen | ⬜ Not started |
 | Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started — see behavioral benchmarks below |
 | Wave 6 | Networking + Cocoa UI | ⬜ Not started |
 
