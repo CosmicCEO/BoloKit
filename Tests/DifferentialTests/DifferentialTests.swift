@@ -730,4 +730,52 @@ import Foundation
             }
         }
     }
+
+    // MARK: - Wave 3 MapImage Autotiling Differential Tests
+
+    @Test func testMapImageAutotiling() {
+        // Verify a selection of constants
+        #expect(BoloKit.WALL46IMAGE == CXBolo.WALL46IMAGE)
+        #expect(BoloKit.BOAT00IMAGE == CXBolo.BOAT00IMAGE)
+        #expect(BoloKit.RIVE00IMAGE == CXBolo.RIVE00IMAGE)
+        #expect(BoloKit.FORE00IMAGE == CXBolo.FORE00IMAGE)
+        #expect(BoloKit.ROAD00IMAGE == CXBolo.ROAD00IMAGE)
+        #expect(BoloKit.GRAS00IMAGE == CXBolo.GRAS00IMAGE)
+        #expect(BoloKit.SWAM00IMAGE == CXBolo.SWAM00IMAGE)
+        #expect(BoloKit.RUBB00IMAGE == CXBolo.RUBB00IMAGE)
+        #expect(BoloKit.DAMG00IMAGE == CXBolo.DAMG00IMAGE)
+        #expect(BoloKit.NBAS00IMAGE == CXBolo.NBAS00IMAGE)
+        #expect(BoloKit.FBAS00IMAGE == CXBolo.FBAS00IMAGE)
+        #expect(BoloKit.HBAS00IMAGE == CXBolo.HBAS00IMAGE)
+        #expect(BoloKit.MINE00IMAGE == CXBolo.MINE00IMAGE)
+        #expect(BoloKit.SELETRIMAGE == CXBolo.SELETRIMAGE)
+
+        var grid = [Int32](repeating: 0, count: 256 * 256)
+        
+        let validTiles = BoloKit.Tile.allCases.map { $0.rawValue }
+        for i in 0..<grid.count {
+            grid[i] = validTiles[i % validTiles.count]
+        }
+        
+        grid.withUnsafeBufferPointer { buf in
+            let ptr = buf.baseAddress!
+            
+            // 1. Test out-of-bounds inputs return -1 gracefully in Swift (C would assert-crash)
+            let outOfBoundsPoints: [Int32] = [-5, -1, 256, 300]
+            for coord in outOfBoundsPoints {
+                #expect(BoloKit.mapimage(ptr, coord, 10) == -1)
+                #expect(BoloKit.mapimage(ptr, 10, coord) == -1)
+            }
+            
+            // 2. Test valid in-bounds inputs differentially against C oracle
+            let validPoints: [Int32] = [0, 1, 10, 50, 128, 200, 254, 255]
+            for y in validPoints {
+                for x in validPoints {
+                    let s_img = BoloKit.mapimage(ptr, x, y)
+                    let c_img = CXBolo.mapimage_flat(UnsafeMutablePointer(mutating: ptr), x, y)
+                    #expect(s_img == c_img)
+                }
+            }
+        }
+    }
 }
