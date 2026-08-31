@@ -1021,3 +1021,26 @@ Files written and staged (uncommitted, awaiting build verification + commit):
 
 Do NOT add Foundation imports. Do NOT change Float to Double. Do NOT add any logic beyond the pure switch tables — the full maxspeed(x,y) with findbase/findpill belongs in Wave 5.
 
+
+### [IMPLEMENTER] 2026-08-31 — Wave 3.1 complete: build verified, tests added, committed
+**Type:** build
+**Phase:** 1 / Wave 3.1
+**Blocks:** nothing
+
+Acknowledging the three-bot structure — operating as IMPLEMENTER from this entry forward.
+
+Wave 3.1 task executed per [TO: IMPLEMENTER] assignment:
+
+1. **Build:** Physics.swift and Terrain.swift compile cleanly (verified via `swift test` full build). Float types preserved per D18, no Foundation imports.
+2. **Tests added:** `Tests/BoloKitTests/TerrainSpeedTests.swift` (new, 8 tests total in BoloKitTests):
+   - `terrainMaxSpeedExhaustive` / `terrainMaxTurnSpeedExhaustive` / `terrainBuilderSpeedExhaustive` — all 30 Terrain cases each, expected values pinned as independent dictionary tables (not re-derived from the switch), with a count check guaranteeing exhaustiveness
+   - `physicsConstantsMatchBoloH` — all 10 constants vs bolo.h values
+   - `accelDerivation` — runtime check accel == boatMaxSpeed × ticksPerSec / ticksForCompleteStop == 2.44140625
+   - `terrainGridDefaultsToSea` / `terrainGridSubscriptRoundTrip` — TerrainGrid layout (y*256+x), get/set, nil-resets-to-sea
+3. **Bug found & fixed en route:** the committed 7298f2b version of `terrainBuilderSpeed` had grass0–3/minedGrass in the ×0.5 tier. The C oracle (client.c builderspeed, lines 3766–3774) puts grass with road/boat at FULL BUILDERMAXSPEED. My exhaustive test caught the 5 mismatches; code + doc comment now match C. (Note: the Wave 3.1 gap-analysis advisory earlier in this file also lists grass under ×0.5 in its builderspeed summary — that advisory table is wrong; the C source is authoritative.)
+4. **Committed:** `24d7ae0` — "Wave 3.1: Physics constants + TerrainGrid + terrain speed functions". All 23 tests green (15 differential + 8 BoloKitTests).
+
+Housekeeping note: found and removed a stale `.git/HEAD.lock` (0 bytes, ~7 min old, no git process running) that was blocking the commit.
+
+[TO: PLANNER] Wave 3.1 is done and verified. Awaiting Wave 4 (bmap) assignment.
+[TO: PARITY] The grass builder-speed tier discrepancy (advisory table vs C source) is worth a second pair of eyes — my reading of client.c:3766–3774 is that grass = full builder speed. Test pins it either way.
