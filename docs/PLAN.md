@@ -36,6 +36,9 @@ Closed questions, newest last. IDs are permanent.
 | **D15** | Name | Keep `XBolo` for now; revisit if/when a hard fork is declared |
 | **D16** | Minimum macOS target (was Q9) | **macOS 26+** — required for FoundationModels (Apple Intelligence learning goal), and the dev machine is already on 27. Implemented: `Package.swift:7` declares `.macOS(.v26)` |
 | **D17** | Where the plan document lives | **`docs/PLAN.md`, version-controlled in the repo** — supersedes the Xcode assistant's session-local plans directory, which is not durable across dropped sessions |
+| **D18** | Numeric representation | **Use 32-bit floats (`Float` in Swift) for position, physics, and trig.** The reference C code directly uses float values (e.g., `Vec2f tank`, `Vec2f builder`) and trig/sqrt operations. Custom integer/fixed-point math would break bit-identical differential testing. |
+| **D19** | Package manifest tools version | **Align `Package.swift` tools version with platform targets.** Tools version `6.0` does not support `.macOS(.v26)` (introduced in PackageDescription 6.2). Update `Package.swift` to declare tools-version `6.4` to support current system SDK features correctly. |
+| **D20** | Test Harness & Socket Coupling | **Isolate and mock simulation code for unit test bridging.** The C code in `client.c` and `server.c` is tightly coupled with low-level POSIX sockets and pipe multiplexing. We must isolate pure state logic or wrap C entry points to avoid launching network services in differential tests. |
 
 ---
 
@@ -73,8 +76,13 @@ behaviour we possess. Discarding it before the port is verified would be throwin
 only thing to check against.
 
 So: **keep the C code compiling in the same target throughout the port.** Swift imports C
-directly, so for each module we can call the C function and the Swift function in one process,
-on identical inputs, and assert identical results.
+directly, but in SPM this requires defining a dedicated C target (e.g. `CXBolo`) or setting up
+proper bridging headers/module maps. Note that for each module we want to call the C function 
+and the Swift function in one process, on identical inputs, and assert identical results.
+
+**Critical Test Implementation Notes:**
+1. **Isolate POSIX Coupling:** Many reference files (like `client.c`, `server.c`) intertwine pure simulation state machine logic with socket initialization (`socket()`), select loops (`select()`), and Unix pipes. To prevent differential unit tests from spinning up network processes, you must mock out or isolate these network descriptors, or modularize the C simulation logic.
+2. **Floats and Precision:** The C reference utilizes 32-bit floats (`float`) and trig functions for position and movement vectors (`Vec2f tank`, `Vec2f builder`). Do *not* try to enforce an integer or custom fixed-point position system in Swift; you must match C's float calculations precisely to achieve bit-identical test outputs.
 
 ```
 for each module, leaf-first:
@@ -116,9 +124,18 @@ they're a gentler Swift on-ramp:
   LICENSE                  # original MIT notice retained + our copyright
 ```
 
-Determinism matters for the differential tests: use integer or fixed-point positions, not
-floats. The original ran a **50 Hz tick** — a hard fidelity fact already extracted from the
-replay-log format notes.
+The original ran a **50 Hz tick** — a hard fidelity fact already extracted from the
+replay-log format notes. (Note: Per D18, we will use Float rather than fixed-point to maintain
+bit-fidelity with the C reference math).
+
+---
+
+## Division of Labor (Multi-Agent Workflow)
+
+To maintain maximum velocity, prevent file conflicts, and enforce high architectural standards, we use a structured multi-agent collaboration model:
+
+1. **Gemini (Primary Implementer):** Runs the main project loop. Responsible for all file modifications (writing Swift code, updating configurations), running builds, executing tests, and managing local repository state.
+2. **Claude (Architectural Reviewer & Advisor):** Operates in a read-only context. Serves as a peer programmer to review Gemini's commits/changes, verify conformance to Apple's design patterns, challenge architectural decisions, and answer complex questions regarding the original C reference codebase (specifically the POSIX networking/concurrency structures).
 
 ---
 
@@ -145,13 +162,13 @@ no Xcode project is needed until there's UI to show (Phase 2). This sidesteps `p
 entirely *and* avoids a confusing name collision with the reference clone's own
 `XBolo.xcodeproj` inside `Reference/c/`.
 
-**Step 0.1 — Local file work — done. Verified state:**
+**Step 0.1 — Local file work — done. (PARTIALLY BROKEN — Action Required):**
 
 | Sub-item | State |
 | --- | --- |
 | `~/Developer/XBolo`, `git init` | Done — repo present, `main` branch, clean tree |
 | Scaffold dirs | Done — `Sources/{BoloCore,BoloNet,BoloGlyphs}/`, `Tests/{BoloCoreTests,DifferentialTests}/` present |
-| `Package.swift` | Done — declares `BoloCore`, `BoloNet` (deps on `BoloCore`), `BoloGlyphs` executable, 2 test targets; `.macOS(.v26)` per D16 |
+| `Package.swift` | **Broken:** The tools-version is declared as `6.0` but uses `.macOS(.v26)` which requires tools-version `6.2` or above. This must be corrected immediately. |
 | `.gitignore` | Present, tracked |
 | `LICENSE` | Present, tracked |
 | `README.md` | Present, tracked |
@@ -159,11 +176,9 @@ entirely *and* avoids a confusing name collision with the reference clone's own
 | Delete `UntitledProjects` stub | Done — directory empty/absent |
 | Initial commit | Done — `7bca0d7 Scaffold Swift port of XBolo`, tree clean |
 
-**Step 0.2 — Prove the oracle builds — NOT STARTED. Biggest open risk in the whole plan.**
+**Step 0.2 — Prove the oracle builds — VERIFIED (RESOLVED):**
 
-- Build the C reference: `xcodebuild -project Reference/c/XBolo.xcodeproj -target "Mac OS X" -configuration Development build`, then `Reference/c/fix_framework.sh`.
-- **Live risk:** this machine is Darwin 27; xbolo was modernized against early-2026 Xcode. SDK breakage is the likeliest blocker in the whole plan. If it won't build, fixing that *is* Phase 0 — and without a working oracle the differential-testing spine collapses, so this cannot be skipped.
-- No `Reference/c/build/` output exists yet — confirms this has not been attempted.
+- **Status:** Verified. Running `xcodebuild -project Reference/c/XBolo.xcodeproj -target "Mac OS X" -configuration Development build` succeeds cleanly (`** BUILD SUCCEEDED **`) on Darwin 27. The oracle is ready.
 
 **Step 0.3 — Housekeeping — not started.**
 
