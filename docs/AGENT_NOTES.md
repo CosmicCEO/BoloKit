@@ -365,3 +365,96 @@ Fix: remove the `CXBolo` side of the errchk differential — there is nothing in
 Two fixes: move `dummyRelease` to top level, drop `CXBolo.gettrace()`. Then `swift build` and `swift test` should clear.
 
 > **→ Gemini:** Only two changes needed. Both are in `DifferentialTests.swift`. Do not touch any BoloKit source files.
+
+### [Claude] 2026-08-31 — Wave 2 Pre-implementation Advisory
+**Type:** architecture
+**Phase:** 1 / Wave 2
+**Blocks:** nothing yet — read before writing Terrain.swift or Tiles.swift
+
+Wave 2 is `terrain` + `tiles`. Terrain is trivial. Tiles has one structural decision that must be settled first.
+
+---
+
+**Terrain.swift** — Straightforward. Port as a Swift `@frozen` enum with `Int32` raw values:
+
+```swift
+@frozen public enum Terrain: Int32 {
+    case sea = 0, boat, wall, river
+    case swamp0, swamp1, swamp2, swamp3
+    case crater, road, forest
+    case rubble0, rubble1, rubble2, rubble3
+    case grass0, grass1, grass2, grass3
+    case damagedWall0, damagedWall1, damagedWall2, damagedWall3
+    // mined
+    case minedSea, minedSwamp, minedCrater, minedRoad, minedForest, minedRubble, minedGrass
+}
+
+public func isWaterLikeTerrain(_ terrain: Terrain) -> Int32 { ... }
+```
+
+C `isWaterLikeTerrain` takes `int` — expose a second overload or typealias for differential testing: `public func isWaterLikeTerrain(_ terrain: Int32) -> Int32` so the test can call both sides with a plain Int32. ✓
+
+---
+
+**Tiles.swift** — ⚠️ Design decision required: the `tiles[][256]` C array.
+
+All 7 tile predicates in C take `int tiles[][256]` — a pointer to rows of 256 ints. When clang imports this into Swift via CXBolo, it becomes:
+
+```swift
+// What CXBolo exposes (clang import of int (*tiles)[256]):
+CXBolo.isForestLikeTile(tiles: UnsafeMutablePointer<(Int32, Int32, ... /* ×256 */)>, x: Int32, y: Int32)
+```
+
+A 256-tuple is unusable directly in Swift. **Recommended approach:**
+
+Define a flat-array wrapper in BoloKit for the primary API:
+
+```swift
+public struct TileGrid {
+    public var storage: [Int32]   // 256 * 256 = 65536 elements
+    public init() { storage = [Int32](repeating: 0, count: 256 * 256) }
+    public subscript(x: Int, y: Int) -> Int32 {
+        get { storage[y * 256 + x] }
+        set { storage[y * 256 + x] = newValue }
+    }
+}
+```
+
+Then expose Swift predicates with an `UnsafePointer<Int32>` raw-pointer overload alongside the TileGrid API — the raw pointer overload is what the differential test calls (matches the C ABI layout):
+
+```swift
+// Swift-idiomatic (primary):
+public func isForestLikeTile(_ grid: TileGrid, _ x: Int32, _ y: Int32) -> Int32
+
+// Raw-pointer overload (for differential test bridge):
+public func isForestLikeTile(_ tiles: UnsafePointer<Int32>, _ x: Int32, _ y: Int32) -> Int32
+```
+
+The differential test allocates a flat `[Int32]` of 65536, fills it, then calls both the CXBolo C function (via unsafe reinterpret cast to the 256-tuple pointer) and the BoloKit raw-pointer overload. This avoids ever constructing the 256-tuple in Swift.
+
+**Tile enum**: first 16 values are explicit (0–15); `kSeaTile = 16` onward auto-increment. Port as:
+
+```swift
+@frozen public enum Tile: Int32 {
+    case wall = 0, river = 1, swamp = 2, crater = 3, road = 4
+    case forest = 5, rubble = 6, grass = 7, damagedWall = 8, boat = 9
+    case minedSwamp = 10, minedCrater = 11, minedRoad = 12
+    case minedForest = 13, minedRubble = 14, minedGrass = 15
+    case sea = 16, minedSea = 17
+    case friendlyBase = 18, hostileBase = 19, neutralBase = 20
+    case friendlyPill00 = 21  // ... through friendlyPill15 = 36
+    case hostilePill00 = 37   // ... through hostilePill15 = 52
+    case unknown = 53
+}
+```
+
+Verify raw values by counting: the C enum auto-increments from `kSeaTile` onward, so `kUnknownTile = 53`. Pin all raw values explicitly in Swift — do NOT rely on auto-increment for this enum since future inserts would silently shift everything.
+
+---
+
+**CXBolo additions** (same thin-wrapper pattern as Wave 1):
+- `Sources/CXBolo/terrain.c` → `#include "../../Reference/c/terrain.c"`
+- `Sources/CXBolo/tiles.c` → `#include "../../Reference/c/tiles.c"`
+- Add both headers to `Sources/CXBolo/include/CXBolo.h`
+
+> **→ Gemini:** Settle the `TileGrid` struct design first (or propose an alternative), then implement. The `UnsafePointer<Int32>` overload is what unlocks the differential test. Pin every Tile raw value explicitly.
