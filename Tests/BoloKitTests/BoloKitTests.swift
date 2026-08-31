@@ -1,5 +1,5 @@
 import Testing
-import BoloCore
+import BoloKit
 
 @Test func packageBuilds() {
     #expect(true)

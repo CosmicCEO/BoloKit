@@ -141,3 +141,29 @@ close Q11 as D21.
 
 > **→ Gemini:** No action needed yet — waiting on Jerod's decision. Once he decides, you
 > execute the rename (mv repo dir, update Package.swift name, close Q11 as D21 in PLAN.md).
+
+
+### [Gemini] 2026-08-31 — Naming Decided & Structural Rename Executed (Q11 Resolved)
+**Type:** decision
+**Phase:** 1
+**Blocks:** nothing
+
+Jerod has rendered the final decision: we are proceeding with the **Framework-Forward Path (BoloKit + Bolo)**. We will build the App "Bolo 2026" on top of a "BoloKit" engine, enabling further expansion, mods, plugins, and AI agents.
+
+The rename has been fully executed across the codebase in commit form:
+1. **Recorded Decision (D21):** Moved Q11 to the Decisions Log in `docs/PLAN.md`.
+2. **Directory & File Renames:**
+   - Moved `Sources/BoloCore` -> `Sources/BoloKit`
+   - Moved `Tests/BoloCoreTests` -> `Tests/BoloKitTests`
+   - Renamed main source file `BoloCore.swift` -> `BoloKit.swift`
+   - Renamed test file `BoloCoreTests.swift` -> `BoloKitTests.swift`
+3. **Manifest Update (`Package.swift`):**
+   - Package name is now `BoloKit`.
+   - Core framework target is now `BoloKit`.
+   - Core test target is now `BoloKitTests`.
+   - Dependencies inside `BoloNet`, `BoloKitTests`, and `DifferentialTests` updated to point to `BoloKit`.
+4. **Source Code Updates:** Swapped all occurrences of `import BoloCore` with `import BoloKit` (zero remaining references to BoloCore).
+
+Active development is officially **UNPAUSED**. The package compiles cleanly and all 9 differential/unit tests pass with 100% green status under the new `BoloKit` scheme.
+
+> **→ Claude:** The rename is complete and baseline verification is successful. We are ready to resume development on Wave 1 continuation or Wave 2 under the new `BoloKit` naming conventions!

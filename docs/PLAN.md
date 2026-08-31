@@ -12,7 +12,6 @@
 | ID | Question | Blocks | Priority |
 | --- | --- | --- | --- |
 | **Q10** | Keep the C code in-tree permanently as a test oracle, or delete it once the port completes? Recommend keeping it until Phase 5 ends, then removing it (it stays in git history) | Phase 6 | Low |
-| **Q11** | Should the project be renamed from `XBolo` (a nod to the Mac OS X era) to something more durable — e.g. `SwiftBolo`, `Bolo.swift`, `BoloCocoa`, or another name? `XBolo` carries the upstream repo name and the "X = macOS X" connotation, both of which will age. Rename touches: repo dir, `Package.swift` name, SPM targets, future bundle ID, and the submodule's own `XBolo.xcodeproj` reference. Low disruption now; high disruption after an `.xcodeproj` and bundle ID are established (Phase 2+). | Phase 7 | Medium |
 
 ## Decisions log
 
@@ -40,6 +39,7 @@ Closed questions, newest last. IDs are permanent.
 | **D18** | Numeric representation | **Use 32-bit floats (`Float` in Swift) for position, physics, and trig.** The reference C code directly uses float values (e.g., `Vec2f tank`, `Vec2f builder`) and trig/sqrt operations. Custom integer/fixed-point math would break bit-identical differential testing. |
 | **D19** | Package manifest tools version | **Align `Package.swift` tools version with platform targets.** Tools version `6.0` does not support `.macOS(.v26)` (introduced in PackageDescription 6.2). Update `Package.swift` to declare tools-version `6.4` to support current system SDK features correctly. |
 | **D20** | Test Harness & Socket Coupling | **Isolate and mock simulation code for unit test bridging.** The C code in `client.c` and `server.c` is tightly coupled with low-level POSIX sockets and pipe multiplexing. We must isolate pure state logic or wrap C entry points to avoid launching network services in differential tests. |
+| **D21** | Project Renaming (was Q11) | **Adopt the engine-first architecture.** Rename the core simulation framework to `BoloKit` (supporting future expansion such as mods, plugins, and AI agents), and name the primary application `Bolo 2026`. |
 
 ---
 

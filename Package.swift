@@ -2,23 +2,23 @@
 import PackageDescription
 
 let package = Package(
-    name: "XBolo",
+    name: "BoloKit",
     platforms: [
         .macOS(.v26)
     ],
     targets: [
-        .target(name: "BoloCore"),
+        .target(name: "BoloKit"),
         .target(
             name: "CXBolo",
             path: "Sources/CXBolo",
             publicHeadersPath: "include"
         ),
-        .target(name: "BoloNet", dependencies: ["BoloCore"]),
+        .target(name: "BoloNet", dependencies: ["BoloKit"]),
         .executableTarget(name: "BoloGlyphs"),
-        .testTarget(name: "BoloCoreTests", dependencies: ["BoloCore"]),
+        .testTarget(name: "BoloKitTests", dependencies: ["BoloKit"]),
         .testTarget(
             name: "DifferentialTests",
-            dependencies: ["BoloCore", "CXBolo"]
+            dependencies: ["BoloKit", "CXBolo"]
         ),
     ]
 )
