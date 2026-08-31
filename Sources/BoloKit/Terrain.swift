@@ -45,9 +45,11 @@ public struct TerrainGrid: Sendable {
 
     public subscript(x: Int, y: Int) -> Terrain? {
         get {
-            Terrain(rawValue: storage[y * 256 + x])
+            guard x >= 0, x < 256, y >= 0, y < 256 else { return nil }
+            return Terrain(rawValue: storage[y * 256 + x])
         }
         set {
+            guard x >= 0, x < 256, y >= 0, y < 256 else { return }
             storage[y * 256 + x] = newValue?.rawValue ?? Terrain.sea.rawValue
         }
     }
