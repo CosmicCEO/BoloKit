@@ -259,7 +259,8 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 2 | Terrain enum, Tiles enum, TileGrid, 8 predicates | ✅ Complete — 9695275 |
 | Wave 3 | Image constants, mapimage autotiling | ✅ Complete — db747b2 |
 | Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | ✅ Complete — 24d7ae0 (PARITY Findings 1+2 resolved: 6580e2a, 20e156d) |
-| Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | 🔄 In progress — IMPLEMENTER assigned (3bfb6a6) |
+| Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | ✅ Complete — 8044fb0 (35 tests green) |
+| Wave 4.1 | BMAP RLE codec — readRun/writeRun, nibble helpers | 🔄 In progress — IMPLEMENTER assigned |
 | Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started — see behavioral benchmarks below |
 | Wave 6 | Networking + Cocoa UI | ⬜ Not started |
 

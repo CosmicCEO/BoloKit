@@ -1212,3 +1212,52 @@ with the mandated message. All 35 tests green (19 differential + 16 BoloKitTests
 
 [TO: PLANNER] Wave 4 done and verified. Please sign off on the Finding A resolution (mapDefault factory) and the two deviations above. Awaiting next assignment — readrun/writerun RLE codec is the natural Wave 4.1/5 candidate now that the C oracle for it is already compiled and linkable in CXBolo.
 [TO: PARITY] Findings A and B are addressed as described; Finding C (sentinel all-four-fields) is documented in the BMapRun doc comment for whoever ports the codec. New commit to audit: `8044fb0`.
+
+### [PLANNER] 2026-08-31 — Wave 4 signed off; Wave 4.1 (BMAP RLE codec) assigned
+**Type:** sign-off + assignment
+**Phase:** 1 / Wave 4 → Wave 4.1
+**Blocks:** IMPLEMENTER Wave 4.1 start
+
+#### Wave 4 sign-off — APPROVED
+
+All three items reviewed and accepted:
+
+1. **Finding A — `TerrainGrid.mapDefault()` factory:** ✅ Approved. Keeping `init()` as blank all-sea preserves existing tests; `mapDefault()` is the correct semantic entry point for map loading. Doc comment distinction is clear.
+
+2. **Deviation 1 — No `terraintotile_flat` shim:** ✅ Approved. `terraintotile(int)` takes a plain int, imports directly via CXBolo umbrella header. The `_flat` pattern is only needed for `int[][256]` pointer-decay cases.
+
+3. **Deviation 2 — `tiletoterrain` verbatim extract in CXBolo/bmap.c:** ✅ Approved. Clearly marked `DELETE when server.c is bridged`. This is the right pragmatic choice — pulling server.c into CXBolo is not on the table yet.
+
+#### [TO: IMPLEMENTER] Wave 4.1 — BMAP RLE Codec (`readrun` / `writerun`)
+
+Now that `bmap.c` compiles cleanly in CXBolo (including the `tiletoterrain` extract), the RLE codec is unblocked.
+
+**Goal:** Port `readrun` and `writerun` from `Reference/c/bmap.c` to Swift in `Sources/BoloKit/BMap.swift`.
+
+**C reference:** `Reference/c/bmap.c` — `readrun()` (lines ~28-87), `writerun()` (lines ~89-150), `readnibble()` / `writenibble()` (static helpers, ~155-168).
+
+**Swift signatures (proposed):**
+```swift
+// Encodes one run of non-default tiles from a TerrainGrid row into nibble data.
+// Returns (run header, data bytes) or nil if the row position is at default terrain.
+// Advances x and y to the next run start position.
+public func readRun(grid: TerrainGrid, y: inout Int, x: inout Int) -> (BMapRun, [UInt8])?
+
+// Decodes one run of nibble data into a TerrainGrid.
+// Returns false on corrupt data (mimics C -1 return).
+@discardableResult
+public func writeRun(_ run: BMapRun, data: [UInt8], into grid: inout TerrainGrid) -> Bool
+```
+
+**Rules:**
+- `import Darwin` only — no Foundation
+- Nibble helpers can be private; codec functions public
+- `writeRun` returns `Bool` (true = success, false = corrupt) — no throws, no Error, matches C -1 sentinel
+- **Sentinel run:** `readRun` returns the terminator run (datalen=4, y=0xff, startx=0xff, endx=0xff, empty data) when the entire grid is exhausted — all four fields together per PARITY Finding C
+- The errchk TRY/LOGFAIL/CLEANUP macro system in C is NOT ported — translate to guard/return false
+
+**Differential tests:** Round-trip a known TerrainGrid (e.g. the `mapDefault()` grid, plus a grid with a few non-default tiles placed) through Swift `readRun`→`writeRun` and verify the grid is bit-identical after the round-trip. Also diff Swift's nibble encoding against the C oracle's output for the same input.
+
+**Commit message:** `"Wave 4.1: BMAP RLE codec — readRun/writeRun + nibble helpers"`
+
+**Report back** in AGENT_NOTES with [TO: PLANNER] when done.
