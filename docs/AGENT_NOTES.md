@@ -1186,3 +1186,29 @@ Research confirms XBolo must preserve the following original Bolo behaviors that
 
 [TO: PLANNER] Wave 3.1 audit closed. Wave 4 pre-audit complete — primary concern (defaultTerrain) already addressed in your assignment. Finding 3 (import Darwin) is open housekeeping. Behavioral benchmark documented above for Wave 5 planning reference.
 [TO: IMPLEMENTER] See Finding B and C above before writing `BMapTests.swift`. No blockers on Wave 4 start.
+
+### [IMPLEMENTER] 2026-08-31 — Wave 4 complete: terrainToTile, defaultTerrain/Tile, BMAP structs
+**Type:** build
+**Phase:** 1 / Wave 4
+**Blocks:** nothing
+
+Wave 4 executed per the corrected [TO: IMPLEMENTER] assignment. Committed as `8044fb0`
+with the mandated message. All 35 tests green (19 differential + 16 BoloKitTests).
+
+**Delivered (`Sources/BoloKit/BMap.swift`):**
+- `terrainToTile(_ terrain: Terrain) -> Tile` — exhaustive switch faithful to bmap.c:179-251; variants collapse (swamp0–3→.swamp, rubble0–3→.rubble, grass0–3→.grass, damagedWall0–3→.damagedWall — confirming the assignment's open note: C uses a single kDamagedWallTile)
+- `terrainToTile(_ terrain: Int32) -> Int32` raw overload — invalid values → -1 (C default path; assert(0) treated as debug trap per the mapimage precedent)
+- `defaultTerrain(x:y:)` / `defaultTile(x:y:)` — mine-zone bounds 10...245 from bolo.h
+- `worldRect` / `seaRect` mirroring kWorldRect/kSeaRect (small scope addition — module-level constants in bmap.c)
+- All five BMAP structs (Preamble, PillInfo, BaseInfo, StartInfo, Run) — pure UInt8 fields, Hashable+Sendable. Note: no UInt32 fields anywhere; those belong to BOLO_Preamble (network preamble, out of scope)
+
+**PARITY Finding A resolution (decision — for PLANNER sign-off):** kept `TerrainGrid.init()` as blank all-sea (changing it would break the committed `terrainGridDefaultsToSea` test) and added `TerrainGrid.mapDefault()` static factory filling per `defaultTerrain(x:y:)`. init() doc comment now states map loading must start from `mapDefault()`. Differential test verifies mapDefault against C `defaultterrain` over all 65,536 cells.
+
+**PARITY Finding B honored:** differential tests feed only valid terrain raw values (0–29) to the C oracle; invalid-value behavior is covered Swift-only in BMapTests. Constraint documented in a comment in BMapDifferentialTests.swift.
+
+**Two deviations from the assignment (both simplifications, flagged for review):**
+1. **No `terraintotile_flat` shim** — `terraintotile(int)` takes a plain int, so it imports into Swift directly; the `_flat` pattern is only needed for `int[][256]` parameters. C oracle is called as `CXBolo.terraintotile`.
+2. **`tiletoterrain` verbatim extract in CXBolo** — compiling bmap.c pulls in `writerun`, which references `tiletoterrain` (server.c:4301). server.c can't be compiled into CXBolo (network/global-state deps), so `Sources/CXBolo/bmap.c` carries a verbatim copy of that pure-switch function, clearly commented as an extract to DELETE when server.c is bridged. Also exposed static `defaulttile` as `defaulttile_oracle` from the same translation unit.
+
+[TO: PLANNER] Wave 4 done and verified. Please sign off on the Finding A resolution (mapDefault factory) and the two deviations above. Awaiting next assignment — readrun/writerun RLE codec is the natural Wave 4.1/5 candidate now that the C oracle for it is already compiled and linkable in CXBolo.
+[TO: PARITY] Findings A and B are addressed as described; Finding C (sentinel all-four-fields) is documented in the BMapRun doc comment for whoever ports the codec. New commit to audit: `8044fb0`.
