@@ -648,4 +648,86 @@ import Foundation
         CXBolo.errchkcleanup()
         #expect(BoloKit.gettrace().count == 0)
     }
+
+    // MARK: - Wave 2 Terrain Differential Tests
+
+    @Test func testTerrainEnumAndPredicate() {
+        #expect(BoloKit.Terrain.sea.rawValue == CXBolo.kSeaTerrain)
+        #expect(BoloKit.Terrain.boat.rawValue == CXBolo.kBoatTerrain)
+        #expect(BoloKit.Terrain.wall.rawValue == CXBolo.kWallTerrain)
+        #expect(BoloKit.Terrain.river.rawValue == CXBolo.kRiverTerrain)
+        #expect(BoloKit.Terrain.swamp0.rawValue == CXBolo.kSwampTerrain0)
+        #expect(BoloKit.Terrain.swamp3.rawValue == CXBolo.kSwampTerrain3)
+        #expect(BoloKit.Terrain.crater.rawValue == CXBolo.kCraterTerrain)
+        #expect(BoloKit.Terrain.road.rawValue == CXBolo.kRoadTerrain)
+        #expect(BoloKit.Terrain.forest.rawValue == CXBolo.kForestTerrain)
+        #expect(BoloKit.Terrain.rubble0.rawValue == CXBolo.kRubbleTerrain0)
+        #expect(BoloKit.Terrain.rubble3.rawValue == CXBolo.kRubbleTerrain3)
+        #expect(BoloKit.Terrain.grass0.rawValue == CXBolo.kGrassTerrain0)
+        #expect(BoloKit.Terrain.grass3.rawValue == CXBolo.kGrassTerrain3)
+        #expect(BoloKit.Terrain.damagedWall0.rawValue == CXBolo.kDamagedWallTerrain0)
+        #expect(BoloKit.Terrain.damagedWall3.rawValue == CXBolo.kDamagedWallTerrain3)
+        #expect(BoloKit.Terrain.minedSea.rawValue == CXBolo.kMinedSeaTerrain)
+        #expect(BoloKit.Terrain.minedGrass.rawValue == CXBolo.kMinedGrassTerrain)
+
+        for t in Int32(0)...Int32(50) {
+            #expect(BoloKit.isWaterLikeTerrain(t) == CXBolo.isWaterLikeTerrain(t))
+        }
+    }
+
+    // MARK: - Wave 2 Tile Differential Tests
+
+    @Test func testTileEnumAndPredicates() {
+        #expect(BoloKit.Tile.wall.rawValue == CXBolo.kWallTile)
+        #expect(BoloKit.Tile.river.rawValue == CXBolo.kRiverTile)
+        #expect(BoloKit.Tile.swamp.rawValue == CXBolo.kSwampTile)
+        #expect(BoloKit.Tile.crater.rawValue == CXBolo.kCraterTile)
+        #expect(BoloKit.Tile.road.rawValue == CXBolo.kRoadTile)
+        #expect(BoloKit.Tile.forest.rawValue == CXBolo.kForestTile)
+        #expect(BoloKit.Tile.rubble.rawValue == CXBolo.kRubbleTile)
+        #expect(BoloKit.Tile.grass.rawValue == CXBolo.kGrassTile)
+        #expect(BoloKit.Tile.damagedWall.rawValue == CXBolo.kDamagedWallTile)
+        #expect(BoloKit.Tile.boat.rawValue == CXBolo.kBoatTile)
+        #expect(BoloKit.Tile.minedSwamp.rawValue == CXBolo.kMinedSwampTile)
+        #expect(BoloKit.Tile.minedCrater.rawValue == CXBolo.kMinedCraterTile)
+        #expect(BoloKit.Tile.minedRoad.rawValue == CXBolo.kMinedRoadTile)
+        #expect(BoloKit.Tile.minedForest.rawValue == CXBolo.kMinedForestTile)
+        #expect(BoloKit.Tile.minedRubble.rawValue == CXBolo.kMinedRubbleTile)
+        #expect(BoloKit.Tile.minedGrass.rawValue == CXBolo.kMinedGrassTile)
+        #expect(BoloKit.Tile.sea.rawValue == CXBolo.kSeaTile)
+        #expect(BoloKit.Tile.minedSea.rawValue == CXBolo.kMinedSeaTile)
+        #expect(BoloKit.Tile.friendlyBase.rawValue == CXBolo.kFriendlyBaseTile)
+        #expect(BoloKit.Tile.hostileBase.rawValue == CXBolo.kHostileBaseTile)
+        #expect(BoloKit.Tile.neutralBase.rawValue == CXBolo.kNeutralBaseTile)
+        #expect(BoloKit.Tile.friendlyPill00.rawValue == CXBolo.kFriendlyPill00Tile)
+        #expect(BoloKit.Tile.friendlyPill15.rawValue == CXBolo.kFriendlyPill15Tile)
+        #expect(BoloKit.Tile.hostilePill00.rawValue == CXBolo.kHostilePill00Tile)
+        #expect(BoloKit.Tile.hostilePill15.rawValue == CXBolo.kHostilePill15Tile)
+        #expect(BoloKit.Tile.unknown.rawValue == CXBolo.kUnknownTile)
+
+        var grid = [Int32](repeating: 0, count: 256 * 256)
+        
+        let validTiles: [Int32] = BoloKit.Tile.allCases.map { $0.rawValue }
+        for i in 0..<grid.count {
+            grid[i] = validTiles[i % validTiles.count]
+        }
+        
+        grid.withUnsafeBufferPointer { buf in
+            let ptr = buf.baseAddress!
+            let testCoords: [Int32] = [-1, 0, 1, 50, 100, 255, 256]
+            
+            for y in testCoords {
+                for x in testCoords {
+                    #expect(BoloKit.isForestLikeTile(ptr, x, y) == CXBolo.isForestLikeTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isCraterLikeTile(ptr, x, y) == CXBolo.isCraterLikeTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isRoadLikeTile(ptr, x, y) == CXBolo.isRoadLikeTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isWaterLikeToLandTile(ptr, x, y) == CXBolo.isWaterLikeToLandTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isWaterLikeToWaterTile(ptr, x, y) == CXBolo.isWaterLikeToWaterTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isWallLikeTile(ptr, x, y) == CXBolo.isWallLikeTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isSeaLikeTile(ptr, x, y) == CXBolo.isSeaLikeTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                    #expect(BoloKit.isMinedTile(ptr, x, y) == CXBolo.isMinedTile_flat(UnsafeMutablePointer(mutating: ptr), x, y))
+                }
+            }
+        }
+    }
 }

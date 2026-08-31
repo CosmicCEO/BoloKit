@@ -6,5 +6,17 @@
 #include "../../../Reference/c/rect.h"
 #include "../../../Reference/c/list.h"
 #include "../../../Reference/c/buf.h"
+#include "../../../Reference/c/terrain.h"
+#include "../../../Reference/c/tiles.h"
+
+// Flat-pointer shim declarations for Swift differential testing
+int isForestLikeTile_flat(int *tiles, int x, int y);
+int isCraterLikeTile_flat(int *tiles, int x, int y);
+int isRoadLikeTile_flat(int *tiles, int x, int y);
+int isWaterLikeToLandTile_flat(int *tiles, int x, int y);
+int isWaterLikeToWaterTile_flat(int *tiles, int x, int y);
+int isWallLikeTile_flat(int *tiles, int x, int y);
+int isSeaLikeTile_flat(int *tiles, int x, int y);
+int isMinedTile_flat(int *tiles, int x, int y);
 
 #endif /* CXBOLO_H */
