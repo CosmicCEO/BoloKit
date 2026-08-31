@@ -292,3 +292,36 @@ Critical behaviors where XBolo must match original Bolo 0.99.7 — NOT WinBolo:
 - **PARITY AUDITOR** (Claude.app, adversarial) — independent behavioral parity review
 
 Communication: all handoffs via AGENT_NOTES.md with explicit [TO: X] tags.
+
+## Wave 5.0 — Physics constants reference (pre-read complete 2026-08-31)
+
+All constants to be added to `Physics.swift` in Wave 5.0. Values from `bolo.h`.
+
+| Swift name | Value | C macro |
+|---|---|---|
+| tankRadius | 0.375 | TANKRADIUS |
+| builderRadius | 0.125 | BUILDERRADIUS |
+| shellVelocity | 7.0 | SHELLVEL |
+| maxShellRange | 7.0 | MAXRANGE |
+| kickForce | 3.125 | KICKFORCE |
+| explosionTicks | 24 | EXPLOSIONTICKS *(particle display)* |
+| explodeTicks | 45 | EXPLODETICKS *(death animation)* |
+| respawnTicks | 150 | RESPAWN_TICKS |
+| maxShells | 40 | MAXSHELLS |
+| maxMines | 40 | MAXMINES |
+| maxArmour | 40 | MAXARMOUR |
+| maxTrees | 40 | MAXTREES |
+| roadTrees | 2 | ROADTREES |
+| wallTrees | 2 | WALLTREES |
+| boatTrees | 20 | BOATTREES |
+| pillTrees | 4 | PILLTREES |
+| maxPlayers | 16 | MAXPLAYERS |
+| maxStarts | 16 | MAX_STARTS |
+| pillOnboard | UInt8(0xff) | ONBOARD |
+| playerNeutral | UInt8(0xff) | NEUTRAL |
+| noPill | UInt8(0xff) | NOPILL |
+| minBaseArmour | 5 | MINBASEARMOUR |
+
+**Distinguishing `explosionTicks` vs `explodeTicks`:**
+- `explosionTicks (24)` — how long an `Explosion` particle effect renders before removal from the list
+- `explodeTicks (45)` — how long the dead-tank explosion animation plays before `spawn()` is eligible (`respawncounter > EXPLODETICKS`)

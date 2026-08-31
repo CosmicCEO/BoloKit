@@ -1493,3 +1493,200 @@ separate entry before issuing Wave 5.0. Do NOT start Wave 5 without that model d
 | Wave 5.6 | `killtank`, `spawn` — respawn system |
 
 [TO: PARITY] Review this pre-read for fidelity gaps before Wave 5.0 is assigned.
+
+### [PLANNER] 2026-08-31 — Wave 5 pre-brief: GameState model + collisionDetect
+**Type:** research / architecture
+**Phase:** 1 / Wave 5 pre-planning
+**Blocks:** nothing — for IMPLEMENTER reference before Wave 5.1 is assigned
+
+#### `client` struct analysis — what Wave 5.1 `GameState` needs
+
+Read `client.h` lines 19–345 and `bolo.h` Pill/Base/Start/Shell/Explosion structs.
+
+**`GameState` simulation fields (Swift Wave 5.1 deliverable):**
+
+```swift
+// Per-player state (up to MAXPLAYERS = 16)
+public struct PlayerState: Sendable {
+    public var connected: Bool
+    public var dead: Bool
+    public var boat: Bool
+    public var tank: Vec2f          // world-space position (Float)
+    public var dir: Float           // radians, [0, 2π)
+    public var speed: Float         // squares/sec
+    public var turnspeed: Float     // radians/sec
+    public var kickdir: Float       // radians
+    public var kickspeed: Float     // squares/sec
+    public var builder: Vec2f       // builder world position
+    public var builderTarget: (x: Int32, y: Int32)
+    public var builderStatus: Int32
+    public var builderWait: Int32
+    public var alliance: UInt16
+    public var inputFlags: Int32
+    public var seq: Int32
+    public var lastUpdate: Int32
+    public var shells: [Shell]
+    public var explosions: [Explosion]
+    // sound flags (Bool) — tankshotSound, pillshotSound, sinkSound, builderDeathSound
+}
+
+// Pill, Base, Start match C structs exactly:
+public struct Pill: Sendable { x, y, owner, armour, speed, counter: Int32 }
+public struct Base: Sendable { x, y, owner, armour, shells, mines, counter: Int32 }
+public struct Start: Sendable { x, y, dir: Int32 }
+public struct Shell: Sendable { owner: Int32; point: Vec2f; boat, pill: Bool; dir, range: Float }
+public struct Explosion: Sendable { point: Vec2f; counter: Int32 }
+```
+
+**Local-player-only fields (also in `GameState`):**
+- `respawnCounter: Int32`, `spawned: Bool`
+- `shellCounter: Int32`, `range: Float` (shell range carried)
+- `armour, shells, mines, trees: Int32` (resources)
+- `kills, deaths: Int32`
+- `refueling: Bool`, `refuelingBase: Int32`, `refuelingCounter: Int32`
+- `drainCounter: Int32`
+- Builder task fields: `nextBuilderCommand, nextBuilderTarget, builderTask, builderMines, builderTrees, builderPill`
+
+**NOT in GameState — network/UI/callbacks:**
+Hostname, sockets, send/recv buffers, callbacks (`loopupdate` etc.) — these become a Swift delegate protocol in the Cocoa layer, not in BoloKit.
+
+**Four 256×256 grids in GameState:**
+- `terrain: TerrainGrid` — canonical terrain (already ported, Wave 1/3.1)
+- `seenTiles: [Int32]` — last-seen tile display (raw tile int, 65,536 elements)
+- `images: [Int32]` — mapimage output (autotiling result, 65,536 elements)
+- `fog: [Int32]` — visibility counter per cell
+
+#### `collisionDetect` — pure function, Wave 5.0 deliverable
+
+Source: `client.c` line 6927. Swift signature:
+```swift
+public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool) -> Vec2f
+```
+
+Algorithm: checks 4 cardinal neighbor tiles within `radius`, resolves cardinal overlaps, then checks 4 diagonal corners using `sqrtf()`. Pure geometry — no game state dependency except the callback.
+
+**🔴 C BUG — must be replicated (line ~6960):**
+```c
+if (lyc) {
+    if (hyc) {
+      p.x = fy + 0.5;  // ← WRONG: should be p.y = fy + 0.5
+    }
+    ...
+}
+```
+When the entity is squeezed between solid tiles above AND below, it snaps `p.x` (x-coordinate) to the tile-center instead of `p.y`. This produces an incorrect x-shift in that rare edge case. Must be replicated — a fix would diverge from the C oracle in differential tests.
+
+**`collisionOwner` global → closure capture in Swift:**
+C code uses a global `int collisionowner` to pass context into the `tankcollision` callback. In Swift, this becomes a capture:
+```swift
+let owner = playerIndex
+let isSolid: (Pointi) -> Bool = { [state] square in
+    tankCollision(square, pills: state.pills, bases: state.bases,
+                  terrain: state.terrain, collisionOwner: owner)
+}
+tank = collisionDetect(tank, radius: tankRadius, isSolid: isSolid)
+```
+
+#### Constants still missing from Physics.swift (Wave 5.0 additions)
+
+```swift
+public let tankRadius: Float = 0.375
+public let builderRadius: Float = ...  // need to check bolo.h
+public let maxAngularVelocity: Float = 2.5
+public let pushForce: Float = 1.5625
+public let kickSpeedDecay: Float = 12.0
+public let explodeTicks: Int32 = 45
+public let respawnTicks: Int32 = 150
+```
+
+[TO: PARITY] Flag the `collisiondetect` p.x/p.y bug for your Wave 5.0 audit checklist — differential tests should hit this path.
+[TO: IMPLEMENTER] This entry is reference for Wave 5.1 model design. No action until PLANNER issues the Wave 5.0 assignment.
+
+---
+## [PLANNER] Wave 5 Pre-Read — Part 2: Shell/Builder/Pill/Spawn (complete)
+**Date:** 2026-08-31  **Status:** PRE-READ COMPLETE
+
+### Constants — bolo.h (all needed in Physics.swift Wave 5.0 additions)
+| C macro | Value | Swift name |
+|---|---|---|
+| TANKRADIUS | 0.375 | tankRadius *(already in pre-brief)* |
+| BUILDERRADIUS | 0.125 | builderRadius |
+| SHELLVEL | 7.0 | shellVelocity |
+| MAXRANGE | 7.0 | maxShellRange |
+| KICKFORCE | 3.125 | kickForce *(= boatMaxSpeed, coincidence)* |
+| EXPLOSIONTICKS | 24 | explosionTicks *(particle display limit)* |
+| EXPLODETICKS | 45 | explodeTicks *(death anim before respawn)* |
+| RESPAWN_TICKS | 150 | respawnTicks |
+| MAXSHELLS | 40 | maxShells |
+| MAXMINES | 40 | maxMines |
+| MAXARMOUR | 40 | maxArmour |
+| MAXTREES | 40 | maxTrees |
+| ROADTREES | 2 | roadTrees |
+| WALLTREES | 2 | wallTrees |
+| BOATTREES | 20 | boatTrees |
+| PILLTREES | 4 | pillTrees |
+| MAXPLAYERS | 16 | maxPlayers |
+| MAX_STARTS | 16 | maxStarts |
+| NEUTRAL | 0xff | playerNeutral |
+| ONBOARD | 0xff | pillOnboard |
+| NOPILL | 0xff | noPill |
+| MINBASEARMOUR | 5 | minBaseArmour |
+
+**IMPLEMENTER NOTE — Wave 5.0 Physics.swift additions:** Add ALL constants above as `public let` in Physics.swift. Group separately from existing speed/accel constants with a `// MARK: - Game Object Constants` comment.
+
+### Shell struct fields (Wave 5.1 GameState — Shell type)
+```c
+struct Shell {
+  Vec2f point;    // world position
+  float dir;      // direction (radians)
+  float range;    // remaining range (starts at MAXRANGE or less)
+  int   owner;    // player index or NEUTRAL
+  int   boat;     // 1 = fired from water (boat shell)
+  int   pill;     // 1 = fired by pillbox
+};
+```
+Swift `Shell` struct: `point: Vec2f, dir: Float, range: Float, owner: UInt8, boat: Bool, pill: Bool`
+
+### shelllogic — Wave 5.3 scope
+- Per tick: advance `point` by `shellVelocity/ticksPerSec` in `dir`, reduce `range` by same
+- Last step: advance only `range` remainder if `range < shellVelocity/ticksPerSec`
+- Collision test via `shellcollisiontest` (pills, bases, terrain, tanks)
+- Tank hit: `kickdir = shell.dir`, `kickspeed = kickForce (3.125)`, armour -= 5
+- Range ≤ 0: create Explosion at shell.point, remove shell
+- **Explosion struct:** `point: Vec2f, counter: Int` — counter increments each tick; remove when `counter > EXPLOSIONTICKS (24)`
+- **NOTE:** shelllogic iterates `client.players[client.player].shells` for tank-hit test against `client.players[player]` — local player's shells test against other players. In pure-simulation Swift this becomes: each player's shells test against each other player's tank.
+
+### builderlogic — Wave 5.4 scope
+- `BUILDERRADIUS = 0.125`, `TANKRADIUS - BUILDERRADIUS = 0.25` — close-range capture threshold
+- Builder initial placement formula (repeated for all task types):
+  ```
+  if dist ≤ 0.25: builder = Vec2f(target.x+0.5, target.y+0.5)
+  else:           builder = tank + diff * (0.25 / dist)
+  ```
+- Builder movement uses `collisionDetect(builder + diff, radius: BUILDERRADIUS, isSolid: builderCollision)`
+- Builder speed: `BUILDERRADIUS`-based (read `builderlogic` lines 4894–5000 for full movement tick)
+- State machine: `kBuilderReady → kBuilderGoto → kBuilderWork/Return` (full enum in bolo.h)
+- Wave 5.4 is complex — IMPLEMENTER should read builderlogic lines 4531–5033 in full before implementing
+
+### pilllogic — Wave 5.5 scope
+- Firing condition: `(dist ≤ 2.0 OR forestvis(tank) > 0.25) AND dist ≤ 8.0`
+- Closest-hostile check: pill only fires if local player is closer than any other hostile
+- Counter increments each tick; fire when `counter >= pill.speed` (speed = reload rate from bolo.h)
+- Shell spawned at `pill_center + diff * (0.70711219 / dist)` — ≈ √2/2 offset into cell
+- Shell `range = 8.5 - 0.70711219 ≈ 7.793`, `pill = true`, `owner = pill.owner`
+- Shell dir: velocity component math uses `compi + compj` (lead-target, partially)
+- **NOTE:** `0.70711219` is the exact C constant — use this literal float in Swift for parity
+
+### spawn() — confirmed matches PARITY audit
+Two-pass weighted selection (verbatim from C):
+1. **Pass 1:** For each start: weight=1; friendly base < 8.5 → weight=3; friendly base < 17 → weight=2; hostile pill < 8.5 → weight=0
+2. **If range==0** (all spiked): re-run base weights only (no pill penalty)
+3. `index = random() % range`; select start by cumulative weight scan
+4. Post-spawn state: `dead=0, tank=start+0.5, dir=start.dir*(π/8.0), speed=0, turnspeed=0, kickspeed=0, kickdir=0, range=MAXRANGE(7.0), boat=1`
+5. Resource init: game-type branched (domination open/tournament/strict). In open: shells=40, mines=40, armour=40, trees=40
+
+**Swift:** `spawn()` belongs in `Spawn.swift` (Wave 5.6). Takes `inout GameState`, uses `arc4random_uniform` (not `random()`) for determinism on Apple platforms — **PARITY NOTE: document this divergence.**
+
+### Wave 5 pre-read: COMPLETE
+All sub-waves 5.0–5.7 are scoped. IMPLEMENTER can begin Wave 4.1 then proceed sequentially through Wave 5 sub-waves when ready.
+
