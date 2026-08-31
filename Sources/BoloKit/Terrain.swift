@@ -38,8 +38,26 @@ public func isWaterLikeTerrain(_ terrain: Int32) -> Int32 {
 public struct TerrainGrid: Sendable {
     public var storage: [Int32]
 
+    /// A blank all-sea grid. This is NOT the pre-run-application map state:
+    /// map loading must start from `mapDefault()`, which applies
+    /// `defaultTerrain(x:y:)` per cell (mined-sea border ring).
     public init() {
         self.storage = [Int32](repeating: Terrain.sea.rawValue, count: 256 * 256)
+    }
+
+    /// A grid initialized per cell via `defaultTerrain(x:y:)` — sea inside the
+    /// mine zone [10, 245]², mined sea in the border ring. This is the state
+    /// `clientloadmap` (C) starts from before applying BMAP run data; the run
+    /// encoder skips cells matching the default, so starting from a plain
+    /// all-sea grid would silently corrupt the border.
+    public static func mapDefault() -> TerrainGrid {
+        var grid = TerrainGrid()
+        for y in 0..<256 {
+            for x in 0..<256 {
+                grid.storage[y * 256 + x] = defaultTerrain(x: Int32(x), y: Int32(y)).rawValue
+            }
+        }
+        return grid
     }
 
     public subscript(x: Int, y: Int) -> Terrain? {
