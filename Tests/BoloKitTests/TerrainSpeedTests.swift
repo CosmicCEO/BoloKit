@@ -178,3 +178,21 @@ private let expectedBuilderSpeed: [Terrain: Float] = [
     grid[10, 20] = nil
     #expect(grid[10, 20] == .sea)
 }
+
+@Test func terrainGridBoundsGuard() {
+    // TerrainGrid subscript must return nil for out-of-bounds reads
+    // and silently ignore out-of-bounds writes (PARITY Finding 2 fix, commit 6580e2a).
+    var grid = TerrainGrid()
+    // Out-of-bounds reads
+    #expect(grid[-1, 0] == nil)
+    #expect(grid[0, -1] == nil)
+    #expect(grid[256, 0] == nil)
+    #expect(grid[0, 256] == nil)
+    #expect(grid[999, 999] == nil)
+    // Out-of-bounds writes must not crash and must not corrupt in-bounds storage
+    grid[-1, 0] = .road
+    grid[256, 255] = .forest
+    // In-bounds cells unaffected
+    #expect(grid[0, 0] == .sea)
+    #expect(grid[255, 255] == .sea)
+}
