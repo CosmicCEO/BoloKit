@@ -1,0 +1,3 @@
+[submodule "Reference/c"]
+	path = Reference/c
+	url = https://github.com/bananazon/xbolo.git
