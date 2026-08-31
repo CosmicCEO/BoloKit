@@ -725,3 +725,52 @@ Should BoloKit / Bolo 2026 include a map editor or map creator capability?
 
 **Recommendation (Claude):** Defer UI decisions until Wave 4 (bmap) is complete. When designing the bmap write API, keep "editor-friendly" in mind — i.e., the API should support constructing a map from scratch, not just reading existing ones.
 
+
+---
+
+## Wave 3 Code Review — Claude Sign-off (session 3)
+
+**Commit reviewed:** db747b22  
+**Files:** Sources/BoloKit/Images.swift (827 lines), Sources/CXBolo/images.c, tiles_shim.c (mapimage_flat added), include/CXBolo.h (mapimage_flat declared), Tests/DifferentialTests/DifferentialTests.swift (+48 lines)
+
+### Verdict: ✅ APPROVED
+
+### What I checked
+
+**Image constants (lines 1–295):** All 177 `#define` values from `images.h` ported as `public let` with correct hex values. Spot-checked WALL46IMAGE=0x00 through MINE00IMAGE=0xb0 and the PTKB/FPIL/HPIL sprite constants. Clean.
+
+**`mapimage` outer switch — coverage:** All 24 logical tile types covered:
+- sea + minedSea → multi-case (handles C fallthrough) ✅  
+- river, swamp, grass, rubble, damagedWall → single-image returns ✅  
+- forest, crater, wall, boat → full 16-case neighbor bitmask switches ✅  
+- road + minedRoad → full 3-level nested switch (highest-risk section) ✅  
+- bases (friendly/hostile/neutral) → direct image constants ✅  
+- friendlyPill00...15, hostilePill00...15 → range pattern with computed offset ✅  
+- unknown (53) → falls to outer `default: return -1` ✅
+
+**Bitmask convention:** left=1, up=2, right=4, down=8 — maintained without deviation throughout all neighbor and diagonal computations ✅
+
+**Road tile (3-level nesting, highest risk):** All 16 neighbor cases (0–15) present. Water and diagonal checks at the third level match the C reference exactly. cases 7, 13, 14, 11 (3-neighbor arms) use `if/else` for water+diagonal disambiguation — correct ✅
+
+**Wall tile:** All 16 cases with full 4-bit diagonal breakdown for case 15 (16 diag sub-cases). Matches C reference ✅
+
+**TileGrid overload:** `mapimage(_ grid: TileGrid, ...)` delegates to the raw-pointer overload via `storage.withUnsafeBufferPointer` — clean, no duplication ✅
+
+**Shim:** `mapimage_flat` added to `tiles_shim.c` alongside the existing 8 shims using the same `(int (*)[256])` cast pattern. Declared in `CXBolo.h`. ✅
+
+**Differential test:** Constant-equality checks (13 spot-checked constants); out-of-bounds coverage (Swift-only, correct — C would assert-crash); in-bounds differential over 64 coordinate pairs against C oracle. ✅
+
+### One design divergence from advisory (not a defect)
+
+My pre-advisory specified `precondition` for out-of-bounds coordinates (matching C's `assert`). Gemini chose `guard x >= 0 && x < 256 && y >= 0 && y < 256 else { return -1 }` — returning -1 instead of terminating.
+
+**Assessment:** Acceptable. The differential test explicitly documents this divergence with a comment ("C would assert-crash"). For a Swift API, defensive return is often preferable to termination; the fidelity guarantee applies to in-bounds inputs where behavior must be bit-identical. The C `assert` is a programmer-error trap, not a behavioral contract. No action required.
+
+### Known limitation (log for Wave 4+ testing)
+
+The differential test grid uses a cycling `i % validTiles.count` pattern rather than realistic tile arrangements. This doesn't create natural neighbor patterns (e.g., a sea tile surrounded by sea on all sides). The test passes the existing cases but won't catch bitmask errors in low-probability configurations. Recommend adding scenario-based test grids (hand-crafted map slices) before Wave 5.
+
+### Next: Wave 4 — bmap
+
+Wave 4 covers the `.bolo` map file format: binary parse, round-trip write, and format validation. This is the prerequisite for any map editor functionality (see Open Question above). I will pre-brief Gemini when she is ready to begin.
+
