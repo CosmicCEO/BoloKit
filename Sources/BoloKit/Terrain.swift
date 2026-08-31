@@ -126,17 +126,19 @@ public func terrainMaxTurnSpeed(_ terrain: Terrain) -> Float {
 /// Ported from the terrain switch in `builderspeed()` in Reference/c/client.c.
 /// The full version with pill/base/alliance checks comes in Wave 5.
 ///
-///   road / boat / minedRoad                            → builderMaxSpeed (3.125)
-///   grass0–3 / forest / minedGrass / minedForest       → builderMaxSpeed × 0.5
+///   road / boat / grass0–3 / minedRoad / minedGrass    → builderMaxSpeed (3.125)
+///   forest / minedForest                               → builderMaxSpeed × 0.5
 ///   swamp0–3 / crater / rubble0–3 /
 ///     minedSwamp / minedCrater / minedRubble           → builderMaxSpeed × 0.25
 ///   sea / wall / damagedWall0–3 / river / minedSea     → 0.0
 public func terrainBuilderSpeed(_ terrain: Terrain) -> Float {
+    // C reference: builderspeed() in client.c lines 3749-3784
+    // grass moves at FULL builder speed (= road), NOT at 0.5x like forest.
     switch terrain {
-    case .road, .boat, .minedRoad:
+    case .road, .boat, .minedRoad,
+         .grass0, .grass1, .grass2, .grass3, .minedGrass:
         return builderMaxSpeed
-    case .grass0, .grass1, .grass2, .grass3, .minedGrass,
-         .forest, .minedForest:
+    case .forest, .minedForest:
         return builderMaxSpeed * 0.5
     case .swamp0, .swamp1, .swamp2, .swamp3,
          .crater,
@@ -144,7 +146,7 @@ public func terrainBuilderSpeed(_ terrain: Terrain) -> Float {
          .minedSwamp, .minedCrater, .minedRubble:
         return builderMaxSpeed * 0.25
     default:
-        // sea, wall, damagedWall0–3, river, minedSea
+        // sea, wall, damagedWall0-3, river, minedSea -> impassable for builder
         return 0.0
     }
 }
