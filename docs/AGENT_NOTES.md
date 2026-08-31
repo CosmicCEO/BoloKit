@@ -774,3 +774,164 @@ The differential test grid uses a cycling `i % validTiles.count` pattern rather 
 
 Wave 4 covers the `.bolo` map file format: binary parse, round-trip write, and format validation. This is the prerequisite for any map editor functionality (see Open Question above). I will pre-brief Gemini when she is ready to begin.
 
+
+---
+
+## Wave 3.1 Gap Analysis — Terrain Speed Difficulty (Claude, session 3)
+
+**Requested by:** Jerod (CosmicCEO)  
+**Scope:** Ensure terrain difficulty / proportional speed degradation is planned before Wave 4.
+
+---
+
+### What the original game does
+
+Three speed-governing functions live in `Reference/c/client.c`, all operating on `client.terrain[y][x]`:
+
+**`maxspeed(x, y) → float`** — tank max forward speed (squares/sec):
+
+| Terrain | Speed |
+|---|---|
+| road, boat, minedRoad | 3.125 (ROADMAXSPEED) |
+| grass0-3, minedGrass | 2.34375 (GRASSMAXSPEED) |
+| forest, minedForest | 1.171875 (FORESTMAXSPEED) |
+| river, swamp0-3, crater, rubble0-3, minedSwamp, minedCrater, minedRubble | 0.5859375 (RUBBLEMAXSPEED) |
+| sea, wall, damagedWall0-3, minedSea | 0.0 (impassable) |
+| any tile containing a base | 3.125 (override regardless of terrain) |
+
+Speed ratio road:grass:forest:rubble = **5.33 : 4 : 2 : 1** — this is the core gameplay feel.
+
+**`maxturnspeed(x, y) → float`** — tank max turn rate (rad/sec):
+
+| Terrain | Turn speed |
+|---|---|
+| road, boat, grass*, minedRoad, minedGrass | 2.5 |
+| forest, minedForest | 1.25 |
+| river, swamp*, crater, rubble*, minedSwamp, minedCrater, minedRubble | 0.625 |
+| sea, wall, damagedWall*, minedSea | 0.0 |
+| tile containing a pill (alive) | 0.0 |
+| tile containing a pill (dead) or base | 2.5 |
+
+**`builderspeed(x, y, player) → float`** — LGM movement (Wave 5 concern; same tier structure as maxspeed with alliance checks for bases).
+
+**Physics constants** (bolo.h, all unported):
+
+```
+TICKSPERSEC             = 50
+BOATMAXSPEED            = 3.125     // sq/sec
+ROADMAXSPEED            = 3.125     // = BOATMAXSPEED
+GRASSMAXSPEED           = 2.34375
+FORESTMAXSPEED          = 1.171875
+RUBBLEMAXSPEED          = 0.5859375
+TICKS_FOR_COMPLETE_STOP = 64
+ACCEL                   = 2.44140625  // sq/sec² (BOATMAXSPEED × TICKSPERSEC / TICKS_FOR_COMPLETE_STOP)
+ANGULARACCEL            = 12.5663706143592  // rad/sec²
+BUILDERMAXSPEED         = ROADMAXSPEED
+PARACHUTESPEED          = RUBBLEMAXSPEED
+```
+
+**Physics application (client.c ~4079):**  
+Each tick: `max = boat ? BOATMAXSPEED : maxspeed(tank.x, tank.y)`. Tank accelerates toward `max` at ACCEL/tick; if a terrain boundary is crossed and new `max` is lower than current speed, decelerates at the same ACCEL rate. This is what gives the "coast into mud" feel.
+
+---
+
+### Gap analysis — what BoloKit is missing
+
+| Item | Status |
+|---|---|
+| Terrain enum (30 cases, raw values 0–29) | ✅ Wave 2 — correct |
+| isWaterLikeTerrain | ✅ Wave 2 |
+| Physics constants (TICKSPERSEC, *MAXSPEED, ACCEL, etc.) | ❌ Not ported |
+| `terrainMaxSpeed(_ terrain: Terrain) → Double` | ❌ Not ported |
+| `terrainMaxTurnSpeed(_ terrain: Terrain) → Double` | ❌ Not ported |
+| `terrainBuilderSpeed(_ terrain: Terrain) → Double` | ❌ Not ported (Wave 5 concern, but pure) |
+| `TerrainGrid` (256×256 terrain layer, analogous to TileGrid) | ❌ Not ported |
+| Full `maxspeed(x, y)` with findbase/findpill overrides | ❌ Deferred to Wave 5 (needs client state) |
+| Full `maxturnspeed(x, y)` with pill/base overrides | ❌ Deferred to Wave 5 |
+| Tank physics tick integration | ❌ Wave 5 |
+
+**Terrain raw values verified:** All 30 Terrain Swift enum cases (sea=0 through minedGrass=29) match `terrain.h` exactly. Foundation is sound.
+
+---
+
+### Recommended Wave 3.1 scope (implement before Wave 4)
+
+**New file: `Sources/BoloKit/Physics.swift`**
+
+Port all physics constants verbatim from bolo.h as Swift `public let` globals, with same precision:
+```swift
+public let ticksPerSec: Double = 50
+public let boatMaxSpeed: Double = 3.125
+public let roadMaxSpeed: Double = boatMaxSpeed
+public let grassMaxSpeed: Double = 2.34375
+public let forestMaxSpeed: Double = 1.171875
+public let rubbleMaxSpeed: Double = 0.5859375
+public let ticksForCompleteStop: Double = 64
+public let accel: Double = boatMaxSpeed * ticksPerSec / ticksForCompleteStop  // 2.44140625
+public let angularAccel: Double = 12.5663706143592
+public let builderMaxSpeed: Double = roadMaxSpeed
+public let parachuteSpeed: Double = rubbleMaxSpeed
+```
+
+**Extend `Sources/BoloKit/Terrain.swift` — add three pure functions:**
+
+```swift
+// Pure terrain-value speed cap — no grid, no pill/base lookup
+// Full maxspeed(x, y, grid, pills, bases) with overrides comes in Wave 5
+public func terrainMaxSpeed(_ terrain: Terrain) -> Double {
+    switch terrain {
+    case .road, .boat, .minedRoad:
+        return roadMaxSpeed
+    case .grass0, .grass1, .grass2, .grass3, .minedGrass:
+        return grassMaxSpeed
+    case .forest, .minedForest:
+        return forestMaxSpeed
+    case .river, .swamp0, .swamp1, .swamp2, .swamp3,
+         .crater, .rubble0, .rubble1, .rubble2, .rubble3,
+         .minedSwamp, .minedCrater, .minedRubble:
+        return rubbleMaxSpeed
+    default:  // sea, wall, damagedWall*, minedSea
+        return 0.0
+    }
+}
+
+public func terrainMaxTurnSpeed(_ terrain: Terrain) -> Double {
+    // (parallel structure — see C maxturnspeed for pill/base override cases)
+    switch terrain {
+    case .road, .boat, .minedRoad,
+         .grass0, .grass1, .grass2, .grass3, .minedGrass:
+        return 2.5
+    case .forest, .minedForest:
+        return 1.25
+    case .river, .swamp0, .swamp1, .swamp2, .swamp3,
+         .crater, .rubble0, .rubble1, .rubble2, .rubble3,
+         .minedSwamp, .minedCrater, .minedRubble:
+        return 0.625
+    default:
+        return 0.0
+    }
+}
+```
+
+**`TerrainGrid`** struct in Terrain.swift (same pattern as TileGrid):
+- Flat `[Int32]` of 65,536 (256×256), `y*256+x` indexing
+- `[x, y]` subscript returning `Terrain?`
+- No shim needed — the terrain functions are pure, no 2D-array import problem
+
+**Differential testing:**  
+The pure terrain functions have no C counterpart to diff against (C embeds them in grid+state functions). Test by unit table: verify every Terrain case returns the expected speed value — no C oracle needed, just exact value checks against bolo.h constants. This is sufficient because the mapping is a straightforward switch with no logic.
+
+---
+
+### What stays in Wave 5
+
+The full `maxspeed(x, y, grid:TerrainGrid, pills:[Pill], bases:[Base]) -> Double` (with findbase/findpill overrides) lives in Wave 5 alongside the tank simulation. The terrain pure functions provide the correct floor that Wave 5 builds on. Nothing in Wave 5 will need to change the speed tier values — they're sealed here.
+
+---
+
+### Summary judgment
+
+The terrain difficulty system is **completely absent** from BoloKit today. The Terrain enum foundation is correct, but zero speed physics exist. Without Wave 3.1, any tank simulation in Wave 5 would have to construct this from scratch with no validated building blocks. Wave 3.1 is a necessary prerequisite: it is bounded, testable, and does not require Gemini to touch the simulation layer.
+
+→ **Recommended action:** Implement Wave 3.1 (Physics.swift + terrainMaxSpeed/terrainMaxTurnSpeed + TerrainGrid) before beginning Wave 4 (bmap).
+
