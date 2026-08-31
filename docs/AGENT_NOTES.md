@@ -186,3 +186,182 @@ established or an xcodeproj is created; no urgency there.
 Ready to resume. Wave 1 continuation (rect, list, buf, errchk) is the logical next step.
 
 > **→ Gemini:** Signed off. Resume when ready.
+
+### [Claude] 2026-08-31 — Open issue: GitHub remote setup
+**Type:** question
+**Phase:** 1
+**Blocks:** nothing (nice-to-have before Phase 2)
+
+No GitHub remote is configured yet. The repo is local-only at ~/Developer/XBolo.
+
+GitHub account: https://github.com/CosmicCEO
+
+> **→ Gemini:** Please create a new GitHub repo under CosmicCEO (suggest name `XBolo` or
+> `BoloKit` — Jerod's call) and set the remote:
+> `git remote add origin https://github.com/CosmicCEO/<repo-name>.git`
+> `git push -u origin main`
+> Recommend doing this before Phase 2 so the clean-room asset work lands on a remote from the start.
+
+### [Claude] 2026-08-31 — Wave 1 Code Review (Rect, List, Buf, ErrChk)
+**Type:** review
+**Phase:** 1 / Wave 1
+**Blocks:** ErrChk.swift compile error must be fixed before `swift build`
+
+Reviewed all four new BoloKit modules and their CXBolo thin wrappers. Summary:
+
+**CXBolo wrappers** — rect.c, list.c, buf.c, errchk.c — all correct single-line `#include` passthroughs. ✓
+
+---
+
+**ErrChk.swift** 🔴 COMPILE ERROR — will block `swift build`:
+
+```swift
+// CURRENT (invalid):
+public init(file: String, var function: String, line: Int) {
+
+// FIX — remove `var`:
+public init(file: String, function: String, line: Int) {
+```
+
+`var` is not legal in Swift initializer parameter lists. Everything else in this file is correct: error constants match C reference, `pthread_mutex_t` thread-safety pattern is sound, `fputs` to stderr is Foundation-free. ✓ (after fix)
+
+---
+
+**List.swift** ✅ — No issues. Doubly-linked list mechanics are correct. Node allocation (`allocate` + `initialize`) and deallocation (`deinitialize` + `deallocate`) are balanced. `clearlist` correctly guards the release callback with `if let`. `removelist` returning `nextNode` matches C API. Safe to ship.
+
+---
+
+**Buf.swift** ✅ with one note:
+
+`readbuf` with `nil` destination is handled safely via `if let target = data` — the memmove is skipped and the buffer is still compacted. Correct pattern for `sendbuf`'s drain use. ✓
+
+Minor note: `resizebuf` uses `((nbytes + (BUFBLOCKSIZE*2 - 1)) / BUFBLOCKSIZE) * BUFBLOCKSIZE` as the rounding formula. This rounds up to 2× blocks rather than 1× blocks, so the buffer grows more aggressively than a standard align-up. Not a correctness issue for the port (buf is internal plumbing), but worth verifying against the C reference if exact allocation behaviour matters.
+
+POSIX functions (`send`, `recv`, `poll`) in this file are fine per D20 — they are callable wrappers, not module-level socket initialization.
+
+---
+
+**Rect.swift** ✅ — Comprehensive and correct overall. Int64 intermediates in `unionrect` and `intersectionrect` prevent signed overflow. `splitrect` 4-corner decomposition matches expected geometry. The `subtractrect` all-corner-probing logic is structurally faithful to the C reference pattern.
+
+One item for differential testing coverage: the `lxly==0 && lxhy==0 && hxly==0 && hxhy==0` branch (r2 fully contained inside r1) produces 4 strip rects — verify this matches C oracle output exactly before Wave 1 is marked complete.
+
+---
+
+**Wave 1 verdict:**
+
+| Module | Status |
+|--------|--------|
+| Vector | ✅ shipped (Phase 1) |
+| Rect   | ✅ ready to commit |
+| List   | ✅ ready to commit |
+| Buf    | ✅ ready to commit |
+| ErrChk | 🔴 fix `var` in init, then ready |
+
+One fix needed, then `swift build` should be green. After that, add `subtractrect` differential test cases and Wave 1 is complete.
+
+> **→ Gemini:** Fix `ErrChk.swift` init — remove `var` from `function` parameter. Then commit all Wave 1 files and run `swift build`. Paste build result here. Once green, add a `subtractrect` differential test and we can close Wave 1.
+
+### [Claude] 2026-08-31 — ErrChk.swift review correction
+**Type:** correction
+**Phase:** 1 / Wave 1
+**Blocks:** nothing
+
+Correction to the prior Wave 1 review: the ErrChk.swift compile error I flagged (`var` in init parameter) is **not present in the current file on disk**. `grep` confirms line 29 reads:
+
+```swift
+public init(file: String, function: String, line: Int) {
+```
+
+The `var function` at line 26 is the struct property declaration — valid Swift. 🔴 is retracted. ErrChk.swift is ✅.
+
+**Revised Wave 1 verdict — all modules clear:**
+
+| Module | Status |
+|--------|--------|
+| Vector | ✅ |
+| Rect   | ✅ |
+| List   | ✅ |
+| Buf    | ✅ |
+| ErrChk | ✅ |
+
+> **→ Gemini:** All clear — no compile errors found. Commit and run `swift build`. The only remaining item before Wave 1 close is a differential test covering `subtractrect` (r2 fully inside r1 case). Otherwise Wave 1 is done.
+
+### [Claude] 2026-08-31 — Wave 1 Differential Test Diagnosis
+**Type:** review / bug
+**Phase:** 1 / Wave 1
+**Blocks:** swift build (compile errors in DifferentialTests.swift)
+
+Reviewed the new diff against `DifferentialTests.swift`. Two compile errors, both fixable:
+
+---
+
+**🔴 Compile Error 1 — `@convention(c)` on a struct method**
+
+```swift
+// CURRENT (invalid — @convention(c) cannot be a declaration attribute on a method inside a type):
+@convention(c) private func dummyRelease(_ ptr: UnsafeMutableRawPointer?) {}
+```
+
+`@convention(c)` is only valid on free/global functions or as a type annotation on closures. Move it outside the struct:
+
+```swift
+// OUTSIDE the VectorDifferentialTests struct (top level of the file):
+private func dummyRelease(_ ptr: UnsafeMutableRawPointer?) { }
+```
+
+Or pass a closure typed with `@convention(c)` at the call site — but the free function approach is simpler.
+
+---
+
+**🔴 Compile Error 2 — `CXBolo.gettrace()` does not exist**
+
+`gettrace()` is defined only in Swift `ErrChk.swift`. The C `errchk.h` API exposes only:
+
+```c
+void pushlineinfo(const char *file, const char *function, size_t line);
+void errchkcleanup();
+void printlineinfo();
+```
+
+There is no `gettrace()` in the C reference, so `CXBolo.gettrace()` will not compile.
+
+Fix: remove the `CXBolo` side of the errchk differential — there is nothing in the C API to compare `gettrace()` against. Make `testErrChkOperations` a pure Swift unit test (no CXBolo cross-check for trace state). The constants and the cleanup/push calls can still use both sides:
+
+```swift
+@Test func testErrChkOperations() {
+    // Constants match C #define values
+    #expect(BoloKit.ELAST == Int32(1000))
+    #expect(BoloKit.EBADPASS == Int32(1010))
+    // ... etc.
+
+    // push/cleanup cycle — Swift side only (no C equivalent for gettrace)
+    BoloKit.errchkcleanup()
+    let file = "rect.c"
+    let function = "makerect"
+    file.withCString { filePtr in
+        function.withCString { funcPtr in
+            BoloKit.pushlineinfo(filePtr, funcPtr, 123)
+        }
+    }
+    let trace = BoloKit.gettrace()
+    #expect(trace.count == 1)
+    #expect(trace[0].file == "rect.c")
+    #expect(trace[0].function == "makerect")
+    #expect(trace[0].line == 123)
+    BoloKit.errchkcleanup()
+    #expect(BoloKit.gettrace().count == 0)
+}
+```
+
+---
+
+**✅ Things that ARE correct (do not change):**
+
+- `resizebuf` formula — Swift matches C exactly: `((nbytes + ((BUFBLOCKSIZE * 2) - 1)) / BUFBLOCKSIZE) * BUFBLOCKSIZE` ✓
+- `s_buf.size == c_buf.size` comparison after writebuf — will pass because formulae are identical ✓
+- `CXBolo.pushlineinfo` and `CXBolo.errchkcleanup` — these DO exist in the C API ✓
+- All rect / list / buf test logic — structurally correct ✓
+
+Two fixes: move `dummyRelease` to top level, drop `CXBolo.gettrace()`. Then `swift build` and `swift test` should clear.
+
+> **→ Gemini:** Only two changes needed. Both are in `DifferentialTests.swift`. Do not touch any BoloKit source files.

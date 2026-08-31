@@ -379,4 +379,273 @@ import Foundation
             }
         }
     }
+
+    // MARK: - Wave 1 Helper Mapping Functions
+
+    private func toC(_ p: BoloKit.Pointi) -> CXBolo.Pointi {
+        return CXBolo.Pointi(x: p.x, y: p.y)
+    }
+    private func toSwift(_ p: CXBolo.Pointi) -> BoloKit.Pointi {
+        return BoloKit.Pointi(x: p.x, y: p.y)
+    }
+    private func toC(_ r: BoloKit.Rangei) -> CXBolo.Rangei {
+        return CXBolo.Rangei(origin: r.origin, size: r.size)
+    }
+    private func toSwift(_ r: CXBolo.Rangei) -> BoloKit.Rangei {
+        return BoloKit.Rangei(origin: r.origin, size: r.size)
+    }
+    private func toC(_ s: BoloKit.Sizei) -> CXBolo.Sizei {
+        return CXBolo.Sizei(width: s.width, height: s.height)
+    }
+    private func toSwift(_ s: CXBolo.Sizei) -> BoloKit.Sizei {
+        return BoloKit.Sizei(width: s.width, height: s.height)
+    }
+    private func toC(_ r: BoloKit.Recti) -> CXBolo.Recti {
+        return CXBolo.Recti(origin: toC(r.origin), size: toC(r.size))
+    }
+    private func toSwift(_ r: CXBolo.Recti) -> BoloKit.Recti {
+        return BoloKit.Recti(origin: toSwift(r.origin), size: toSwift(r.size))
+    }
+
+    // MARK: - Wave 1 Rect Differential Tests
+
+    @Test func testRectOperations() {
+        let fuzzedCoords: [Int32] = [-100, -50, 0, 50, 100]
+        let fuzzedSizes: [UInt32] = [0, 10, 50, 100]
+
+        // 1. Pointi
+        for x in fuzzedCoords {
+            for y in fuzzedCoords {
+                let s_p = BoloKit.makepoint(x, y)
+                let c_p = CXBolo.makepoint(x, y)
+                #expect(s_p.x == c_p.x && s_p.y == c_p.y)
+            }
+        }
+
+        // 2. Rangei
+        for x in fuzzedCoords {
+            for size in fuzzedSizes {
+                let s_r1 = BoloKit.makerange(x, size)
+                let c_r1 = CXBolo.makerange(x, size)
+                #expect(s_r1.origin == c_r1.origin && s_r1.size == c_r1.size)
+                
+                for y in fuzzedCoords {
+                    for size2 in fuzzedSizes {
+                        let s_r2 = BoloKit.makerange(y, size2)
+                        let c_r2 = CXBolo.makerange(y, size2)
+                        
+                        // intersectsrange
+                        #expect(BoloKit.intersectsrange(s_r1, s_r2) == CXBolo.intersectsrange(c_r1, c_r2))
+                        // containsrange
+                        #expect(BoloKit.containsrange(s_r1, s_r2) == CXBolo.containsrange(c_r1, c_r2))
+                    }
+                }
+                
+                // inrange
+                for val in fuzzedCoords {
+                    #expect(BoloKit.inrange(s_r1, val) == CXBolo.inrange(c_r1, val))
+                }
+            }
+        }
+
+        // 3. Sizei & Recti
+        var swiftRects: [BoloKit.Recti] = []
+        for x in fuzzedCoords {
+            for y in fuzzedCoords {
+                for w in fuzzedSizes {
+                    for h in fuzzedSizes {
+                        let s_r = BoloKit.makerect(x, y, w, h)
+                        let c_r = CXBolo.makerect(x, y, w, h)
+                        
+                        #expect(s_r.origin.x == c_r.origin.x && s_r.origin.y == c_r.origin.y)
+                        #expect(s_r.size.width == c_r.size.width && s_r.size.height == c_r.size.height)
+                        
+                        #expect(BoloKit.heightrect(s_r) == CXBolo.heightrect(c_r))
+                        #expect(BoloKit.widthrect(s_r) == CXBolo.widthrect(c_r))
+                        #expect(BoloKit.maxxrect(s_r) == CXBolo.maxxrect(c_r))
+                        #expect(BoloKit.maxyrect(s_r) == CXBolo.maxyrect(c_r))
+                        #expect(BoloKit.midxrect(s_r) == CXBolo.midxrect(c_r))
+                        #expect(BoloKit.midyrect(s_r) == CXBolo.midyrect(c_r))
+                        #expect(BoloKit.minxrect(s_r) == CXBolo.minxrect(c_r))
+                        #expect(BoloKit.minyrect(s_r) == CXBolo.minyrect(c_r))
+                        #expect(BoloKit.isemptyrect(s_r) == CXBolo.isemptyrect(c_r))
+                        
+                        swiftRects.append(s_r)
+                    }
+                }
+            }
+        }
+
+        // We cap the combinations checking to avoid excessively long running tests
+        let limitedRects = Array(swiftRects.prefix(35))
+        for r1 in limitedRects {
+            let cr1 = toC(r1)
+            
+            // offsetrect
+            let s_offset = BoloKit.offsetrect(r1, 10, -10)
+            let c_offset = CXBolo.offsetrect(cr1, 10, -10)
+            #expect(s_offset.origin.x == c_offset.origin.x && s_offset.origin.y == c_offset.origin.y)
+            
+            // insetrect
+            let s_inset = BoloKit.insetrect(r1, 5, 5)
+            let c_inset = CXBolo.insetrect(cr1, 5, 5)
+            #expect(s_inset.origin.x == c_inset.origin.x && s_inset.size.width == c_inset.size.width)
+            
+            for r2 in limitedRects {
+                let cr2 = toC(r2)
+                
+                // containsrect
+                #expect(BoloKit.containsrect(r1, r2) == CXBolo.containsrect(cr1, cr2))
+                // isequalrect
+                #expect(BoloKit.isequalrect(r1, r2) == CXBolo.isequalrect(cr1, cr2))
+                // intersectsrect
+                #expect(BoloKit.intersectsrect(r1, r2) == CXBolo.intersectsrect(cr1, cr2))
+                
+                // unionrect
+                let s_union = BoloKit.unionrect(r1, r2)
+                let c_union = CXBolo.unionrect(cr1, cr2)
+                #expect(s_union.origin.x == c_union.origin.x && s_union.size.width == c_union.size.width)
+                
+                // intersectionrect
+                let s_inter = BoloKit.intersectionrect(r1, r2)
+                let c_inter = CXBolo.intersectionrect(cr1, cr2)
+                #expect(s_inter.origin.x == c_inter.origin.x && s_inter.size.width == c_inter.size.width)
+
+                // splitrect
+                var s_splits = [BoloKit.Recti](repeating: BoloKit.makerect(0,0,0,0), count: 4)
+                var c_splits = [CXBolo.Recti](repeating: CXBolo.makerect(0,0,0,0), count: 4)
+                BoloKit.splitrect(r1, 10, 10, &s_splits)
+                CXBolo.splitrect(cr1, 10, 10, &c_splits)
+                for i in 0..<4 {
+                    #expect(s_splits[i].origin.x == c_splits[i].origin.x && s_splits[i].size.width == c_splits[i].size.width)
+                }
+
+                // subtractrect
+                var s_subs = [BoloKit.Recti](repeating: BoloKit.makerect(0,0,0,0), count: 4)
+                var c_subs = [CXBolo.Recti](repeating: CXBolo.makerect(0,0,0,0), count: 4)
+                BoloKit.subtractrect(r1, r2, &s_subs)
+                CXBolo.subtractrect(cr1, cr2, &c_subs)
+                for i in 0..<4 {
+                    #expect(s_subs[i].origin.x == c_subs[i].origin.x && s_subs[i].size.width == c_subs[i].size.width)
+                }
+            }
+        }
+    }
+
+    // MARK: - Wave 1 List Differential Tests
+
+        @Test func testListOperations() {
+        let s_head = UnsafeMutablePointer<BoloKit.ListNode>.allocate(capacity: 1)
+        let c_head = UnsafeMutablePointer<CXBolo.ListNode>.allocate(capacity: 1)
+        
+        BoloKit.initlist(s_head)
+        CXBolo.initlist(c_head)
+        
+        #expect(s_head.pointee.prev == nil && s_head.pointee.next == nil)
+        
+        let ptr1 = UnsafeMutableRawPointer(bitPattern: 111)
+        let ptr2 = UnsafeMutableRawPointer(bitPattern: 222)
+        let ptr3 = UnsafeMutableRawPointer(bitPattern: 333)
+        
+        BoloKit.addlist(s_head, ptr1)
+        BoloKit.addlist(s_head, ptr2)
+        BoloKit.addlist(s_head, ptr3)
+        
+        CXBolo.addlist(c_head, ptr1)
+        CXBolo.addlist(c_head, ptr2)
+        CXBolo.addlist(c_head, ptr3)
+        
+        var s_curr = BoloKit.nextlist(s_head)
+        var c_curr = CXBolo.nextlist(c_head)
+        
+        while s_curr != nil && c_curr != nil {
+            #expect(BoloKit.ptrlist(s_curr!) == CXBolo.ptrlist(c_curr!))
+            s_curr = BoloKit.nextlist(s_curr!)
+            c_curr = CXBolo.nextlist(c_curr!)
+        }
+        #expect(s_curr == nil && c_curr == nil)
+        
+        BoloKit.clearlist(s_head, { _ in })
+        CXBolo.clearlist(c_head, { _ in })
+        
+        #expect(s_head.pointee.next == nil && c_head.pointee.next == nil)
+        
+        s_head.deallocate()
+        c_head.deallocate()
+    }
+
+    // MARK: - Wave 1 Buf Differential Tests
+
+    @Test func testBufOperations() {
+        var s_buf = BoloKit.Buf()
+        var c_buf = CXBolo.Buf()
+        
+        BoloKit.initbuf(&s_buf)
+        CXBolo.initbuf(&c_buf)
+        
+        #expect(s_buf.nbytes == c_buf.nbytes)
+        #expect(s_buf.size == c_buf.size)
+        
+        let testString = "XBolo / BoloKit 2026 Test Dynamic Buffer"
+        let dataBytes = Array(testString.utf8)
+        
+        dataBytes.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            BoloKit.writebuf(&s_buf, baseAddress, rawBuffer.count)
+            CXBolo.writebuf(&c_buf, baseAddress, rawBuffer.count)
+        }
+        
+        #expect(s_buf.nbytes == c_buf.nbytes)
+        #expect(s_buf.size == c_buf.size)
+        
+        if let s_ptr = s_buf.ptr, let c_ptr = c_buf.ptr {
+            #expect(memcmp(s_ptr, c_ptr, s_buf.nbytes) == 0)
+        }
+        
+        let s_out = UnsafeMutableRawPointer.allocate(byteCount: s_buf.nbytes, alignment: 1)
+        let c_out = UnsafeMutableRawPointer.allocate(byteCount: c_buf.nbytes, alignment: 1)
+        
+        let count = s_buf.nbytes
+        BoloKit.readbuf(&s_buf, s_out, count)
+        CXBolo.readbuf(&c_buf, c_out, count)
+        
+        #expect(s_buf.nbytes == c_buf.nbytes)
+        #expect(memcmp(s_out, c_out, count) == 0)
+        
+        s_out.deallocate()
+        c_out.deallocate()
+        
+        BoloKit.freebuf(&s_buf)
+        CXBolo.freebuf(&c_buf)
+    }
+
+    // MARK: - Wave 1 ErrChk Differential Tests
+
+    @Test func testErrChkOperations() {
+        #expect(BoloKit.ELAST == CXBolo.ELAST)
+        #expect(BoloKit.EBADPASS == CXBolo.EBADPASS)
+        
+        BoloKit.errchkcleanup()
+        CXBolo.errchkcleanup()
+        
+        let file = "rect.c"
+        let function = "makerect"
+        
+        file.withCString { filePtr in
+            function.withCString { funcPtr in
+                BoloKit.pushlineinfo(filePtr, funcPtr, 123)
+                CXBolo.pushlineinfo(filePtr, funcPtr, 123)
+            }
+        }
+        
+        let s_trace = BoloKit.gettrace()
+        #expect(s_trace.count == 1)
+        #expect(s_trace[0].file == "rect.c")
+        #expect(s_trace[0].function == "makerect")
+        #expect(s_trace[0].line == 123)
+        
+        BoloKit.errchkcleanup()
+        CXBolo.errchkcleanup()
+        #expect(BoloKit.gettrace().count == 0)
+    }
 }
