@@ -1085,3 +1085,52 @@ and `Terrain` (Wave 1). No physics, no network.
 **Commit message:** `"Wave 4: bmap minimap tile function"`
 
 **Report back** in AGENT_NOTES with [TO: PLANNER] when done.
+
+### [PLANNER] 2026-08-31 — Wave 4 assignment CORRECTED (bmap.c pre-read)
+
+**Type:** correction
+**Phase:** 1 / Wave 4
+**Blocks:** IMPLEMENTER Wave 4 start
+
+The previous [TO: IMPLEMENTER] Wave 4 entry contained two errors:
+
+1. Said "look for `bmap()` in `client.c`" — there is no `bmap()` function. The bmap layer is its own module: `Reference/c/bmap.c`, `bmap.h`, `bmap_client.c`, `bmap_client.h`.
+2. The scope was too vague. `bmap_client.c`'s `clientloadmap()` depends on the global `client` struct and fog-of-war state — not portable to BoloKit yet.
+
+**Corrected Wave 4 scope — three pure functions + BMAP structs:**
+
+#### [TO: IMPLEMENTER] Wave 4 (corrected) — `BMap.swift`
+
+Port from `Reference/c/bmap.c`:
+
+**1. `terrainToTile(_ terrain: Terrain) -> Tile`**
+Translates a `Terrain` value to the corresponding canonical `Tile` display type.
+C reference: `terraintotile()` in `bmap.c`. Note: swamp0–3 all map to `.swamp`; rubble0–3 all map to `.rubble`; grass0–3 all map to `.grass`; damagedWall0–3 all map to `.damagedWall0` (check actual C `kDamagedWallTile` constant — may collapse to single value).
+Add a `terraintotile_flat(int terrain)` shim in `CXBolo` for differential testing.
+
+**2. `defaultTerrain(x: Int32, y: Int32) -> Terrain`**
+Returns `.sea` if the coordinate is inside [10, 245] × [10, 245] (the mine-able zone),
+otherwise `.minedSea`. Matches C `defaultterrain()` using `X_MIN_MINE=10`, `Y_MIN_MINE=10`,
+`X_MAX_MINE=245`, `Y_MAX_MINE=245` from `bolo.h`.
+No CXBolo shim needed — trivial boundary check, test directly.
+
+**3. `defaultTile(x: Int32, y: Int32) -> Tile`**
+Same boundary logic, returns `.sea` or `.minedSea` tile. Matches `defaulttile()`.
+
+**4. BMAP format Swift structs** (in `BMap.swift`):
+- `BMapPreamble` — mirrors `struct BMAP_Preamble` (ident 8 bytes, version, npills, nbases, nstarts)
+- `BMapPillInfo` — mirrors `struct BMAP_PillInfo` (x, y, owner, armour, speed)
+- `BMapBaseInfo` — mirrors `struct BMAP_BaseInfo` (x, y, owner, armour, shells, mines)
+- `BMapStartInfo` — mirrors `struct BMAP_StartInfo` (x, y, dir)
+- `BMapRun` — mirrors `struct BMAP_Run` (datalen, y, startx, endx)
+All fields `UInt8` or `UInt32` matching the packed C structs. Mark `Sendable`.
+No logic — pure data carriers. No differential tests needed for structs.
+
+**NOT in Wave 4:**
+- `readrun` / `writerun` (RLE codec) — depends on `tiletoterrain` (server.c) and `errchk` macros. Deferred.
+- `clientloadmap` — depends on global `client` struct. Deferred to Wave 6+.
+- `tiletoterrain` (inverse of terrainToTile) — lives in server.c, deferred.
+
+**Commit message:** `"Wave 4: terrainToTile, defaultTerrain/Tile, BMAP format structs"`
+
+**Report back** in AGENT_NOTES with [TO: PLANNER] when done.
