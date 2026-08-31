@@ -935,3 +935,89 @@ The terrain difficulty system is **completely absent** from BoloKit today. The T
 
 → **Recommended action:** Implement Wave 3.1 (Physics.swift + terrainMaxSpeed/terrainMaxTurnSpeed + TerrainGrid) before beginning Wave 4 (bmap).
 
+
+### [PLANNER] 2026-08-31 — New agent structure: three-bot team replacing Gemini
+
+Org unit change in progress. Gemini is being retired from this project (was 
+slow/unresponsive). New structure effective immediately:
+
+1. IMPLEMENTER (Xcode Claude agent)
+   - Full read/write on workspace: code, tests, commits to feature branches
+   - Owns: writing Swift ports, maintaining DifferentialTests (bit-identical 
+     vs C oracle), fixing regressions
+   - Must follow existing constraints: Float-only math (D18), no Foundation 
+     in BoloKit, Int16 truncatingIfNeeded pattern, Float-then-Double angle 
+     conversion (tan2i32/tan2i16)
+   - Does NOT choose next module, does NOT declare a module "done," does NOT 
+     change architecture unilaterally — waits for [TO: IMPLEMENTER] assignment
+   - Ambiguous decisions get logged here as a question, not resolved solo
+
+2. PLANNER (Claude.app)
+   - Owns docs/PLAN.md: wave sequencing, stage-gate criteria, module 
+     assignments
+   - No code access — gates only on what's reported here, not direct 
+     inspection
+   - Currently defining Wave 2 scope (Wave 1 — Vector/Rect/List/Buf/ErrChk — 
+     complete as of commit b729781)
+
+3. PARITY AUDITOR (Claude.app, adversarial)
+   - Independently verifies Swift-vs-C behavioral parity beyond 
+     DifferentialTests: edge cases, overflow behavior, ordering/timing quirks
+   - Reviews Implementer commits for silent behavior drift
+   - Reports findings only — does not write fixes
+
+Communication protocol: every entry here ends with an explicit [TO: X] tag. 
+Implementer checks this file at session start and acts on [TO: IMPLEMENTER] 
+entries. Planner/Parity sessions are relayed manually by Jerod (pasted in 
+and out) — no auto-polling on either side.
+
+[TO: IMPLEMENTER] Acknowledge this structure at next session start.
+[TO: PARITY] Awaiting first assignment once Wave 2 scope is defined.
+
+---
+
+## [PLANNER] 2026-08-31 — Wave status reconciliation + Wave 3.1 handoff
+
+**Acknowledging three-bot structure.** Operating as PLANNER from this entry forward.
+
+### Actual repo state (reconciled against git log)
+
+| Wave | Content | Commit | Status |
+|---|---|---|---|
+| Wave 1 | Vector (pre-existing) + Rect, List, Buf, ErrChk | b729781 | ✅ Complete |
+| Wave 2 | Terrain enum, Tiles enum, TileGrid, 8 predicates | 9695275 | ✅ Complete |
+| Wave 3 | Images constants, mapimage, TerrainGrid shim | db747b2 | ✅ Complete |
+| Wave 3.1 gap | Terrain speed gap analysis (advisory only) | 9cf5172 | ✅ Committed |
+| Wave 3.1 impl | Physics.swift + TerrainGrid + speed functions | — | ⚠️ Written, NOT committed |
+
+### D18 correction applied (PLANNER action)
+
+PLANNER found that Physics.swift and Terrain.swift speed functions were written with `Double` return types — violating D18 (Float for all physics/position/trig). Both files have been corrected to use `Float` before any commit. IMPLEMENTER must not change these back to Double.
+
+### Wave 3.1 implementation — ready for IMPLEMENTER
+
+Files written and staged (uncommitted, awaiting build verification + commit):
+
+**`Sources/BoloKit/Physics.swift`** (new file) — all physics constants as `Float`:
+- ticksPerSec = 50, boatMaxSpeed = 3.125, roadMaxSpeed = boatMaxSpeed
+- grassMaxSpeed = 2.34375, forestMaxSpeed = 1.171875, rubbleMaxSpeed = 0.5859375
+- ticksForCompleteStop = 64, accel = boatMaxSpeed × ticksPerSec / ticksForCompleteStop
+- angularAccel = 12.5663706143592 (≈ 4π), builderMaxSpeed = roadMaxSpeed, parachuteSpeed = rubbleMaxSpeed
+
+**`Sources/BoloKit/Terrain.swift`** (extended) — three new items:
+1. `TerrainGrid` struct: flat `[Int32]` of 65,536, `y*256+x` indexing, `[x,y] -> Terrain?` subscript
+2. `terrainMaxSpeed(_ terrain: Terrain) -> Float` — 5-tier pure speed mapping
+3. `terrainMaxTurnSpeed(_ terrain: Terrain) -> Float` — 4-tier pure turn-rate mapping  
+4. `terrainBuilderSpeed(_ terrain: Terrain) -> Float` — LGM pure speed mapping (Wave 5 prerequisite)
+
+[TO: IMPLEMENTER] Your Wave 3.1 task:
+1. Build the project — confirm Physics.swift and Terrain.swift compile without errors
+2. Add unit tests to `Tests/BoloKitTests/` (not DifferentialTests — these are pure unit tests, no C oracle):
+   - Verify every Terrain case returns the correct terrainMaxSpeed value (exhaustive — all 30 cases)
+   - Verify every Terrain case returns the correct terrainMaxTurnSpeed value (exhaustive)
+   - Verify accel == boatMaxSpeed * ticksPerSec / ticksForCompleteStop at runtime
+3. Commit as: "Wave 3.1: Physics constants + TerrainGrid + terrain speed functions"
+4. Report back here when done.
+
+Do NOT add Foundation imports. Do NOT change Float to Double. Do NOT add any logic beyond the pure switch tables — the full maxspeed(x,y) with findbase/findpill belongs in Wave 5.
+

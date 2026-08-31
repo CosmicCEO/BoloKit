@@ -248,3 +248,25 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 2. **Scope.** A 500 KB behaviour-preserving port is the largest thing in this plan by an order of magnitude. Phases 0–2 deliver a legally clean, playable game *before* the port begins, so there's standing value even if the port stalls.
 3. **Emulator may not yield extractable logs** (Phase 4). Fallback is frame counting — cruder, slower.
 4. **Differential testing only proves agreement with xbolo, not with Bolo.** xbolo was itself written without the original source, so it has its own inaccuracies. That's exactly what Phase 4/5 exist to catch — don't mistake green tests for fidelity.
+
+---
+
+## Wave implementation status (updated 2026-08-31 by PLANNER)
+
+| Wave | Content | Status |
+|---|---|---|
+| Wave 1 | Vector, Rect, List, Buf, ErrChk | ✅ Complete — b729781 |
+| Wave 2 | Terrain enum, Tiles enum, TileGrid, 8 predicates | ✅ Complete — 9695275 |
+| Wave 3 | Image constants, mapimage autotiling | ✅ Complete — db747b2 |
+| Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | 🔄 Impl written — awaiting IMPLEMENTER build + tests + commit |
+| Wave 4 | bmap file format — parse, round-trip write, validation | ⬜ Not started — PLANNER will pre-brief |
+| Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started |
+| Wave 6 | Networking + Cocoa UI | ⬜ Not started |
+
+## Three-bot team structure (effective 2026-08-31)
+
+- **IMPLEMENTER** (Xcode Claude agent) — writes Swift, owns DifferentialTests, commits
+- **PLANNER** (Claude.app Cowork) — owns this file + AGENT_NOTES.md, issues wave assignments
+- **PARITY AUDITOR** (Claude.app, adversarial) — independent behavioral parity review
+
+Communication: all handoffs via AGENT_NOTES.md with explicit [TO: X] tags.
