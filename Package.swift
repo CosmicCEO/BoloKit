@@ -8,9 +8,17 @@ let package = Package(
     ],
     targets: [
         .target(name: "BoloCore"),
+        .target(
+            name: "CXBolo",
+            path: "Sources/CXBolo",
+            publicHeadersPath: "include"
+        ),
         .target(name: "BoloNet", dependencies: ["BoloCore"]),
         .executableTarget(name: "BoloGlyphs"),
         .testTarget(name: "BoloCoreTests", dependencies: ["BoloCore"]),
-        .testTarget(name: "DifferentialTests", dependencies: ["BoloCore"]),
+        .testTarget(
+            name: "DifferentialTests",
+            dependencies: ["BoloCore", "CXBolo"]
+        ),
     ]
 )

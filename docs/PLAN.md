@@ -12,6 +12,7 @@
 | ID | Question | Blocks | Priority |
 | --- | --- | --- | --- |
 | **Q10** | Keep the C code in-tree permanently as a test oracle, or delete it once the port completes? Recommend keeping it until Phase 5 ends, then removing it (it stays in git history) | Phase 6 | Low |
+| **Q11** | Should the project be renamed from `XBolo` (a nod to the Mac OS X era) to something more durable — e.g. `SwiftBolo`, `Bolo.swift`, `BoloCocoa`, or another name? `XBolo` carries the upstream repo name and the "X = macOS X" connotation, both of which will age. Rename touches: repo dir, `Package.swift` name, SPM targets, future bundle ID, and the submodule's own `XBolo.xcodeproj` reference. Low disruption now; high disruption after an `.xcodeproj` and bundle ID are established (Phase 2+). | Phase 7 | Medium |
 
 ## Decisions log
 
