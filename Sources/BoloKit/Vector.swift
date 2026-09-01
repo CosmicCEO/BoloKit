@@ -132,6 +132,23 @@ public func _atan2f(_ dir: Vec2f) -> Float {
     return atan2(dir.y, dir.x)
 }
 
+/// Converts a heading (radians) to a unit vector, in screen/grid space
+/// where +y is down — hence the y-negation relative to a standard unit
+/// circle. Ported from `dir2vec()` in Reference/c/bolo.c:332.
+public func dir2vec(_ dir: Float) -> Vec2f {
+    var r = tan2f(dir)
+    r.y = -r.y
+    return r
+}
+
+/// Converts a screen/grid-space vector back to a heading in [0, 2π).
+/// Ported from `vec2dir()` in Reference/c/bolo.c:327.
+public func vec2dir(_ v: Vec2f) -> Float {
+    var v = v
+    v.y = -v.y
+    return fmod(_atan2f(v) + k2Pif, k2Pif)
+}
+
 // MARK: - Vec2i32 Operations
 
 public func make2i32(_ x: Int32, _ y: Int32) -> Vec2i32 {

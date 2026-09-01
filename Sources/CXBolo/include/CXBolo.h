@@ -33,4 +33,22 @@ int writerun_flat(struct BMAP_Run run, const void *buf, int *terrain);
 float rounddir_oracle(float dir);
 Vec2f collisiondetect_oracle(Vec2f p, float radius, int (*func)(Pointi square));
 
+// Permanent verbatim extract of the core tankmovelogic() numeric physics
+// transform (turning, wrap, accel, position, kickspeed decay) for oracle
+// testing (Wave 5.2a). Reduced-parameter form — no globals.
+struct TankPhysicsState {
+  Vec2f tank;
+  float dir;
+  float speed;
+  float turnspeed;
+  float kickdir;
+  float kickspeed;
+};
+
+struct TankPhysicsState tankphysics_oracle(
+  struct TankPhysicsState s,
+  int turnL, int turnR, int accelIn, int brakeIn,
+  int boat, float maxTurn, float maxSpd
+);
+
 #endif /* CXBOLO_H */
