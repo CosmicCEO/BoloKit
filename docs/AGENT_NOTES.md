@@ -1960,3 +1960,687 @@ Port verbatim from `client.c:6927`. Replicate the C bug: in the `lyc && hyc` bra
 
 [TO: PARITY] Please audit Wave 5.0 when IMPLEMENTER commits: verify `roundDir` Float precision (D18), confirm `collisionDetect` C bug is replicated not fixed, and check that `maxSpeed` pill/base override order matches `client.c:3594` exactly.
 
+
+---
+## [PLANNER] Wave 5.1 Pre-Brief — GameState model (finalized)
+**Date:** 2026-09-01
+
+### findpill / findbase semantics
+- `findpill(x,y)`: skips pills where `armour == ONBOARD (0xff)` — carried pills are invisible to all position lookups
+- `findbase(x,y)`: no armour filter — bases always found at their position
+- `testalliance(p1,p2)`: requires `players[p1].used && players[p2].used && mutual alliance bits` — both `used` fields needed in PlayerState
+
+### tankcollision vs buildercollision base threshold difference
+- **tankcollision:** base solid if `armour >= MINBASEARMOUR (5)` — inclusive
+- **buildercollision:** base solid if `armour > MINBASEARMOUR (5)` — exclusive (strictly greater)
+These differ by one — must replicate exactly.
+
+### BuilderStatus and BuilderTask enums
+```swift
+public enum BuilderStatus: Int {
+    case ready = 0, goto, work, wait, `return`, parachute
+}
+public enum BuilderTask: Int {
+    case doNothing = 0, getTree, buildRoad, buildWall, buildBoat, buildPill, repairPill, placeMine
+}
+```
+
+---
+## [TO: IMPLEMENTER] Wave 5.1 Assignment (post after Wave 5.0 complete)
+**Status:** DRAFT — PLANNER will post GO after Wave 5.0 sign-off
+
+### Wave 5.1: GameState model
+
+**New file: `Sources/BoloKit/GameObjects.swift`**
+
+Remove the stub `Pill` and `Base` from Wave 5.0 and replace with the full types below. Add all types in a single file.
+
+```swift
+// MARK: - Pill
+public struct Pill: Hashable, Sendable {
+    public var x: UInt8
+    public var y: UInt8
+    public var armour: UInt8     // 0xff = ONBOARD (carried by tank)
+    public var owner: UInt8      // 0xff = NEUTRAL
+    public var speed: UInt8      // reload interval in ticks; higher = slower
+    public var counter: UInt8    // ticks since last reload event
+
+    public var isOnboard: Bool { armour == 0xff }
+    public var isArmed:   Bool { armour != 0xff && armour > 0 }
+    public var isDead:    Bool { armour != 0xff && armour == 0 }
+}
+
+// MARK: - Base
+public struct Base: Hashable, Sendable {
+    public var x: UInt8
+    public var y: UInt8
+    public var armour: UInt8
+    public var owner: UInt8      // 0xff = NEUTRAL
+    public var shells: UInt8
+    public var mines: UInt8
+    public var counter: UInt16   // max value before reset: REPLENISHBASETICKS(600)+nplayers-1; UInt16 sufficient
+}
+
+// MARK: - Start
+public struct Start: Hashable, Sendable {
+    public var x: UInt8
+    public var y: UInt8
+    public var dir: UInt8        // 0–15; multiply by (π/8) for radians
+}
+
+// MARK: - Shell
+public struct Shell: Hashable, Sendable {
+    public var point: Vec2f
+    public var dir: Float
+    public var range: Float
+    public var owner: UInt8
+    public var boat: Bool
+    public var pill: Bool
+}
+
+// MARK: - Explosion (particle effect)
+public struct Explosion: Hashable, Sendable {
+    public var point: Vec2f
+    public var counter: Int      // remove when counter > explosionTicks(24)
+}
+
+// MARK: - BuilderStatus / BuilderTask
+public enum BuilderStatus: Int, Hashable, Sendable {
+    case ready = 0, goto, work, wait, `return`, parachute
+}
+public enum BuilderTask: Int, Hashable, Sendable {
+    case doNothing = 0, getTree, buildRoad, buildWall, buildBoat, buildPill, repairPill, placeMine
+}
+
+// MARK: - PlayerState
+public struct PlayerState: Hashable, Sendable {
+    // Tank physics
+    public var tank: Vec2f
+    public var dir: Float
+    public var speed: Float
+    public var turnspeed: Float
+    public var kickdir: Float
+    public var kickspeed: Float
+    // Builder
+    public var builder: Vec2f
+    public var buildertarget: Pointi
+    public var builderstatus: BuilderStatus
+    // Status
+    public var dead: Bool
+    public var boat: Int         // 1 = on boat; keep as Int to match C
+    public var connected: Bool
+    public var used: Bool
+    public var alliance: UInt16  // bitmask; bit j set = allied with player j
+    // Projectiles
+    public var shells: [Shell]
+    public var explosions: [Explosion]
+}
+
+// MARK: - LocalPlayerState (fields from struct client, not players[])
+public struct LocalPlayerState: Hashable, Sendable {
+    public var armour: Int
+    public var shells: Int
+    public var mines: Int
+    public var trees: Int
+    public var range: Float      // remaining shell range for next shot
+    public var respawncounter: Int
+    public var buildertask: BuilderTask
+    public var buildermines: Int
+    public var buildertrees: Int
+    public var builderpill: UInt8  // index or noPill(0xff)
+    public var spawned: Bool
+}
+
+// MARK: - GrowState (server-side tree growth persistent state)
+public struct GrowState: Hashable, Sendable {
+    public var growx: Int
+    public var growy: Int
+    public var growbestof: Int
+}
+```
+
+**New file: `Sources/BoloKit/GameState.swift`**
+
+```swift
+public struct GameState: Sendable {
+    public var terrain: TerrainGrid
+    public var pills: [Pill]           // max 16
+    public var bases: [Base]           // max 16
+    public var starts: [Start]         // max 16
+    public var players: [PlayerState]  // maxPlayers (16) elements; index = player
+    public var ticks: UInt64           // total ticks simulated
+    // Local player
+    public var localPlayer: Int        // index into players
+    public var local: LocalPlayerState
+    // Server grow state
+    public var grow: GrowState
+    // Global explosions (from server-level events like mine chains)
+    public var explosions: [Explosion]
+}
+```
+
+**Helper functions (also in GameObjects.swift):**
+
+```swift
+// Equivalent of findpill — excludes ONBOARD pills
+public func findPill(x: Int, y: Int, pills: [Pill]) -> Int? {
+    pills.indices.first { pills[$0].armour != 0xff && pills[$0].x == UInt8(x) && pills[$0].y == UInt8(y) }
+}
+
+// Equivalent of findbase
+public func findBase(x: Int, y: Int, bases: [Base]) -> Int? {
+    bases.indices.first { bases[$0].x == UInt8(x) && bases[$0].y == UInt8(y) }
+}
+
+// Equivalent of testalliance
+public func testAlliance(_ p1: Int, _ p2: Int, players: [PlayerState]) -> Bool {
+    guard p1 < players.count, p2 < players.count else { return false }
+    let a = players[p1], b = players[p2]
+    return a.used && b.used
+        && (a.alliance & (1 << p2)) != 0
+        && (b.alliance & (1 << p1)) != 0
+}
+```
+
+**Update Wave 5.0 `maxSpeed` and `maxTurnSpeed` — replace stub `Pill`/`Base` with real types.**
+
+**Update Wave 5.0 `tankcollision` closure and `buildercollision` closure — replace stubs:**
+
+```swift
+// tankcollision closure (Wave 5.2 will use this)
+func makeTankCollision(state: GameState, owner: Int) -> (Pointi) -> Bool {
+    return { square in
+        guard square.x >= 0, square.x < 256, square.y >= 0, square.y < 256 else { return true }
+        if let pi = findPill(x: Int(square.x), y: Int(square.y), pills: state.pills) {
+            return state.pills[pi].armour > 0
+        }
+        if let bi = findBase(x: Int(square.x), y: Int(square.y), bases: state.bases) {
+            let base = state.bases[bi]
+            return base.owner != 0xff
+                && !testAlliance(Int(base.owner), owner, players: state.players)
+                && base.armour >= 5  // >= MINBASEARMOUR
+        }
+        switch state.terrain[Int(square.x), Int(square.y)] {
+        case .wall, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3: return true
+        default: return false
+        }
+    }
+}
+
+// buildercollision has more context (target, buildertask) — closure factory deferred to Wave 5.4
+```
+
+**Tests (`Tests/BoloKitTests/GameObjectsTests.swift`):**
+- `pillIsOnboard`, `pillIsArmed`, `pillIsDead` — armour edge cases
+- `findPillSkipsOnboard` — carried pill not found by position
+- `findBaseAlwaysFound` — base always found regardless of armour
+- `testAllianceRequiresMutual` — one-sided alliance bit is not an alliance
+- `testAllianceRequiresUsed` — unused player is never allied
+
+**No differential tests for Wave 5.1** — these are pure Swift data model types; the C structs are not individually callable. Differential coverage comes in Wave 5.2 when `tankmovelogic` is ported.
+
+**Commit message:**
+```
+Wave 5.1: GameState model — Pill, Base, Start, Shell, Explosion, PlayerState, GameState
+```
+
+
+---
+## [PLANNER] Wave 5.2 Pre-Brief — tankmovelogic (complete)
+**Date:** 2026-09-01
+
+### InputFlags
+```swift
+public struct InputFlags: OptionSet, Sendable {
+    public let rawValue: UInt32
+    public static let accel  = InputFlags(rawValue: 0x00000001)  // ACCELMASK
+    public static let brake  = InputFlags(rawValue: 0x00000002)  // BRAKEMASK
+    public static let turnL  = InputFlags(rawValue: 0x00000004)  // TURNLMASK
+    public static let turnR  = InputFlags(rawValue: 0x00000008)  // TURNRMASK
+}
+```
+Add `inputflags: InputFlags` to `PlayerState`. Add to `GameObjects.swift`.
+
+### isshore
+`func isShore(x: Int, y: Int, terrain: TerrainGrid, bases: [Base]) -> Bool`
+- OOB → false (not shore — boat cannot be pushed by non-existent land)
+- Any base at (x,y) → true (always shore, regardless of terrain type)
+- Sea, River, MinedSea → false
+- Everything else → true
+
+### tankmovelogic — tick logic (Wave 5.2)
+
+**Dead tank branch (player == localPlayer and dead):**
+1. `respawncounter++`
+2. If `respawncounter < EXPLODETICKS (45)`:
+   - `tank += dir2vec(kickdir) * kickspeed / ticksPerSec`
+   - `collisionDetect(tank, TANKRADIUS, tankCollision(...))` — still collides when dead
+   - Every 5 ticks: if terrain at tank NOT sea/minedSea → create Explosion(point: tank, counter: 0), add to player.explosions
+3. Else if `respawncounter == EXPLODETICKS`: superboom (mines≥32) or smallboom (mines>0 || shells>0)
+4. Else if `respawncounter >= RESPAWN_TICKS (150)`: call spawn()
+
+**Alive tank branch:**
+```
+// 1. TURNING
+if turnL XOR turnR:
+    max = boat ? maxAngularVelocity (2.5) : maxTurnSpeed(localTank.x, localTank.y, ...)
+    // IMPORTANT: uses localPlayer tank position for both local and remote players
+    if turning left (turnL):
+        if turnspeed < 0: turnspeed = 0   // sign flip guard
+        turnspeed approaches +max by angularAccel/ticksPerSec per tick
+    if turning right (turnR):
+        if turnspeed > 0: turnspeed = 0   // sign flip guard
+        turnspeed approaches -max by angularAccel/ticksPerSec per tick
+else:
+    turnspeed = 0.0  // instant reset, not gradual
+
+// 2. DIR UPDATE + WRAP
+dir += turnspeed / ticksPerSec
+// Wrap to [0, 2π) using floorf — replicate exactly:
+if dir > 2π: dir -= 2π * floor(dir / 2π)
+else if dir < 0: dir += 2π * floor(dir / -2π + 1.0)
+
+// 3. ACCELERATION
+max = boat ? boatMaxSpeed (3.125) : maxSpeed(localTank.x, localTank.y, ...)
+if accel XOR brake:
+    if accel: speed approaches max (up or down) by ACCEL/ticksPerSec
+    if brake: speed -= ACCEL/ticksPerSec, clamp to 0
+else if speed > max:  // no input but overspeed (e.g. entered slower terrain)
+    speed -= ACCEL/ticksPerSec, clamp to max
+
+// 4. POSITION UPDATE (fidelity-critical — all Float)
+tank += (dir2vec(roundDir(dir)) * speed + dir2vec(kickdir) * kickspeed) / ticksPerSec
+
+// 5. KICKSPEED DECAY
+kickspeed -= kickSpeedDecay (12.0) / ticksPerSec
+kickspeed = max(0, kickspeed)
+
+// 6. SHORE PUSH (boat only)
+// isshore check on 4 cardinal + 4 diagonal neighbors using TANKRADIUS threshold
+// 8-case push vector selection (see C source lines 4138–4188)
+// if mag(push) > 0.00001:
+//   speed component along push < PUSHFORCE → tank += unit(push) * PUSHFORCE/ticksPerSec
+//   if NOT (accel and not brake) → speed -= ACCEL/ticksPerSec, clamp 0
+
+// 7. COLLISION
+collisionDetect(tank, tankRadius, tankCollision(state, owner: player))
+```
+
+**D18 reminder:** All Float, all trig via Float.pi, `floor` via `Foundation.floorf` or Swift's `floor` — confirm Float overload is called not Double.
+
+**`maxturnspeed`/`maxspeed` use `localPlayer` tank position for both local and remote tanks** — this is faithful to C and must NOT be "fixed".
+
+### Wave 5.2 scope
+New function: `func tankMoveTick(player: Int, state: inout GameState)` in `Sources/BoloKit/TankTick.swift`
+Helpers: `isShore(x:y:terrain:bases:)`, `InputFlags` (in GameObjects.swift)
+Tests: `Tests/BoloKitTests/TankTickTests.swift` — turn wrap, kickspeed decay, shore push vector cases
+Differential tests: `Tests/DifferentialTests/TankTickDifferentialTests.swift` — fuzz against `tankmovelogic` oracle in CXBolo
+
+
+
+---
+## [PARITY] Wave 4 / 4.1 Audit Report — CLEAN PASS
+**Date:** 2026-09-01
+**Commits audited:** 8044fb0 (Wave 4), 7298d2c (Wave 4.1)
+**Files reviewed:** `BMap.swift` (full), cross-referenced against `bmap.c`, `bmap.h`, `server.c`
+
+### Scope
+Wave 4: `terrainToTile`, `defaultTerrain/defaultTile`, BMAP structs (`BMapPreamble`, `BMapPillInfo`, `BMapBaseInfo`, `BMapStartInfo`, `BMapRun`), `TerrainGrid.mapDefault()`.
+Wave 4.1: `readNibble`/`writeNibble`, `terrainToTileFlatAt`, `readRun`/`writeRun`, `tileToTerrain`.
+
+### Verdict: PASS — no parity issues found
+
+#### `terrainToTile(_ terrain: Terrain) -> Tile`
+Exhaustive 30-case switch, no `default` arm. All mappings confirmed correct against C oracle. No issues.
+
+#### `terrainToTile(_ terrain: Int32) -> Int32` (raw overload)
+Returns -1 for out-of-range input. Matches C `assert(0); return -1` behavior under valid input; Swift replaces the assert with a safe -1 return. Acceptable deviation — assert traps are not observable behavior.
+
+#### `defaultTerrain(x:y:)` / `defaultTile(x:y:)`
+Boundary constants `xMinMine=10, yMinMine=10, xMaxMine=245, yMaxMine=245` match `X_MIN_MINE/X_MAX_MINE/Y_MIN_MINE/Y_MAX_MINE` in `bmap.h`. Border ring logic `[10,245]` inclusive is correct. Confirmed.
+
+#### `TerrainGrid.mapDefault()`
+Fills grid via `defaultTerrain(x:y:)` — correctly produces `.minedSea` border ring, `.sea` interior. Pre-empts the Wave 4 pre-audit finding (A) that was flagged before implementation.
+
+#### `tileToTerrain(_ tile: Int32) -> Int32`
+Lossy inverse: swamp/rubble/grass/damagedWall variants all collapse to variant 3. `.unknown → .minedSea`. Cross-checked against C oracle `tiletoterrain()` — Swift matches exactly, including the `kUnknownTile → kMinedSeaTerrain` mapping which was initially uncertain. Confirmed correct.
+
+#### `readNibble` / `writeNibble`
+High-nibble-first, XOR-based. Zero-initialized buffer precondition documented and required by callers. Codec is symmetric and correct.
+
+#### `terrainToTileFlatAt`
+Reproduces C row-spillover UB (`terrain[y][256]` aliases `terrain[y+1][0]`) via flat index arithmetic. Edge case `y=255, col=256` clamped to default tile — safe termination of the `do-while` loop. This is the correct and only safe way to reproduce this behavior in Swift. Confirmed.
+
+#### `writeRun` — `x < 256` guard
+C `writerun()` would write past the 256-column boundary into the next row's memory. Swift adds `guard x < 256` to prevent memory corruption. This is a **safe deviation**: the C behavior is undefined and exploitable; the Swift guard produces identical output for all well-formed BMAP data. A DifferentialTest covering a run that terminates exactly at column 256 is recommended when the full encode/decode round-trip test suite is written.
+
+#### `readRun` sentinel
+Returns correct 4-field sentinel `(run: nil, data: nil, isLast: true)` to signal end-of-map. Confirmed.
+
+### Carry-forward finding
+**Finding 3 (LOW — still open):** `import Darwin` is unused in `Physics.swift` and `Terrain.swift`. No behavioral impact. IMPLEMENTER may clean up at convenience.
+
+### Wave 5 audit scope (upcoming)
+When IMPLEMENTER reports Wave 5.2 complete (`TankTick.swift`), PARITY will audit:
+- `isShore` OOB and base-override cases
+- `roundDir` rounding at exact half-steps (e.g. `dir = π/16`)
+- `tankmovelogic` sign-flip guard, wrap arithmetic, kickspeed decay
+- `maxSpeed`/`maxTurnSpeed` local-player position coupling (must NOT be "fixed")
+- Shore push vector selection — all 8 cardinal/diagonal cases
+- DifferentialTest coverage of the `growtrees` C BUG (outer pill guard checks last random candidate, not winner) — flag if no test exists for this when Wave 5.7 lands
+
+[TO: PLANNER] Wave 4 / 4.1 audit closed. CLEAN PASS. No blocking findings. Wave 5 audit pending IMPLEMENTER completion of Wave 5.2 (`TankTick.swift`). Finding 3 (`import Darwin`) remains open, low severity.
+
+---
+## [PLANNER] Wave 5.2 Pre-Brief Addendum — tanklocallogic, enter(), tick loop order
+**Date:** 2026-09-01
+
+### Tick loop order (runclient — confirmed)
+```
+1. tankmovelogic(i)   — all players, physics only
+2. tanklocallogic(old) — local player only (enter, push, refuel, fire, mine)
+3. builderlogic(i)    — all players
+4. pilllogic(old)     — uses old Vec2f (local player's pre-tick position)
+5. shelllogic(i)      — all players
+6. explosionlogic(i)  — all players + i=-1 (global explosions)
+7. sendclupdate()     — every 5 ticks (network, deferred)
+```
+
+### InputFlags — add to GameObjects.swift (complete set)
+```swift
+public struct InputFlags: OptionSet, Sendable {
+    public let rawValue: UInt32
+    public static let accel  = InputFlags(rawValue: 0x00000001)  // ACCELMASK
+    public static let brake  = InputFlags(rawValue: 0x00000002)  // BRAKEMASK
+    public static let turnL  = InputFlags(rawValue: 0x00000004)  // TURNLMASK
+    public static let turnR  = InputFlags(rawValue: 0x00000008)  // TURNRMASK
+    public static let lmine  = InputFlags(rawValue: 0x00000010)  // LMINEMASK
+    public static let shoot  = InputFlags(rawValue: 0x00000020)  // SHOOTMASK
+    public static let incre  = InputFlags(rawValue: 0x00000040)  // INCREMASK
+    public static let decre  = InputFlags(rawValue: 0x00000080)  // DECREMASK
+}
+```
+Add `inputflags: InputFlags` to `PlayerState`.
+
+### New constants for Physics.swift Wave 5.0 additions
+| Swift name | Value | C macro |
+|---|---|---|
+| drainTicks | 15 | DRAINTICKS |
+| refuelArmourTicks | 46 | REFUELARMOURTICKS |
+| refuelShellsTicks | 7 | REFUELSHELLSTICKS |
+| refuelMinesTicks | 7 | REFUELMINESTICKS |
+| minBaseShells | 1 | MINBASESHELLS |
+| minBaseMines | 1 | MINBASEMINES |
+| shellRate | 4 | SHELLRATE |
+| dRange | Float(50)/6.0 | DRANGE (= TICKSPERSEC/6.0 = 50/6 ≈ 8.333) |
+| minRange | 1.0 | MINRANGE |
+
+**Note:** `DRANGE = TICKSPERSEC / 6.0`. In Swift: `let dRange: Float = Float(ticksPerSec) / 6.0`. Since TICKSPERSEC is 50, dRange ≈ 8.333.
+
+### tanklocallogic scope
+`func tankLocalTick(old: Pointi, state: inout GameState)` — local player only.
+
+**Part 1: Tank-tank push**
+- For each other connected, alive player: if `dist < tankRadius*2.0` → push local tank to `TANKRADIUS*2.0` distance
+- If dist < 0.00001 (coincident): random direction via `tan2f((random()%16)*(π/8))*TANKRADIUS*2.0`
+
+**Part 2: enter(new, old)**
+`func enter(new: Pointi, old: Pointi, state: inout GameState)`
+
+Trigger: called with current and previous tile square. Key behaviors:
+
+| Condition | Effect |
+|---|---|
+| Armed pill (armour>0) at new | superboom |
+| Dead pill (armour==0) at new | grab (server handles pickup); drop boat if on land |
+| Base at new, moved (new≠old) | grab if neutral or non-allied; always drop boat |
+| Wall/damagedWall at new | superboom |
+| Sea at new, no boat | drown() |
+| Forest at new, dead tank, moved | damage + explosion (burning forest) |
+| Land at new, have boat, moved | drop boat at old |
+| Land at new, LMINEMASK, alive | plant mine at new |
+| BoatTerrain at new, have boat, moved | damage+explosion (boat collision) |
+| BoatTerrain at new, no boat, moved | grab (pick up boat) |
+| MinedSea at new, moved | grab + drown() |
+| Mined land at new, moved | grab (mine detonation server-side) |
+
+**NOTE:** `sendcl*` network calls → in pure simulation, replace with direct state mutations:
+- `sendclgrabtile` → server applies the terrain/pill/base change; in standalone sim, fire `onGrabTile` callback
+- `sendcldropboat` → `terrain[old.y][old.x] = .boat`
+- `sendcldropmine` → `terrain[new.y][new.x] = mined variant`
+
+**Part 3: Refueling** (alive, on base, stationary)
+- Start: enter base square → `refueling=true, refuelingbase=base, refuelingcounter=0`
+- Tick: if `new == old` (stationary): `refuelingcounter++`
+  - Armour: if `armour < MAXARMOUR` AND `base.armour > MINBASEARMOUR` AND counter >= 46 → transfer `MIN(MAXARMOUR-armour, MIN(base.armour-5, 5))` points
+  - Shells: if `shells < MAXSHELLS` AND `base.shells >= 1` AND counter >= 7 → transfer batch
+  - Mines: if `mines < MAXMINES` AND `base.mines >= 1` AND counter >= 7 → transfer batch
+- Cancel: if tank moves (`new ≠ old`) → `refueling=false`
+
+**Part 4: Shell range (alive)**
+- `incre XOR decre`: range ± `dRange/ticksPerSec` per tick, clamped to [MINRANGE, MAXRANGE]
+
+**Part 5: Shell firing (alive)**
+- `shoot` flag AND `shellcounter > TICKSPERSEC/SHELLRATE (50/4=12)` AND `shells > 0`
+- Create shell: `point = tank + dir2vec(dir)*0.5`, `range = client.range - 0.5`, `dir = player.dir`, `boat = player.boat`, `pill = false`
+- `shells--`, `shellcounter = 0`
+- Always: `shellcounter++` each tick
+
+### Wave 5.2 revised scope
+Split into two commits for clean isolation:
+
+**Wave 5.2a — `tankMoveTick`** (physics only, differential-testable against C oracle):
+- `Sources/BoloKit/TankTick.swift`: `tankMoveTick(player:state:)`
+- Helpers: `isShore`, `InputFlags` in GameObjects.swift
+- `Tests/DifferentialTests/TankTickDifferentialTests.swift`: fuzz physics
+
+**Wave 5.2b — `tankLocalTick` + `enter`** (state mutations, no C differential — network calls replaced by callbacks):
+- `enter(new:old:state:)` in TankTick.swift
+- `tankLocalTick(old:state:)` in TankTick.swift
+- Callbacks: `onGrabTile`, `onDropBoat`, `onDropMine` as `GameState` delegate or closure properties
+- Tests: `Tests/BoloKitTests/TankLocalTickTests.swift` — unit test each enter() branch
+
+### Additional LocalPlayerState fields (add to Wave 5.1 GameState)
+```swift
+// Add to LocalPlayerState:
+public var draincounter: Int
+public var refueling: Bool
+public var refuelingbase: Int   // index or -1
+public var refuelingcounter: Int
+public var shellcounter: Int
+public var range: Float          // already listed
+```
+
+
+---
+## [TO: PARITY] Wave 5 Full Audit — run after all sub-waves 5.0–5.7 committed
+**Date:** 2026-09-01  **From:** PLANNER
+
+Run this as a single comprehensive audit after IMPLEMENTER commits Wave 5.7. Each item below is an independently verifiable behavioral claim. Mark each PASS / FAIL / N/A with a one-line note.
+
+---
+### 5.0 — Physics constants, roundDir, maxSpeed, collisionDetect
+
+**Constants (D18 — all Float, no Double):**
+- [ ] All bolo.h values reproduced exactly; spot-check: tankRadius=0.375, builderRadius=0.125, shellVelocity=7.0, kickForce=3.125, explosionTicks=24, explodeTicks=45, respawnTicks=150, coolPillTicks=32, replenishBaseTicks=600, maxTicksPerShot=100, dRange=Float(50)/6.0
+- [ ] `explosionTicks (24)` and `explodeTicks (45)` are distinct named constants — not aliased to each other
+- [ ] No physics constant declared as `Double` or inferred as Double
+
+**roundDir:**
+- [ ] Uses `Float.pi` (not `Double.pi`, not `M_PI`)
+- [ ] Uses Swift `floor` dispatched to the Float overload — confirmed by checking call site type
+- [ ] Differential test covers full [0, 2π] range with ≥1000 random values
+
+**maxSpeed:**
+- [ ] Pill check: `armour > 0` (not `armour != 0`, not `armour >= MINBASEARMOUR`) — armed pill → 0.0
+- [ ] Dead pill: `armour == 0` → road speed (3.125), not 0.0
+- [ ] Base present → road speed (3.125) regardless of armour or owner
+- [ ] Pill check runs BEFORE base check (order matters)
+- [ ] Terrain fallthrough matches C switch exactly — kBoatTerrain returns road speed
+
+**maxTurnSpeed:**
+- [ ] Same pill/base override order as maxSpeed
+
+**collisionDetect:**
+- [ ] The C bug is present: in the `lyc && hyc` branch, `p.x` is written (not `p.y`)
+- [ ] A unit test exercises this branch and asserts that `x` is modified, not `y`
+- [ ] Comment above the bug line: "BUG: replicates C source p.x/p.y swap for behavioral parity"
+
+---
+### 5.1 — GameState model
+
+**Pill:**
+- [ ] `armour == 0xff` means ONBOARD — pill is carried by a tank, not on the map
+- [ ] `isOnboard`, `isArmed`, `isDead` computed properties present and correct
+- [ ] `findPill(x:y:pills:)` skips pills where `armour == 0xff` (ONBOARD) — carried pills are invisible to position lookups
+
+**Base:**
+- [ ] `counter` is wide enough for `REPLENISHBASETICKS (600) + maxPlayers (16) - 1 = 615` — UInt16 or larger
+
+**testAlliance:**
+- [ ] Requires `players[p1].used && players[p2].used` — unused player is never allied with anyone
+- [ ] Requires mutual bits: `p1.alliance has bit p2` AND `p2.alliance has bit p1`
+- [ ] One-sided alliance (only one bit set) → returns false
+
+**tankcollision vs buildercollision base threshold:**
+- [ ] `tankcollision` equivalent: base solid if `armour >= 5` (≥ MINBASEARMOUR — inclusive)
+- [ ] `buildercollision` equivalent: base solid if `armour > 5` (> MINBASEARMOUR — exclusive)
+- [ ] These two thresholds differ by exactly one — this is intentional and must not be "unified"
+
+---
+### 5.2a — tankMoveTick (physics)
+
+**Turning:**
+- [ ] When no turn input: `turnspeed = 0.0` instantly (NOT gradual decay)
+- [ ] Sign flip guard: if turning left and `turnspeed < 0`, reset to 0 first; vice versa for right
+- [ ] `maxAngularVelocity (2.5)` used on boat; `maxTurnSpeed(...)` used on land
+- [ ] `maxturnspeed` reads localPlayer's tank position (not the moving player's) — faithful to C
+
+**Direction wrap:**
+- [ ] `dir > 2π`: uses `floorf(dir / 2π)` — not `fmod`, not integer division
+- [ ] `dir < 0`: uses `floorf(dir / -2π + 1.0)` — exact C formula
+
+**Acceleration:**
+- [ ] `maxSpeed` reads localPlayer's tank position (not the moving player's) — same C behavior
+- [ ] Brake: speed decreases but clamps at 0 (never negative)
+- [ ] Overspeed (terrain change): decelerates to max, not instant clamp
+
+**Position update:**
+- [ ] Uses `roundDir(dir)` for movement direction (not raw `dir`)
+- [ ] kickspeed component added in same expression: `(dir2vec(roundDir(dir))*speed + dir2vec(kickdir)*kickspeed) / ticksPerSec`
+
+**kickspeed decay:**
+- [ ] Decays by `12.0 / ticksPerSec` per tick (literal 12.0, matches `kickSpeedDecay` constant)
+- [ ] Clamped to 0 (never negative)
+
+**Shore push:**
+- [ ] Only applied when `boat == 1`
+- [ ] Magnitude threshold: `> 0.00001` (not `> 0`, not `>= 0.00001`)
+- [ ] Push amount: `PUSHFORCE/ticksPerSec` in the push direction
+- [ ] Speed deceleration during push: skipped if player is actively accelerating (accel flag, no brake flag)
+
+**D18:**
+- [ ] No `Double` in any physics computation in TankTick.swift — confirm by searching for `Double` in file
+
+---
+### 5.2b — tankLocalTick / enter()
+
+**Tank-tank push:**
+- [ ] Distance threshold: `TANKRADIUS * 2.0` (= 0.75) — collision of two tank radii
+- [ ] Coincident tanks (dist < 0.00001): random direction push, not zero vector
+
+**enter() — key behavioral branches:**
+- [ ] Armed pill at new square → superboom (not just damage)
+- [ ] Sea terrain, no boat → drown() called
+- [ ] Sea terrain, have boat → no drown (boat protects)
+- [ ] MinedSea → grab tile AND drown() (both, unconditionally)
+- [ ] Land terrain, have boat, moved → boat dropped at OLD square (not new)
+- [ ] BoatTerrain, have boat, moved → damage + explosion (not pickup)
+- [ ] BoatTerrain, no boat, moved → pick up boat (boat=1)
+- [ ] Mine plant: only if `new ≠ old` AND alive AND `lmine` flag AND `mines > 0`
+- [ ] Dead tank entering forest (moved) → damage + explosion on that forest cell
+
+**Refueling:**
+- [ ] Refueling only ticks when stationary (`new == old`)
+- [ ] Priority: armour first, then shells, then mines (not concurrent)
+- [ ] Refueling cancelled on any movement (`new ≠ old`)
+- [ ] Armour transfer limited by `MIN(MAXARMOUR-armour, MIN(base.armour-5, 5))`
+
+**Shell firing:**
+- [ ] Shell point: `tank + dir2vec(dir) * 0.5` (not tank center)
+- [ ] Shell range: `local.range - 0.5` (not `MAXRANGE`)
+- [ ] `shellcounter` resets to 0 on fire, increments every tick regardless
+- [ ] Fire rate: `shellcounter > TICKSPERSEC/SHELLRATE` = `> 12` (strictly greater, not >=)
+
+---
+### 5.3 — shellTick
+
+- [ ] Per-tick advance: `shellVelocity/ticksPerSec` (= 0.14 exactly)
+- [ ] Last partial step: advance only remaining range when `range < shellVelocity/ticksPerSec`
+- [ ] Tank hit: `kickspeed = kickForce (3.125)`, `armour -= 5`
+- [ ] Explosion particle: `counter` starts at 0; removed when `counter > explosionTicks (24)` — strictly greater
+- [ ] `explosionTicks (24)` used here — NOT `explodeTicks (45)` which is death animation
+
+---
+### 5.4 — builderTick
+
+- [ ] `builderRadius = 0.125` (not tankRadius=0.375)
+- [ ] Close-range capture threshold: `tankRadius - builderRadius = 0.25`
+- [ ] `buildercollision` closure captures `target` and `buildertask` — base threshold `> 5` (exclusive)
+- [ ] Builder movement uses `collisionDetect` with `builderRadius`, not `tankRadius`
+
+---
+### 5.5 — pillTick, explosionTick
+
+**pillTick:**
+- [ ] Firing condition: `(dist ≤ 2.0 OR forestvis(tank) > 0.25) AND dist ≤ 8.0`
+- [ ] Closest-hostile check runs BEFORE firing — pill passes if no closer hostile
+- [ ] Shell offset from pill center: literal `0.70711219` (not computed `Float(sqrt(2))/2`) — parity critical
+- [ ] Shell range: `8.5 - 0.70711219` (not `MAXRANGE = 7.0`)
+
+**explosionTick:**
+- [ ] `counter > EXPLOSIONTICKS (24)` → remove (strictly greater, not >=)
+
+---
+### 5.6 — spawn()
+
+- [ ] Pass 1 weights: friendly base < 8.5 → 3, < 17 → 2, else 1; hostile pill < 8.5 → 0
+- [ ] Pass 2 (all-zero fallback): pill penalties dropped; only base weights recomputed
+- [ ] `arc4random_uniform(range)` used (not `random()%range`) — document as KNOWN DIVERGENCE from C
+- [ ] Post-spawn: `boat = 1` always
+- [ ] Post-spawn: `dir = starts[i].dir * (Float.pi / 8.0)` (not degrees, not raw dir)
+- [ ] Post-spawn: `speed = 0, turnspeed = 0, kickspeed = 0, kickdir = 0`
+
+---
+### 5.7 — growtrees, pill cooldown, base replenish
+
+**growtrees C bug (critical):**
+- [ ] Outer pill/base guard checks the last-sampled random cell `(x, y)` — NOT `(growx, growy)`
+- [ ] Inner guard (inside the switch) correctly checks `(growx, growy)` — both checks present
+- [ ] Iterations per tick: `nplayers * 8` (integer arithmetic: `4200 / (10*50) = 8`)
+
+**applyGrow:**
+- [ ] Mined grass/rubble/crater/swamp/road → `.minedForest` (not plain `.forest`)
+- [ ] Plain grass/rubble/crater/swamp/road → `.forest`
+- [ ] All other terrain: no-op (wall, sea, forest, etc.)
+
+**Pill cooldown:**
+- [ ] `pill.speed++` (reload interval grows toward 100) — NOT `pill.armour++`
+- [ ] Only placed pills (`armour != ONBOARD`) are cooled
+- [ ] Counter resets to 0 on each cooldown event
+
+**Base replenish:**
+- [ ] `base.counter += nplayers` (NOT += 1) — player-count-scaled
+- [ ] All three resources (armour, shells, mines) increment in the SAME replenish event
+- [ ] Each capped at its max (90) independently
+- [ ] Counter resets to 0 after replenish
+
+---
+### Cross-cutting D18 check (entire Wave 5)
+- [ ] Search `Sources/BoloKit/` for any use of `Double`, `CGFloat`, `M_PI`, `Double.pi` — zero hits expected in physics files
+
+### Known intentional divergences from C (document, not flag)
+- [ ] `arc4random_uniform` instead of `random()%range` in spawn() — Apple platform determinism
+- [ ] `collisionDetect` C bug replicated intentionally — documented with comment
+- [ ] growtrees C bug replicated intentionally — documented with comment
+
