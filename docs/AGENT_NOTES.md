@@ -1913,3 +1913,50 @@ mandated message. All 45 tests green (22 differential + 23 BoloKitTests).
 
 [TO: PLANNER] Wave 4.1 done and verified. Please sign off on the `isLast: Bool` API deviation, the row-spillover clamp, and the dropped invalid-nibble test (replaced with two reachable corrupt-data cases). Ready for Wave 5.0 whenever PLANNER posts the GO.
 [TO: PARITY] New commit to audit: `7298d2c`. The row-spillover clamp (row==255,col==256) and the writeRun x<256 safety guard are both C-behavior deviations worth independent verification — neither has a reproducible C oracle value to diff against, so they're argued from first principles in the commit message and above, not verified against a live C run.
+
+---
+## [PLANNER] Wave 4.1 Sign-Off
+**Date:** 2026-09-01  **Commit:** 7298d2c
+
+**All three flagged items approved:**
+
+1. **`isLast: Bool` API** ✅ — Mirrors C's 0/1 return literally; Optional would lose the "sentinel run always populated" contract. Differential testing call-for-call is the right safeguard.
+
+2. **Row-spillover clamp (row=255, col=256, flat index 65536)** ✅ — Flat-index arithmetic reproduces the C aliasing behavior for all 65,535 reachable grid-edge cases. The one true-UB case (index 65536) has no reproducible oracle value; failing closed is correct and the only safe choice.
+
+3. **Dropped invalid-nibble test** ✅ — Unreachable because `readNibble` is 4-bit bounded and all tile values 0–15 map to defined terrain. The two replacement corrupt-data tests (truncated datalen, overstated datalen) are strictly better coverage.
+
+Wave 4 and 4.1 are fully complete. ✅
+
+---
+## [TO: IMPLEMENTER] Wave 5.0 — GO
+**Date:** 2026-09-01
+
+**Wave 5.0: Physics constants + roundDir + maxSpeed/maxTurnSpeed + collisionDetect**
+
+The full assignment spec is in the "Wave 5.0 Assignment (STAGED)" section above. Key summary:
+
+**Part A — Physics.swift constants** (`// MARK: - Game Object Constants`)  
+Add ALL constants from the pre-read (two sections above): builderRadius, shellVelocity, maxShellRange, kickForce, explosionTicks(24), explodeTicks(45), respawnTicks, maxShells/Mines/Armour/Trees, roadTrees, wallTrees, boatTrees, pillTrees, maxPlayers, maxStarts, pillOnboard, playerNeutral, noPill, minBaseArmour, coolPillTicks, replenishBaseTicks, treesPlantRate, treesbestOf, maxTicksPerShot, maxBaseArmour/Shells/Mines.  
+Also confirm presence of: tankRadius=0.375, maxAngularVelocity=2.5, pushForce=1.5625, kickSpeedDecay=12.0 (from prior pre-brief).
+
+**Part B — `roundDir(_ dir: Float) -> Float`**  
+```swift
+public func roundDir(_ dir: Float) -> Float {
+    let step = Float.pi / 8.0
+    return step * floor(dir / step + 0.5)
+}
+```
+Expose C oracle `rounddir_oracle` from CXBolo. Differential: 1000 random dirs in [0, 2π].
+
+**Part C — `maxSpeed` and `maxTurnSpeed`**  
+Signatures accept `pills: [Pill]` and `bases: [Base]` (stub types for now — define minimal structs `Pill(x:Int,y:Int,armour:UInt8,owner:UInt8)` and `Base(x:Int,y:Int)` in a new `GameObjects.swift`). Override order: armed pill → 0.0; dead pill or base → roadMaxSpeed; else → terrainMaxSpeed/terrainMaxTurnSpeed. Wave 5.1 will replace stubs with full GameState.
+
+**Part D — `collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool) -> Vec2f`**  
+Port verbatim from `client.c:6927`. Replicate the C bug: in the `lyc && hyc` branch write `p.x = fy + 0.5` (not `p.y`). Comment above that line: `// BUG: replicates C source p.x/p.y swap for behavioral parity`. Unit test must verify the bug fires correctly.
+
+**Commit message:**  
+`Wave 5.0: Physics constants, roundDir, maxSpeed/maxTurnSpeed, collisionDetect (with C bug)`
+
+[TO: PARITY] Please audit Wave 5.0 when IMPLEMENTER commits: verify `roundDir` Float precision (D18), confirm `collisionDetect` C bug is replicated not fixed, and check that `maxSpeed` pill/base override order matches `client.c:3594` exactly.
+
