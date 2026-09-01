@@ -18,14 +18,6 @@ public func roundDir(_ dir: Float) -> Float {
 
 // MARK: - maxSpeed / maxTurnSpeed
 
-/// Finds the pill occupying (x, y), if any. Mirrors client-side `findpill()`
-/// (Reference/c/client.c:7089): matches by position, excluding pills with
-/// `armour == pillOnboard` (the "carried by a builder" sentinel, not a real
-/// armour value).
-private func findPill(x: Int, y: Int, in pills: [Pill]) -> Pill? {
-    pills.first { $0.armour != pillOnboard && $0.x == x && $0.y == y }
-}
-
 /// Maximum tank forward speed at (x, y), including pill/base overrides.
 ///
 /// Ported from `maxspeed()` in Reference/c/client.c:3594. Override order:
@@ -34,14 +26,11 @@ private func findPill(x: Int, y: Int, in pills: [Pill]) -> Pill? {
 /// otherwise falls through to the pure terrain tier (`terrainMaxSpeed`,
 /// shipped Wave 3.1 — its switch is an exact match for `maxspeed`'s own
 /// terrain switch, verified against the C reference).
-///
-/// `pills`/`bases` are the Wave 5.0 minimal stubs (`GameObjects.swift`);
-/// Wave 5.1's `GameState` supplies the real arrays.
 public func maxSpeed(x: Int, y: Int, terrain: Terrain, pills: [Pill], bases: [Base]) -> Float {
-    if let pill = findPill(x: x, y: y, in: pills) {
-        return pill.armour > 0 ? 0.0 : roadMaxSpeed
+    if let i = findPill(x: x, y: y, pills: pills) {
+        return pills[i].armour > 0 ? 0.0 : roadMaxSpeed
     }
-    if bases.contains(where: { $0.x == x && $0.y == y }) {
+    if findBase(x: x, y: y, bases: bases) != nil {
         return roadMaxSpeed
     }
     return terrainMaxSpeed(terrain)
@@ -54,10 +43,10 @@ public func maxSpeed(x: Int, y: Int, terrain: Terrain, pills: [Pill], bases: [Ba
 /// `2.5`, matching `terrainMaxTurnSpeed`'s own bare-literal style rather
 /// than introducing a new named constant for it.
 public func maxTurnSpeed(x: Int, y: Int, terrain: Terrain, pills: [Pill], bases: [Base]) -> Float {
-    if let pill = findPill(x: x, y: y, in: pills) {
-        return pill.armour > 0 ? 0.0 : 2.5
+    if let i = findPill(x: x, y: y, pills: pills) {
+        return pills[i].armour > 0 ? 0.0 : 2.5
     }
-    if bases.contains(where: { $0.x == x && $0.y == y }) {
+    if findBase(x: x, y: y, bases: bases) != nil {
         return 2.5
     }
     return terrainMaxTurnSpeed(terrain)

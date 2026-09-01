@@ -43,24 +43,24 @@ import Darwin
 // MARK: - maxSpeed / maxTurnSpeed
 
 @Test func maxSpeedArmedPillBlocks() {
-    let pills = [Pill(x: 10, y: 10, armour: 5, owner: 0)]
+    let pills = [Pill(x: 10, y: 10, armour: 5, owner: 0, speed: 50, counter: 0)]
     #expect(maxSpeed(x: 10, y: 10, terrain: .road, pills: pills, bases: []) == 0.0)
 }
 
 @Test func maxSpeedDeadPillAllowsRoadSpeed() {
-    let pills = [Pill(x: 10, y: 10, armour: 0, owner: 0)]
+    let pills = [Pill(x: 10, y: 10, armour: 0, owner: 0, speed: 50, counter: 0)]
     // Underlying terrain is sea (impassable) — dead pill override still wins
     #expect(maxSpeed(x: 10, y: 10, terrain: .sea, pills: pills, bases: []) == roadMaxSpeed)
 }
 
 @Test func maxSpeedOnboardPillIsIgnored() {
     // armour == pillOnboard means "carried by a builder", not present on the map
-    let pills = [Pill(x: 10, y: 10, armour: pillOnboard, owner: 0)]
+    let pills = [Pill(x: 10, y: 10, armour: pillOnboard, owner: 0, speed: 50, counter: 0)]
     #expect(maxSpeed(x: 10, y: 10, terrain: .grass3, pills: pills, bases: []) == grassMaxSpeed)
 }
 
 @Test func maxSpeedBaseAllowsRoadSpeed() {
-    let bases = [Base(x: 20, y: 20)]
+    let bases = [Base(x: 20, y: 20, armour: 90, owner: 0, shells: 90, mines: 90)]
     #expect(maxSpeed(x: 20, y: 20, terrain: .forest, pills: [], bases: bases) == roadMaxSpeed)
 }
 
@@ -70,17 +70,17 @@ import Darwin
 }
 
 @Test func maxTurnSpeedArmedPillBlocks() {
-    let pills = [Pill(x: 10, y: 10, armour: 5, owner: 0)]
+    let pills = [Pill(x: 10, y: 10, armour: 5, owner: 0, speed: 50, counter: 0)]
     #expect(maxTurnSpeed(x: 10, y: 10, terrain: .road, pills: pills, bases: []) == 0.0)
 }
 
 @Test func maxTurnSpeedDeadPillAllowsFullTurn() {
-    let pills = [Pill(x: 10, y: 10, armour: 0, owner: 0)]
+    let pills = [Pill(x: 10, y: 10, armour: 0, owner: 0, speed: 50, counter: 0)]
     #expect(maxTurnSpeed(x: 10, y: 10, terrain: .sea, pills: pills, bases: []) == 2.5)
 }
 
 @Test func maxTurnSpeedBaseAllowsFullTurn() {
-    let bases = [Base(x: 20, y: 20)]
+    let bases = [Base(x: 20, y: 20, armour: 90, owner: 0, shells: 90, mines: 90)]
     #expect(maxTurnSpeed(x: 20, y: 20, terrain: .forest, pills: [], bases: bases) == 2.5)
 }
 
