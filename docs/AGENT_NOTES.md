@@ -3146,3 +3146,65 @@ the affected code, not discovered after.
 and the three new findings above (dead-tank enum bug, Wave 5.4 server-merge scope, Wave 5.5
 multi-target generalization) — these go beyond your existing trap framework and I'd value a second
 look before I lock in the Wave 5.4/5.5 designs.
+
+---
+
+### [IMPLEMENTER] 2026-09-01 — Wave 5.2a complete: tankMoveTick
+**Type:** build
+**Phase:** 1 / Wave 5.2a
+**Blocks:** nothing
+
+Committed as `a752a77`. 101 tests green (27 differential + 74 unit).
+
+**Delivered:** `dir2vec`/`vec2dir` added to `Vector.swift` (ported from bolo.c:327-337, using
+already-shipped `k2Pif`/`tan2f`/`_atan2f`); `isShore`, `tankCollision`, `tankMoveTick` in new
+`TankTick.swift`; a reduced-parameter oracle (`tankphysics_oracle`) in new `Sources/CXBolo/tankops.c`
+for the core numeric transform (turning/wrap/accel/position/kickspeed decay — shore-push and
+collision need pill/base/terrain lookups so they're Swift-only tested instead).
+
+**Architectural decision — dead-branch stays gated to `state.localPlayer`:** C's tumble/boom/respawn
+sequence reads `client.respawncounter`/`mines`/`shells` — fields that exist once per LOCAL client
+instance, not once per player. Since `GameState.local` (Wave 5.1) models these once, not per player,
+generalizing this sequence to every dead player simultaneously would need per-player resource
+tracking that doesn't exist. Kept the `player == localPlayer` gate exactly as C has it. This is
+different from the generalizations already flagged for Wave 5.5 (pillTick) and noted for Wave 5.3
+(shellTick self-hit exclusion) — those operate on data every player already has in `PlayerState`;
+this one depends on data that's currently singular. Flagging as a known gap: true multi-human
+death/respawn simulation needs `LocalPlayerState` (or equivalent) to become per-player at some point.
+
+**Confirmed the dead-tank enum-mismatch bug** flagged in the Wave 5.1 report: replicated exactly
+(`terrain.rawValue == 16 || == 17`, i.e. grass1/grass2 in this port's ordering — not sea/minedSea).
+Dedicated regression test (`tankMoveTickDeadTumbleSkipsExplosionOverGrass1AndGrass2Bug`) exercises
+all five relevant terrain cases and would fail if anyone "fixes" this to check `.sea`/`.minedSea`.
+
+**A second real precision bug, found via fuzzing and fixed (not just tolerance-papered):**
+`kickspeed -= 12.0/TICKSPERSEC` in C computes the division in double precision, since `12.0` is an
+untyped double literal — and `0.24` (12/50) is not exactly representable in either Float or Double,
+so which precision does the division in actually changes the rounded result. My first port used
+plain Float division and diverged by 1 ULP, caught immediately by the differential fuzz test (many
+mismatches, not rare). Fixed with the same `Float(Double(a) - Double(b)/Double(c))` pattern already
+established for `collisionDetect`. **Also verified, not just assumed:** `accel/ticksPerSec` and
+`angularAccel/ticksPerSec` do NOT need the same treatment — stress-tested at 20,000 fuzz iterations
+(temporarily, then reverted to 1000 for the committed suite) with zero divergence, because
+`accel/ticksPerSec` happens to reduce to an exact power-of-2 fraction (25/512) that both Float and
+Double division compute identically regardless of intermediate precision. Confirmed this empirically
+rather than assuming symmetry with the kickspeed case.
+
+**Test-fixture pitfall worth recording:** my first differential-test fixture set a single grass cell
+at the tank's exact starting position to give `maxSpeed`/`maxTurnSpeed` something non-zero to return.
+This backfired for `boat=true` cases: `isShore` treats ANY non-water terrain (including grass) as
+shore, so that one cell became "shore" the moment the tank drifted into an adjacent tile mid-tick,
+triggering shore-push side effects the reduced oracle (which doesn't model shore-push at all) has no
+way to reproduce — 656 spurious failures on the first run. Fixed by leaving the grid fully default
+(sea) for `boat=true` fuzz cases (boat physics bypasses the terrain-based speed lookup entirely, so
+no land terrain is needed there) and only placing land terrain for `boat=false` cases (which never
+run the shore-push block). Recording this because it's a subtle test-design trap, not a code bug —
+worth being careful about in Wave 5.4/5.5's oracle fixtures too, since they'll also mix terrain
+lookups with terrain-dependent side effects.
+
+[TO: PLANNER] Wave 5.2a done and verified. Proceeding to Wave 5.2b (tankLocalTick + enter()) next.
+[TO: PARITY] New commit to audit: `a752a77`. Please specifically check: the local-player dead-branch
+gating decision (deliberate scope limitation vs. Wave 5.5's planned generalization — want a second
+opinion on whether this asymmetry is the right call), the enum-mismatch bug replication, and the
+kickspeed precision fix (same class as your Wave 5.0 Finding-4 discussion, but this one's a real bug
+I found and fixed, not a false positive).
