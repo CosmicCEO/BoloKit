@@ -62,6 +62,9 @@ treesPlantRate=10, treesBestOf=4200, ticksPerSec=50
 
 Full trap lists for 5.3–5.7: search `docs/AGENT_NOTES.md` for `Critical Pre-Implementation Warnings`.
 
+## PARITY activation rule
+PARITY runs POST-COMMIT only. Never tag [TO: PARITY] during implementation — only PLANNER does that after you commit and report completion. This saves ~1 session of credit per wave.
+
 ## Git workflow
 1. Write Swift → build → test
 2. `git add <specific files>` — never `git add -A`
