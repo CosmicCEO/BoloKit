@@ -1690,3 +1690,226 @@ Two-pass weighted selection (verbatim from C):
 ### Wave 5 pre-read: COMPLETE
 All sub-waves 5.0–5.7 are scoped. IMPLEMENTER can begin Wave 4.1 then proceed sequentially through Wave 5 sub-waves when ready.
 
+
+---
+## [PLANNER → IMPLEMENTER] Wave 5.0 Assignment (STAGED — post after Wave 4.1 sign-off)
+**Status:** DRAFT — do not begin until PLANNER posts "[TO: IMPLEMENTER] Wave 5.0 — GO"
+
+### Wave 5.0: Physics constants + roundDir + maxSpeed/maxTurnSpeed + collisionDetect
+
+**Files to create/modify:**
+- `Sources/BoloKit/Physics.swift` — add constants
+- `Sources/BoloKit/Physics.swift` or new `Sources/BoloKit/PhysicsOps.swift` — add pure functions
+- `Tests/BoloKitTests/PhysicsOpsTests.swift` — unit tests (NEW)
+- `Tests/DifferentialTests/PhysicsOpsDifferentialTests.swift` — differential tests (NEW)
+- `Sources/CXBolo/` — C oracle wrappers for roundDir, maxSpeed if needed
+
+---
+
+#### Part A — Physics.swift constants additions
+
+Add under `// MARK: - Game Object Constants`:
+
+```swift
+public let builderRadius: Float = 0.125         // BUILDERRADIUS
+public let shellVelocity: Float = 7.0           // SHELLVEL
+public let maxShellRange: Float = 7.0           // MAXRANGE
+public let kickForce: Float = 3.125             // KICKFORCE
+public let explosionTicks: Int = 24             // EXPLOSIONTICKS (particle display)
+public let explodeTicks: Int = 45               // EXPLODETICKS (death animation gate)
+public let respawnTicks: Int = 150              // RESPAWN_TICKS
+public let maxShells: Int = 40                  // MAXSHELLS
+public let maxMines: Int = 40                   // MAXMINES
+public let maxArmour: Int = 40                  // MAXARMOUR
+public let maxTrees: Int = 40                   // MAXTREES
+public let roadTrees: Int = 2                   // ROADTREES
+public let wallTrees: Int = 2                   // WALLTREES
+public let boatTrees: Int = 20                  // BOATTREES
+public let pillTrees: Int = 4                   // PILLTREES
+public let maxPlayers: Int = 16                 // MAXPLAYERS
+public let maxStarts: Int = 16                  // MAX_STARTS
+public let pillOnboard: UInt8 = 0xff            // ONBOARD
+public let playerNeutral: UInt8 = 0xff          // NEUTRAL
+public let noPill: UInt8 = 0xff                 // NOPILL
+public let minBaseArmour: Int = 5               // MINBASEARMOUR
+```
+
+Also add (already in pre-brief, confirm present):
+```swift
+public let tankRadius: Float = 0.375            // TANKRADIUS
+public let maxAngularVelocity: Float = 2.5      // from tankmovelogic
+public let pushForce: Float = 1.5625            // shore push from tankmovelogic
+public let kickSpeedDecay: Float = 12.0         // per-tick decay from tankmovelogic
+```
+
+**Test:** add `physicsObjectConstantsMatchBoloH` to PhysicsOpsTests — spot-check a representative sample against known bolo.h values.
+
+---
+
+#### Part B — `roundDir(_ dir: Float) -> Float`
+
+C source (`client.c:6765`):
+```c
+return (kPif/8.0)*floor(dir/(kPif/8.0) + 0.5);
+```
+
+Swift:
+```swift
+public func roundDir(_ dir: Float) -> Float {
+    let step = Float.pi / 8.0
+    return step * floor(dir / step + 0.5)
+}
+```
+
+**D18:** All `Float`, never `Double`. `Float.pi` not `Double.pi`.
+
+**Differential test:** fuzz with 1000 random dirs in [0, 2π]; compare against C oracle `rounddir_oracle` exposed from CXBolo.
+
+---
+
+#### Part C — `maxSpeed(x:y:terrain:pills:bases:) -> Float`
+
+C source (`client.c:3594`) — pill/base overrides happen BEFORE terrain switch:
+```c
+// armed pill at (x,y) → 0.0
+// dead pill OR base at (x,y) → road speed (3.125)
+// else → terrainMaxSpeed(terrain)
+```
+
+Swift signature:
+```swift
+public func maxSpeed(
+    x: Int, y: Int,
+    terrain: Terrain,
+    pills: [Pill],      // Pill defined in Wave 5.1 — stub as empty array for now
+    bases: [Base]       // Base defined in Wave 5.1 — stub as empty array for now
+) -> Float
+```
+
+**Wave 5.0 compromise:** implement the full pill/base override logic but accept `pills` and `bases` as empty arrays for now. Wave 5.1 will fill them in with real GameState. Test with empty arrays (falls through to terrain) — that's sufficient for 5.0; Wave 5.2 adds the pill/base integration tests.
+
+**maxTurnSpeed:** same pattern — `maxTurnSpeed(x:y:terrain:pills:bases:) -> Float`
+
+---
+
+#### Part D — `collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool) -> Vec2f`
+
+C source (`client.c:6927`) — replicate the C bug exactly for parity:
+```c
+// In the lyc && hyc branch:
+// BUG: p.x = fy + 0.5  (should be p.y = fy + 0.5)
+// MUST replicate this bug — do NOT fix it
+```
+
+Swift:
+```swift
+public func collisionDetect(
+    _ p: Vec2f,
+    radius: Float,
+    isSolid: (Pointi) -> Bool
+) -> Vec2f {
+    // ... port verbatim including the p.x/p.y swap bug ...
+}
+```
+
+Add a comment above the bug line: `// BUG: replicates C source p.x/p.y swap for behavioral parity`
+
+**Test:** unit test the known C-bug scenario: enter with position where `lyc && hyc` fires, confirm x is modified instead of y (matching the C bug).
+
+---
+
+#### Commit message
+```
+Wave 5.0: Physics constants, roundDir, maxSpeed/maxTurnSpeed, collisionDetect (with C bug)
+```
+
+
+---
+## [PLANNER] Wave 5.7 Pre-Read — growtrees, pill cooldown, base replenish (server.c)
+**Date:** 2026-08-31  **Status:** PRE-READ COMPLETE
+
+### Architecture note
+Wave 5.7 logic lives in **server.c**, not client.c. The client only receives and applies server packets:
+- `growtrees()` → server sends `SRGrow` → client `recvsrgrow()` applies terrain change
+- Pill cooldown and base replenish are server-only; client receives `SRCoolPill` / `SRReplenishBase`
+
+For BoloKit's standalone simulation, both sides must be ported.
+
+### Constants (all to be added to Physics.swift Wave 5.0):
+| Swift name | Value | C macro | Notes |
+|---|---|---|---|
+| coolPillTicks | 32 | COOLPILLTICKS | Reload-speed cooldown interval |
+| replenishBaseTicks | 600 | REPLENISHBASETICKS | Base replenish interval (counter scaled by nplayers) |
+| treesPlantRate | 10 | TREESPLANTRATE | Used in growtrees iteration count |
+| treesbestOf | 4200 | TREESBESTOF | Best-of window; must be multiple of TREESPLANTRATE*TICKSPERSEC |
+| maxTicksPerShot | 100 | MAXTICKSPERSHOT | Pill reload speed cap (higher = slower) |
+| maxBaseArmour | 90 | MAXBASEARMOUR | |
+| maxBaseShells | 90 | MAXBASESHELLS | |
+| maxBaseMines | 90 | MAXBASEMINES | |
+
+### Pill cooldown — Wave 5.7 scope
+- Per tick (server, all placed pills): `pill.counter++`
+- When `counter >= COOLPILLTICKS (32)`:
+  - `pill.speed++` (capped at `MAXTICKSPERSHOT = 100`)
+  - `pill.counter = 0`
+- **CRITICAL:** `pill.speed` is the RELOAD INTERVAL in ticks — higher = slower, NOT armour.
+- Pill armour is only restored by LGM (builder) repair, never by the server tick.
+- `pill.speed` starts low (fast fire) and degrades toward 100 over time.
+
+### Base replenish — Wave 5.7 scope
+- Per tick (server, all bases): `base.counter += nplayers` (player-count-scaled — confirmed PARITY)
+- When `counter >= REPLENISHBASETICKS (600)`:
+  - `base.armour = min(base.armour + 1, MAXBASEARMOUR=90)`
+  - `base.mines  = min(base.mines  + 1, MAXBASEMINES=90)`
+  - `base.shells = min(base.shells + 1, MAXBASESHELLS=90)`
+  - `base.counter = 0`
+- All three resources replenish simultaneously in one event.
+
+### growtrees — Wave 5.7 scope
+- Iterations per tick: `nplayers * (TREESBESTOF / (TREESPLANTRATE * TICKSPERSEC))`
+  = `nplayers * (4200 / (10 * 50))` = `nplayers * 8` (integer division)
+- Each iteration: sample random cell (x,y); if `treescore(growx,growy) < treescore(x,y)` → update `(growx,growy) = (x,y)`; increment `growbestof`
+- When `growbestof >= TREESBESTOF (4200)`:
+  - **C BUG (replicate):** outer guard checks `findpill(x,y)` and `findbase(x,y)` — the last-sampled random cell, NOT the winning candidate `(growx,growy)`. Inner guard correctly checks `(growx,growy)`. Must replicate both checks verbatim.
+  - Grows tree at `(growx,growy)` if eligible; sends `SRGrow`
+  - Resets: `growx,growy = random()%(WIDTH*WIDTH)` new start; `growbestof = 0`
+- `server.growx`, `server.growy`, `server.growbestof` are persistent server state between ticks
+
+### recvsrgrow — client apply (Wave 5.7)
+- On receive `SRGrow(x,y)`: set `terrain[y][x]` = `.forest` (or `.minedForest` if currently mined non-forest) for grass, rubble, crater, swamp, road variants. All others: no-op.
+- Swift: `func applyGrow(x: Int, y: Int, grid: inout TerrainGrid)`
+
+### Wave 5 pre-read: ALL SUB-WAVES COMPLETE ✅
+All C source has been read for 5.0–5.7. IMPLEMENTER can proceed through sub-waves sequentially after Wave 4.1.
+
+
+---
+
+### [IMPLEMENTER] 2026-08-31 — Wave 4.1 complete: BMAP RLE codec (readRun/writeRun)
+**Type:** build
+**Phase:** 1 / Wave 4.1
+**Blocks:** nothing
+
+Wave 4.1 executed per the [TO: IMPLEMENTER] assignment. Committed as `7298d2c` with the
+mandated message. All 45 tests green (22 differential + 23 BoloKitTests).
+
+**Delivered (`Sources/BoloKit/BMap.swift`):**
+- `readRun(grid:y:x:) -> (run: BMapRun, data: [UInt8], isLast: Bool)` and `writeRun(_:data:into:) -> Bool`, plus private `readNibble`/`writeNibble`/`terrainToTileFlatAt`/`tileToTerrain` helpers, mechanically transcribed from `readrun`/`writerun`/`readnibble`/`writenibble` in `Reference/c/bmap.c`.
+- `tileToTerrain` is a pure-Swift port of `tiletoterrain` (server.c:4301) — needed directly since BoloKit doesn't depend on CXBolo, distinct from the CXBolo verbatim extract added in Wave 4 for the C oracle's own linking needs.
+
+**API deviation (flagged for sign-off):** `readRun` returns a non-optional `(run, data, isLast: Bool)` tuple rather than the `(BMapRun, [UInt8])?` originally proposed. An `Optional` and "returns the sentinel run" are two different contracts — the C reference's actual behavior is the latter (retval 0/1, always populating `run`). `isLast` mirrors that literally and stays diffable against the oracle call-for-call.
+
+**Two C-quirk findings, both resolved with documented, deliberate choices:**
+
+1. **Row-spillover in the do-while re-check.** C's `int terrain[256][256]` is one contiguous block, so `terrain[y][256]` aliases `terrain[y+1][0]` for `y<255` — a real, reproducible behavior, not UB. Implemented via flat-index arithmetic (`terrainToTileFlatAt`) so this reproduces automatically. Only `row==255, col==256` (flat index 65536) is genuinely one cell past the whole grid — true UB in C with no reproducible oracle value to match — clamped to "matches its own default terrain" so the loop terminates safely instead of crashing. Verified via manual trace that no other code path can push a column index past 256.
+
+2. **Lossy tile round-trip.** `terrainToTile`/`tileToTerrain` collapse/expand variant terrains asymmetrically: swamp0–3/rubble0–3/grass0–3/damagedWall0–3 all encode to one tile, but always decode back to variant **3** specifically — never 0/1/2. This is a real property of the original format (confirmed against `tiletoterrain` in server.c), not a bug. Differential/round-trip test fixtures use only canonical-variant terrain (grass3, wall, road, forest, river) to get true bit-identical round trips; documented inline on `tileToTerrain`.
+
+**One safety addition beyond the literal port:** `writeRun` guards `x < 256` before every grid write. Corrupt input that passes the `datalen` validation but encodes a run/repeat-count reaching past column 256 would cause C's `terrain[run.y][x++]` to silently overrun into adjacent row memory (or crash outright at the true grid edge) — Swift arrays can't do that safely, so this path fails closed (`false`) instead. Verified unreachable for any output produced by `readRun` itself; only reachable via deliberately malformed input, which is exactly what `writeRunGuardsAgainstOverrunPastColumn256` constructs and exercises.
+
+**One planned test dropped as unreachable:** the "invalid tile nibble → corrupt data" case from the plan doesn't actually exist as a reachable path. `readNibble` only ever returns 0–15 (4-bit range), and `Tile` raw values 0–15 are *all* handled by `tileToTerrain` with defined terrain mappings — so `tileToTerrain(readNibble(...))` can never return -1 in `writeRun`'s actual usage. The `terrainValue != -1` guard is kept as defensive/faithful dead code (mirroring the equally-unreachable C `serverTileType==-1` check), but no test claims to exercise it. Replaced with two reachable corrupt-data cases: truncated `datalen` (fails the leading check) and overstated `datalen` (fails the trailing check).
+
+**Verification approach:** built a fixture grid (via `mapDefault()` + three hand-placed patches: a 4-tile "like tiles" run, a 3-tile "different tiles" run, and a minimal 1-tile run) and diffed Swift's `readRun`/`writeRun` against `readrun_flat`/`writerun_flat` run-by-run — every header field and nibble byte matched on the first build, including hand-traced expected byte values (`0xA7`, `0x10`/`0x40`) for the two encoding branches. `size_t*` confirmed to import as `UnsafeMutablePointer<Int>` (no surprises).
+
+[TO: PLANNER] Wave 4.1 done and verified. Please sign off on the `isLast: Bool` API deviation, the row-spillover clamp, and the dropped invalid-nibble test (replaced with two reachable corrupt-data cases). Ready for Wave 5.0 whenever PLANNER posts the GO.
+[TO: PARITY] New commit to audit: `7298d2c`. The row-spillover clamp (row==255,col==256) and the writeRun x<256 safety guard are both C-behavior deviations worth independent verification — neither has a reproducible C oracle value to diff against, so they're argued from first principles in the commit message and above, not verified against a live C run.
