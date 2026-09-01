@@ -1840,3 +1840,78 @@ gating decision (deliberate scope limitation vs. Wave 5.5's planned generalizati
 opinion on whether this asymmetry is the right call), the enum-mismatch bug replication, and the
 kickspeed precision fix (same class as your Wave 5.0 Finding-4 discussion, but this one's a real bug
 I found and fixed, not a false positive).
+
+---
+
+### [IMPLEMENTER] 2026-09-01 — Wave 5.2b complete: tankLocalTick / enterTile
+**Type:** build
+**Phase:** 1 / Wave 5.2b
+**Blocks:** nothing
+
+New file `Sources/BoloKit/TankLocalTick.swift` (`tankLocalTick`, `enterTile`, `grabTile`, `drown`,
+`smallboom`, `superboom`, `killBuilder`, `killSquareBuilder`, `killPointBuilder`), plus new
+constants in `Physics.swift` (`drainTicks`, `refuelArmourTicks/ShellsTicks/MinesTicks`,
+`minBaseShells/Mines`, `minRange`, `explosionRadius`, `shellFireThresholdTicks`) and a `deaths`
+counter added to `LocalPlayerState`. 46 new unit tests in `TankLocalTickTests.swift`. 119 tests
+green in BoloKitTests + 27 in the differential/other targets — full suite green, no regressions.
+No new CXBolo oracle: this wave is control-flow/RNG-heavy rather than numeric, matching the
+precedent set for `GameState` (Wave 5.1, no oracle for a pure data model) and the `spawn()`
+pre-brief's note that `arc4random_uniform`-based branches have no C-process oracle to diff against.
+
+**Scope decision, made before writing any code, not discovered partway through:** read
+`tanklocallogic()`/`enter()` in full plus everything they call transitively — `drown`, `smallboom`,
+`superboom`, `killsquarebuilder`, `killpointbuilder`, `killbuilder`, and (via the server-side
+`sendcl*`/`recvcl*` round trip that doesn't exist in a unified sim) `recvclgrabtile`,
+`recvcldropboat`, `recvcldropmine`, `recvclsmallboom`/`recvclsuperboom` → `explosionat`/
+`superboomat`/`chain`/`flood`, and `droppills`. The first group (drown/smallboom/superboom/
+killbuilder/killsquarebuilder/killpointbuilder/grabtile's pill-and-base-capture-and-boat-pickup)
+is fully self-contained given what Wave 5.1 already modeled (`PlayerState.builderStatus`/
+`.builder`, `LocalPlayerState.builderPill/Task/Mines/Trees`) and is implemented completely, no
+stubs. The second group — mine-chain/flood terrain propagation and the pill-scatter placement
+search — is a genuinely separate, not-yet-designed subsystem with its own state (chain lists,
+flood lists) that no current wave (5.0–5.7) actually covers despite Wave 5.5 sounding adjacent
+("explosionTick"). Recorded as **Q12** in `PLAN.md` rather than silently absorbing or hand-waving
+it. Surfaced as three no-op-by-default injection points — `onMineExplosion`, `onSuperboomTerrain`,
+`onDropPills` — following the exact precedent `tankMoveTick` (Wave 5.2a) already set with
+`onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn`. This wave is fully testable and behaviorally
+complete for everything it does claim to do; nothing here is a half-finished stand-in.
+
+**Also omitted, for an unrelated reason — no simulation state, not "deferred":** C's
+`testhiddenmine` (only calls `refresh()`, a fog-of-war tile-cache invalidation for rendering) and
+the `increasevis`/`decreasevis` visibility-radius bookkeeping after a tank moves. BoloKit's
+simulation core has no fog-of-war/rendering state (per the Phase 3 architecture: `BoloCore`/
+`BoloKit` has no AppKit surface), so there is nothing to port here, unlike the mine-chain/pill-drop
+gap above which genuinely is unbuilt simulation logic.
+
+**A structural finding worth flagging directly, not just noting in a comment:** `enter()`'s base
+branch only ever sends the grab-tile message when the base is neutral or NOT allied with the
+entering player — when already allied, C skips sending it entirely, so `recvclgrabtile`'s own
+internal "ally handoff" branch (transfer ownership, leave resources untouched) is *unreachable*
+from this call path. It can still fire in principle from other callers of grabtile server-side in
+the original (build/repair actions elsewhere), so `grabTile` keeps that branch for structural
+fidelity, but `enterTile` correctly never reaches it — walking onto an already-allied base is a
+no-op, not a re-capture. Caught this via a test that initially asserted the wrong thing (expected
+the ally branch to fire) and failed; traced it back to the C source rather than "fixing" the test
+by loosening the assertion. Separately (and unrelated): walking onto **your own** base hits the
+*hostile*-takeover branch and zeroes its resources, because C's alliance bitmask has no
+self-alliance special case — replicated exactly, with a dedicated regression test
+(`enterTileWalkingOntoOwnBaseZeroesResourcesLikeHostile`) so nobody "fixes" it later.
+
+**Test-fixture pitfall worth recording (same category as Wave 5.2a's shore-push one):**
+`TerrainGrid.mapDefault()` puts mined-sea in the border ring outside `[xMinMine, xMaxMine]²`
+(roughly `[10, 245]`) and plain sea inside it — either way, a default `PlayerState.tank` of
+`(0, 0)` or a test that doesn't explicitly set terrain will silently drown the player inside
+`enterTile` before the assertion runs, since `boat` also defaults to `false`. This surfaced as
+two outright crashes (`killBuilder` reached with an empty `state.starts` because a builder-kill
+path fired unexpectedly under a bare default `GameState()`) before I traced it to this. Fixed by
+standardizing on an explicit safe fixture (`tank = (50.5, 50.5)`, `terrain[50,50] = .grass0`) for
+tests that don't care about position. Flagging because Wave 5.3+ fixtures will hit the exact same
+trap the moment they use a bare `GameState()` with a moving/alive local player.
+
+[TO: PLANNER] Wave 5.2b done and verified, commit follows this entry. Q12 (mine-chain/flood +
+pill-scatter subsystem gap) recorded in PLAN.md's Open Questions — recommend deciding whether it's
+its own wave or folds into 5.5 before that wave's pre-brief is finalized, since three functions in
+this commit (`grabTile`, `smallboom`, `superboom`) already have the exact injection points it would
+wire into. Proceeding to Wave 5.3 (shellTick/builderTick/pillTick) next unless redirected.
+Note: per the new post-commit-only PARITY rule in the docs restructuring, I'm not tagging
+[TO: PARITY] here — that's PLANNER's call to make after reviewing this report.

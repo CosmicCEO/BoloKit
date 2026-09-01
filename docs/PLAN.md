@@ -12,6 +12,7 @@
 | ID | Question | Blocks | Priority |
 | --- | --- | --- | --- |
 | **Q10** | Keep the C code in-tree permanently as a test oracle, or delete it once the port completes? Recommend keeping it until Phase 5 ends, then removing it (it stays in git history) | Phase 6 | Low |
+| **Q12** | Wave 5.2b surfaced a subsystem not covered by any Wave 5.0–5.7 line item: `explosionAt`/`superboomAt`/`chain`/`flood` (server.c mine-detonation cascade — crater a tile, flood-test neighbouring sea cells, register a chain-reaction list consumed by a per-tick pass) and `droppills` (an outward-spiral search placing scattered pills on the map). `tankLocalTick`/`enterTile`/`grabTile`/`drown`/`smallboom`/`superboom` all surface these as no-op-by-default injection points (`onMineExplosion`, `onSuperboomTerrain`, `onDropPills`) rather than blocking on them, matching the precedent `tankMoveTick` (Wave 5.2a) already set for builder-kill/respawn. Recommend: a new wave (5.5 already covers `explosionTick`, which is closely related — fold in, or split out as 5.5a) rather than treating it as already covered. | Wave 5.5 | Medium |
 
 ## Decisions log
 
@@ -262,9 +263,9 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | ✅ Complete — 8044fb0 (35 tests green) |
 | Wave 4.1 | BMAP RLE codec — readRun/writeRun, nibble helpers | ✅ Complete — 7298d2c |
 | Wave 5.0 | Physics constants additions, roundDir, maxSpeed/maxTurnSpeed w/ pill/base overrides | ✅ Complete — e2636fb (PARITY PASS, F4 deferred) |
-| Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | 🔄 IMPLEMENTER executing (plan approved) |
-| Wave 5.2a | tankMoveTick — tank physics tick | ⬜ Queued |
-| Wave 5.2b | tanklocallogic/enter() — local player input, mine/boat/refuel/fire | ⬜ Queued |
+| Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | ✅ Complete — a3126c6 |
+| Wave 5.2a | tankMoveTick — tank physics tick | ✅ Complete — a752a77 |
+| Wave 5.2b | tanklocallogic/enter() — local player input, mine/boat/refuel/fire | ✅ Complete — see AGENT_NOTES (scope note: mine-chain/flood propagation and pill-scatter placement deferred, injection points added) |
 | Wave 5.3 | shellTick, builderTick, pillTick | ⬜ Queued |
 | Wave 5.4 | tankcollision, buildercollision, testAlliance, findPill/findBase | ⬜ Queued |
 | Wave 5.5 | explosionTick, forestvis | ⬜ Queued |
