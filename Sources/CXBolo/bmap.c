@@ -6,6 +6,16 @@ int defaulttile_oracle(int x, int y) {
   return defaulttile(x, y);
 }
 
+/* Flat-pointer shims for readrun()/writerun() — same int[][WIDTH]-decay
+   problem as the Wave 2/3 tiles_shim.c shims. */
+int readrun_flat(size_t *y, size_t *x, struct BMAP_Run *run, void *data, int *terrain) {
+  return readrun(y, x, run, data, (int (*)[WIDTH])terrain);
+}
+
+int writerun_flat(struct BMAP_Run run, const void *buf, int *terrain) {
+  return writerun(run, buf, (int (*)[WIDTH])terrain);
+}
+
 /* writerun() in bmap.c references tiletoterrain(), which is defined in
    server.c. server.c cannot be compiled into CXBolo yet (network and
    global-state dependencies), so the symbol is provided here as a

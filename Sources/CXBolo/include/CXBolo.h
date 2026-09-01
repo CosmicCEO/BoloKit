@@ -25,4 +25,8 @@ int mapimage_flat(int *tiles, int x, int y);
 // Exposes the static defaulttile() in bmap.c for differential testing
 int defaulttile_oracle(int x, int y);
 
+// Flat-pointer shims for readrun()/writerun() differential testing
+int readrun_flat(size_t *y, size_t *x, struct BMAP_Run *run, void *data, int *terrain);
+int writerun_flat(struct BMAP_Run run, const void *buf, int *terrain);
+
 #endif /* CXBOLO_H */

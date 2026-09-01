@@ -199,3 +199,228 @@ public struct BMapRun: Hashable, Sendable {
         self.endx = endx
     }
 }
+
+// MARK: - RLE Codec (readRun / writeRun)
+//
+// Ported from readrun()/writerun()/readnibble()/writenibble() in
+// Reference/c/bmap.c. The errchk TRY/LOGFAIL/CLEANUP macro system is not
+// ported — those sites become guard/return false.
+
+/// Converts a display tile back to its canonical terrain value. Inverse of
+/// `terrainToTile`, but lossy for variant-collapsed tiles: swamp/rubble/
+/// grass/damagedWall always decode to their "3" variant specifically —
+/// never 0/1/2. This is a real property of the original format (the
+/// network/file layer never preserved decay sub-variants through a
+/// tile-space round trip), not a bug to fix here.
+///
+/// Ported from `tiletoterrain()` in Reference/c/server.c:4301. The C
+/// original lives in server.c (not bmap.c), but the codec needs it
+/// directly since BoloKit does not depend on CXBolo. Returns -1 for tile
+/// values with no terrain mapping (base/pill tiles, or out-of-range) —
+/// matches the C `default: assert(0); return -1;` path; the assert is a
+/// debug-only trap, not a behavioral contract, same divergence already
+/// accepted for `terrainToTile`.
+private func tileToTerrain(_ tile: Int32) -> Int32 {
+    guard let t = Tile(rawValue: tile) else { return -1 }
+    switch t {
+    case .wall: return Terrain.wall.rawValue
+    case .river: return Terrain.river.rawValue
+    case .swamp: return Terrain.swamp3.rawValue
+    case .crater: return Terrain.crater.rawValue
+    case .road: return Terrain.road.rawValue
+    case .forest: return Terrain.forest.rawValue
+    case .rubble: return Terrain.rubble3.rawValue
+    case .grass: return Terrain.grass3.rawValue
+    case .damagedWall: return Terrain.damagedWall3.rawValue
+    case .boat: return Terrain.boat.rawValue
+    case .minedSwamp: return Terrain.minedSwamp.rawValue
+    case .minedCrater: return Terrain.minedCrater.rawValue
+    case .minedRoad: return Terrain.minedRoad.rawValue
+    case .minedForest: return Terrain.minedForest.rawValue
+    case .minedRubble: return Terrain.minedRubble.rawValue
+    case .minedGrass: return Terrain.minedGrass.rawValue
+    case .sea: return Terrain.sea.rawValue
+    case .minedSea: return Terrain.minedSea.rawValue
+    case .unknown: return Terrain.minedSea.rawValue
+    default: return -1  // base/pill tiles — not terrain-representable
+    }
+}
+
+/// Reads a tile-space nibble at index `i` from a packed byte buffer.
+/// High nibble first: `readNibble(buf, 0)` reads the high 4 bits of
+/// `buf[0]`, `readNibble(buf, 1)` reads the low 4 bits of `buf[0]`, etc.
+private func readNibble(_ buf: [UInt8], _ i: Int) -> Int32 {
+    let byte = buf[i / 2]
+    return (i % 2 != 0) ? Int32(byte & 0x0f) : Int32((byte & 0xf0) >> 4)
+}
+
+/// Writes a nibble into a packed byte buffer at index `i`. Callers must
+/// write each index exactly once into a zero-initialized buffer — this
+/// mirrors the C reference's XOR-based bit packing, which only produces
+/// correct results under that same assumption.
+private func writeNibble(_ buf: inout [UInt8], _ i: Int, _ nibble: Int32) {
+    let n = UInt8(truncatingIfNeeded: nibble) & 0x0f
+    let byteIndex = i / 2
+    if i % 2 != 0 {
+        buf[byteIndex] = (buf[byteIndex] & 0xf0) ^ n
+    } else {
+        buf[byteIndex] = (buf[byteIndex] & 0x0f) ^ (n << 4)
+    }
+}
+
+/// Reads the display-tile value at a flat grid position, allowing
+/// `col == 256` to alias into column 0 of the next row — mirroring C's
+/// contiguous `int terrain[256][256]` array layout, where
+/// `terrain[row][256]` is the same memory as `terrain[row + 1][0]`. Only
+/// `row == 255, col == 256` is genuinely one cell past the whole grid
+/// (true undefined behavior in the C reference, with no reproducible
+/// oracle value); that single case is clamped to "matches its own
+/// default" so callers' equality checks terminate safely instead of
+/// crashing.
+private func terrainToTileFlatAt(_ grid: TerrainGrid, row: Int, col: Int) -> Int32 {
+    let flatIndex = row * 256 + col
+    guard flatIndex < grid.storage.count else {
+        return defaultTile(x: Int32(col), y: Int32(row)).rawValue
+    }
+    return terrainToTile(grid.storage[flatIndex])
+}
+
+/// Encodes the next run of non-default tiles starting at `(x, y)`,
+/// mirroring C `readrun()`. Call repeatedly with the same `y`/`x` pair
+/// (starting at `y = 0, x = 0`) to enumerate every run in the grid, in
+/// row-major order. When the grid is exhausted, returns the terminator
+/// sentinel run with empty data and `isLast == true`.
+///
+/// Note: this is a Bool-flagged, non-optional return rather than the
+/// `Optional` shape originally proposed for this API — an Optional and
+/// "returns the sentinel run" are two different contracts, and the
+/// sentinel-returning behavior is what the C reference actually does.
+public func readRun(
+    grid: TerrainGrid, y: inout Int, x: inout Int
+) -> (run: BMapRun, data: [UInt8], isLast: Bool) {
+    // 512 bytes (1024-nibble capacity) comfortably covers the worst-case
+    // single-row run: at most 256 tiles, at most 2 nibbles emitted per tile.
+    var nibbleBuffer = [UInt8](repeating: 0, count: 512)
+
+    while y < 256 {
+        while x < 256 {
+            if terrainToTileFlatAt(grid, row: y, col: x)
+                != defaultTile(x: Int32(x), y: Int32(y)).rawValue {
+                var nibs = 0
+                let runY = y
+                let startX = x
+
+                repeat {
+                    var len: Int
+                    if x + 1 < 256
+                        && terrainToTileFlatAt(grid, row: y, col: x + 1)
+                            == terrainToTileFlatAt(grid, row: y, col: x) {
+                        // sequence of like tiles
+                        len = 2
+                        while x + len < 256 && len < 9
+                            && terrainToTileFlatAt(grid, row: y, col: x + len)
+                                == terrainToTileFlatAt(grid, row: y, col: x) {
+                            len += 1
+                        }
+                        writeNibble(&nibbleBuffer, nibs, Int32(len + 6)); nibs += 1
+                        writeNibble(&nibbleBuffer, nibs, terrainToTileFlatAt(grid, row: y, col: x)); nibs += 1
+                    } else {
+                        // sequence of different tiles
+                        len = 1
+                        while x + len < 256 && len < 8
+                            && terrainToTileFlatAt(grid, row: y, col: x + len)
+                                != defaultTile(x: Int32(x + len), y: Int32(y)).rawValue
+                            && terrainToTileFlatAt(grid, row: y, col: x + len)
+                                != terrainToTileFlatAt(grid, row: y, col: x + len + 1) {
+                            len += 1
+                        }
+                        writeNibble(&nibbleBuffer, nibs, Int32(len - 1)); nibs += 1
+                        for i in 0..<len {
+                            writeNibble(&nibbleBuffer, nibs, terrainToTileFlatAt(grid, row: y, col: x + i))
+                            nibs += 1
+                        }
+                    }
+                    x += len
+                } while terrainToTileFlatAt(grid, row: y, col: x)
+                    != defaultTile(x: Int32(x), y: Int32(y)).rawValue
+
+                let endX = x
+                // 4 == sizeof(struct BMAP_Run) (all-UInt8 packed fields).
+                // truncatingIfNeeded mirrors C's silent uint8_t wraparound
+                // for pathological rows dense enough to overflow a byte —
+                // the format's own header comment notes real run data is
+                // "always much less than 0xFF", so this is unreachable in
+                // practice but kept faithful rather than crashing.
+                let datalen = 4 + (nibs + 1) / 2
+                let run = BMapRun(
+                    datalen: UInt8(truncatingIfNeeded: datalen),
+                    y: UInt8(truncatingIfNeeded: runY),
+                    startx: UInt8(truncatingIfNeeded: startX),
+                    endx: UInt8(truncatingIfNeeded: endX)
+                )
+                let data = Array(nibbleBuffer[0..<((nibs + 1) / 2)])
+                return (run, data, false)
+            }
+            x += 1
+        }
+        y += 1
+        x = 0
+    }
+
+    return (BMapRun(datalen: 4, y: 0xff, startx: 0xff, endx: 0xff), [], true)
+}
+
+/// Decodes one run's nibble data into `grid`, mirroring C `writerun()`.
+/// Returns false on corrupt data (C's `ECORFILE`, or an invalid tile
+/// nibble) — matches the C -1 sentinel. `grid` may be partially written on
+/// failure, matching the C in-place semantics (writes happen before the
+/// trailing datalen re-check).
+///
+/// Deviation from the C reference: this also guards `x < 256` before every
+/// grid write. C's `terrain[run.y][x++]` would silently overrun into
+/// adjacent row memory for corrupt data that passes the datalen checks but
+/// encodes a run reaching past column 256; Swift arrays cannot do that
+/// safely, so this path fails closed (returns false) instead of crashing.
+/// Well-formed data from `readRun` never reaches this guard.
+@discardableResult
+public func writeRun(_ run: BMapRun, data: [UInt8], into grid: inout TerrainGrid) -> Bool {
+    let datalen = Int(run.datalen)
+    var x = Int(run.startx)
+    var offset = 0
+
+    while x < Int(run.endx) {
+        guard 4 + (offset + 2) / 2 <= datalen, offset / 2 < data.count else { return false }
+        let len = Int(readNibble(data, offset))
+        offset += 1
+
+        if len <= 7 {
+            // sequence of different tiles
+            let count = len + 1
+            guard 4 + (offset + count + 1) / 2 <= datalen else { return false }
+            for _ in 0..<count {
+                guard offset / 2 < data.count else { return false }
+                let terrainValue = tileToTerrain(readNibble(data, offset))
+                offset += 1
+                guard terrainValue != -1, x < 256 else { return false }
+                grid[x, Int(run.y)] = Terrain(rawValue: terrainValue)
+                x += 1
+            }
+        } else {
+            // sequence of like tiles (len is always 8...15 — readNibble
+            // only ever returns 0...15, so no other case is reachable)
+            let count = len - 6
+            guard 4 + (offset + 2) / 2 <= datalen, offset / 2 < data.count else { return false }
+            let terrainValue = tileToTerrain(readNibble(data, offset))
+            offset += 1
+            guard terrainValue != -1 else { return false }
+            for _ in 0..<count {
+                guard x < 256 else { return false }
+                grid[x, Int(run.y)] = Terrain(rawValue: terrainValue)
+                x += 1
+            }
+        }
+    }
+
+    guard 4 + (offset + 1) / 2 == datalen else { return false }
+    return true
+}

@@ -138,3 +138,100 @@ private let expectedTile: [Terrain: Tile] = [
     #expect(sentinel == BMapRun(datalen: 4, y: 0xFF, startx: 0xFF, endx: 0xFF))
     #expect(sentinel != BMapRun(datalen: 4, y: 0xFF, startx: 0xFF, endx: 0xFE))
 }
+
+// MARK: - readRun / writeRun (Wave 4.1)
+//
+// readNibble/writeNibble are file-private to BMap.swift; their packing
+// order is verified indirectly through readRun's byte output below.
+
+@Test func readRunExhaustedOnAllDefaultGridReturnsSentinel() {
+    let grid = TerrainGrid.mapDefault()
+    var y = 0
+    var x = 0
+    let (run, data, isLast) = readRun(grid: grid, y: &y, x: &x)
+    #expect(isLast)
+    #expect(data.isEmpty)
+    #expect(run == BMapRun(datalen: 4, y: 0xff, startx: 0xff, endx: 0xff))
+}
+
+@Test func readRunEncodesLikeTilesRun() {
+    // 4 identical grass3 cells — exercises the "like tiles" branch.
+    var grid = TerrainGrid.mapDefault()
+    for x in 20...23 { grid[x, 5] = .grass3 }
+
+    var y = 0
+    var x = 0
+    let (run, data, isLast) = readRun(grid: grid, y: &y, x: &x)
+    #expect(!isLast)
+    #expect(run.y == 5)
+    #expect(run.startx == 20)
+    #expect(run.endx == 24)
+    #expect(run.datalen == 5)  // 4-byte header + 1 data byte
+    // nibble0 (high) = len+6 = 4+6 = 10 (0xA); nibble1 (low) = .grass tile (7)
+    #expect(data == [UInt8(0xA7)])
+}
+
+@Test func readRunEncodesDifferentTilesRunHighNibbleFirst() {
+    // 2 distinct, non-matching tiles — exercises the "different tiles"
+    // branch and verifies high-nibble-first packing.
+    var grid = TerrainGrid.mapDefault()
+    grid[20, 5] = .wall
+    grid[21, 5] = .road
+
+    var y = 0
+    var x = 0
+    let (run, data, isLast) = readRun(grid: grid, y: &y, x: &x)
+    #expect(!isLast)
+    #expect(run.y == 5)
+    #expect(run.startx == 20)
+    #expect(run.endx == 22)
+    #expect(run.datalen == 6)  // 4-byte header + 2 data bytes
+    // byte0: header nibble (len-1=1) high, .wall tile (0) low -> 0x10
+    // byte1: .road tile (4) high, unused low -> 0x40
+    #expect(data == [UInt8(0x10), UInt8(0x40)])
+}
+
+@Test func readWriteRunRoundTripSingleLikeTilesRun() {
+    var original = TerrainGrid.mapDefault()
+    for x in 100...105 { original[x, 50] = .road }
+
+    var y = 0
+    var x = 0
+    var rebuilt = TerrainGrid.mapDefault()
+    while true {
+        let (run, data, isLast) = readRun(grid: original, y: &y, x: &x)
+        if isLast { break }
+        #expect(writeRun(run, data: data, into: &rebuilt))
+    }
+    #expect(rebuilt.storage == original.storage)
+}
+
+@Test func writeRunRejectsTruncatedDatalen() {
+    // Claims zero data bytes but a non-empty column span
+    let run = BMapRun(datalen: 4, y: 5, startx: 20, endx: 22)
+    var grid = TerrainGrid.mapDefault()
+    #expect(!writeRun(run, data: [], into: &grid))
+}
+
+@Test func writeRunRejectsTrailingDatalenMismatch() {
+    // Valid 2-tile "different tiles" encoding (see
+    // readRunEncodesDifferentTilesRunHighNibbleFirst), but datalen
+    // overstated (should be 6, not 7) — caught by the trailing check.
+    let data: [UInt8] = [0x10, 0x40]
+    let run = BMapRun(datalen: 7, y: 5, startx: 20, endx: 22)
+    var grid = TerrainGrid.mapDefault()
+    #expect(!writeRun(run, data: data, into: &grid))
+}
+
+@Test func writeRunGuardsAgainstOverrunPastColumn256() {
+    // Corrupt "like tiles" run claiming 9 repeats (header nibble 15) from
+    // a 2-column span starting near the grid edge — attempting to write
+    // 9 tiles from column 250 would reach column 259. C's raw-pointer
+    // `terrain[run.y][x++]` would silently overrun into adjacent row
+    // memory in this scenario; Swift must fail closed instead of crashing
+    // (this guard has no C equivalent — see writeRun's doc comment).
+    let data: [UInt8] = [0xF0]  // header nibble 15 (len=9), tile nibble 0 (wall)
+    let run = BMapRun(datalen: 5, y: 0, startx: 250, endx: 252)
+    var grid = TerrainGrid.mapDefault()
+    #expect(!writeRun(run, data: data, into: &grid))
+}
