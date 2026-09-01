@@ -2843,3 +2843,194 @@ PARITY's analysis is correct: `Double(sca * hx)` performs the Float multiply fir
 Finding 3 carry-forward (`import Darwin` unused in `Physics.swift`, `Terrain.swift`) also deferred to cleanup wave.
 
 IMPLEMENTER is planning 5.1–5.7 from the pre-briefs. No additional spec work needed from PLANNER at this time — standing by to monitor completion reports.
+
+
+---
+## [PARITY] Wave 5.1–5.7 Pre-Audit Framework
+**Date:** 2026-09-01
+**Scope:** Independent quality evaluation against D3/D13/D18 goals, cross-referenced with PLANNER checklist and C oracle. Written before implementation — IMPLEMENTER should treat any item marked ⚠ as a known PARITY trap.
+
+---
+### Goals baseline
+- **D3:** Fidelity target = Mac Bolo 0.99.7bv. All parity decisions reference `Reference/c/` directly.
+- **D13:** Full Swift port, MIT license. No C runtime dependencies in BoloKit.
+- **D18:** All physics values `Float` (32-bit). No `Double` in physics files. No `Foundation` import anywhere in BoloKit.
+
+---
+### WAVE 5.1 — GameState model
+
+**Confirmed correct in PLANNER spec:**
+- `Pill.armour == 0xff` = ONBOARD. `isOnboard`/`isArmed`/`isDead` computed properties correct.
+- `Base.counter: UInt16` — max needed value is 600 + 15 = 615 (≤ UInt16.max). ✓
+- `BuilderStatus` / `BuilderTask` raw values must exactly match C enum integer order in `bolo.h`.
+
+**⚠ PARITY TRAP — Shell.owner type:** C declares `shell.owner` as `int`. In C, `NEUTRAL = 0xff = 255u`, but a signed `int` comparison `owner != NEUTRAL` fails if `owner` holds a signed `-1`. Swift `Shell.owner: UInt8` stores 0xff = 255 correctly, but any code that compares `owner` to a signed sentinel must be verified. If `playerNeutral = UInt8(0xff)` is used consistently, this is safe — but if any site does `Int(owner)` and compares to `-1`, it will always be false (255 ≠ -1). Check every `owner` comparison site in shellTick and pillTick.
+
+**⚠ PARITY TRAP — testAlliance:** C's `testalliance(p1, p2)` requires:
+1. `players[p1].used` (p1 is an active slot)
+2. `players[p2].used` (p2 is an active slot)
+3. `players[p1].alliance` has bit p2 set
+4. `players[p2].alliance` has bit p1 set
+
+A one-sided alliance (p1 allied to p2, but p2 not allied to p1) returns false. An unused player slot is never allied with anyone. Both conditions on `.used` are required — PARITY will verify this is not simplified to just the alliance bits.
+
+**⚠ PARITY TRAP — tankcollision vs buildercollision base threshold:** These differ by exactly one:
+- `tankcollision`: `armour >= MINBASEARMOUR (5)` — inclusive (≥)
+- `buildercollision`: `armour > MINBASEARMOUR (5)` — exclusive (>)
+
+This asymmetry is real C behavior, not a typo. PARITY will verify both closure/function forms use the correct operator and that no "cleanup" unifies them.
+
+**⚠ PARITY TRAP — GrowState:** `GrowState.growx` and `GrowState.growy` in C are flat indices into `terrain` (`int growx, growy` in `struct server` — actually they're the winning coordinates, not flat indices based on reading). PARITY will verify GrowState coordinate representation matches how `growtrees` uses them.
+
+---
+### WAVE 5.2a — tankMoveTick (physics)
+
+**⚠ CRITICAL PARITY TRAP — local player position coupling:** `maxSpeed` and `maxTurnSpeed` use `localPlayer`'s tank position for ALL players' terrain lookups — including remote players being ticked. This is C's behavior from `tankmovelogic` and is NOT a bug. If IMPLEMENTER "fixes" this to use each player's own position, PARITY will FAIL this item.
+
+**⚠ PARITY TRAP — turnspeed instant reset:** When neither or both turn keys are pressed, `turnspeed = 0.0` instantly — NOT gradual. PARITY will check for any deceleration code in the no-input path.
+
+**⚠ PARITY TRAP — dir wrap arithmetic:** C uses:
+```c
+if (dir > 2*kPif) dir -= 2*kPif * floorf(dir / (2*kPif));
+else if (dir < 0)  dir += 2*kPif * floorf(dir / (-2*kPif) + 1.0);
+```
+This is NOT `fmod`. The specific `floorf` formula must be replicated exactly. PARITY will verify the exact expression, including the `+ 1.0` in the negative branch.
+
+**⚠ PARITY TRAP — D18 in TankTick.swift:** Search for `Double` in the file. Zero hits expected. `floor` must dispatch to `Foundation.floorf` or the `Darwin.floorf` float overload — not the `Foundation.floor` double overload. Verify the float overload is called by checking the argument type.
+
+**Shore push — 8-case vector:** PARITY will verify all 8 cardinal + diagonal neighbors are checked, that the push vector accumulates (not just takes first), and that the magnitude threshold `> 0.00001` is used exactly.
+
+---
+### WAVE 5.2b — tankLocalTick / enter()
+
+**⚠ PARITY TRAP — enter() MinedSea:** MinedSea triggers BOTH grab (tile pickup for detonation credit) AND `drown()`. Both must fire unconditionally, regardless of boat status. C source: `sendclgrabtile` + `drown()` both called for kMinedSeaTerrain.
+
+**⚠ PARITY TRAP — boat drop location:** Boat is dropped at OLD square, not new. C writes `terrain[old.y][old.x] = kBoatTerrain`. PARITY will verify old coordinates are used.
+
+**⚠ PARITY TRAP — shellcounter:** `shellcounter` increments every tick regardless of whether a shell is fired. It resets to 0 only when a shell is fired. Fire condition is `shellcounter > 12` (strictly greater than, not ≥). PARITY will verify the increment runs unconditionally, outside the fire-condition branch.
+
+**⚠ PARITY TRAP — refuel priority:** Armour, shells, mines are NOT refueled concurrently per tick — C checks each in sequence with its own counter threshold. Each transfer resets `refuelingcounter` to 0, so only one resource refuels per 46/7/7 ticks. PARITY will check for concurrent transfer logic.
+
+---
+### WAVE 5.3 — shellTick
+
+**⚠ PARITY TRAP — shell advance precision:** `shellVelocity / ticksPerSec = 7.0 / 50.0`. In C, `SHELLVEL/TICKSPERSEC` where both are float macros — this is float division, result ≈ 0.14. Swift must use `shellVelocity / ticksPerSec` (both `Float`) — not a Double intermediate. Confirm D18 holds here.
+
+**⚠ PARITY TRAP — explosion particle counter:** `counter` starts at 0, increments each tick, removed when `counter > EXPLOSIONTICKS (24)` — that's 25 frames of display (0 through 24 inclusive). Using `>= 24` would remove one frame early. PARITY will verify the strictly-greater comparison.
+
+**⚠ PARITY TRAP — self-hit:** In C, `shellcollisiontest` for tank hits checks `i != client.player` — a player's own shells cannot kill themselves. Swift equivalent must exclude the shell owner from tank-hit testing. PARITY will check for the owner exclusion.
+
+**⚠ PARITY TRAP — pill shell tank-hit exclusion:** Pill shells (`shell.pill == true`) use `NEUTRAL` as owner. The tank-hit check must handle this correctly — a pill shell owned by `NEUTRAL` should be able to hit any player including the local player? Check C's `shellcollisiontest` for `shell.pill` handling.
+
+---
+### WAVE 5.4 — builderTick
+
+**⚠ PARITY TRAP — builderRadius in collisionDetect:** Builder uses `builderRadius = 0.125`, not `tankRadius = 0.375`. Passing the wrong radius is a silent bug (no compile error).
+
+**⚠ PARITY TRAP — buildercollision base threshold:** Uses `armour > 5` (exclusive). Distinct from tankcollision's `armour >= 5`. Must not be unified.
+
+**⚠ COMPLEXITY FLAG:** PLANNER notes builderlogic is the most complex sub-wave. PARITY will read `client.c:4531–5033` directly when auditing this wave. State machine transitions (`kBuilderReady → kBuilderGoto → kBuilderWork/Wait/Return`) must all be present.
+
+---
+### WAVE 5.5 — pillTick, explosionTick
+
+**⚠ PARITY TRAP — literal `0.70711219`:** The shell offset from pill center uses this exact float literal, not `Float(sqrt(2.0)/2.0)`. These differ slightly (sqrt(2)/2 ≈ 0.70710678). PARITY will grep for `0.70711219` in the source and fail if a computed equivalent is used instead.
+
+**⚠ PARITY TRAP — pill shell range `8.5 - 0.70711219`:** Not `maxShellRange (7.0)`. A pill fires slightly farther than a tank can shoot directly. PARITY will verify this literal.
+
+**⚠ PARITY TRAP — forestvis check:** `forestvis(tank) > 0.25` — the C function computes fractional forest visibility. The Swift equivalent must match its interpolation logic. PARITY will verify this function is ported, not approximated.
+
+---
+### WAVE 5.6 — spawn()
+
+**⚠ PARITY TRAP — arc4random_uniform modulo bias:** C uses `random() % range` which has modulo bias for large ranges. `arc4random_uniform(range)` is unbiased. This is a KNOWN INTENTIONAL DIVERGENCE (Apple platform determinism + quality improvement). Must be documented with a comment at the call site. PARITY will verify the comment exists and the right RNG is used.
+
+**⚠ PARITY TRAP — post-spawn boat:** `boat = 1` always after spawn. The tank spawns on water (boat terrain) or land, but always has boat status = 1. PARITY will verify this.
+
+**⚠ PARITY TRAP — Pass 2 fallback:** When all starts have weight 0 (all hostile-pill-spiked), C reruns with base weights only (ignoring pill proximity). PARITY will verify the two-pass structure exists and that Pass 2 drops pill penalties specifically.
+
+**⚠ PARITY TRAP — dir conversion:** `start.dir` is stored 0–15 (C `uint8_t`). Post-spawn `dir = start.dir * (π/8)`. Must use `Float.pi` (D18), not `kPif` (either is bit-identical for this purpose but consistency matters). PARITY will verify `Float`.
+
+---
+### WAVE 5.7 — growtrees, pill cooldown, base replenish
+
+**⚠ CRITICAL — growtrees C BUG must be replicated:** The outer pill/base guard in C checks `(x, y)` — the last randomly-sampled cell — not `(growx, growy)` — the tournament winner. Inner guard correctly checks `(growx, growy)`. BOTH checks must be present in exactly this form. PARITY will verify:
+1. Outer: `findPill(x:y:)` and base lookup use `x, y`
+2. Inner: the actual grow action uses `growx, growy`
+3. A DifferentialTest exercises this case (pill/base at last-sampled position only, winner clear)
+
+**⚠ CRITICAL — integer division:** `treesBestOf / (treesPlantRate * Int(ticksPerSec))` = `4200 / 500 = 8`. Must be integer division. If `ticksPerSec` is used as `Float` here, the result becomes `8.4` which truncates to 8 — same answer, but the path is wrong. PARITY will verify `Int` arithmetic throughout growtrees.
+
+**⚠ PARITY TRAP — pill cooldown is `speed++`, NOT `armour++`:** Pill armour is never auto-restored. Only `pill.speed` (reload interval) degrades. A confusion here produces a pill that silently restores health over time, which has zero behavioral foundation in C. PARITY will verify the field name at the increment site.
+
+**⚠ PARITY TRAP — base replenish counter:** `base.counter += nplayers` per tick. If IMPLEMENTER uses `+= 1`, the replenish rate is wrong by a factor of `nplayers`. This is a subtle scaling bug. PARITY will verify the counter increment.
+
+**⚠ PARITY TRAP — applyGrow mined variants:** Mined terrain (minedGrass, minedRubble, etc.) must grow to `.minedForest`, not `.forest`. Plain terrain variants grow to `.forest`. Sea, wall, existing forest, and all others: no-op. PARITY will verify the full switch table including mined cases.
+
+---
+### Cross-cutting checks (all of Wave 5)
+
+**D18 sweep:** `grep -n "Double\|CGFloat\|M_PI\|Double\.pi" Sources/BoloKit/` — zero hits expected in any new physics file. A single `Double` in arithmetic invalidates D18 compliance for that file.
+
+**Foundation import:** `grep -rn "import Foundation" Sources/BoloKit/` — zero hits expected. `arc4random_uniform` and `sqrtf`/`floorf` are available from Darwin without Foundation.
+
+**Finding 3 resolution expected:** `import Darwin` unused in `Physics.swift` and `Terrain.swift`. With Wave 5 adding Darwin-dependent code in `PhysicsOps.swift` and `TankTick.swift`, the pattern is established. Clean up the two stale imports. PARITY will re-check at final audit.
+
+**Test coverage floor:** Per PLANNER's established pattern:
+- Each differential-testable function needs ≥1000 random fuzz inputs
+- Each behavioral branch in enter() needs its own unit test case
+- growtrees C BUG needs a dedicated differential test
+- The pill-armour-vs-speed confusion needs a regression test
+
+---
+### Known intentional divergences (document, do not flag)
+| Divergence | Location | Justification |
+|---|---|---|
+| `arc4random_uniform` vs `random()%range` | spawn() | Apple platform determinism, no modulo bias |
+| collisionDetect `p.x`/`p.y` swap | PhysicsOps.swift | Replicates C bug for behavioral parity |
+| growtrees outer guard on `(x,y)` not `(growx,growy)` | GrowTrees.swift | Replicates C bug for behavioral parity |
+| `Double(sca * hx)` vs `Double(sca)*Double(hx)` | PhysicsOps.swift | F4 (LOW) — 1-ULP; covered by 1e-4 tolerance |
+| `writeRun` x<256 guard | BMap.swift | Safe deviation; prevents C memory corruption |
+| row-spillover y=255 col=256 clamp | BMap.swift | True UB in C; no oracle value to match |
+
+[TO: PLANNER] Wave 5.1–5.7 pre-audit framework written. All ⚠ traps are PARITY's independent findings beyond the checklist — flag for IMPLEMENTER before they start each sub-wave. PARITY will execute the full audit checklist item-by-item when IMPLEMENTER reports Wave 5.7 complete, reading C source directly for each claim rather than relying solely on IMPLEMENTER's summary.
+
+---
+## [PLANNER] PARITY Pre-Audit Framework — Acknowledged
+**Date:** 2026-09-01
+
+PARITY's Wave 5.1–5.7 trap framework received and reviewed. The intentional-divergence table is the canonical record; IMPLEMENTER must document each at the call site with a `// C: <exact C form>` comment.
+
+The following traps require IMPLEMENTER attention **before** coding begins on each sub-wave — forwarding now.
+
+---
+## [TO: IMPLEMENTER] Critical Pre-Implementation Warnings for Waves 5.3–5.7
+**Date:** 2026-09-01
+
+PARITY has independently reviewed the C source and flagged several traps beyond the pre-briefs. Read this before starting each sub-wave.
+
+**Wave 5.3 — shelllogic / builderlogic / pilllogic:**
+- The pill offset literal is **`0.70711219`** (exact C float literal) — NOT `Float(sqrt(2.0)/2.0)` (which produces `0.70710678`). These differ. Copy the literal exactly.
+- Pill shell range is **`8.5 - 0.70711219`**, NOT `maxShellRange (7.0)`. Pills fire farther than tanks.
+- `forestvis(tank) > 0.25` — this function must be ported in full, not approximated. If it's not already in BoloKit, port it from C.
+
+**Wave 5.5 — tanklocallogic / enter():**
+- All per-field logic is in the pre-brief above. No additional traps beyond what's already documented.
+
+**Wave 5.6 — spawn():**
+- Use `arc4random_uniform(range)` (not `random() % range`). Document at the call site: `// C uses random()%range — intentional divergence: unbiased, Apple-native RNG`.
+- `boat = 1` **always** after spawn — regardless of spawn terrain.
+- Two-pass structure is required: Pass 1 weights include pill proximity penalties; Pass 2 (all-zero fallback) drops pill penalties only, keeps base/hostile weights.
+- `start.dir` (0–15) → post-spawn `dir = Float(start.dir) * (Float.pi / 8)` — use `Float.pi` (D18).
+
+**Wave 5.7 — growtrees / pill cooldown / base replenish:**
+- **CRITICAL BUG REPLICATION:** Outer guard in growtrees checks `(x, y)` (last random sample), NOT `(growx, growy)` (tournament winner). Inner guard uses `(growx, growy)`. Both forms required exactly as in C.
+- Pill cooldown increments **`pill.speed`**, never `pill.armour`. Armour is builder-only.
+- Base counter: **`base.counter += nplayers`** — scales with player count.
+- Mined terrain grows to **`.minedForest`**, not `.forest`. Cover every mined variant in the switch.
+- `treesBestOf / (treesPlantRate * Int(ticksPerSec))` must use **integer arithmetic** throughout.
+
+**Cross-cutting (all sub-waves):**
+- Zero `Double`, `CGFloat`, `M_PI`, or `Double.pi` in any physics/game-logic file. Use `Float` or `Float.pi` exclusively (D18).
+- Zero `import Foundation` in any BoloKit source.
+- While in `Physics.swift` / `Terrain.swift`: remove the stale `import Darwin` (Finding 3).
