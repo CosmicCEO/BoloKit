@@ -44,3 +44,106 @@ public let builderMaxSpeed: Float = roadMaxSpeed
 
 /// Parachute descent speed. Equal to rubbleMaxSpeed.
 public let parachuteSpeed: Float = rubbleMaxSpeed
+
+// MARK: - Game Object Constants
+//
+// Ported verbatim from Reference/c/bolo.h (Wave 5.0).
+
+/// LGM (builder) collision radius, in squares.
+public let builderRadius: Float = 0.125
+
+/// Tank collision radius, in squares.
+public let tankRadius: Float = 0.375
+
+/// Shell travel speed, squares per second.
+public let shellVelocity: Float = 7.0
+
+/// Maximum shell range, in squares.
+public let maxShellRange: Float = 7.0
+
+/// Tank max turn rate on a boat (radians per second).
+public let maxAngularVelocity: Float = 2.5
+
+/// Shore push force applied to a boat near land (squares per second, per tick).
+public let pushForce: Float = 1.5625
+
+/// Explosion "kick" force imparted to a destroyed tank/builder.
+public let kickForce: Float = 3.125
+
+/// Per-tick decay of kickspeed after an explosion (squares per second²).
+public let kickSpeedDecay: Float = 12.0
+
+/// Ticks an explosion particle animates for.
+public let explosionTicks: Int = 24
+
+/// Ticks after death before detonation (superboom/smallboom).
+public let explodeTicks: Int = 45
+
+/// Ticks after death before a respawn attempt begins.
+public let respawnTicks: Int = 150
+
+/// Maximum shells a tank can carry.
+public let maxShells: Int = 40
+
+/// Maximum mines a tank can carry.
+public let maxMines: Int = 40
+
+/// Maximum armour a tank can carry.
+public let maxArmour: Int = 40
+
+/// Maximum trees a builder can carry.
+public let maxTrees: Int = 40
+
+/// Trees required to build a road tile.
+public let roadTrees: Int = 2
+
+/// Trees required to build a wall tile.
+public let wallTrees: Int = 2
+
+/// Trees required to build a boat crossing.
+public let boatTrees: Int = 20
+
+/// Trees required to build a pillbox.
+public let pillTrees: Int = 4
+
+/// Maximum connected players.
+public let maxPlayers: Int = 16
+
+/// Maximum player start positions on a map.
+public let maxStarts: Int = 16
+
+/// Pill `armour` sentinel meaning "carried by a builder" (not a real armour value).
+public let pillOnboard: UInt8 = 0xff
+
+/// Owner sentinel meaning "no player" / neutral.
+public let playerNeutral: UInt8 = 0xff
+
+/// Sentinel meaning "no pill" for lookups that return an index.
+public let noPill: UInt8 = 0xff
+
+/// Minimum armour a base can be built with.
+public let minBaseArmour: Int = 5
+
+/// Ticks between pillbox reload-speed cooldown steps.
+public let coolPillTicks: Int = 32
+
+/// Counter-points between base resource replenish steps (counter increments by player count per tick).
+public let replenishBaseTicks: Int = 600
+
+/// Used in the tree-growth best-of iteration count.
+public let treesPlantRate: Int = 10
+
+/// Tree-growth best-of window; should stay a multiple of treesPlantRate * ticksPerSec.
+public let treesBestOf: Int = 4200
+
+/// Pillbox reload-speed cap in ticks (higher = slower fire rate).
+public let maxTicksPerShot: Int = 100
+
+/// Maximum base armour.
+public let maxBaseArmour: Int = 90
+
+/// Maximum base shells.
+public let maxBaseShells: Int = 90
+
+/// Maximum base mines.
+public let maxBaseMines: Int = 90

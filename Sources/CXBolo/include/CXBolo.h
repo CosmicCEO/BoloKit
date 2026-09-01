@@ -29,4 +29,8 @@ int defaulttile_oracle(int x, int y);
 int readrun_flat(size_t *y, size_t *x, struct BMAP_Run *run, void *data, int *terrain);
 int writerun_flat(struct BMAP_Run run, const void *buf, int *terrain);
 
+// Permanent verbatim extracts from client.c for oracle testing (Wave 5.0)
+float rounddir_oracle(float dir);
+Vec2f collisiondetect_oracle(Vec2f p, float radius, int (*func)(Pointi square));
+
 #endif /* CXBOLO_H */

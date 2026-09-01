@@ -90,9 +90,15 @@ public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool
     let fx = Float(ix)
     let fy = Float(iy)
     let lx = p.x - fx
-    let hx: Float = 1.0 - lx
+    // C: `hx = 1.0 - lx;` — 1.0 is a double literal, so this promotes lx to
+    // double, subtracts, and truncates to float only at assignment. Swift
+    // infers a bare `1.0` as Float when the target type is Float, which
+    // would skip that intermediate double rounding and diverge from the C
+    // oracle on some inputs — every "1.0 - x" / "x + 0.5" site below is
+    // written with explicit Double(...) promotion to match C exactly.
+    let hx: Float = Float(1.0 - Double(lx))
     let ly = p.y - fy
-    let hy: Float = 1.0 - ly
+    let hy: Float = Float(1.0 - Double(ly))
     let r2 = radius * radius
 
     let lxc = lx < radius && isSolid(makepoint(ix - 1, iy))
@@ -102,23 +108,23 @@ public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool
 
     if lxc {
         if hxc {
-            p.x = fx + 0.5
+            p.x = Float(Double(fx) + 0.5)
         } else {
             p.x = fx + radius
         }
     } else if hxc {
-        p.x = fx + (1.0 - radius)
+        p.x = Float(Double(fx) + (1.0 - Double(radius)))
     }
 
     if lyc {
         if hyc {
             // BUG: replicates C source p.x/p.y swap for behavioral parity — do not fix.
-            p.x = fy + 0.5
+            p.x = Float(Double(fy) + 0.5)
         } else {
             p.y = fy + radius
         }
     } else if hyc {
-        p.y = fy + (1.0 - radius)
+        p.y = Float(Double(fy) + (1.0 - Double(radius)))
     }
 
     if !lxc && !lyc {
@@ -134,7 +140,7 @@ public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool
         let sqr = hx * hx + ly * ly
         if sqr < r2 && isSolid(makepoint(ix + 1, iy - 1)) {
             let sca = radius / sqrtf(sqr)
-            p.x = fx + (1.0 - sca * hx)
+            p.x = Float(Double(fx) + (1.0 - Double(sca * hx)))
             p.y = fy + sca * ly
         }
     }
@@ -144,7 +150,7 @@ public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool
         if sqr < r2 && isSolid(makepoint(ix - 1, iy + 1)) {
             let sca = radius / sqrtf(sqr)
             p.x = fx + sca * lx
-            p.y = fy + (1.0 - sca * hy)
+            p.y = Float(Double(fy) + (1.0 - Double(sca * hy)))
         }
     }
 
@@ -152,8 +158,8 @@ public func collisionDetect(_ p: Vec2f, radius: Float, isSolid: (Pointi) -> Bool
         let sqr = hx * hx + hy * hy
         if sqr < r2 && isSolid(makepoint(ix + 1, iy + 1)) {
             let sca = radius / sqrtf(sqr)
-            p.x = fx + (1.0 - sca * hx)
-            p.y = fy + (1.0 - sca * hy)
+            p.x = Float(Double(fx) + (1.0 - Double(sca * hx)))
+            p.y = Float(Double(fy) + (1.0 - Double(sca * hy)))
         }
     }
 
