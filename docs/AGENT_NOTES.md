@@ -1,13 +1,12 @@
 # Agent Notes — Shared Running Log
 
-> **Purpose:** Durable scratchpad shared between Gemini (implementer) and Claude (reviewer).  
-> High-level decisions belong in `PLAN.md`. This file is for implementation-level continuity:  
-> what was tried, what broke, what was resolved, and flags between agents.
+> **Purpose:** Durable scratchpad shared between Claude Xcode API (implementer) and Claude.ai (reviewer, and planner).  
+> High-level decisions belong in `PLAN.md`.
+> This file is for implementation-level continuity: what was tried, what broke, what was resolved, and flags between agents.
 >
 > **Convention:** Always append — never edit or rewrite earlier entries. Pull before reading.
 
----
-
+--
 ## Format
 
 Each entry uses this block:
@@ -20,8 +19,10 @@ Each entry uses this block:
 
 Body — a few lines. Be concrete. No filler.
 
-> **→ Gemini:** action item or handoff note (omit if not applicable)
-> **→ Claude:** item for review or question (omit if not applicable)
+> **→ Parity:** action item or handoff note (omit if not applicable)
+> **→ Planner:** item for review or question (omit if not applicable)
+> **→ Implementer:** instructions for the xcode agent, coding environment (omit if not applicable)
+
 ```
 
 Types:

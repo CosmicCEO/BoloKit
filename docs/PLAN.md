@@ -135,8 +135,8 @@ bit-fidelity with the C reference math).
 
 To maintain maximum velocity, prevent file conflicts, and enforce high architectural standards, we use a structured multi-agent collaboration model:
 
-1. **Gemini (Primary Implementer):** Runs the main project loop. Responsible for all file modifications (writing Swift code, updating configurations), running builds, executing tests, and managing local repository state.
-2. **Claude (Architectural Reviewer & Advisor):** Operates in a read-only context. Serves as a peer programmer to review Gemini's commits/changes, verify conformance to Apple's design patterns, challenge architectural decisions, and answer complex questions regarding the original C reference codebase (specifically the POSIX networking/concurrency structures).
+1. **Claude Xcode/CLI Agent (Primary Implementer):** Runs the main project loop. Responsible for all file modifications (writing Swift code, updating configurations), running builds, executing tests, and managing local repository state.
+2. **Claude.ai (two instances; Parity and Planner):** Operates in a read-only context. Serves as a peer programmer to review Gemini's commits/changes, verify conformance to Apple's design patterns, challenge architectural decisions, and answer complex questions regarding the original C reference codebase (specifically the POSIX networking/concurrency structures).
 
 ---
 
@@ -251,7 +251,7 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 
 ---
 
-## Wave implementation status (updated 2026-08-31 by PLANNER)
+## Wave implementation status (updated 2026-09-01 by PLANNER)
 
 | Wave | Content | Status |
 |---|---|---|
@@ -260,16 +260,17 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 3 | Image constants, mapimage autotiling | ✅ Complete — db747b2 |
 | Wave 3.1 | Physics constants, TerrainGrid, terrain speed functions | ✅ Complete — 24d7ae0 (PARITY Findings 1+2 resolved: 6580e2a, 20e156d) |
 | Wave 4 | terrainToTile, defaultTerrain/Tile, BMAP format structs | ✅ Complete — 8044fb0 (35 tests green) |
-| Wave 4.1 | BMAP RLE codec — readRun/writeRun, nibble helpers | 🔄 In progress — IMPLEMENTER assigned |
-| Wave 5.0 | Physics constants additions, roundDir, maxSpeed/maxTurnSpeed w/ pill/base overrides | ⬜ Not started — pre-read complete |
-| Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | ⬜ Not started |
-| Wave 5.2 | tankMoveTick — turning, accel, shore push, collision, kickspeed | ⬜ Not started |
-| Wave 5.3 | shellTick | ⬜ Not started |
-| Wave 5.4 | builderTick | ⬜ Not started |
-| Wave 5.5 | pillTick, explosionTick | ⬜ Not started |
-| Wave 5.6 | spawn() — two-pass weighted selection, Spawn.swift; killtank, drown | ⬜ Not started |
-| Wave 5.7 | growtrees, recvsrgrow, base/pill regen | ⬜ Not started |
-| Wave 5 | Tank simulation, LGM, shells, pills, bases | ⬜ Not started — see behavioral benchmarks below |
+| Wave 4.1 | BMAP RLE codec — readRun/writeRun, nibble helpers | ✅ Complete — 7298d2c |
+| Wave 5.0 | Physics constants additions, roundDir, maxSpeed/maxTurnSpeed w/ pill/base overrides | ✅ Complete — e2636fb (PARITY PASS, F4 deferred) |
+| Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | 🔄 IMPLEMENTER executing (plan approved) |
+| Wave 5.2a | tankMoveTick — tank physics tick | ⬜ Queued |
+| Wave 5.2b | tanklocallogic/enter() — local player input, mine/boat/refuel/fire | ⬜ Queued |
+| Wave 5.3 | shellTick, builderTick, pillTick | ⬜ Queued |
+| Wave 5.4 | tankcollision, buildercollision, testAlliance, findPill/findBase | ⬜ Queued |
+| Wave 5.5 | explosionTick, forestvis | ⬜ Queued |
+| Wave 5.6 | spawn() — two-pass weighted selection; killtank, drown | ⬜ Queued |
+| Wave 5.7 | growtrees (C bug replicated), pill cooldown, base replenish | ⬜ Queued |
+
 | Wave 6 | Networking + Cocoa UI | ⬜ Not started |
 
 
@@ -289,7 +290,7 @@ Critical behaviors where XBolo must match original Bolo 0.99.7 — NOT WinBolo:
 
 - **IMPLEMENTER** (Xcode Claude agent) — writes Swift, owns DifferentialTests, commits
 - **PLANNER** (Claude.app Cowork) — owns this file + AGENT_NOTES.md, issues wave assignments
-- **PARITY AUDITOR** (Claude.app, adversarial) — independent behavioral parity review
+- **PARITY AUDITOR** (Claude.app, adversarial) — independent behavioral parity review, updates this file         
 
 Communication: all handoffs via AGENT_NOTES.md with explicit [TO: X] tags.
 

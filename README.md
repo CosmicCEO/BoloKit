@@ -31,8 +31,8 @@ Phase 1 (Differential Test Harness) and Waves 1 & 2 (Leaf utilities + Terrain an
 This project is a collaborative AI-human pair-programming endeavor:
 
 - **Jerod Price ([CosmicCEO](https://github.com/CosmicCEO)):** Lead Architect, Maintainer, and Project Director.
-- **Claude (he/him):** Architectural Reviewer, Advisor, and Quality Assurance partner.
-- **Gemini CLI:** Autonomous Implementation Partner, Swift Specialist, and Code Generator.
+- **Claude CLI:** Architectural Reviewer, Advisor, and Quality Assurance partner.
+- **Gemini CLI:** (deprecated due to reliability) Autonomous Implementation Partner, Swift Specialist, and Code Generator.
 
 ## Licensing
 
