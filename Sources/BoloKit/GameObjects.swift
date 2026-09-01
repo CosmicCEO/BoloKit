@@ -245,6 +245,10 @@ public struct LocalPlayerState: Sendable {
     public var refuelingBase: Int
     public var refuelingCounter: Int
     public var shellCounter: Int
+    /// Death count for the local player. C: `client.deaths` — write-only in
+    /// the ported subsystems (scoreboard display is a UI concern), kept here
+    /// for state fidelity.
+    public var deaths: Int
 
     public init(
         armour: Int = 0,
@@ -262,7 +266,8 @@ public struct LocalPlayerState: Sendable {
         refueling: Bool = false,
         refuelingBase: Int = -1,
         refuelingCounter: Int = 0,
-        shellCounter: Int = 0
+        shellCounter: Int = 0,
+        deaths: Int = 0
     ) {
         self.armour = armour
         self.shells = shells
@@ -280,6 +285,7 @@ public struct LocalPlayerState: Sendable {
         self.refuelingBase = refuelingBase
         self.refuelingCounter = refuelingCounter
         self.shellCounter = shellCounter
+        self.deaths = deaths
     }
 }
 

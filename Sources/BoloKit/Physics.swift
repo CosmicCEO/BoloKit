@@ -147,3 +147,34 @@ public let maxBaseShells: Int = 90
 
 /// Maximum base mines.
 public let maxBaseMines: Int = 90
+
+// MARK: - Wave 5.2b constants (tanklocallogic / enter)
+
+/// Ticks of standing on river terrain (below boat speed, off any pill/base)
+/// before a resource is drained.
+public let drainTicks: Int = 15
+
+/// Ticks per point of armour transferred while refuelling at a base.
+public let refuelArmourTicks: Int = 46
+
+/// Ticks per transfer of shells while refuelling at a base.
+public let refuelShellsTicks: Int = 7
+
+/// Ticks per transfer of mines while refuelling at a base.
+public let refuelMinesTicks: Int = 7
+
+/// Minimum base shells required before a tank may draw from it.
+public let minBaseShells: Int = 1
+
+/// Minimum base mines required before a tank may draw from it.
+public let minBaseMines: Int = 1
+
+/// Minimum settable shell range.
+public let minRange: Float = 1.0
+
+/// Radius (squares) within which a point-based explosion kills a builder.
+public let explosionRadius: Float = 0.5
+
+/// Ticks a tank must wait between shots. C: `TICKSPERSEC/SHELLRATE`, integer
+/// division on the int macros (50/4 = 12), not the Float `ticksPerSec`.
+public let shellFireThresholdTicks: Int = 12
