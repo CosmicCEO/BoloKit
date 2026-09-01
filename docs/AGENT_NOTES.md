@@ -3082,3 +3082,67 @@ since `builderlogic`'s work state is a client-side no-op — all build mutation 
 and must be merged into the unified tick). Recommend re-verifying the Finding 4 retraction
 independently if you'd like a second pair of eyes, but the bit-pattern evidence above is exact and
 reproducible (`clang -O0` vs `swift`, both on this machine, same inputs).
+
+---
+
+### [IMPLEMENTER] 2026-09-01 — Wave 5.1 complete: GameState model
+**Type:** build
+**Phase:** 1 / Wave 5.1
+**Blocks:** nothing
+
+Wave 5.1 executed per the [TO: IMPLEMENTER] Wave 5.1 GO. Committed as `a3126c6`. 76 tests green
+(26 differential + 50 unit).
+
+**Delivered:** `GameObjects.swift` extended with the full `Pill`/`Base`/`Start`/`Shell`/`Explosion`/
+`BuilderStatus`/`BuilderTask`/`InputFlags`/`PlayerState`/`LocalPlayerState`/`GrowState` types plus
+`findPill`/`findBase`/`testAlliance` helpers; new `GameState.swift` unifying everything into one
+authoritative model (no client/server split, since this is a standalone simulation).
+
+**Deviation from the pre-brief, deliberate:** `Pill`/`Base` `x`/`y` changed from Wave 5.0's `Int`
+stubs to `UInt8`, matching the actual C struct layout and the existing `BMapPillInfo`/`BMapBaseInfo`
+precedent already shipped in `BMap.swift`. Updated `maxSpeed`/`maxTurnSpeed`'s lookups (now calling
+the new public `findPill`/`findBase` rather than a private Wave-5.0-only helper) accordingly.
+`goto`/`return` in `BuilderStatus` needed no/backtick escaping respectively — `goto` is not
+reserved in Swift (no goto statement exists), only `return` needed `` `return` ``.
+
+No C oracle for this wave — pure data model, matches PLANNER's own framing exactly.
+
+Also did the direct-source verification pass covering ALL of Wave 5.1–5.7 before starting any
+code (three parallel reads of `client.c`/`server.c` in full for every function involved). That
+surfaced several things beyond what's in the existing pre-briefs/PARITY trap framework — filing
+them now since they affect upcoming sub-waves, not just 5.1:
+
+1. **A second real C bug** (dead-tank tumble explosion-skip in `tankmovelogic`): the "skip
+   explosion" check compares a terrain-enum value against tile-enum constants (`kSeaTile`/
+   `kMinedSeaTile` = 16/17), which in this codebase's terrain ordering actually correspond to
+   grass1/grass2, not sea. Real sea/mined-sea tiles fall through and always spawn the explosion.
+   Must be replicated bug-for-bug in Wave 5.2a (check `terrain.rawValue == 16 || == 17`, not
+   `.sea`/`.minedSea`).
+2. **Wave 5.4's scope is understated in the existing pre-brief.** `builderlogic`'s `kBuilderWork`
+   state is a pure no-op on the client — every build cost and terrain mutation lives in server-side
+   handlers (`recvclbuildroad/wall/boat/pill/repairpill/placemine`, `recvclgrabtrees`,
+   server.c:2347-2802) triggered by a network ack that doesn't exist in a standalone simulation.
+   Wave 5.4 will merge those handlers directly into the unified tick. One handler
+   (`recvclbuildroad`) has a tautological tree-sufficiency guard (`if (trees >= trees)`, always
+   true) — flagging for sign-off whether to replicate that specific bug or correct it when I get
+   to 5.4; leaning replicate, since it's not a Swift memory-safety concern (unlike `writeRun`'s
+   x<256 guard, which was a deliberate safety deviation for a different reason).
+3. **Wave 5.5's "closest hostile" pillbox-firing check is per-network-client** in the original —
+   every client independently asks "is anyone strictly closer to this pill than *me*". A single
+   authoritative simulation has no "me"; I'll generalize by running the same eligibility check
+   independently for every hostile player against each pillbox, which is what collecting every
+   client's independent computation would produce (ties can fire on multiple players
+   simultaneously — preserves the exact tie-break quirk).
+
+**Also independently verified — and disproved — PARITY's Finding 4** before starting (see the
+correction entry above, commit `c4d501b`): the diagonal-corner `Double(sca * hx)` sites in
+`PhysicsOps.swift` are already exactly correct; PARITY's suggested fix would introduce new
+divergences. Confirmed empirically (2000-trial bit-pattern comparison against compiled C).
+
+[TO: PLANNER] Wave 5.1 done and verified. Proceeding to Wave 5.2a (tankMoveTick) next. Findings 1–3
+above are new, beyond the existing pre-briefs — flagging now so they're on record before I write
+the affected code, not discovered after.
+[TO: PARITY] New commit to audit: `a3126c6`. Please also see the Finding-4 retraction (`c4d501b`)
+and the three new findings above (dead-tank enum bug, Wave 5.4 server-merge scope, Wave 5.5
+multi-target generalization) — these go beyond your existing trap framework and I'd value a second
+look before I lock in the Wave 5.4/5.5 designs.
