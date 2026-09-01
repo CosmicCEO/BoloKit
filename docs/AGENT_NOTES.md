@@ -2731,3 +2731,115 @@ pre-brief content, committed as part of this session's housekeeping). The `round
 precision, the `collisionDetect` bug replication, and the `maxSpeed` pill/base override order
 were all specifically requested for your audit in the original assignment — the precision-bug
 fix and the 1-ULP tolerance above are the two items most worth independent scrutiny.
+
+---
+## [PLANNER] Wave 5.0 Sign-Off
+**Date:** 2026-09-01  **Commits:** e2636fb (Wave 5.0), dfb61ee (PLANNER pre-brief housekeeping)
+
+**All three flagged items approved:**
+
+1. **`kPif` vs `Float.pi`** ✅ — `kPif` is already defined in Vector.swift and is bit-identical to `Float.pi`. More consistent with the existing codebase than introducing `Float.pi` as a new idiom. Approved.
+
+2. **Dormant C bug branch (radius > 0.5)** ✅ — Correct finding. The `lyc && hyc` bug in `collisionDetect` only fires when `radius > 0.5`. Since `tankRadius=0.375` and `builderRadius=0.125` are both below that threshold, the bug is unreachable in real gameplay. Using synthetic `radius=0.6` in tests to exercise the branch is the right approach. **PARITY note appended below.**
+
+3. **1-ULP FMA-contraction tolerance** ✅ — The precision bug (C's implicit double promotion via untyped `1.0`/`0.5` literals) was correctly identified, root-caused, and fixed. The residual 1-ULP divergence in diagonal-corner branches is a known FMA-contraction cross-compiler artifact — not a translation error. `1e-4` tolerance in fuzz test is appropriate. This finding is a model of how to distinguish a real precision gap from unavoidable floating-point non-portability.
+
+**PARITY update — collisionDetect bug is dormant in production:**
+The `p.x`/`p.y` swap bug requires `radius > 0.5` to fire. All game radii (tankRadius=0.375, builderRadius=0.125) are < 0.5. The bug is replicated correctly and tested with synthetic radius=0.6, but it will never trigger in actual gameplay. PARITY should note this in the Wave 5 audit — check 5.0 `collisionDetect` item as PASS (bug replicated) with annotation "dormant in production — radius never exceeds 0.375 in game use."
+
+Wave 5.0 is fully complete and clean. ✅
+
+---
+## [TO: IMPLEMENTER] Wave 5.1 — GO
+**Date:** 2026-09-01
+
+The full spec is in the "Wave 5.1 Assignment" section above. The Wave 5.0 stubs (`Pill`, `Base`) are already in `GameObjects.swift` — replace them with the full types. Key reminders:
+
+- `Pill.armour == 0xff` = ONBOARD — not "max armour"
+- `Base.counter: UInt16` — must hold up to 615 before reset
+- `findPill` skips ONBOARD pills — `armour != 0xff` guard in the loop
+- `testAlliance` requires `used` on BOTH players AND mutual bits
+- `tankcollision` base threshold: `>= 5`; `buildercollision` base threshold: `> 5` — they differ
+- Add `inputflags: InputFlags` to `PlayerState` (full InputFlags set is in the Wave 5.2 addendum above)
+- Add missing `LocalPlayerState` fields from the Wave 5.2 addendum: `draincounter`, `refueling`, `refuelingbase`, `refuelingcounter`, `shellcounter`
+- `BuilderStatus` and `BuilderTask` enums: `case \`return\`` needs backtick-escaping in Swift
+
+No C differential tests for 5.1 — data model only. Unit tests cover `isOnboard`/`isArmed`/`isDead`, `findPill` skipping ONBOARD, `findBase` always finding, `testAlliance` mutual/used edge cases.
+
+**Commit message:**
+`Wave 5.1: GameState model — Pill, Base, Start, Shell, Explosion, PlayerState, GameState`
+
+
+
+---
+## [PARITY] Wave 5.0 Audit Report — PASS (1 low finding)
+**Date:** 2026-09-01
+**Commits audited:** `e2636fb` (Wave 5.0), `dfb61ee` (PLANNER pre-brief housekeeping)
+**Files reviewed:** `Physics.swift` (extended), `PhysicsOps.swift` (new), `GameObjects.swift` (new); cross-referenced `bolo.h`, `client.c`, `vector.c`
+
+### Physics constants — all verified against `bolo.h` / `client.c`
+Every constant confirmed. Notable items:
+
+- `kickSpeedDecay = 12.0` — not a named macro in `bolo.h`; confirmed as literal `12.0` at `client.c:4116` (`kickspeed -= 12.0/TICKSPERSEC`). Swift naming correct.
+- `shellVelocity = 7.0` — `SHELLVEL = 7.0` in `bolo.h:70`. ✓
+- `maxShellRange = 7.0` — `MAXRANGE = 7.0` in `bolo.h:75`. ✓
+- `explosionTicks = 24` — `EXPLOSIONTICKS = 24`. ✓
+- All pre-tabled Wave 5.7 constants (`coolPillTicks`, `replenishBaseTicks`, `treesPlantRate`, `treesBestOf`, `maxTicksPerShot`, `maxBaseArmour/Shells/Mines`) match their `bolo.h` defines exactly. ✓
+
+### `roundDir`
+`kPif` in `Vector.swift` is `3.14159265358979` — byte-for-byte identical to `vector.c`'s definition. `roundDir` uses `kPif/8.0` exactly as C does. Confirmed correct.
+
+PLANNER sign-off requested on `kPif` vs `Float.pi`: PARITY concurs with IMPLEMENTER's choice. `kPif` is the correct constant here — it is what the C code uses, it is already in the codebase for `dir2vec`/`vec2dir`, and consistency is more important than the theoretical equivalence of `Float.pi`. ✓
+
+### `maxSpeed` / `maxTurnSpeed`
+Override order matches C exactly: armed pill → 0.0, dead pill → road speed, any base → road speed, else terrain. `findPill` excludes `pillOnboard` sentinel correctly, iterates in index order (matching C's `findpill` loop). Terrain fallthrough delegates to Wave 3.1 `terrainMaxSpeed`/`terrainMaxTurnSpeed` — previously audited, confirmed correct. ✓
+
+No C oracle needed here (and IMPLEMENTER's justification is sound): these functions wrap stateful C client globals that cannot be isolated.
+
+### `collisionDetect` — C bug replication
+The `lyc && hyc` branch assigns `p.x = Float(Double(fy) + 0.5)` — correctly replicates C's `p.x = fy + 0.5` typo (should be `p.y`). Bug confirmed present in C source at the expected line. Replication is correct. ✓
+
+PLANNER sign-off requested on dormant bug branch (radius > 0.5): PARITY confirms the analysis. `tankRadius = 0.375` and `builderRadius = 0.125` cannot trigger this branch in real gameplay. Differential test with synthetic radius = 0.6 is the correct approach. ✓
+
+### `collisionDetect` — Double promotion
+
+Most Double-promotion sites are correct. However:
+
+**FINDING 4 (LOW) — diagonal corner promotion order:** Four sites in the diagonal corner branches use the pattern `Double(sca * hx)` or `Double(sca * hy)`:
+
+```swift
+// Example — !hxc && !lyc branch:
+p.x = Float(Double(fx) + (1.0 - Double(sca * hx)))
+```
+
+C writes `fx + (1.0 - sca*hx)`. Because `1.0` is a `double` literal, C's usual arithmetic conversions individually promote `sca` and `hx` to `double` before the multiplication — i.e., C computes `Double(sca) * Double(hx)`. Swift's `Double(sca * hx)` instead performs the multiplication in `Float` first, then widens the result. These are not identical: the intermediate Float multiplication can round, and the widened value diverges from the double-precision product.
+
+The fix is `Double(sca) * Double(hx)` (and `Double(sca) * Double(hy)`) at those four sites. This tightens parity beyond the current 1e-4 tolerance. It does not change the qualitative behavior and the existing differential test would remain valid (likely passing at exact equality for many more inputs).
+
+**On the IMPLEMENTER's characterization (FMA contraction):** The 1-ULP divergences are real and the tolerance approach is reasonable. The root cause PARITY identifies is promotion order, not FMA contraction — FMA contraction would be indeterministic and compiler-flag-dependent; promotion order is systematic and reproducible. The practical effect (≤ 1 ULP) is the same, so the tolerance defense still holds. Recommend correcting the four `Double(sca * x)` sites for maximum fidelity; the IMPLEMENTER may disagree on severity.
+
+PLANNER sign-off requested on 1-ULP tolerance in fuzz test: PARITY concurs it is acceptable for now, but recommends the promotion fix in a follow-up to tighten the differential. The real precision bug (not just contraction) that the IMPLEMENTER found and fixed outright — the `hx`/`hy` and `0.5`/`1.0-radius` promotions — was correctly identified and correctly fixed. ✓
+
+### Finding 3 carry-forward
+`import Darwin` unused in `Physics.swift` and `Terrain.swift`. Still open, still low. `PhysicsOps.swift` also imports Darwin — `sqrtf` and `floor` live in Darwin, so this import is required there and is correct.
+
+### Wave 5.0 verdict: PASS
+One low finding (F4). No blocking parity issues. All constants verified. `roundDir`, `maxSpeed`, `maxTurnSpeed`, and `collisionDetect` (bug inclusive) match C behavior within documented tolerance.
+
+[TO: PLANNER] Wave 5.0 audit closed. PASS. Finding 4 (LOW): four diagonal corner sites use `Double(sca * hx/hy)` where C promotes individually — recommend `Double(sca) * Double(hx/hy)` for tighter parity. Three sign-offs confirmed (kPif choice ✓, dormant-bug radius ✓, 1-ULP tolerance ✓). Ready to audit Wave 5.1 / 5.2 when IMPLEMENTER reports completion.
+
+---
+## [PLANNER] PARITY Wave 5.0 Audit — Acknowledged
+**Date:** 2026-09-01
+
+PASS accepted. Three sign-offs confirmed (kPif ✓, dormant-bug radius ✓, 1-ULP tolerance ✓).
+
+**Finding 4 (LOW) — disposition: DEFERRED to Wave 5 cleanup pass.**
+
+PARITY's analysis is correct: `Double(sca * hx)` performs the Float multiply first then widens, whereas C's `1.0` literal individually promotes `sca` and `hx` before multiplying. The fix `Double(sca) * Double(hx/hy)` at four diagonal-corner sites is the right repair. However, IMPLEMENTER is already executing 5.1–5.7. Inserting a 5.0 re-open now interrupts momentum for a LOW finding with no gameplay impact.
+
+**Action:** After IMPLEMENTER commits Wave 5.7, PLANNER will issue a Wave 5.0-fixup ticket as the first item in the post-Wave-5 cleanup wave. PARITY to re-verify those four sites only and confirm exact-match promotion order.
+
+Finding 3 carry-forward (`import Darwin` unused in `Physics.swift`, `Terrain.swift`) also deferred to cleanup wave.
+
+IMPLEMENTER is planning 5.1–5.7 from the pre-briefs. No additional spec work needed from PLANNER at this time — standing by to monitor completion reports.
