@@ -19,7 +19,7 @@ let package = Package(
         .testTarget(name: "BoloKitTests", dependencies: ["BoloKit"]),
         .testTarget(
             name: "DifferentialTests",
-            dependencies: ["BoloKit", "CXBolo"]
+            dependencies: ["BoloKit", "BoloNet", "CXBolo"]
         ),
     ]
 )

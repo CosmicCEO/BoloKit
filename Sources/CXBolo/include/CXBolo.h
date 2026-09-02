@@ -10,6 +10,9 @@
 #include "../../../Reference/c/tiles.h"
 #include "../../../Reference/c/images.h"
 #include "../../../Reference/c/bmap.h"
+#include "../../../Reference/c/client.h"
+#include "../../../Reference/c/server.h"
+#include "../../../Reference/c/tracker.h"
 
 // Flat-pointer shim declarations for Swift differential testing
 int isForestLikeTile_flat(int *tiles, int x, int y);
@@ -83,5 +86,134 @@ struct PillShellResult {
 };
 
 struct PillShellResult pillshell_oracle(Vec2f tank, Vec2f old, Vec2f pill);
+
+// Wave 6.0 wire-codec oracle extracts (netops.c) of sendclupdate()/
+// dgramclient()'s pure encode/decode transforms, plus struct-layout ground
+// truth for the CL*/SR* TCP structs and CLUpdate's UDP header.
+// `seq` is deliberately not a struct member of either input or output
+// below -- a fixed-size C array as a struct member imports into Swift as
+// an unsubscriptable N-tuple. Passed as a separate `int32_t *` (MAXPLAYERS
+// entries) instead.
+struct CLUpdateEncodeInput {
+  uint8_t player;
+  uint8_t tankstatus;
+  Vec2f tank;
+  float speed;
+  float turnspeed;
+  float kickdir;
+  float kickspeed;
+  float dir;
+  uint8_t builderstatus;
+  Vec2f builder;
+  uint8_t buildertargetx;
+  uint8_t buildertargety;
+  uint8_t builderwait;
+  int32_t inputflags;
+  uint8_t tankshotsound;
+  uint8_t pillshotsound;
+  uint8_t sinksound;
+  uint8_t builderdeathsound;
+};
+
+struct ShellEncodeInput {
+  uint8_t owner;
+  Vec2f point;
+  uint8_t boat;
+  uint8_t pill;
+  float dir;
+  float range;
+};
+
+struct ExplosionEncodeInput {
+  Vec2f point;
+  uint8_t counter;
+};
+
+size_t clupdate_encode_oracle(
+  struct CLUpdateEncodeInput in,
+  const int32_t *seq,
+  const struct ShellEncodeInput *shells, int nshells,
+  const struct ExplosionEncodeInput *explosions, int nexplosions,
+  struct CLUpdate *out
+);
+
+struct CLUpdateDecodeOutput {
+  int valid;
+  uint8_t player;
+  int dead;
+  int boat;
+  float dir;
+  Vec2f tank;
+  float speed;
+  float turnspeed;
+  float kickdir;
+  float kickspeed;
+  uint8_t builderstatus;
+  Vec2f builder;
+  uint8_t buildertargetx;
+  uint8_t buildertargety;
+  uint8_t builderwait;
+  int32_t inputflags;
+  uint8_t tankshotsound;
+  uint8_t pillshotsound;
+  uint8_t sinksound;
+  uint8_t builderdeathsound;
+};
+
+struct ShellDecodeOutput {
+  uint8_t owner;
+  Vec2f point;
+  uint8_t boat;
+  uint8_t pill;
+  float dir;
+  float range;
+};
+
+struct ExplosionDecodeOutput {
+  Vec2f point;
+  uint8_t counter;
+};
+
+int clupdate_decode_oracle(
+  const uint8_t *bytes, size_t len,
+  struct CLUpdateDecodeOutput *outHdr,
+  int32_t *outSeq,
+  struct ShellDecodeOutput *outShells, int *outNShells,
+  struct ExplosionDecodeOutput *outExplosions, int *outNExplosions
+);
+
+struct CLUpdateLayoutOracle {
+  size_t hdrSize;
+  size_t shellSize;
+  size_t explosionSize;
+  size_t offPlayer;
+  size_t offSeq;
+  size_t offTankStatus;
+  size_t offTankX;
+  size_t offTankY;
+  size_t offTankSpeed;
+  size_t offTankTurnSpeed;
+  size_t offTankKickDir;
+  size_t offTankKickSpeed;
+  size_t offTankDir;
+  size_t offBuilderStatus;
+  size_t offBuilderX;
+  size_t offBuilderY;
+  size_t offBuilderTargetX;
+  size_t offBuilderTargetY;
+  size_t offBuilderWait;
+  size_t offInputFlags;
+  size_t offTankShotSound;
+  size_t offPillShotSound;
+  size_t offSinkSound;
+  size_t offBuilderDeathSound;
+  size_t offNShells;
+  size_t offNExplosions;
+};
+
+struct CLUpdateLayoutOracle clupdate_layout_oracle(void);
+
+size_t sizeof_cl_oracle(int type);
+size_t sizeof_sr_oracle(int type);
 
 #endif /* CXBOLO_H */
