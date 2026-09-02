@@ -349,3 +349,119 @@ underlying ask (write the 6.0 pre-brief per D31/D32) is unchanged and still outs
 this file tagged `[TO: PLANNER]` and commit it (`docs/AGENT_NOTES.md` plus any new pre-brief file),
 then tell Jerod. Until it's committed, PLANNER has nothing to review.
 [TO: PARITY] No action needed — nothing shipped this entry.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.0 pre-brief (full)
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.0
+**Blocks:** the Wave 6.0 GO
+
+Full pre-brief, per the prior entry's `[TO: IMPLEMENTER]` and `CLAUDE.md`'s new planning-only-
+entries section — written directly into this file rather than a separate `docs/notes/WAVE6.md`,
+so it can't go uncommitted/unreviewed again. Scope is exactly D32's "6.0 wire codec," not
+re-split. `docs/notes/DEEPDIVE1.md` Finding 1 is the format spec; re-verified directly against
+`Reference/c/` before relying on it (struct sizes, opcode counts, the three encodings in
+`sendclupdate()`/`dgramclient()` all confirmed — see the prior entry in this log for the specific
+citations checked). This entry adds what Finding 1 doesn't cover: an oracle strategy, a corrected
+trap list, the design calls, and a test plan.
+
+**1. Oracle strategy.** `Sources/CXBolo/` compiles only leaf modules; `client.c`/`server.c` are
+not in the target, and `sendclupdate()` (`client.c:3509-3592`) / `dgramclient()`
+(`client.c:1280-1472`) are both globals-saturated and `send()`/`recv()`-coupled, so neither links
+as-is. Plan, matching the established "permanent verbatim extract, reduced-parameter, no globals"
+pattern already used by `tankops.c`/`shellops.c`/`builderops.c`/`pillops.c`:
+- New `Sources/CXBolo/netops.c` with `clupdate_encode_oracle()` (the field-assignment body of
+  `sendclupdate()`, minus the `send()` call and the sound-flag clears) and
+  `clupdate_decode_oracle()` (the length-sanity check + `ntoh` pass + field decode of
+  `dgramclient()`, stopping before list mutation, sound playback, vis updates, and the
+  dead-reckoning loop — those belong to 6.1/6.2, not 6.0).
+- Extend `Sources/CXBolo/include/CXBolo.h` to `#include` the real `Reference/c/client.h`,
+  `server.h`, `tracker.h` (`bmap.h` is already included at line 12). Verified header-only
+  includable: `client.h` pulls only `bolo.h`/`buf.h`/`<netinet/in.h>`; `server.h` pulls
+  `bolo.h`/`tracker.h`/`buf.h`/`errchk.h`. `extern struct Client client;` is a declaration only,
+  so including the header doesn't require linking `client.c`.
+- Expose `sizeof`/`offsetof` through small additional oracle accessors so Swift asserts the ~54
+  struct layouts numerically against the real headers, not against my transcription of them.
+
+**2. Trap list — corrected.** DEEPDIVE1's item 7 is FALSE and must not be ported: it claims a
+double-`htons()` bug in `sendmessage()`'s `MSGNEARBY` case. Direct read of `client.c:6705-6744`:
+`clsendmesg.mask = htons(0x00)` at line 6728 is a no-op (value zero), the 16-player proximity
+loop then ORs `1 << i` in **host** byte order, and `htons()` is applied exactly **once** at line
+6736 — a single effective swap, correct code. This traces to the original Wave-6-scope-survey
+trap-list seed and was carried into DEEPDIVE1 unverified; under D24 ("replicate documented C bugs
+exactly"), porting a phantom bug would inject a real one. Two genuine non-bug oddities in the
+same function worth carrying forward as comments, not tests: `CLSendMesg.mask` is `int16_t`
+(`client.h:167`), so `1 << 15` sets the sign bit; and the proximity check
+`mag2f(sub2f(own tank, players[i].tank)) < 8.5` includes the sender itself (distance 0), so a
+player's own bit is always set in their own `MSGNEARBY` mask.
+
+Traps re-confirmed as written, each needing a named regression test in 6.0:
+1. `CLUpdateExplosion.tile` (`client.h:304`) is never written by `sendclupdate()` and never read
+   by `dgramclient()` — send 0, ignore on read. An uninitialized-stack-byte artifact of the C, not
+   meaningful data.
+2. `bcopy(NET_GAME_IDENT, joinpreamble.ident, sizeof(NET_GAME_IDENT))` (`client.c:606`, mirrored
+   `server.c:857`) copies 9 bytes into an 8-byte array, overrunning into `version` — the next line
+   then assigns `version`, masking it. On the wire `ident` is 8 chars, no NUL. This is 6.4's trap
+   (handshake), not 6.0's, but recorded here since it's part of the same wire-format family.
+3. `server.c:2069` tests `sizeof(clsendmesg)` — the pointer (8) — not `sizeof(struct CLSendMesg)`
+   (4). Conservative-harmless; belongs to 6.2/6.3.
+4. `client.c:1291` passes `O_NONBLOCK` as a `recv()` flag (aliases `MSG_DONTROUTE` on Darwin);
+   harmless, the socket is already non-blocking. Belongs to 6.4 (transport), noted here for
+   completeness.
+5. Fixed-point encodes **truncate**, never round (`(uint16_t)(x*FWIDTH)`) — a reimplementation
+   that rounds desyncs from the oracle. This one is squarely 6.0's.
+6. Sequence comparison must use wraparound-tolerant arithmetic (`(new - old) > 0` as signed 32-bit,
+   `client.c:1333`) — Swift's `&-`, not `-`, which traps on overflow. Squarely 6.0/6.1's.
+7. **(corrected, see above)** `sendmessage()`'s `MSGNEARBY` mask — not a bug, do not port a fix
+   for it.
+8. D27 applies to the eventual tick orchestrator (6.1), not 6.0: `explosionlogic` loops
+   `-1..<MAXPLAYERS`, `pilllogic` runs once not per-player, `sendclupdate` fires only on
+   `seq % 5 == 0`. Recorded here so 6.1's pre-brief doesn't have to re-derive it.
+
+**3. Design calls** (stated as mine, for PARITY to audit once code lands):
+- The codec is a pure value layer in `BoloNet`: `[UInt8]` ↔ Swift wire structs, no I/O, no
+  `GameState` coupling. The `GameState` mapping is 6.1's job, not 6.0's — keeps 6.0 fully
+  differentially testable in isolation.
+- `seq`/`lastUpdate` (C's `client.players[i].seq`/`.lastupdate`) live in a BoloNet-side table, not
+  in `BoloKit.PlayerState` (`Sources/BoloKit/GameObjects.swift:190`) — they're transport
+  bookkeeping, not simulation state, and `BoloKit` stays the pure sim.
+- No `import Foundation` (standing rule); `Darwin` supplies byte-swap primitives
+  (`Swift.UInt32.byteSwapped` needs no import beyond that, but explicit `htonl`/`ntohl`-equivalent
+  helpers are still written for direct C-line correspondence during review).
+- All positions/floats stay `Float` end-to-end (D18) — the raw-BE encode is a bit-reinterpret of
+  a `Float`, never a `Double` round-trip.
+
+**4. Test plan.** Differential, per the established pattern: fuzz `netops.c`'s
+`clupdate_encode_oracle()`/`clupdate_decode_oracle()` against the Swift codec across —
+- `nshells`/`nexplosions` at 0, 1, and 255 (min/typical/max)
+- NaN, ±inf, and denormal floats through the raw-BE tank/builder path (bit-reinterpret must match
+  exactly, including NaN payload bits — no float-equality comparison)
+- fixed-point boundary values (`0`, `FWIDTH-1`/256, values that truncate vs. would round
+  differently) for shell/explosion positions and shell `range`
+- all 256 values of the 8-bit brad encoding for `tankdir`/`shelldir`
+- short-datagram rejection matching `dgramclient()`'s exact length recomputation
+  (`client.c:1303-1310`)
+- named regression tests for confirmed traps 1, 5, 6 (2/3/4/8 are logged for their respective
+  later sub-waves, not tested in 6.0)
+- `sizeof`/`offsetof` assertions for every wire struct against the real headers via CXBolo's new
+  accessors
+
+Expected count per D28: baseline is **296** (unchanged since Wave 5.7); 6.0 is expected to add
+roughly 15-25 differential + unit tests across the above axes — exact count reported at 6.0's
+actual completion, not here (no code has shipped yet).
+
+**5. Out of scope for 6.0** (each belongs to a later sub-wave per D32): transport/sockets (6.4),
+tick orchestrator (6.1), `recvsr*` broadcast handlers (6.2), server session/join/kick/ban/alliance
+logic (6.3), tracker/NAT-PMP (6.5).
+
+No code changes, no `Package.swift` edits, nothing in `Sources/` this entry. Test baseline
+unchanged: **296** (D28).
+
+[TO: PLANNER] Wave 6.0 pre-brief is complete and awaits a GO. Scope, oracle strategy, corrected
+trap list, design calls, and test plan are all above — nothing left in a session-local doc.
+Flagging again for the record: DEEPDIVE1's trap-list item 7 (the claimed `sendmessage()` double-
+`htons()` bug) is factually wrong and should not be treated as part of the trap list going
+forward; everything else in DEEPDIVE1's Finding 1/2 stands as written and re-verified here.
+[TO: PARITY] No action needed yet — no code shipped. Once 6.0 lands, D25's standing instruction
+applies (audit for accidental over-similarity to WinBolo architecture), plus the corrected trap
+list above should be checked against whatever regression tests actually ship.
