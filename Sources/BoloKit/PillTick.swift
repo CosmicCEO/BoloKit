@@ -5,24 +5,35 @@ import Darwin
 // Ported from `pilllogic()` (client.c:5034) and `forestvis()` (bolo.c:174),
 // plus the local-effect-free `isforest()` (bolo.c:152).
 //
-// **Generalization from C's network-authority model:** `pilllogic(old)`
-// takes no player parameter at all — it always operates on the single
-// `client.player`, called once per tick (not in a per-connected-player
-// loop like `shelllogic`/`builderlogic`). Its inner "am I the closest
-// eligible target" loop (`for j in 0..<MAXPLAYERS where j != client.player`)
-// only makes sense in C's real multiplayer model: every connected client
-// runs this same code with its OWN identity as `client.player`, so summing
-// every client's independent computation is "for every player P, check
-// whether P is the closest eligible target for each hostile pill." This
-// port generalizes exactly that way — `pillTick(player:old:...)` is called
-// once per connected player, playing the `client.player` role for that
-// call, with the inner loop's `j != client.player` becoming `j != player`.
-// This mirrors the precedent already established for `shellTick`'s tank-hit
-// loop and preserves the exact same tie-break quirk already flagged in the
-// Wave 5.1 report: if two players are exactly equidistant from a pill,
-// neither's check disqualifies the other (the inner test requires
-// *strictly* closer), so both can independently satisfy "no one is closer
-// than me" and the pill can fire at both in the same tick.
+// **Fixed after a PARITY FAIL on the first cut of this file (see
+// AGENT_NOTES.md, Wave 5.3c audit).** `pilllogic(old)` takes no player
+// parameter at all in C — it hardcodes `client.player` and runs once per
+// human's own client *process*. Every process mutates only its own
+// private, unsynced replica of `pill.counter`; since every replica runs
+// identical deterministic math over the same (eventually-synced) world
+// state, only the replica belonging to whoever is genuinely the closest
+// hostile target ever climbs toward the firing threshold, and every other
+// replica resetting to 0 constantly is harmless, because those replicas
+// are private and never influence the real game state.
+//
+// The first cut of this port called `pillTick` once per connected player,
+// generalizing `client.player` → `player` — but all those calls mutated
+// ONE shared `state.pills[i].counter`, not N independent replicas. That's
+// not equivalent: a bystander (allied, or hostile-but-farther) processed
+// *after* the genuine target in a tick's player-index order unconditionally
+// resets the shared counter, erasing the real target's progress. The fix
+// below computes each pill's closest-eligible-target *election* exactly
+// once per tick, across the whole state, and applies exactly one
+// increment/freeze/reset/fire decision per pill — not once per player.
+//
+// **Ties still fire at every tied player, not an arbitrary winner.** Two
+// equidistant hostile players' *independent* private counters in the
+// distributed model increment in perfect lockstep (identical inputs,
+// identical outputs, every tick) and cross the firing threshold on the
+// same tick — both get shot. Since tied targets move in lockstep, a
+// single shared counter reaching threshold and firing at every member of
+// the current tied-closest set reproduces that exactly, rather than
+// approximating it away by picking one winner.
 //
 // **A real, C-source-acknowledged precision quirk, not a bug to fix:**
 // `(SHELLVEL*SHELLVEL) - dot2f(compi, compi)` computes in double precision
@@ -113,87 +124,104 @@ public func forestVis(_ v: Vec2f, state: GameState) -> Float {
 
 // MARK: - pillTick
 
-/// Per-tick pillbox AI, called once per connected player per tick — see
-/// the file header for why `player` generalizes C's hardcoded
-/// `client.player`. `old` is that player's tank position before this
-/// tick's physics ran (needed for the shell's lead-targeting velocity
-/// term). Ported from `pilllogic()` (client.c:5034).
+/// Per-tick pillbox AI for the whole game state — called **once per tick**,
+/// not once per player (see the file header for why). `oldTankPositions`
+/// gives each player's tank position before this tick's physics ran,
+/// indexed like `state.players`; whichever player(s) win a given pill's
+/// closest-target election need their own entry for the shell's
+/// lead-targeting velocity term. Ported from `pilllogic()` (client.c:5034).
 public func pillTick(
-    player: Int,
-    old: Vec2f,
     state: inout GameState,
+    oldTankPositions: [Vec2f],
     onMineExplosion: (Pointi) -> Void = { _ in },
     onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 ) {
-    guard !state.players[player].dead else { return }
-
     for i in state.pills.indices {
-        guard state.pills[i].armour != pillOnboard, state.pills[i].armour > 0,
-            state.pills[i].owner == playerNeutral
-                || !testAlliance(Int(state.pills[i].owner), player, players: state.players)
-        else {
+        guard state.pills[i].armour != pillOnboard, state.pills[i].armour > 0 else {
             state.pills[i].counter = 0
             continue
         }
 
         let pillCenter = Vec2f(x: Float(state.pills[i].x) + 0.5, y: Float(state.pills[i].y) + 0.5)
-        let diff = state.players[player].tank - pillCenter
-        let mag = mag2f(diff)
 
-        guard (mag <= 2.0 || forestVis(state.players[player].tank, state: state) > 0.25) && mag <= 8.0 else {
-            // No `else` branch in C here — an armed, hostile, but
-            // out-of-range pill leaves `counter` untouched (not reset),
-            // "remembering" partial charge. Not a bug to smooth over.
-            continue
+        // Two distinct "nobody's a target" cases, with different C
+        // outcomes: if there's no alive connected player *at all*, no
+        // client is running any code this tick, so every private replica
+        // is untouched (freeze) — not the same as every existing alive
+        // player explicitly failing the alliance check on their own pill,
+        // where each of THEIR clients does run and explicitly zeros their
+        // own counter (reset).
+        let aliveConnected = state.players.indices.filter {
+            state.players[$0].connected && !state.players[$0].dead
+        }
+        guard !aliveConnected.isEmpty else { continue }
+
+        let eligible = aliveConnected.filter { player in
+            state.pills[i].owner == playerNeutral
+                || !testAlliance(Int(state.pills[i].owner), player, players: state.players)
         }
 
-        var closerHostileFound = false
-        for j in state.players.indices
-            where j != player && state.players[j].connected && !state.players[j].dead {
-            let jDist = mag2f(state.players[j].tank - pillCenter)
-            if jDist < mag,
-                state.pills[i].owner == playerNeutral
-                    || !testAlliance(Int(state.pills[i].owner), j, players: state.players),
-                jDist <= 2.0 || forestVis(state.players[j].tank, state: state) > 0.25 {
-                closerHostileFound = true
-                break
-            }
-        }
-
-        guard !closerHostileFound else {
+        guard !eligible.isEmpty else {
             state.pills[i].counter = 0
             continue
         }
 
+        let inRange: [(player: Int, mag: Float)] = eligible.compactMap { player in
+            let diff = state.players[player].tank - pillCenter
+            let mag = mag2f(diff)
+            guard (mag <= 2.0 || forestVis(state.players[player].tank, state: state) > 0.25) && mag <= 8.0 else {
+                return nil
+            }
+            return (player, mag)
+        }
+
+        guard let minMag = inRange.map(\.mag).min() else {
+            // No `else` branch in C here at this nesting level — everyone
+            // eligible is simply out of range, so the counter freezes
+            // (not resets), "remembering" partial charge. Not a bug to
+            // smooth over.
+            continue
+        }
+        // A player is disqualified in C iff someone else eligible has
+        // strictly smaller mag — i.e. iff they're not in the argmin set.
+        // Ties (equal minimum mag) all survive together.
+        let closestSet = inRange.filter { $0.mag == minMag }.map(\.player)
+
         state.pills[i].counter += 1
         guard state.pills[i].counter >= state.pills[i].speed else { continue }
 
-        let vel = (state.players[player].tank - old) * ticksPerSec
-        let compi = vel - prj2f(diff, vel)
-        // C: `sqrtf(fabsf((SHELLVEL*SHELLVEL) - dot2f(compi, compi)))` —
-        // SHELLVEL is a double literal, so the subtraction computes in
-        // double, then narrows to Float when passed to `fabsf` (not
-        // `fabs`) — before the absolute value, not after. See file header.
-        let raw = Float(Double(shellVelocity) * Double(shellVelocity) - Double(dot2f(compi, compi)))
-        let compj = unit2f(diff) * sqrtf(fabsf(raw))
+        for player in closestSet {
+            let diff = state.players[player].tank - pillCenter
+            let old = oldTankPositions[player]
+            let vel = (state.players[player].tank - old) * ticksPerSec
+            let compi = vel - prj2f(diff, vel)
+            // C: `sqrtf(fabsf((SHELLVEL*SHELLVEL) - dot2f(compi, compi)))` —
+            // SHELLVEL is a double literal, so the subtraction computes in
+            // double, then narrows to Float when passed to `fabsf` (not
+            // `fabs`) — before the absolute value, not after. See file header.
+            let raw = Float(Double(shellVelocity) * Double(shellVelocity) - Double(dot2f(compi, compi)))
+            let compj = unit2f(diff) * sqrtf(fabsf(raw))
 
-        // C: `mul2f(diff, 0.70711219/mag)` — 0.70711219 is a double
-        // literal, so the division computes in double and narrows to
-        // Float once when passed as `mul2f`'s scalar argument.
-        let offset = Float(0.70711219 / Double(mag))
-        let shell = Shell(
-            point: pillCenter + diff * offset,
-            dir: vec2dir(compi + compj),
-            // C: `8.5 - 0.70711219` — both double literals, subtracted in
-            // double, narrowed to Float once at assignment to `range`.
-            range: Float((8.5 as Double) - 0.70711219),
-            owner: state.pills[i].owner,
-            boat: false,
-            pill: true
-        )
+            // C: `mul2f(diff, 0.70711219/mag)` — 0.70711219 is a double
+            // literal, so the division computes in double and narrows to
+            // Float once when passed as `mul2f`'s scalar argument.
+            let offset = Float(0.70711219 / Double(minMag))
+            let shell = Shell(
+                point: pillCenter + diff * offset,
+                dir: vec2dir(compi + compj),
+                // C: `8.5 - 0.70711219` — both double literals, subtracted
+                // in double, narrowed to Float once at assignment to `range`.
+                range: Float((8.5 as Double) - 0.70711219),
+                owner: state.pills[i].owner,
+                boat: false,
+                pill: true
+            )
 
-        if !shellCollisionTest(shell: shell, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills) {
-            state.players[player].shells.append(shell)
+            if !shellCollisionTest(
+                shell: shell, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+            ) {
+                state.players[player].shells.append(shell)
+            }
         }
 
         state.pills[i].counter = 0

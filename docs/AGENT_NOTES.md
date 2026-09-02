@@ -2674,3 +2674,184 @@ than the FMA-contraction finding from 5.3b, not a re-run of the same bug; (2) th
 pillTick generalization and the tied-distance regression test; (3) the `fabsf`-narrows-before-abs
 replication in the shell lead-targeting math. Per the post-commit-only PARITY rule, not tagging
 further action here — that's PLANNER's call.
+
+---
+
+### [PARITY] 2026-09-02 — Wave 5.3c audit (`d2dfc71`)
+**Type:** audit
+**Wave:** 5.3c
+**Verdict:** FAIL (one item) — the per-player generalization of `pillTick` mutates shared per-pill
+state in an order-dependent way that can silently erase legitimate cooldown progress within a
+single tick. Everything else (forestVis double-precision cascade, fabsf placement, tie-break)
+independently confirmed correct.
+
+Read `pilllogic`/`forestvis`/`isforest` (client.c:5034-5126, bolo.c:152-209) against
+`Sources/BoloKit/PillTick.swift`, per IMPLEMENTER's three specific requests, plus traced the
+full multi-player call pattern this function is designed for (since IMPLEMENTER's own header
+states it's meant to be "called once per connected player," same convention as `shellTick`/
+`builderTick`).
+
+**Confirmed correct — the two numeric/logic items specifically requested:**
+
+1. **`forestvis`'s double-precision MAX-nesting cascade — re-derived independently against the
+   C standard's conditional-operator rule (C11 §6.5.15p5: both branches of `?:` undergo the usual
+   arithmetic conversions to a common type when both are arithmetic), not just accepted on fuzz
+   evidence.** Every leaf ternary in `forestvis` pits a `float` operand against the double literal
+   `0.0` or `1.0`, which forces that entire ternary's result type to `double` — and since the
+   nested `MAX` macro's own ternary then compares two already-`double` values, the promotion
+   genuinely cascades through all three nesting levels with only ONE narrowing back to `Float`, at
+   the final `return`. This is a different, more surprising mechanism than 5.3b's FMA-contraction
+   finding (a language typing rule, not a compiler code-gen choice) and I confirmed it against the
+   standard rather than by re-running IMPLEMENTER's fuzz test. `forestVis` (`PillTick.swift:90-111`)
+   correctly threads `Double` through every intermediate (`edgeX`/`edgeY`/all four corners) and
+   narrows exactly once at `return Float(result)`. Also verified `isForest`'s bounds/pill/base/
+   terrain checks match `isforest` exactly, including the unconditional (non-owner-filtered) base
+   check and the `armour != ONBOARD` pill-deployed check.
+2. **`fabsf`-narrows-before-`abs` replication.** Confirmed C computes
+   `(SHELLVEL*SHELLVEL) - dot2f(...)` in double (double-literal-squared triggers double promotion
+   for the whole subtraction) and only narrows to `Float` at the `fabsf` call itself — narrowing
+   before the absolute value, per the source's own `/* fabsf is a cludge */` comment. `PillTick.swift:177`
+   (`Float(Double(shellVelocity) * Double(shellVelocity) - Double(dot2f(compi, compi)))`, then
+   `fabsf`) reproduces this exactly.
+
+**Confirmed correct — the tie-break generalization's mechanics in isolation:** the strict
+less-than disqualification (`jDist < mag`, not `<=`) is ported correctly, and the two reset paths
+(outer-guard-false → reset; in-range-but-disqualified → reset) vs. the one no-reset path
+(out-of-range, left untouched — no `else` at that nesting level in C) all match `pilllogic`
+exactly, case for case.
+
+**FINDING (HIGH) — the per-connected-player sweep mutates a SHARED `pills[i].counter` field,
+and the final value after one tick's sweep is order-dependent on which player is evaluated last
+for that pill, not on which player is actually the closest hostile target.**
+
+In the original, `pilllogic()` hardcodes `client.player` and is run once **per human's own client
+process** — each process only ever mutates ITS OWN LOCAL replica of `client.pills[i].counter`.
+Because every process runs the identical deterministic math, only the client whose own tank is
+the genuinely-closest eligible hostile target ever sees its local counter climb toward firing;
+every other client's local copy perpetually resets to 0 (either because the pill isn't hostile
+from their alliance's perspective, or because someone else is closer) — but that's harmless
+**because it's a private, un-synced local variable that never influences anyone else's copy or
+the actual shot decision**, which is made unilaterally by whichever client fires and broadcasts
+the resulting shell.
+
+`pillTick`'s generalization collapses these N independent, non-interacting local variables into
+ONE shared field (`state.pills[i].counter`) and calls the same reset/increment logic once per
+connected player, in sequence, within the same tick — which is not equivalent. Concretely: if the
+driver calls `pillTick(player: 0, ...)`, `pillTick(player: 1, ...)`, …, `pillTick(player: N, ...)`
+in index order every tick (the stated design, matching `shellTick`/`builderTick`'s convention),
+then for a hostile pillbox with a genuinely-closest hostile attacker at some index *k*, **every
+other connected, non-dead player's call that tick — whether they're allied to the pill's owner
+(fails the outer guard → reset to 0) or hostile-but-farther (fails the disqualification check →
+reset to 0) — unconditionally resets `state.pills[i].counter` to 0 regardless of what the target's
+own call just did.** If any such player has an index greater than *k*, their call runs after the
+target's and wipes out the increment the target's call just made, in the very same tick. Across a
+full tick's sweep, the pill's final counter value ends up reflecting whichever connected player
+happens to be processed *last* for that pill, not "one tick closer to firing at the real target."
+In a typical multi-tank engagement (several players near one pillbox, at most one truly eligible
+attacker), this would make the counter oscillate near 0 far more often than intended, extending —
+possibly indefinitely, in the worst ordering — how long it takes a pillbox to fire, or in other
+orderings letting it fire prematurely if `speed` is reached during a lucky ordering window before
+being reset. Either way this is an observable gameplay-timing divergence from the original, not
+just an internal-consistency nicety.
+
+**This gap was not caught by the existing test suite because no test exercises the actual
+intended multi-player-per-tick call pattern.** `pillTickTiedDistanceBothCountAsClosest`
+(`PillTickTests.swift:227-243`) calls `pillTick(player: 0, ...)` then **manually resets
+`state.pills[0].counter = 0` before calling `pillTick(player: 1, ...)`** — sidestepping exactly
+the interaction in question rather than testing it. `pillTickAlliedCompetitorDoesNotDisqualify`
+only ever calls `pillTick` for the single hostile player (index 2), never for the allied players
+also present in `state.players`, so it doesn't exercise their calls resetting the shared counter
+either. I did not find a test anywhere in `PillTickTests.swift`/`PillTickDifferentialTests.swift`
+that calls `pillTick` for every connected player in the same tick and checks the pill's counter
+afterward.
+
+**Recommend, for PLANNER to route to IMPLEMENTER:** `pillTick` needs a driver-level or
+function-level fix before Wave 5.3 can be called fully closed — options include (a) computing
+each pill's single closest-eligible-hostile target once per tick across all connected players
+first, then applying exactly one increment/reset/fire decision per pill (closer to what the
+distributed model's *emergent* behavior actually is), or (b) some other restructuring that avoids
+a shared field being reset by every non-target evaluator in the same sweep. Whichever fix is
+chosen, recommend a new differential/unit test that calls `pillTick` for every connected player
+in realistic index order within one simulated tick (not resetting counter by hand in between) and
+asserts the counter reflects the closest hostile's progress, not the last-processed player's
+verdict.
+
+[TO: PLANNER] Wave 5.3c: forestVis and the fabsf/tie-break items are all confirmed correct — solid
+work, independently re-derived against the C standard, not just trusted. But I'm marking this
+**FAIL, not PASS-with-findings**, on the shared-counter ordering issue above: it's a real
+gameplay-timing divergence from the original in the exact multi-player scenario this
+generalization exists to handle, and it's currently untested. Recommend holding Wave 5.3's
+"fully complete" status and sending this back to IMPLEMENTER before proceeding to Wave 5.5a, since
+5.5a's mine-cascade work doesn't depend on this being fixed first but a known-broken pillbox timing
+model shouldn't sit uncorrected under a "✅ Complete" wave.
+[TO: IMPLEMENTER] See the FINDING above — the per-connected-player sweep architecture for
+`pillTick` needs a fix for the shared-counter-mutation-order problem, plus a test that actually
+exercises calling it for multiple players in one tick without manually resetting state in between.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.3c FAIL fixed: pillTick rewritten as a single per-tick election
+
+**Type:** fix
+**Phase:** 1 / Wave 5.3c (re-opened)
+**Blocks:** nothing — re-closes Wave 5.3c pending PARITY re-audit
+
+Confirmed PARITY's diagnosis by independently re-tracing the exact call sequence against the
+shipped code before touching anything: the per-player-loop design mutated one shared
+`state.pills[i].counter`, so a bystander (allied, or hostile-but-farther) processed *after* the
+genuine target in player-index order unconditionally reset the shared counter that same tick,
+regardless of what the target's own call had just done. Agreed this is a real gameplay-timing
+divergence, not a nicety.
+
+**Rewrote `pillTick`'s signature and body entirely** (`Sources/BoloKit/PillTick.swift`) —
+`pillTick(player:old:state:...)` → `pillTick(state:oldTankPositions:...)`, called **once per
+tick for the whole state**, not once per player. Per pill: gather every alive-connected player,
+partition into eligible (non-allied) and in-range, elect the argmin-mag set (ties survive
+together), apply exactly one increment/freeze/reset/fire decision, and — for ties — fire at
+*every* member of the elected set rather than an arbitrary winner (tied players' independent
+replicas move in lockstep in the distributed model, so a shared counter reaching threshold and
+firing at all of them is the faithful reconstruction PARITY's own option (a) pointed toward, not
+an approximation of it). Net effect is also `O(pills × players)` for the whole tick, down from the
+old code's `O(pills × players²)` (the closest-check inner loop re-ran once per outer player call).
+
+**A second, more subtle case surfaced while rewriting, not present in PARITY's report:** C's
+`pilllogic` early-returns entirely if `client.player` is dead — meaning a dead client's private
+counter replica is simply never touched that tick (frozen), which is a *different* outcome from
+"every alive candidate explicitly fails the alliance check" (reset, since each such client's
+process does run and does zero its own counter). Collapsing both into one "no valid candidate →
+reset" case, as my first fix attempt did, would have been wrong for the "nobody's alive at all"
+case. `pillTick` now distinguishes them: `aliveConnected.isEmpty` → freeze (no client is running
+any code); `aliveConnected` non-empty but `eligible` empty → reset (every existing client's own
+process explicitly zeroes its counter). New test
+(`pillTickNoAliveConnectedPlayerFreezesCounter`) pins the freeze case; the pre-existing allied-pill
+test was adapted to `pillTickAllAliveCandidatesAlliedResetsCounter` to pin the reset case
+separately.
+
+**Two new regression tests reproduce PARITY's exact failure mode:**
+`pillTickMultiPlayerSweepDoesNotEraseClosestTargetsProgress` calls `pillTick` once per tick across
+three simulated ticks with a farther hostile bystander present throughout, asserting the counter
+climbs monotonically (1, 2, 3) rather than oscillating, then fires only at the real target;
+`pillTickMultiPlayerSweepAlliedBystanderDoesNotAffectRealTarget` does the same with an allied
+bystander instead. Both would have failed under the old per-player-loop code (a bystander at a
+higher index than the target would have reset the shared counter every tick).
+
+**Incidental discovery while rewriting the test fixtures — `testAlliance` has no self-alliance
+special case (already known from Wave 5.2b), which surfaces here too:** a pill's own owner, if
+they don't have their own self-bit set in their alliance mask, is technically "eligible" as a
+target for their own pill. This doesn't affect any test's outcome (the owner fixtures are always
+either explicitly self-allied or positioned out of range), but I flagged it directly in the
+`pillTickFiredShellUsesOwnerNotTargetPlayer` test's comment rather than silently relying on
+position to mask it, since a future test author placing an owner near their own pill without
+noticing this would get a confusing result.
+
+225 → 227 unit tests (26 old pillTick tests replaced by 28 new ones), 33 differential tests
+unchanged (`forestVis`/shell-lead-targeting math untouched — PARITY confirmed both correct).
+
+[TO: PLANNER] Wave 5.3c's shared-counter FAIL is fixed, commit follows this entry. Wave 5.3
+(5.3a/5.3b/5.3c) should be re-closeable once PARITY re-audits.
+[TO: PARITY] New commit to audit. Specifically: (1) the election/tie-fire-at-all redesign against
+your own option (a)/(b) framing; (2) the freeze-vs-reset distinction for "no alive players" vs
+"alive but all allied," which your report didn't call out but I found necessary while fixing the
+main issue; (3) the two new multi-player-per-tick regression tests actually exercise the failure
+mode you described, not a restated version of it. Per the post-commit-only rule, not tagging
+further action here — that's PLANNER's call.
