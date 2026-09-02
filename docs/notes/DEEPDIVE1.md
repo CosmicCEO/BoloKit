@@ -206,8 +206,16 @@ reimplementation must reproduce that padding.
 6. The dead-reckoning loop (`client.c:1446-1454`) is a network-driven re-simulation with no bound —
    Swift needs a cap regardless of C's behavior. A `writeRun`-style safety deviation, not a
    fidelity fix; log it as such.
-7. Previously noted and still standing: the double-`htons()` in `sendmessage()`'s `MSGNEARBY` case
-   is a genuine C bug, D24-class — replicate with a named regression test, do not fix.
+7. **CORRECTED 2026-09-02, do not port as a bug — see `docs/AGENT_NOTES.md`'s Wave 6.0 pre-brief
+   entries.** ~~Previously noted and still standing: the double-`htons()` in `sendmessage()`'s
+   `MSGNEARBY` case is a genuine C bug, D24-class — replicate with a named regression test, do not
+   fix.~~ Direct read of `client.c:6705-6744` shows a single effective swap (`clsendmesg.mask =
+   htons(0x00)` is a no-op at zero; the proximity loop ORs bits in host order; `htons()` applied
+   once at line 6736) — correct code, not a bug. This claim originated in the Wave-6-scope-survey
+   trap-list seed and was carried into this doc unverified. Under D24 ("replicate documented C
+   bugs exactly"), porting a fix for a phantom bug would inject a real one — do not add any
+   double-swap handling here. Struck through rather than deleted so the correction stays visible
+   to anyone who reads this file directly instead of `AGENT_NOTES.md`.
 8. **D27 applies to the tick orchestrator:** `explosionlogic` loops `-1..<MAXPLAYERS`, `pilllogic`
    runs once rather than per-player, `sendclupdate` fires only on `seq % 5`.
 

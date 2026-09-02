@@ -465,3 +465,63 @@ forward; everything else in DEEPDIVE1's Finding 1/2 stands as written and re-ver
 [TO: PARITY] No action needed yet — no code shipped. Once 6.0 lands, D25's standing instruction
 applies (audit for accidental over-similarity to WinBolo architecture), plus the corrected trap
 list above should be checked against whatever regression tests actually ship.
+
+### [PLANNER] 2026-09-02 — Wave 6.0 pre-brief reviewed; GO issued
+
+**Type:** planning — GO
+**Phase:** Wave 6.0
+**Blocks:** nothing — this is the GO
+
+Reviewed the two entries above (the plan/trap-correction entry and the full pre-brief) against
+`docs/PLAN.md`'s decisions log and D32's scope for 6.0. Summary of the review, not a re-derivation
+of the C-level facts themselves (PARITY's job post-commit, not PLANNER's pre-commit) —
+
+- **Scope discipline: clean.** Everything that isn't the wire codec is explicitly deferred to its
+  correct sub-wave (transport → 6.4, tick orchestrator/D27 → 6.1, `recvsr*`/`sizeof` mismatch →
+  6.2/6.3, join-handshake `bcopy` overrun → 6.4, tracker → 6.5). Nothing scope-crept into 6.0.
+- **Architecture: uses what's already scaffolded, doesn't invent new structure.** The codec's home
+  (`BoloNet`, dependency on `BoloKit`) is an existing `Package.swift` target from the original D21
+  engine-first scaffold, not a new one introduced here — confirmed against `Package.swift` and
+  `docs/PLAN.md`'s original architecture sketch. `Sources/CXBolo/netops.c` follows the same
+  "verbatim extract, reduced-parameter, no globals" pattern already established by
+  `tankops.c`/`shellops.c`/`builderops.c`/`pillops.c`, and inherits `-ffp-contract=off` (D26)
+  automatically since `cSettings` is target-wide in `Package.swift`, not per-file — no new build
+  configuration needed.
+- **Non-negotiables addressed correctly:** Float end-to-end incl. the raw-BE encode as a
+  bit-reinterpret, not a `Double` round-trip (D18); no `Foundation` (standing rule); fixed-point
+  truncates, never rounds; wraparound-tolerant `&-` for sequence comparisons. All stated explicitly
+  rather than left implicit.
+- **D24 applied correctly, not just cited.** The DEEPDIVE1 item-7 correction is exactly what D24
+  is for: verify a claimed C bug before porting a "fix" for it, since porting a fix for a bug that
+  doesn't exist introduces a real behavioral deviation from the oracle. Concur with IMPLEMENTER's
+  finding and with "no ruling needed, this is a factual correction" — agreed, this isn't a Q/D-log
+  item, it's a correction to a prior session's research artifact.
+- **Test plan is proportionate.** NaN/inf/denormal bit-exact checks on the raw-BE float path,
+  fixed-point truncation boundaries, full 256-value brad enumeration, short-datagram rejection,
+  and `sizeof`/`offsetof` struct-layout assertions against the real headers — matches the rigor
+  bar Wave 5 set. D28's count reporting correctly deferred to actual completion, not guessed here.
+- **Process fix validated.** This pre-brief was written directly into this file per `CLAUDE.md`'s
+  new planning-only-entries section, specifically to avoid a repeat of the prior pre-brief going
+  uncommitted. It worked — this is now sitting in `docs/AGENT_NOTES.md`, not stuck in a chat
+  session.
+
+**No blocking findings. GO issued for Wave 6.0.**
+
+**Docs updated to reflect this GO** (all committed alongside this entry):
+- `docs/notes/DEEPDIVE1.md` — trap-list item 7 struck through and annotated in place (not deleted)
+  with a pointer to this file, so anyone reading DEEPDIVE1.md directly (not just AGENT_NOTES.md)
+  sees the correction.
+- `docs/PLAN.md` — Wave 6 summary row moved to 🟨 in progress; Wave 6.0's row moved to 🟩 GO issued.
+- `CLAUDE.md` — "Current state" rewritten to point at this pre-brief as the 6.0 starting point
+  (not `DEEPDIVE1.md` cold), flags the item-7 correction up front, and the wave-status table's
+  single "Wave 6" row split into "6.0" (GO'd) and "6.1–6.5" (blocked on 6.0) to match `PLAN.md`.
+
+[TO: IMPLEMENTER] Cleared to start Wave 6.0 coding against the pre-brief above. Standard flow
+applies: build → differential-test against the new `netops.c` oracle functions → commit specific
+files → append your completion report here (with before/after test count per D28) → tell Jerod.
+Do not tag `[TO: PARITY]` yourself — that's PLANNER's call after your commit, per the standing
+post-commit-only rule.
+[TO: PARITY] No action yet — no code shipped. Once 6.0 commits land, audit per D25's standing
+instruction (over-similarity to WinBolo architecture) and specifically re-check the corrected
+trap list (items 1, 5, 6 need named regression tests per the pre-brief; item 7 should have NO
+double-swap handling — flag it if you find any).
