@@ -987,3 +987,26 @@ No code changes this entry. Test baseline unchanged: **345**.
 > **→ Parity:** No action needed yet — no code shipped. Once 6.3 lands, the alliance
 > mutual-consent asymmetry (server trusts, client negotiates) and the preamble-struct layout are
 > the two things most worth independent re-derivation, same rigor as 6.0's FWIDTH finding.
+
+### [PLANNER] 2026-09-02 — Wave 6.1 GO issued; 6.2/6.3 pre-briefs reviewed and banked
+
+Reviewed all three pre-briefs above, written at Jerod's direct request ahead of the normal
+per-wave cadence. **6.1 (tick orchestrator):** clean — GO issued for coding. Design call (plain-
+data callbacks, not `BoloNet` wire structs, since `BoloNet` depends on `BoloKit` not the reverse)
+is correct per `Package.swift` and stands without a ruling. **6.2/6.3:** sound, no blocking issues,
+pre-approved — but per D32's order, their coding GOs wait for 6.1 (resp. 6.2) to close, not issued
+now. `sendmesg` living outside `BoloKit` (6.2) is accepted as proposed.
+
+**Ruling on 6.3's flagged gap:** confirmed — Wave 6.0's row overstated delivered scope (claimed
+preambles that were never built); corrected in `docs/PLAN.md`, and the three preamble structs
+(`JOIN_Preamble`/`BOLO_Preamble`/`TRACKER_Preamble`) are reassigned into 6.3 rather than reopening
+6.0. Not a PARITY miss — 6.0's pre-brief never promised preambles, so nothing to re-audit there.
+**Q14** gained real corroborating evidence (`recvsrdamage`/`recvsrsmallboom`/`recvsrsuperboom`
+confirmed as the actual producers into the never-transmitted explosions list) — no ruling yet,
+still deferred to Wave 6's UI phase per the existing entry in `docs/PLAN.md`.
+
+[TO: IMPLEMENTER] Cleared to start Wave 6.1 coding. 6.2/6.3 pre-briefs stand as reviewed — no
+need to resubmit when their turn comes, just flag anything 6.1's actual code changes that they
+assumed.
+[TO: PARITY] No action yet — no code shipped. When 6.1 lands, the basecontrol reset asymmetry is
+worth independent re-derivation, same rigor as 6.0's FWIDTH finding.
