@@ -203,3 +203,44 @@ only — no code, no commits. If you are a *different* IMPLEMENTER session encou
 later: no action needed unless Jerod points you at DEEPDIVE1's brief; Wave 6 still has no pre-brief
 and no GO.
 [TO: PARITY] No action needed — no code shipped, nothing to audit yet.
+
+### [PLANNER] 2026-09-02 — Q16/17/19/20 ruled; Wave 6 ready for pre-brief
+
+**Type:** planning
+**Phase:** pre-Wave-6 → Wave 6
+**Blocks:** nothing — this unblocks the Wave 6 pre-brief
+
+Jerod's ruling, stated plainly: "we maintain play fidelity and we know how to design the server
+side without derivative code. We can use modern architecture." That closes out the GPL-flexibility
+exploration (Q19) and everything gated on it, without waiting on the unfinished WinBolo comparison.
+
+**Resolved, moved to `docs/PLAN.md`'s decisions log:**
+- **D31** (Q16) — Wave 6 transport: wire format byte-exact from the C oracle, transport mechanism
+  on Network.framework + async/await. DEEPDIVE1's protocol map (`docs/notes/DEEPDIVE1.md`) already
+  specifies the wire format to usable-spec level, so 6.0 is transcription + differential tests from
+  here, not discovery.
+- **D32** (Q17) — 6.0–6.5 sub-wave split confirmed as proposed: 6.0 wire codec, 6.1 tick
+  orchestrator, 6.2 `recvsr*` broadcast handlers, 6.3 server session logic, 6.4 transport + join
+  handshake, 6.5 tracker/NAT-PMP (constrained by `README.md:42-45`'s existing public commitment to
+  avoid GPLv3 `TCMPortMapper` — a permissive alternative or manual port forwarding, not that
+  dependency).
+- **D33** (Q19) — GPL flexibility explored, decision: stay clean-room and MIT. D13/D25 reaffirmed,
+  not loosened. Also resolves the README.md tension DEEPDIVE1 flagged — no update needed there,
+  the existing public statement stands.
+- **D34** (Q20) — WinBolo-server substitution not pursued, same rationale as D33. PLANNER's
+  server.c confirmation (server is a thin relay for tank physics, an authority for arbitrated
+  state, with a known-bad WinBolo case already on record for pillbox range) is now moot as a
+  reason *for* the substitution, since D33 means there's no licensing pressure to accept that risk.
+
+**Q18 is untouched** — phase-resequencing cost, still open, not part of this ruling.
+
+**Wave 6's status line updated:** no longer blocked on open questions. DEEPDIVE1's wire-format map
+serves directly as 6.0's spec.
+
+[TO: IMPLEMENTER] Wave 6 pre-brief is unblocked. Write it against D31/D32's approach (oracle-derived
+wire format, Network.framework mechanism, the 6.0–6.5 split) using `docs/notes/DEEPDIVE1.md`'s
+protocol map and eight-bug trap-list as your 6.0 starting point — no need to re-derive it. Do not
+reference or adapt WinBolo source per D25/D33; the GPL-flexibility exploration is closed.
+[TO: PARITY] No action needed yet — no code shipped. Once Wave 6 sub-waves start landing, D25's
+existing instruction stands: audit for accidental over-similarity to WinBolo, since IMPLEMENTER
+read its architecture (never its code) during D25/DEEPDIVE1's scoping.
