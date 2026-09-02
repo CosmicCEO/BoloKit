@@ -5,7 +5,11 @@
 > sections — never in prose elsewhere.
 >
 > This document is the durable home for the plan (see D17) — it lives in the repo, not just in
-> assistant-side session state, so it survives a dropped session.
+> assistant-side session state, so it survives a dropped session. This doc + `docs/AGENT_NOTES.md`
+> are the two common references for all three roles — status and decisions here, chronological
+> log there. Role-specific instructions live separately, one file per role, and deliberately don't
+> restate anything from either of these two: `CLAUDE.md` (IMPLEMENTER), `docs/PARITY.md`
+> (PARITY), `docs/PLANNER.md` (PLANNER).
 
 ## Open questions
 

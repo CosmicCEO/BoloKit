@@ -41,6 +41,22 @@ Types:
 
 **Role split (2026-09-02 reorg):** IMPLEMENTER owns detailed code-level planning (trap lists, C-source pre-briefs, implementation-approach calls) for its own waves. PLANNER is limited to high-level project management (sequencing, GOs, the decisions/open-questions log, cross-wave policy) and does not pre-author trap lists.
 
+**Commit discipline (all three roles):** an entry only exists once it is appended here AND
+committed — never leave it sitting in a chat session as "done" or "ready." This has already
+bitten the project twice: a Wave 6.0 pre-brief reported "ready" in conversation with nothing
+committed, and a Wave 6.0 PARITY audit relayed by Jerod with nothing committed either. Whoever
+writes an entry commits it themselves, in the same sitting — `git add docs/AGENT_NOTES.md` (plus
+any other file touched) → `git commit`. This applies identically to IMPLEMENTER, PLANNER, and
+PARITY; none of the three can push to `github.com/CosmicCEO/BoloKit` (Jerod pushes after
+relaying), but all three can and must commit locally. If you're about to say something is done and
+you haven't run `git commit` yet, it isn't done yet.
+
+**Role bootstraps (read at session start, each is instructions-only — no wave status lives in
+them):** `CLAUDE.md` (IMPLEMENTER), `docs/PARITY.md` (PARITY), `docs/PLANNER.md` (PLANNER). Wave
+status and decisions live only in `docs/PLAN.md`; this file is the chronological log. Restructured
+2026-09-02 from a single IMPLEMENTER-only `CLAUDE.md` into three role-specific files, specifically
+to stop wave-status content from being duplicated (and going stale) across bootstrap files.
+
 ---
 
 ## Active Log (post-Wave-5)
@@ -674,3 +690,55 @@ with 6.0, I'll review the pre-brief before you start writing Swift.
 FWIDTH finding rather than taking the completion report's word for it — that's exactly the rigor
 this role is for, keep applying it the same way to 6.1 onward, especially once 6.3/6.4 make the
 D25 WinBolo-similarity check meaningful again.
+
+### [PLANNER] 2026-09-02 — Cold-start restructure: three role bootstraps, not one
+
+**Type:** planning — process restructure, no ruling
+**Phase:** cross-wave (not tied to Wave 6)
+**Blocks:** nothing
+
+Jerod asked for the cold-start concept (previously a single `CLAUDE.md`, IMPLEMENTER-only) to be
+redone as three separate files, one per role, focused on instructions rather than status — with
+`docs/AGENT_NOTES.md` and `docs/PLAN.md` as the two common references so status/decisions live in
+exactly one place each, not copy-pasted into every bootstrap.
+
+**What changed:**
+- **`docs/AGENT_NOTES.md`'s header** gained a `Commit discipline (all three roles)` note and a
+  `Role bootstraps` pointer, alongside the existing `PARITY activation rule` and `Role split`
+  notes. This is the new home for anything that would otherwise get duplicated across all three
+  bootstrap files — the commit-discipline rule specifically, since it had already been stated
+  once for IMPLEMENTER only and then the exact same gap recurred on PARITY's side this session.
+- **`CLAUDE.md`** rewritten from scratch: dropped the "Current state" narrative and the "Wave
+  status" table entirely (both duplicated `docs/PLAN.md`'s wave table and required PLANNER to
+  touch this file at every wave transition — the recurring staleness this file's own header used
+  to warn about). Dropped the "Non-negotiable rules" table's full explanatory text for every
+  D-numbered rule (D18/D24/D25-D26-D27-D28-D29/D33) down to a one-line index, since the full text
+  already lives in `docs/PLAN.md`'s decisions log — kept full text only for the three conventions
+  that exist nowhere else (`no Foundation`, `Darwin OK`, `literal precision`). Dropped the
+  "Key constants" table — already duplicated in `docs/PLAN.md`'s Wave 5.0 physics-constants
+  section, now just a pointer. Kept: role definition, git workflow, PARITY-activation reminder,
+  pointers to the other two bootstraps.
+- **`docs/PARITY.md`** (new) — PARITY's own bootstrap: role definition, the no-Swift-toolchain
+  limitation as a standing disclosure, how to audit (re-derive, don't restate; cite `file:line`),
+  a decision-ID checklist (index only, same D-numbers as CLAUDE.md's list but framed as "what to
+  check" rather than "what to obey"), and how to report (commit discipline, same as everyone).
+- **`docs/PLANNER.md`** (new) — PLANNER's own bootstrap: role definition, the two-stage GO pattern
+  (pre-brief GO, then coding GO after review) formalized as an explicit named pattern for the
+  first time rather than left implicit across several `AGENT_NOTES.md` entries, PARITY activation
+  ownership, which docs PLANNER owns and must keep in sync in the same sitting, commit discipline.
+- **`docs/PLAN.md`'s header** — added one line pointing at all three bootstraps and naming
+  `PLAN.md`/`AGENT_NOTES.md` as the two common references, for anyone who opens this file first.
+
+**Deliberately NOT done:** no new shared "rules" file — Jerod named exactly two common points
+(`AGENT_NOTES.md`, `PLAN.md`), so the commit-discipline note went into `AGENT_NOTES.md`'s existing
+header rather than a fourth file. No new `docs/PLAN.md` decision (D35+) was added for `no
+Foundation`/`Darwin OK`/`literal precision` — they stay CLAUDE.md-only since PARITY/PLANNER don't
+need instructions to follow them, only IMPLEMENTER does, so keeping them in one file already
+satisfies "don't duplicate."
+
+[TO: IMPLEMENTER] Your bootstrap moved from a single big file to a leaner `CLAUDE.md` — re-read it
+at your next session start rather than assuming you remember its old shape. Nothing about your
+day-to-day workflow changed (same git workflow, same pre-brief ownership, same commit discipline);
+only where things are documented and how much is restated changed.
+[TO: PARITY] You now have your own bootstrap, `docs/PARITY.md` — read it at your next session
+start instead of relying on ad hoc instructions relayed by Jerod each time.
