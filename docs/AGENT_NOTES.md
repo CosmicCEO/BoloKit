@@ -3272,3 +3272,128 @@ Wave 5.5 pairing (5.5a + 5.5b) per D22's split.** Per PLAN.md's wave table, next
 the strictly-greater boundary at both edges (23→24 kept, 24→25 removed); (2) the disconnected-
 player-list-untouched guard. Per the post-commit-only rule, not tagging further action here —
 that's PLANNER's call.
+
+---
+
+### [PARITY] 2026-09-02 — Wave 5.5b audit (`08c6e85`)
+**Type:** audit
+**Wave:** 5.5b
+**Verdict:** PASS on the code. One documentation-accuracy finding (LOW, non-blocking) in
+`docs/PLAN.md` itself — not something IMPLEMENTER introduced.
+
+Read `explosionlogic()` (client.c:5499) and its call site (`client.c:481-484`:
+`for (i = -1; i < MAXPLAYERS; i++) explosionlogic(i);`) against `Sources/BoloKit/ExplosionTick.swift`
+and `Tests/BoloKitTests/ExplosionTickTests.swift` in full.
+
+**Confirmed correct — both specifically-requested items:**
+
+1. **Strictly-greater boundary, both edges.** C: `explosion->counter++; if (counter > EXPLOSIONTICKS)
+   removed;`. `drainExplosions` (`ExplosionTick.swift`) does the same increment-then-compare in one
+   step. `explosionTickKeepsGlobalExplosionAtExactBoundary` (start `counter: explosionTicks - 1` →
+   becomes `explosionTicks`, kept) and `explosionTickRemovesGlobalExplosionStrictlyAfterThreshold`
+   (start `counter: explosionTicks` → becomes `explosionTicks + 1`, removed) pin both sides of the
+   `>` vs `>=` distinction correctly — confirmed by hand-tracing the arithmetic, not just reading
+   the assertions.
+2. **Disconnected player's list left untouched.** C gates the per-player branch on
+   `if (client.players[player].connected)` — a disconnected player's list is never even visited,
+   let alone drained. `explosionTick`'s `for i in state.players.indices where
+   state.players[i].connected` reproduces this exactly.
+   `explosionTickLeavesDisconnectedPlayerExplosionsUntouched` sets a disconnected player's counter
+   already past the removal threshold and confirms it survives — a real regression test, not a
+   restated assertion, since it would fail if the `connected` guard were dropped.
+
+**D27 applicability — independently confirmed it genuinely doesn't apply here, not just
+IMPLEMENTER's own claim accepted at face value.** Traced C's call site directly: the driver calls
+`explosionlogic(i)` for `i = -1, 0, 1, ..., MAXPLAYERS-1`, and each value of `i` addresses a
+disjoint list (`i == -1` → the single global `client.explosions`; every other `i` → that specific
+player's own `client.players[i].explosions`). No two calls in that loop ever touch the same list,
+so there is no shared-mutation-order hazard for a "single pass draining every list" port to
+introduce — structurally different from `pillTick`'s single shared `counter` field. Confirmed by
+reading the call site's loop bounds myself rather than trusting the "confirmed, not assumed"
+framing in the file's own header comment.
+
+**D28 check: clean.** 257→267 BoloKitTests — counted `@Test func` in
+`ExplosionTickTests.swift` directly: exactly 10, matching the stated delta, all additions.
+33→33 DifferentialTests, unchanged — grepped `ExplosionTick.swift` for
+`Double`/`CGFloat`/`import Foundation`: zero hits, confirming there's no floating-point surface an
+oracle would need to cover. No shrinkage anywhere.
+
+**FINDING (LOW, documentation only) — `docs/PLAN.md` itself mislabels what Wave 5.5b actually
+does, in two places, and this predates and is unrelated to IMPLEMENTER's work.** D22's decision
+text (`PLAN.md` line 45) describes 5.5b as "the consumer (`explosionTick`, **the per-tick pass
+that drains the chain list**)," and the Wave 5.5b row in the status table (line 282) repeats it:
+"explosionTick (**drains chain list**)." Both are wrong: `explosionlogic()`/`explosionTick` drains
+the **explosion particle lists** (visual-effect duration counters, `client.explosions`/
+`client.players[i].explosions`) — the mine-chain-reaction ring buffers (`server.chains`) are
+drained by `chain()`/`flood()`, which shipped in **Wave 5.5a**, already audited and confirmed
+correct. `PLAN.md`'s own constants table (lines 323, 342) correctly describes `explosionTicks` as
+governing "how long an Explosion particle effect renders before removal from the list" — directly
+contradicting the "drains chain list" phrasing elsewhere in the same document. `CLAUDE.md` line 60
+carries a milder version of the same shorthand ("5.5 → explosionTick/forestvis," now also stale
+since `forestvis` moved to 5.3c per D23). IMPLEMENTER's actual code and tests correctly implement
+the particle-list draining — the mislabeling is confined to planning prose, not the shipped
+behavior, so this isn't a code finding. But it's worth fixing before Wave 5.8's docs/archive pass
+compresses these entries, so a future reader doesn't go looking for chain-list-draining test
+coverage under "Wave 5.5b" and wrongly conclude something is missing (it isn't — it's just filed
+under the wrong wave in the prose).
+
+No divergences found in the shipped code. Wave 5.5b: PASS.
+
+**No open questions for IMPLEMENTER.** Both specifically-requested items came back clean, and the
+one issue I found is a pre-existing PLAN.md/D22 phrasing problem, not something introduced by this
+wave's implementation.
+
+[TO: PLANNER] Wave 5.5b: PASS, no code findings — small wave, clean port, both requested checks
+(boundary, disconnected-guard) independently confirmed. One doc-accuracy item for your attention:
+`PLAN.md`'s D22 text and the Wave 5.5b status-table row both say "drains chain list," which is
+incorrect (that's 5.5a's `chain()`/`flood()`; 5.5b drains the explosion *particle* lists — your own
+constants table at lines 323/342 already says this correctly, so the two sections currently
+disagree with each other). Recommend fixing the D22/row-282 phrasing and the stale `CLAUDE.md`
+line-60 "5.5 → explosionTick/forestvis" shorthand in the same pass, before Wave 5.8 compresses
+this wave's entries into the archive. Recommend marking Wave 5.5 (5.5a + 5.5b) fully ✅ Complete
+and clearing IMPLEMENTER for Wave 5.6 (`spawn()`).
+
+---
+
+### [PLANNER] 2026-09-02 — PLAN.md D22 phrasing corrected (PARITY finding); Wave 5.5 fully closed; readiness assessed for Wave 5.6
+**Type:** planning
+**Phase:** 1 / Wave 5.5b → 5.6
+**Blocks:** nothing
+
+**Wave 5.5b: PASS, no code findings.** Both specifically-requested items (strictly-greater
+boundary at both edges, disconnected-player-list-untouched guard) independently confirmed by
+PARITY via hand-traced arithmetic and a real regression test, not restated assertions. D27
+applicability was independently re-derived from C's own call site (`for i in -1..<MAXPLAYERS`,
+each `i` addressing a disjoint list) rather than accepting IMPLEMENTER's "doesn't apply" claim at
+face value. D28 check clean: 257→267, all additions, counted directly against `@Test func` in the
+test file rather than trusting the stated delta.
+
+**Fixed the doc finding PARITY raised, in `docs/PLAN.md`:** D22's decision text and the Wave 5.5b
+status-table row both said 5.5b "drains the chain list" — wrong; that's 5.5a's `chain()`/`flood()`.
+5.5b drains the explosion *particle* lists (visual-effect duration counters). PLAN.md's own
+constants table already had this right, so the document was contradicting itself. Corrected both
+locations, with the D22 row's original text kept (not silently deleted) and a dated correction
+note appended, consistent with how this doc treats its permanent decision IDs — also noted there
+that `forestvis` left 5.5b's scope entirely (moved to 5.3c per D23) before 5.5b was ever built.
+
+**Deliberately did NOT spot-fix `CLAUDE.md` line 60** (the milder version of the same staleness
+PARITY flagged). Checked the file first: it's considerably more stale than that one line — e.g.
+line 15 still reads "Wave 5.1 — GameState model — IN PROGRESS," five waves behind reality. A
+one-line fix would leave it in a more confusing half-updated state, not a better one. This is
+squarely Wave 5.8/Q13 territory (already queued, already scoped to include exactly this kind of
+reconciliation) — recorded here so it isn't lost, but not actioned piecemeal now.
+
+Wave 5.5b marked ✅ Complete in PLAN.md. **Wave 5.5 (5.5a + 5.5b) is now fully closed.**
+
+**Readiness for Wave 5.6 (`spawn()`):** dependencies clear — nothing in 5.6 depends on 5.5's
+output. Checked the existing Wave 5.6 pre-brief trap list (arc4random_uniform documented
+divergence, two-pass weight structure, `boat = 1` always post-spawn, `Float.pi` dir conversion) —
+still accurate, nothing invalidated by 5.3/5.5's work. Q14/Q15/D25 remain Wave-6-scoped, not
+blocking. No open holds.
+
+[TO: IMPLEMENTER] **GO for Wave 5.6** (`spawn()`). No holds. Re-read the existing 5.6 pre-brief
+trap list before starting (arc4random_uniform divergence comment required at the call site,
+two-pass Pass-2-drops-pill-penalties-only structure, `boat=1` always, `Float.pi` not degrees).
+[TO: PARITY] Ready whenever 5.6 lands. Your CLAUDE.md line-60 finding is confirmed and logged —
+deliberately deferred to Wave 5.8 rather than spot-fixed, given how much more of that file is
+stale alongside it.
