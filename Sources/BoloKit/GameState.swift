@@ -17,6 +17,14 @@ public struct GameState: Sendable {
     public var grow: GrowState
     /// Global explosions not attached to any specific player (e.g. mine chains).
     public var explosions: [Explosion]
+    /// Delayed mine-chain-reaction ring buffer (Wave 5.5a). `chainTicks + 1`
+    /// slots, indexed by `ticks % (chainTicks + 1)`; a point scheduled "now"
+    /// (written to slot `(ticks - 1) % (chainTicks + 1)`) is drained
+    /// `chainTicks` ticks later. Mirrors `server.chains` (server.c).
+    public var chains: [[Pointi]]
+    /// Delayed sea-flood ring buffer (Wave 5.5a). Same ring-buffer shape as
+    /// `chains`, sized `floodTicks + 1`. Mirrors `server.floods` (server.c).
+    public var floods: [[Pointi]]
 
     public init(
         terrain: TerrainGrid = .mapDefault(),
@@ -28,7 +36,9 @@ public struct GameState: Sendable {
         localPlayer: Int = 0,
         local: LocalPlayerState = LocalPlayerState(),
         grow: GrowState = GrowState(),
-        explosions: [Explosion] = []
+        explosions: [Explosion] = [],
+        chains: [[Pointi]] = Array(repeating: [], count: chainTicks + 1),
+        floods: [[Pointi]] = Array(repeating: [], count: floodTicks + 1)
     ) {
         self.terrain = terrain
         self.pills = pills
@@ -40,5 +50,7 @@ public struct GameState: Sendable {
         self.local = local
         self.grow = grow
         self.explosions = explosions
+        self.chains = chains
+        self.floods = floods
     }
 }

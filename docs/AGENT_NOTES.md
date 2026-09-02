@@ -2855,3 +2855,243 @@ your own option (a)/(b) framing; (2) the freeze-vs-reset distinction for "no ali
 main issue; (3) the two new multi-player-per-tick regression tests actually exercise the failure
 mode you described, not a restated version of it. Per the post-commit-only rule, not tagging
 further action here — that's PLANNER's call.
+
+---
+
+### [PARITY] 2026-09-02 — Wave 5.3c FAIL re-audit (`03d56b3`): PASS, FAIL resolved
+
+**Type:** audit
+**Wave:** 5.3c (re-close)
+**Verdict:** PASS. The shared-counter order-dependence is fixed and the fix is correct against C,
+not merely against my own report's framing. Wave 5.3 (5.3a/5.3b/5.3c) can be marked fully complete.
+
+Re-read `pilllogic` (client.c:5034) end to end against the rewritten `pillTick`
+(`Sources/BoloKit/PillTick.swift`), specifically checking whether the once-per-tick election model
+is actually equivalent to running the pairwise "am I disqualified by someone else" comparison
+independently for every possible subject — not just whether it reads plausibly.
+
+**Election model — verified equivalent to the pairwise original, not just re-styled.** C's inner
+loop disqualifies a subject if some other player `j` is (a) alive/connected/hostile-eligible, (b)
+strictly closer (`mag2f(j) < mag`), AND (c) `j` itself satisfies the range/visibility test
+(`magJ <= 2.0 || forestvis(j) > 0.25`) — note C does **not** re-check `magJ <= 8.0` for `j`
+explicitly, but this is implied for free since `magJ < mag <= 8.0`. The rewrite's `inRange` list
+requires every candidate (including whoever ends up disqualifying someone else) to independently
+pass that same combined range/visibility test before they can compete at all; `closestSet` is then
+the argmin over that filtered pool. Since C's disqualifying player must *also* pass this test to
+count, and the rewrite excludes anyone who fails it from `inRange` before computing the minimum,
+a player who's geometrically closer but fails their own visibility check correctly does NOT
+suppress the real target in either version — confirmed by hand-tracing both directions (a
+non-passing closer player can't win the argmin since they're excluded from `inRange`, and can't
+disqualify anyone either, matching C's requirement that the disqualifier itself pass the test).
+
+**Freeze-vs-reset distinction — independently checked, and it's real, not overengineering.**
+Confirmed `pilllogic`'s very first line (`if (client.players[client.player].dead) SUCCESS;`) is
+an unconditional early return keyed to *that specific replica's own* player being dead — it says
+nothing about other players. In the distributed model, a replica only mutates its own local
+counter when its own owning human is alive; a dead-or-disconnected human's replica does nothing at
+all that tick (freeze). The only way the merged reconstruction can be certain **nothing** would
+have mutated the shared counter is if literally every connected player is dead (`aliveConnected.isEmpty`)
+— if even one alive connected player exists, their own replica runs and produces either an
+increment or a reset, so "some alive player exists" always yields a real, non-frozen outcome
+(reset, if no eligible hostile among them). This is a correct and necessary refinement beyond what
+my original FAIL report specified — I only flagged the ordering problem, not this freeze/reset
+split, and it's good that IMPLEMENTER found it while fixing rather than collapsing both into one
+case.
+
+**Tie-fire-at-every-member design — accepted as a faithful reconstruction, not an approximation.**
+Two tied-closest hostile players' independent replicas run identical deterministic math against
+identical (eventually-synced) inputs and would cross the firing threshold on the same tick in the
+distributed model — so both actually do fire in the original multiplayer game, not just one
+arbitrary winner. Firing at every member of `closestSet` (each with their own independently
+computed shell, since direction/velocity differ by target even when magnitude ties) is correct.
+
+**New regression tests actually exercise the failure mode, confirmed by re-deriving expected
+values, not just reading assertions.** For
+`pillTickMultiPlayerSweepDoesNotEraseClosestTargetsProgress` (target at distance 1.0, hostile
+bystander at distance ~5, `speed: 4`): re-derived by hand that under the OLD per-player-loop code,
+calling `pillTick(player: 0)` then `pillTick(player: 1)` each tick would have had the bystander's
+call (index 1, farther, still "eligible" but disqualified by the closer target) reset the shared
+counter to 0 immediately after the target's own call incremented it — net effect frozen at 0
+forever, never reaching `speed: 4` to fire. Under the new code this correctly climbs 1, 2, 3, then
+fires only at player 0 on tick 4. Confirms this test would genuinely have caught the original bug,
+not merely restated it. Spot-checked the allied-bystander variant the same way — same conclusion.
+
+**Also confirmed the two smaller items from IMPLEMENTER's own request:** the tie-fire targeting
+math correctly indexes `oldTankPositions[player]` per elected target (not a single shared `old`),
+matching C's `pilllogic(old)` where `old` is always the calling replica's *own* prior position —
+this is actually a cleaner generalization than the pre-fix version's single-`old` signature ever
+allowed, since it now supports multiple simultaneous targets each with their own correct
+lead-velocity term. No stale references to the old `pillTick(player:old:...)` signature remain
+anywhere in `Sources/`/`Tests/`.
+
+No new divergences found. Wave 5.3c: PASS. Wave 5.3 (5.3a/5.3b/5.3c) is fully closed.
+
+[TO: PLANNER] Wave 5.3c's FAIL is resolved — verified the election-model rewrite is actually
+equivalent to the original pairwise disqualification logic (not just plausible-looking), the
+freeze-vs-reset split is a real and necessary distinction I hadn't called for but is correct, and
+the tie-fire-at-all design is the faithful reconstruction rather than an approximation. Both new
+regression tests genuinely reproduce the original failure mode (re-derived by hand what the old
+code would have done — confirmed frozen-at-zero — versus the new code's correct monotonic climb).
+Recommend marking Wave 5.3 fully ✅ Complete in PLAN.md and clearing this off Wave 6 pre-brief
+concerns. No action needed from IMPLEMENTER — clear to proceed to Wave 5.5a.
+
+---
+
+### [PLANNER] 2026-09-02 — Wave 5.3 fully closed; FAIL/fix cycle logged as D27; GO issued for Wave 5.5a
+**Type:** planning
+**Phase:** 1 / Wave 5.3 → 5.5a
+**Blocks:** nothing
+
+Reviewed the full Wave 5.3c cycle end to end before signing off — not just the final PASS. PARITY's
+original FAIL (`d2dfc71`) was real: `pillTick`'s per-connected-player loop mutated one shared
+`state.pills[i].counter`, so any bystander processed after the genuine target in the same tick
+unconditionally reset the counter the target's own call had just incremented — a real gameplay-
+timing divergence (pillbox fire delay driven by call order, not by which player was actually
+closest), and untested at the time (no test exercised a same-tick multi-player sweep). IMPLEMENTER's
+fix (`03d56b3`) rewrote `pillTick` as a single per-tick election over all players — argmin over the
+eligible/in-range pool, ties survive and all fire, plus a freeze-vs-reset distinction PARITY hadn't
+called for but is independently correct. PARITY's re-audit verified the election model against C's
+pairwise logic by hand-tracing both directions (not just re-reading it as plausible), verified the
+freeze/reset split against `pilllogic`'s actual early-return semantics, and re-derived by hand what
+the *old* code would have done on the new regression tests' fixtures (confirmed: frozen at 0
+forever) to confirm the tests genuinely reproduce the original failure, not just restate it. That's
+a properly closed loop, not a rubber-stamped fix.
+
+**Logged as D27, not just closed as a bug-fix note**, because the underlying shape — N independent
+per-replica mutations in C collapsing to one shared field in the merged sim — is going to recur.
+Wave 5.5a/5.5b's mine-chain/flood/explosionTick work has the same shape (a chain list built and
+drained across what were originally per-client replicas). Flagging this now so 5.5a is designed as
+an election/single-pass model from the start rather than risking the same FAIL/fix cycle twice.
+
+Wave 5.3 (5.3a/5.3b/5.3c) marked ✅ fully complete in PLAN.md.
+
+**Confirmed ready for the next wave — yes, Wave 5.5a** (Wave 5.4 was already retired per D23; 5.5a
+is explosionAt/superboomAt/chain/flood mine-detonation cascade + droppills pill-scatter placement,
+per D22's split). Nothing else is outstanding: Q14 (explosions-list attribution) and Q15/D25
+(WinBolo reference policy) are both scoped to Wave 6, not blocking here.
+
+[TO: IMPLEMENTER] **GO for Wave 5.5a.** Read D27 before starting — design the chain/flood state as
+a single per-tick pass over all affected entities rather than a per-caller loop that mutates shared
+lists, given what Wave 5.3c's FAIL just cost.
+[TO: PARITY] Heads-up for whenever 5.5a lands: worth checking early whether the chain/flood
+implementation follows D27's election/single-pass shape, rather than only catching it after a full
+audit cycle like last time.
+
+---
+
+### [PLANNER] 2026-09-02 — New standing policy: artifact/test maintenance (D28)
+**Type:** planning
+**Phase:** 1 / project-wide
+**Blocks:** nothing — standing policy, effective immediately
+
+Jerod asked that all project artifacts, tests included, be maintained going forward — no
+preference on the specific mechanism, so I picked the combination with the most teeth rather than
+the lightest one.
+
+**D28, logged in PLAN.md:** no project artifact — docs, source, or tests — shrinks without an
+explicit, on-record replacement. In practice:
+
+1. IMPLEMENTER's wave-completion reports already state before/after test counts (every report so
+   far has). Going forward, any DECREASE in a wave's test count vs. the prior wave's total needs
+   the reason stated explicitly, not left for PLANNER/PARITY to notice by subtracting numbers.
+2. PARITY's audits already check for coverage gaps case by case (e.g. flagging when a fix's test
+   doesn't actually exercise the failure mode, as with 5.3c). This is now a standing checklist
+   item rather than incidental — worth a line in future audit reports even when the answer is
+   "no gap found."
+3. The wave status table in PLAN.md now carries a running test count per wave (backfilled for
+   5.1 through 5.3c) so a regression is visible at a glance across the whole project's history,
+   not just within one wave's own report.
+4. Wave 5.8's docs/archive pass (Q13) is extended: `archive.md` entries for Wave 5+ should note
+   test-count deltas and the reason for any decrease, same granularity already used for code
+   findings — not just compress the prose, also preserve why coverage changed shape.
+
+This doesn't require anything different starting today — the pattern was already being followed
+(5.3c's 26→28 replacement is exactly this policy in action, just not yet named). It just makes the
+expectation explicit and durable rather than implicit good practice.
+
+[TO: IMPLEMENTER] No change to how you're already reporting — keep stating before/after test
+counts, and call out any decrease with its reason explicitly per D28.
+[TO: PARITY] Add "no artifact/coverage silently shrank" as an explicit standing check in future
+audits, per D28 — a one-line confirmation is enough when there's nothing to flag.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.5a complete: explosionAt, superboomAt, chain, flood, droppills
+
+**Type:** build
+**Phase:** 1 / Wave 5.5a
+**Blocks:** nothing — unblocks Wave 5.5b (explosionTick, drains the chain list this wave builds)
+
+Executed per PLANNER's GO, with D27 read first as instructed. New file `Sources/BoloKit/MineChain.swift`
+(`clearTerrain`, `dropPillSearch`, `dropPills`, `floodTest`, `floodAt`, `flood`, `chainAt`, `chain`,
+`explosionAt`, `superboomAt`, plus a private `applySplashDamage` shared by the last two). New
+`GameState` fields `chains`/`floods` (ring buffers, 7 and 13 slots). Six new `Physics.swift`
+constants. **Test count per D28: 227 → 257 BoloKitTests (+30, all additions), 33 → 33
+DifferentialTests (unchanged — no new oracle needed, confirmed below). No decrease anywhere.**
+
+**D27 checked explicitly against the actual shipped code, not just asserted from the plan:**
+`chainAt`/`floodAt`/`floodTest` only append to ring-buffer slots (order-independent); `chain()`/
+`flood()` are already single global no-player-parameter functions in C, structurally immune to
+pillTick's per-caller-loop shape; `explosionAt`/`superboomAt` mutate their own specific tile
+(idempotent on repeat); `dropPills` re-checks `findPill`/`findBase` per candidate square. Re-
+verified this reasoning against the finished code, not just the pre-implementation plan — nothing
+changed the analysis during implementation.
+
+**No new C oracle needed, confirmed rather than assumed:** grepped the finished file for
+`Double`/`CGFloat`/`Double.pi`/`import Foundation` — zero hits. Every function here is terrain-
+switch/list/ring-buffer bookkeeping; the only float content (`mag2f(tank − point) ≤ radius`)
+reuses the already-verified `mag2f`.
+
+**A real crash risk caught before it shipped, not after:** C's ring-buffer write-slot index is
+`(server.ticks - 1) % (N + 1)` where `server.ticks` is `uint32_t` — at `ticks == 0` (game start)
+this underflows to `0xFFFFFFFF`, well-defined wrapping arithmetic in C. `GameState.ticks` is
+`UInt64`; a literal `state.ticks - 1` in Swift traps at `ticks == 0` instead of wrapping, and
+`&-` on the full `UInt64` range wraps to a *different* value than C's 32-bit wrap would (mod-7/13
+of `UInt64.max` vs `UInt32.max` aren't guaranteed equal). Added a `writeSlot()` helper that
+narrows to `UInt32` *before* the wrapping subtraction, reproducing C's exact wrapped value. Caught
+by reasoning through the type before writing a single test, not by a test failure.
+
+**A closure-threading gap found while implementing, not in the original plan:** `chainAt`/
+`floodAt`/`chain`/`flood` only forwarded `onDropPills` to `explosionAt` in my first draft —
+but `explosionAt`'s splash-damage escalation can call `smallboom`/`superboom` (Wave 5.2b), which
+themselves need `onMineExplosion`/`onSuperboomTerrain`. Fixed by threading all three closures
+through the full call chain (`chain`/`flood` → `chainAt`/`floodAt` → `explosionAt`); without this,
+a local tank caught in a chain-reaction blast severe enough to trigger its own superboom would have
+silently no-opped that superboom's own terrain effects instead of recursing correctly.
+
+**A debugging detour worth recording, since it cost real time chasing the wrong hypothesis
+first:** the new tests initially crashed ("Index out of range") in a way that looked exactly like
+a data race — different "last-started" test shown each run, present under `--parallel` and
+absent-seeming when isolated. Spent real effort testing the race hypothesis (`--no-parallel`,
+individual-test isolation) before it actually *disproved* itself: `--no-parallel` still crashed,
+deterministically, on a *specific* test every time. The real cause was two independent test-
+fixture bugs, not a race at all: (1) `killBuilder()` (Wave 5.2b, already shipped) picks a random
+respawn via `arc4random_uniform(state.starts.count)` then indexes `state.starts[start]` — my
+`makeState` helper never populated `starts`, so any test reaching an active builder-kill crashed
+on an empty array; (2) four tests used `players: []` while calling `explosionAt`/`superboomAt`
+with a non-self-caused `player`, which unconditionally calls `killSquareBuilder`/
+`killPointBuilder` — both index `state.players[state.localPlayer]` regardless of whether the array
+is empty. Multiple *different* tests shared one or the other bug, so under parallel scheduling
+whichever one happened to run last before the crash printed varied — real nondeterminism in
+*which* symptom surfaced first, but each underlying bug was fully deterministic once isolated.
+Fixed by populating `starts` in the shared fixture helper and giving the four affected tests a
+real connected player. Flagging the debugging path itself, not just the fix, since the "looks like
+a race, isn't" pattern is worth recognizing faster next time it comes up.
+
+**Deferred, as flagged in the plan, not silently skipped:** the existing `onMineExplosion`/
+`onSuperboomTerrain` closures shipped in `TankLocalTick.swift`/`ShellTick.swift`/
+`BuilderTick.swift` are still unwired no-op defaults — nothing calls them with a real
+implementation yet. Wiring them to these new functions requires threading the correct causer
+through three already-shipped files, which only a real top-level tick driver (Wave 6) can supply
+with full context.
+
+[TO: PLANNER] Wave 5.5a done and verified, commit follows this entry. Proceeding to Wave 5.5b
+(`explosionTick`, draining the particle list this wave's `state.explosions`/per-player lists feed)
+next unless redirected.
+[TO: PARITY] New commit to audit. Specifically: (1) the D27 structural analysis above, checked
+against the finished code; (2) the `writeSlot` `uint32_t`-narrowing fix — worth confirming the
+wraparound value independently, same rigor as the D26 fp-contract finding; (3) the smallboom-vs-
+superboom damage-check nesting asymmetry (independent top-level `if` for smallboom, nested inside
+the particle gate for superboom) — verify against `recvsrsmallboom`/`recvsrsuperboom` directly,
+since it's easy to assume symmetry that isn't actually there. Per the post-commit-only rule, not
+tagging further action here — that's PLANNER's call.

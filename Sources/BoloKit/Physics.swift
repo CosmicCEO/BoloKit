@@ -201,3 +201,37 @@ public let forestTreeYield: Int = 4
 /// Maximum pill armour a builder can build/repair up to (distinct from
 /// `maxBaseArmour` — pills cap much lower). C: `MAXPILLARMOUR`.
 public let maxPillArmour: Int = 15
+
+// MARK: - Wave 5.5a constants (explosionAt / superboomAt / chain / flood / droppills)
+
+/// Ticks a scheduled chain-reaction point waits in the ring buffer before
+/// being drained. C: `CHAINTICKS`. The ring buffer itself needs
+/// `chainTicks + 1` slots (see `GameState.chains`).
+public let chainTicks: Int = 6
+
+/// Ticks a scheduled flood point waits in the ring buffer before being
+/// drained. C: `FLOODTICKS`. The ring buffer itself needs
+/// `floodTicks + 1` slots (see `GameState.floods`).
+public let floodTicks: Int = 12
+
+/// Lower bound (inclusive) of the mine-placement zone, both axes.
+/// C: `X_MIN_MINE`/`Y_MIN_MINE`.
+public let mineZoneMin: Int = 10
+
+/// Upper bound (inclusive) of the mine-placement zone, both axes.
+/// C: `X_MAX_MINE`/`Y_MAX_MINE`.
+public let mineZoneMax: Int = 245
+
+/// Armour lost by a tank caught in a single-tile mine explosion it didn't
+/// cause itself.
+public let smallboomDamage: Int = 10
+
+/// Armour lost by a tank caught in a 2×2 superboom explosion it didn't
+/// cause itself.
+public let superboomDamage: Int = 20
+
+/// Radius (squares) within which a smallboom's splash damages a tank.
+public let smallboomRadius: Float = 1.0
+
+/// Radius (squares) within which a superboom's splash damages a tank.
+public let superboomRadius: Float = 1.5
