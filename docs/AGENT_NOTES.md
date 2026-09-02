@@ -267,3 +267,59 @@ Pure bookkeeping — no scope, sequencing, or decision changed from what D31/D32
 [TO: IMPLEMENTER] No new action. The prior entry's GO stands: write the Wave 6.0 pre-brief and
 report back here before starting code. This entry only makes `docs/PLAN.md`'s table match D32.
 [TO: PARITY] No action needed — nothing shipped this entry.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.0 pre-brief plan drafted; one DEEPDIVE1 trap-list correction
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.0
+**Blocks:** nothing — sets up the pre-brief write, still pending
+
+Read the Wave 6.0 GO and re-verified DEEPDIVE1's Finding 1 directly against `Reference/c/` before
+building on it — spot-checked `client.h:290-336`'s struct sizes (`CLUpdate` header 113 B,
+`CLUpdateShell` 10, `CLUpdateExplosion` 6, `sizeof(struct CLUpdate) == 4193`), the 20/34 opcode
+counts (`bolo.h:167-188`, `203-238`), and the three encodings in `sendclupdate()`
+(`client.c:3509-3592`) / `dgramclient()` (`client.c:1280-1472`). All hold — Finding 1 is accurate
+and stands as 6.0's format spec.
+
+**Correction found in the process — DEEPDIVE1's trap-list item 7 is FALSE, do not port it.** It
+claims a double-`htons()` bug in `sendmessage()`'s `MSGNEARBY` case. Read `client.c:6705-6744`
+directly: `clsendmesg.mask = htons(0x00)` (a no-op, value zero) at line 6728, then the 16-player
+proximity loop ORs `1 << i` in **host** byte order, then `htons()` is applied exactly **once** at
+line 6736. Single effective swap — correct code, not a bug. This claim traces back to the prior
+session's trap-list seed (`AGENT_NOTES.md`, Wave 6 scope-survey entry) and was carried into
+DEEPDIVE1 without re-verification. Recording this because D24's discipline is "replicate
+documented C bugs exactly" — acting on a phantom bug would inject a real one into the port. Traps
+1–6 and 8 re-confirmed by direct citation and stand as written. Two genuine (non-bug) oddities
+worth noting alongside this fix, same function: `CLSendMesg.mask` is `int16_t` (`client.h:167`),
+so `1 << 15` sets the sign bit; and the proximity check `mag2f(sub2f(own tank, players[i].tank))
+< 8.5` includes the sender itself (distance 0), so the sender's own bit is always set in its own
+`MSGNEARBY` mask.
+
+**Also scoped: 6.0 has no oracle yet.** `Sources/CXBolo/` only compiles leaf modules —
+`client.c`/`server.c` are not in the target, and `sendclupdate()`/`dgramclient()` are
+globals-saturated and `send()`/`recv()`-coupled, so neither links as-is. Plan: a new
+`Sources/CXBolo/netops.c` following the established "permanent verbatim extract, reduced-parameter,
+no globals" pattern already used by `tankops.c`/`pillops.c`/`shellops.c` — `clupdate_encode_oracle()`
+and `clupdate_decode_oracle()`, stopping short of list mutation/sound/vis/dead-reckoning (6.1/6.2
+territory). Also plan to extend `Sources/CXBolo/include/CXBolo.h` to `#include` the real
+`client.h`/`server.h`/`tracker.h` (verified header-only includable, no link dependency) so Swift
+asserts the ~54 struct layouts via `sizeof`/`offsetof` against the real headers rather than my
+transcription of them.
+
+**Design calls flagged for the pre-brief, so PARITY can audit them directly:** codec as a pure
+value layer in `BoloNet` ([UInt8] ↔ wire structs, no I/O, no `GameState` coupling — mapping is
+6.1's job); `seq`/`lastUpdate` live in a BoloNet-side table, not in `BoloKit.PlayerState` (transport
+bookkeeping, not sim state); sequence comparisons use Swift's wrapping `&-` to reproduce C's signed
+wraparound-tolerant compare (`client.c:1333`); fixed-point encodes truncate, never round; no
+`Foundation`, `Darwin` for byte-swap primitives.
+
+No code changes, no `Package.swift` edits, nothing in `Sources/` this entry. Test baseline
+unchanged: **296** (D28). The actual pre-brief document (`docs/notes/WAVE6.md`) is still to be
+written — this entry records the plan and the trap-list correction ahead of it so neither has to
+be re-derived.
+
+> **→ Planner:** Flagging the trap-7 correction now rather than only in the finished pre-brief,
+> since it corrects DEEPDIVE1 itself, not just my own draft. No ruling needed — this is a factual
+> fix, not a new decision. Wave 6.0 pre-brief write is still in progress; will report here again
+> once `docs/notes/WAVE6.md` lands.
+> **→ Parity:** No action needed — no code shipped this entry.
