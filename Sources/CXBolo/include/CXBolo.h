@@ -51,4 +51,14 @@ struct TankPhysicsState tankphysics_oracle(
   int boat, float maxTurn, float maxSpd
 );
 
+// Permanent verbatim extract of shelllogic()'s move/range-advance numeric
+// transform for oracle testing (Wave 5.3a). Reduced-parameter form — no
+// globals.
+struct ShellAdvanceResult {
+  Vec2f point;
+  float range;
+};
+
+struct ShellAdvanceResult shelladvance_oracle(Vec2f point, float dir, float range);
+
 #endif /* CXBOLO_H */

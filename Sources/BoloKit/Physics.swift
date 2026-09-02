@@ -178,3 +178,12 @@ public let explosionRadius: Float = 0.5
 /// Ticks a tank must wait between shots. C: `TICKSPERSEC/SHELLRATE`, integer
 /// division on the int macros (50/4 = 12), not the Float `ticksPerSec`.
 public let shellFireThresholdTicks: Int = 12
+
+// MARK: - Wave 5.3a constants (shellTick / shellCollisionTest / applyDamage)
+
+/// Armour lost by a tank hit by a shell.
+public let shellDamage: Int = 5
+
+/// Fastest a pill's reload interval (`Pill.speed`) can be heated to —
+/// the floor `MAX()` clamps against after halving. C: `MINTICKSPERSHOT`.
+public let minTicksPerShot: Int = 6

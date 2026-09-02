@@ -1915,3 +1915,270 @@ this commit (`grabTile`, `smallboom`, `superboom`) already have the exact inject
 wire into. Proceeding to Wave 5.3 (shellTick/builderTick/pillTick) next unless redirected.
 Note: per the new post-commit-only PARITY rule in the docs restructuring, I'm not tagging
 [TO: PARITY] here — that's PLANNER's call to make after reviewing this report.
+
+---
+
+### [PLANNER] 2026-09-01 — Planner handoff; Q12 resolved as D22; Wave 5.3 assignment
+**Type:** planning
+**Phase:** 1 / Wave 5
+**Blocks:** nothing
+
+New planner session taking over from the prior PLANNER instance (chat-overhead reset, per Jerod).
+Picked up state from `docs/PLAN.md` and this file rather than re-reviewing source — Wave 5.2b's
+own report (tanklocallogic/enter, commit follows that entry) is taken at face value, consistent
+with the existing pattern where PARITY does the independent behavioral check post-commit, not
+PLANNER re-deriving it from the diff.
+
+**Q12 resolved as D22** (full text in PLAN.md decisions log): Wave 5.5 splits into **5.5a**
+(`explosionAt`/`superboomAt`/`chain`/`flood` mine-detonation cascade, `droppills` pill-scatter
+placement — the genuinely new subsystem 5.2b surfaced) and **5.5b** (`explosionTick` — drains the
+chain list 5.5a builds — plus `forestvis`). Reasoning: 5.5b cannot be meaningfully tested without
+5.5a's chain-list state existing first, so treating them as one wave would force writing an
+untestable consumer before its producer; splitting keeps each sub-wave independently gated. Both
+wire into the `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` injection points already added
+in Wave 5.2b — no rework needed there.
+
+[TO: IMPLEMENTER] Proceed to **Wave 5.3** (`shellTick`, `builderTick`, `pillTick`) as you proposed
+in the 5.2b report — confirmed, no redirection. When you reach Wave 5.5, pre-brief 5.5a first
+(mine cascade + pill-scatter) and land it before starting 5.5b (`explosionTick`/`forestvis`); the
+wave table in PLAN.md now reflects this split.
+
+[TO: PARITY] Wave 5.2b is ready for independent audit whenever you pick it up — flag in
+particular the two structural findings the Implementer called out themselves: (1) `enter()`'s
+ally-handoff branch in `recvclgrabtile` being unreachable from this call path (still kept for
+other callers), and (2) walking onto your own base hitting the hostile-takeover branch and
+zeroing resources (no self-alliance special case in the original bitmask — replicated on
+purpose, regression-tested). Confirm both are correct C fidelity, not just internally consistent
+Swift.
+
+---
+
+### [PLANNER] 2026-09-01 — Wave 5.8 added: end-of-Wave-5 docs/archive pass (Q13)
+**Type:** planning
+**Phase:** 1 / Wave 5
+**Blocks:** Wave 6
+
+Per Jerod's request, adding an explicit open item at the end of the Wave 5 sequence rather than
+letting documentation upkeep happen implicitly. Logged as **Q13** in PLAN.md's open questions and
+as **Wave 5.8** in the wave status table — a gate between Wave 5 finishing and Wave 6
+(networking/UI) starting, not something to interrupt 5.3–5.7 for.
+
+**Scope of Wave 5.8 (Q13), for whoever picks it up:**
+1. Refresh `docs/PLAN.md` — confirm the wave table and decisions log are current once 5.3–5.7
+   land, close out any Wave-5-scoped open questions.
+2. Compress the Wave 5.x entries out of `docs/AGENT_NOTES.md` into `docs/notes/archive.md`,
+   following the existing Waves 1–4 convention already in that file (short bullet per wave: commit
+   hash, one-line scope, notable findings, ✅). AGENT_NOTES.md is pushing 2000 lines; Wave 5 alone
+   is the bulk of that.
+3. Refresh project memory (`plan-status.md`, `roles-workflow.md`, `project-overview.md`) to match
+   wherever Wave 5 actually lands.
+4. Reconcile the project-instructions config, which still describes a pre-Wave-5 state (Wave 1
+   complete, defining Wave 2 scope) against the AGENT_NOTES.md/PLAN.md canonical record — flagged
+   by this PLANNER session at handoff, not yet acted on.
+
+[TO: IMPLEMENTER] No action needed now — this is queued behind 5.3–5.7, not a redirect. Flag it
+back to PLANNER once Wave 5.7 lands so Wave 5.8 can be picked up before Wave 6 starts.
+
+---
+
+### [PARITY] 2026-09-01 — New Auditor session; Wave 5.2a holding items closed; Wave 5.2b audited
+**Type:** audit
+**Wave:** 5.2a (close), 5.2b (new)
+**Verdict:** 5.2a — PASS (holding items resolved). 5.2b — PASS.
+
+New PARITY AUDITOR instance succeeding the prior session (chat-overhead reset, per Jerod).
+Picked up from `docs/AGENT_NOTES.md`/`docs/PLAN.md` state rather than re-reading the whole
+codebase — targeted, source-verified checks only, per the surviving open items.
+
+**Wave 5.2a — closing the two "READ — holding" items:**
+
+1. **F4 retraction (`c4d501b`), verified independently.** Re-derived C's operator-conversion rule
+   from first principles (per-operator "usual arithmetic conversions," not whole-expression
+   lookahead): `sca * hx` with both operands `float` computes in Float precision, widening to
+   `double` only at the later `1.0 - (...)` subtraction. This is exactly what the shipped
+   `Double(sca * hx)` pattern does. IMPLEMENTER's empirical bit-pattern trial (2000/2000 vs C, vs
+   1966/2000 for my original suggested fix) is consistent with this and I did not find a
+   counter-argument. **Retraction confirmed — Finding 4 stays retracted, no further action.**
+
+2. **Dead-tank enum-mismatch bug, verified against `tiles.h`/`terrain.h` directly**, not taken on
+   report. `tankmovelogic` (`client.c:3995-3996`) switches on `client.terrain[...]` (a Terrain
+   value) but its case labels are `kSeaTile`/`kMinedSeaTile` — Tile-enum constants. Confirmed
+   `tiles.h`: `kSeaTile = 16`, `kMinedSeaTile = 17` (16 mined-terrain-preceding tile constants,
+   0-indexed, then these two). Confirmed `terrain.h`: ordinal 16/17 in that enum are
+   `kGrassTerrain1`/`kGrassTerrain2`. So the C switch genuinely never matches real sea/mined-sea
+   terrain — it silently matches grass1/grass2 instead, meaning the "skip explosion over water"
+   intent is broken in the original and the explosion fires over real sea/mined-sea while being
+   incorrectly suppressed over two grass variants. Checked `Sources/BoloKit/TankTick.swift:109-121`
+   against this: `Terrain` enum ordering in `Terrain.swift` reproduces the C ordinal layout exactly
+   (`grass1.rawValue == 16`, `grass2.rawValue == 17`), and the hardcoded `terrainValue != 16 &&
+   terrainValue != 17` check is bug-for-bug faithful, with a named regression test guarding it.
+   **Confirmed correct — bug replicated exactly, not accidentally right.**
+
+   Also spot-verified the companion kickspeed-decay double-precision fix in the same file
+   (`TankTick.swift:246-253`): C's `kickspeed -= 12.0/TICKSPERSEC` forces double-precision division
+   because `12.0` is an untyped double literal in C; the ported `Double(kickSpeed) -
+   Double(kickSpeedDecay)/Double(ticksPerSec)` reproduces that promotion correctly. Consistent with
+   the already-shipped `collisionDetect` pattern. No issue.
+
+**Wave 5.2b (`71411b9`/`4c6ad1b`) — full read of `enter()` (client.c:5785-5967) and
+`recvclgrabtile` (server.c:2271-2337) against `Sources/BoloKit/TankLocalTick.swift`:**
+
+- **Structural finding 1 (ally-handoff branch unreachable) — CONFIRMED.** `enter()`'s base
+  branch sends `sendclgrabtile` only when `base.owner == NEUTRAL || !testalliance(owner, player)`
+  — i.e. only when the allied branch of `recvclgrabtile` could *not* fire. Checked every other
+  `sendclgrabtile` call site in `client.c` (pill-capture side-effect branches at lines
+  2288/2320/2330): all are keyed off `findpill` succeeding, and pill/base tiles don't coincide, so
+  `findbase` is `-1` there and the base-ownership block in `recvclgrabtile` never executes for
+  those sends either. The allied-transfer branch is unreachable from any real call path — keeping
+  it in `grabTile` for structural fidelity (in case Wave 6 networking reintroduces other callers)
+  is the right call, not dead code that should be deleted.
+- **Structural finding 2 (own-base re-entry hits hostile-takeover, zeroes resources) —
+  CONFIRMED.** Traced `testalliance(p1,p2)` (`client.c`): requires both directions of the alliance
+  bitmask to have the other player's bit set. Confirmed alliance defaults to `0` at connect
+  (`client.c:269`) and is only ever mutated by explicit `clsetalliance`/`srsetalliance` traffic —
+  nothing sets a player's own bit in their own mask automatically. So `testalliance(player,
+  player)` is false by default, meaning walking onto your own already-owned base takes the
+  `else` (hostile) branch in `recvclgrabtile`, zeroing armour/shells/mines. Swift's `grabTile`
+  (`TankLocalTick.swift:279-288`) reproduces the three-way owner/ally/hostile branch structure
+  exactly, with `testAlliance` gating the ally branch the same way. **Confirmed correct — no
+  self-alliance special case in the original, none introduced in the port.**
+- Also checked the `.forest` case's C fallthrough (`client.c` terrain switch in `enter()`: the
+  forest case has no `break` and falls into the swamp/crater/road/rubble/grass block). Swift
+  (`TankLocalTick.swift:404-419`) uses an explicit `fallthrough` to reproduce this — correct, and
+  correctly scoped (the dead-tank explosion-spawn logic runs only inside the forest case itself,
+  the boat-drop/mine-plant logic that follows applies unconditionally to both forest and the
+  shared block, matching C's shared post-fallthrough guard conditions line for line).
+- Checked `.minedSea`'s unconditional `drown()` (fires regardless of `boat`, unlike plain `.sea`
+  which checks `!boat` first) — C: `client.c` mined-sea case calls `drown()` unconditionally after
+  the conditional `sendclgrabtile`. Swift matches, with an explanatory comment already in place.
+
+No divergences found in either wave. Updating status table below.
+
+[TO: PLANNER] Wave 5.2a's two holding items are now resolved (F4 retraction independently
+confirmed; dead-tank enum bug independently confirmed against `tiles.h`/`terrain.h` raw values,
+not just cross-checked against the report). Wave 5.2b: PASS, no findings — both structural
+questions you flagged are correct C fidelity, confirmed via `testalliance`/`recvclgrabtile`
+source, not just internal Swift consistency. Ready for Wave 5.3 audit whenever it lands; will
+continue picking up post-commit per the established protocol rather than re-touring completed
+waves.
+
+| Wave | Status | Notes |
+|---|---|---|
+| 5.0 | CLOSED | F4 confirmed retracted (independent re-derivation, not just accepted) |
+| 5.1 | CLOSED | Dead-tank enum bug independently confirmed against tiles.h/terrain.h raw values |
+| 5.2a | CLOSED | Kickspeed double-precision decay fix confirmed correct |
+| 5.2b | CLOSED | PASS — ally-handoff unreachability and own-base hostile-takeover both confirmed against testalliance/recvclgrabtile source |
+| 5.3–5.7 | PENDING | Full audit at each commit, per protocol |
+
+---
+
+### [PLANNER] 2026-09-01 — Wave 5.3 phasing agreed (D23); tautology ruling (D24); readiness check acknowledged
+**Type:** planning
+**Phase:** 1 / Wave 5.3
+**Blocks:** nothing — unblocks 5.3b
+
+Jerod agreed with the 5.3a/b/c split from IMPLEMENTER's readiness check (bundling shellTick +
+builderTick + pillTick — ~1000 lines across three unrelated server.c handler families — into one
+wave was too large a unit of cost/review). Logged as **D23** in PLAN.md; wave table updated:
+
+- **5.3a** (in progress) — shellTick: `shelllogic`, `shellcollisiontest`, `recvcldamage`,
+  `recvcltouch`, plus `killTank` pulled forward from 5.6 (hidden dependency: the shell tank-hit
+  path calls it at armour-zero; reuses `onboardPillMask` from 5.2b — correct call not to add
+  another injection point for something this small and already-scoped-in).
+- **5.3b** (queued) — builderTick, absorbing the former Wave 5.4's `buildercollision` line item
+  (testAlliance/findPill/findBase shipped in 5.1, tankCollision shipped in 5.2a — Wave 5.4 is
+  retired as a standalone row, not left dangling).
+- **5.3c** (queued) — pillTick + `forestvis`, moved out of 5.5b. `forestvis` is needed by
+  pillTick's firing condition (`dist ≤ 2.0 OR forestvis(tank) > 0.25`), so it has to exist before
+  5.3c runs, not after — 5.5b now covers `explosionTick` only.
+
+**D24 — `recvclbuildroad`'s `if (trees >= trees)` tautology: replicate bug-for-bug, do not
+correct.** Same discipline as the dead-tank terrain-enum mismatch and growtrees' outer-guard bug —
+Phase 3 is behaviour-preserving; Phase 5 is where fidelity gaps get fixed, not mid-port ad hoc.
+Not a Swift memory-safety concern (unlike `writeRun`'s x<256 guard), so no countervailing reason
+to deviate. Requires a named regression test documenting the tautology is intentional — same
+pattern as the other two replicated bugs. **This unblocks Wave 5.3b.**
+
+**Readiness-check items acknowledged, no further action:**
+- The self-hit shell generalization (all-shells-vs-all-tanks, preserving the self-hit branch) —
+  accepted, same reasoning already applied to pillTick's closest-hostile check. Reported
+  after-the-fact per the established 5.1/5.2 pattern, which is the right call for this class of
+  generalization.
+- CLAUDE.md staleness ("Wave 5.1 — IN PROGRESS") and forestvis's old placement under 5.5b — both
+  correctly deferred, not fixed ad hoc. forestvis's *placement* is now corrected here (D23,
+  moved to 5.3c) since it was blocking a real dependency ordering, not just a documentation
+  staleness issue; CLAUDE.md itself stays Wave 5.8 / Q13 territory as flagged.
+
+[TO: IMPLEMENTER] Proceed with 5.3a as scoped (including `killTank`). D24 is ruled — replicate the
+`trees >= trees` tautology with a regression test; 5.3b is unblocked whenever you get to it. No
+change to the self-hit generalization call.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.3a complete: shellTick / shellCollisionTest / applyDamage / killTank
+
+**Type:** build
+**Phase:** 1 / Wave 5.3a
+**Blocks:** nothing — unblocks 5.3b
+
+Executed per D23/the `[TO: IMPLEMENTER] Proceed with 5.3a as scoped` GO above. New file
+`Sources/BoloKit/ShellTick.swift` (`shellAdvance`, `heatPill`, `applyDamage`, `touchTile`,
+`shellCollisionTest`, `killTank`, `shellTick`), plus a reduced-parameter oracle
+(`shelladvance_oracle`) in new `Sources/CXBolo/shellops.c` for the move/range-advance numeric
+core — collision resolution needs pill/base/terrain lookups so it's Swift-only tested instead,
+same split `tankops.c` established in 5.2a. Two new `Physics.swift` constants: `shellDamage (5)`,
+`minTicksPerShot (6)`. 32 new unit tests (`ShellTickTests.swift`), 1 new differential fuzz test
+(`ShellTickDifferentialTests.swift`, 1000 iterations). Full suite: 151 BoloKitTests + 28
+DifferentialTests, all green — no regressions against the 119+27 baseline from 5.2b.
+
+**Precision, checked rather than assumed:** `SHELLVEL/TICKSPERSEC` hits the same double-promotion
+trap as 5.2a's kickspeed decay (`SHELLVEL` is a double literal `7.0`; `TICKSPERSEC` is a bare int
+literal `50` that promotes to double) — confirmed via the oracle fuzz (1000 iterations, exact
+bit-pattern match) that this needs the `Double(a)/Double(b)` treatment, both for the step value
+*and* the `range < step` comparison itself (which happens with `range` promoted UP to double, not
+the step narrowed down first).
+
+**Generalization from C's network-authority model, reported per the established 5.1/5.2 pattern
+(not asked in advance):** every collision-resolution, damage-application, and builder-kill call
+in `shellcollisiontest`/`shelllogic` is gated in C on `player == client.player` — a network
+dedup (only the client owning a shell list submits its results; every other client would compute
+the identical result independently). BoloKit has one authoritative simulation, so this port
+drops that gate everywhere it appears: `shellCollisionTest`/`applyDamage`/`touchTile` always
+apply, and per-player explosion attribution (`client.players[client.player].explosions`) becomes
+`state.players[shell.owner].explosions`, since the gate's `client.player` always equals the
+shell's owner at every site that reaches it. This matches the already-accepted self-hit
+generalization exactly (same file, same reasoning).
+
+**A second real bug found, not just replicated — and fixed for memory safety, not "corrected"
+for behavior:** `recvcldamage`'s base-hit pill-heating loop clamps with `server.pills[pill].speed`
+where `pill` is the *outer* scope's failed `findpill` result — always `-1` in this branch. This
+is `pills[-1]`, an out-of-bounds C read/write (undefined behavior), not a deterministic,
+well-defined bug like the dead-tank enum mismatch or `collisionDetect`'s p.x/p.y swap — both of
+which get replicated exactly because C's behavior there is well-defined. UB has no meaningful
+"faithful" Swift translation, and Swift arrays trap on invalid indices regardless, so
+`applyDamage`'s base branch uses the evidently-intended `pills[i]` (the same pill just halved two
+lines up in the C source) instead — same class of deviation as `writeRun`'s x<256 guard. Flagging
+for PARITY to confirm this reasoning rather than treating it as a silent fix.
+
+**Scope note — `killTank`'s tank-hit-loop caller stays gated to `state.localPlayer`, matching
+`tankMoveTick`'s precedent exactly:** the armour decrement and `killTank()` call in the tank-hit
+loop only fire `if target == state.localPlayer`, because `LocalPlayerState.armour` only exists
+once. A hit on a remote player's tank still applies the kick and spawns the explosion (both live
+in per-player `PlayerState`), but has no armour pool to decrement in this port — the same
+singular-`LocalPlayerState` boundary Wave 5.2a already established and accepted for the
+dead-tumble/respawn sequence, not a new architectural decision.
+
+**Test-fixture note, same category as 5.2a/5.2b's:** every fixture in `ShellTickTests.swift`
+explicitly sets `state.terrain[50, 50] = .grass0` via the shared `makeState` helper — a bare
+`GameState()` still puts the origin in the mined-sea border ring.
+
+[TO: PLANNER] Wave 5.3a done and verified, commit follows this entry. Proceeding to Wave 5.3b
+(builderTick, including the D24-ruled `trees >= trees` tautology replication) next unless
+redirected.
+[TO: PARITY] New commit to audit. Please specifically check: the network-authority-gate
+generalization applied throughout `shellCollisionTest`/`applyDamage`/`touchTile`/`shellTick`
+(dropping `player == client.player` everywhere it appeared in the C source), the `pills[-1]`
+UB-vs-memory-safety fix in `applyDamage`'s base branch, and the exhaustiveness of the boat-shell
+terrain switch's `default: damage` branch (verified by hand against the 30-case `Terrain` enum in
+the doc comment, but a second read would help). Per the post-commit-only PARITY rule, not tagging
+further action here — that's PLANNER's call.

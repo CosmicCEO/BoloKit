@@ -12,7 +12,7 @@
 | ID | Question | Blocks | Priority |
 | --- | --- | --- | --- |
 | **Q10** | Keep the C code in-tree permanently as a test oracle, or delete it once the port completes? Recommend keeping it until Phase 5 ends, then removing it (it stays in git history) | Phase 6 | Low |
-| **Q12** | Wave 5.2b surfaced a subsystem not covered by any Wave 5.0–5.7 line item: `explosionAt`/`superboomAt`/`chain`/`flood` (server.c mine-detonation cascade — crater a tile, flood-test neighbouring sea cells, register a chain-reaction list consumed by a per-tick pass) and `droppills` (an outward-spiral search placing scattered pills on the map). `tankLocalTick`/`enterTile`/`grabTile`/`drown`/`smallboom`/`superboom` all surface these as no-op-by-default injection points (`onMineExplosion`, `onSuperboomTerrain`, `onDropPills`) rather than blocking on them, matching the precedent `tankMoveTick` (Wave 5.2a) already set for builder-kill/respawn. Recommend: a new wave (5.5 already covers `explosionTick`, which is closely related — fold in, or split out as 5.5a) rather than treating it as already covered. | Wave 5.5 | Medium |
+| **Q13** | End-of-Wave-5 documentation/archive pass: refresh `docs/PLAN.md` wave table and decisions log, compress Wave 5.x entries from `docs/AGENT_NOTES.md` into `docs/notes/archive.md` following the existing Waves 1–4 convention, refresh project memory (plan-status.md/roles-workflow.md/project-overview.md), and reconcile the stale project-instructions config (still describes a pre-Wave-5 state) against the AGENT_NOTES.md/PLAN.md canonical record. Raised by PLANNER, requested by Jerod. | Wave 6 | Medium |
 
 ## Decisions log
 
@@ -41,6 +41,9 @@ Closed questions, newest last. IDs are permanent.
 | **D19** | Package manifest tools version | **Align `Package.swift` tools version with platform targets.** Tools version `6.0` does not support `.macOS(.v26)` (introduced in PackageDescription 6.2). Update `Package.swift` to declare tools-version `6.4` to support current system SDK features correctly. |
 | **D20** | Test Harness & Socket Coupling | **Isolate and mock simulation code for unit test bridging.** The C code in `client.c` and `server.c` is tightly coupled with low-level POSIX sockets and pipe multiplexing. We must isolate pure state logic or wrap C entry points to avoid launching network services in differential tests. |
 | **D21** | Project Renaming (was Q11) | **Adopt the engine-first architecture.** Rename the core simulation framework to `BoloKit` (supporting future expansion such as mods, plugins, and AI agents), and name the primary application `Bolo 2026`. |
+| **D22** | Q12 resolution — mine-chain/flood + pill-scatter subsystem | **Split Wave 5.5 into two sub-waves rather than folding silently.** 5.5a = the producers (`explosionAt`, `superboomAt`, `chain`, `flood`, `droppills`) — the genuinely new, undesigned subsystem Wave 5.2b surfaced. 5.5b = the consumer (`explosionTick`, the per-tick pass that drains the chain list) plus `forestvis`, since it cannot be meaningfully tested until 5.5a's chain-list state exists. Both wire into the `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` injection points Wave 5.2b already added. |
+| **D23** | Wave 5.3 phasing (raised by IMPLEMENTER's readiness check, agreed by Jerod due to cost) | **Wave 5.3 as tabled ("shellTick, builderTick, pillTick" in one row, ~1000 lines of C across three unrelated server.c handler families) is too large a unit of work/review — split into 5.3a (shellTick: `shelllogic`, `shellcollisiontest`, `recvcldamage`, `recvcltouch`, plus `killTank` — see below), 5.3b (builderTick: `builderlogic` + the server-side build/repair/mine/grab-trees handlers merged in per the Wave 5.1 scope note — absorbs the former Wave 5.4's `buildercollision` line item, since `tankCollision`/`testAlliance`/`findPill`/`findBase` already shipped in 5.1/5.2a), and 5.3c (pillTick: `pilllogic` + `forestvis`, moved out of 5.5b — pillTick's firing condition needs `forestvis` directly, so it must exist before 5.3c, not after). **Wave 5.4 is retired as a standalone line item** — its scope is now fully absorbed into 5.1 (testAlliance/findPill/findBase), 5.2a (tankCollision), and 5.3b (buildercollision). |
+| **D24** | `recvclbuildroad`'s tautological tree-sufficiency guard (`if (trees >= trees)`, always true — flagged by IMPLEMENTER, blocked 5.3b start) | **Replicate bug-for-bug, do not correct.** Same discipline already applied to the dead-tank terrain-enum mismatch (Wave 5.1/5.2a) and `growtrees`' outer guard checking `(x,y)` instead of `(growx,growy)` (Wave 5.7 pre-brief): Phase 3 is behaviour-preserving, bug-for-bug; fidelity fixes belong to Phase 5, not discovered ad hoc mid-port. This is not a Swift memory-safety concern (unlike the `writeRun` x<256 guard, which was a genuine safety deviation), so there's no countervailing reason to deviate. Requires a named regression test documenting the tautology is intentional, matching the pattern already used for the other two replicated bugs. Unblocks Wave 5.3b. |
 
 ---
 
@@ -252,7 +255,7 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 
 ---
 
-## Wave implementation status (updated 2026-09-01 by PLANNER)
+## Wave implementation status (updated 2026-09-01 by PLANNER — planner handoff, see AGENT_NOTES.md)
 
 | Wave | Content | Status |
 |---|---|---|
@@ -266,11 +269,16 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 5.1 | GameState model (tanks, pills, bases, shells, builders) | ✅ Complete — a3126c6 |
 | Wave 5.2a | tankMoveTick — tank physics tick | ✅ Complete — a752a77 |
 | Wave 5.2b | tanklocallogic/enter() — local player input, mine/boat/refuel/fire | ✅ Complete — see AGENT_NOTES (scope note: mine-chain/flood propagation and pill-scatter placement deferred, injection points added) |
-| Wave 5.3 | shellTick, builderTick, pillTick | ⬜ Queued |
-| Wave 5.4 | tankcollision, buildercollision, testAlliance, findPill/findBase | ⬜ Queued |
-| Wave 5.5 | explosionTick, forestvis | ⬜ Queued |
-| Wave 5.6 | spawn() — two-pass weighted selection; killtank, drown | ⬜ Queued |
+| Wave 5.3a | shellTick — shelllogic, shellcollisiontest, recvcldamage, recvcltouch, `killTank` (pulled forward from 5.6 — hidden dependency, armour-zero on shell hit calls it) | 🔶 In progress (D23) |
+| Wave 5.3b | builderTick — builderlogic + server-side build/repair/mine/grab-trees handlers merged into the unified tick; absorbs former Wave 5.4's buildercollision | ⬜ Queued (D23; unblocked by D24) |
+| Wave 5.3c | pillTick — pilllogic + forestvis (moved from 5.5b, needed by pillTick's firing condition) | ⬜ Queued (D23) |
+| ~~Wave 5.4~~ | ~~tankcollision, buildercollision, testAlliance, findPill/findBase~~ | ⏹ Retired (D23) — absorbed into 5.1/5.2a/5.3b |
+| Wave 5.5a | explosionAt/superboomAt/chain/flood (mine-detonation cascade), droppills (pill-scatter placement) | ⬜ Queued (split from 5.5 per D22) |
+| Wave 5.5b | explosionTick (drains chain list) | ⬜ Queued (blocked on 5.5a) |
+| Wave 5.6 | spawn() — two-pass weighted selection; drown | ⬜ Queued |
 | Wave 5.7 | growtrees (C bug replicated), pill cooldown, base replenish | ⬜ Queued |
+
+| Wave 5.8 | Docs/archive pass — PLAN.md, AGENT_NOTES.md → archive.md, project memory, project-instructions reconciliation (Q13) | ⬜ Queued (gate before Wave 6) |
 
 | Wave 6 | Networking + Cocoa UI | ⬜ Not started |
 
