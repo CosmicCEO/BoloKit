@@ -88,3 +88,118 @@ code work; flagging so it doesn't get lost.
 
 [TO: IMPLEMENTER] No action. Wave 6 has no pre-brief yet — nothing to start.
 [TO: PARITY] No action needed.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6 scope survey; three questions block the pre-brief
+
+**Type:** planning (no code this entry)
+**Phase:** 1 / pre-Wave-6
+**Blocks:** Wave 6 pre-brief and any GO
+
+Per the 2026-09-02 reorg I own Wave 6's pre-brief/trap list. Before writing one I read the actual
+C sources (`client.h`/`client.c`, `server.h`/`server.c`, `bmap.h`, `timing.c`, `tracker.h`, the
+`Mac OS X/*.m` UI, and cross-checked against what's already shipped in `Sources/BoloKit/`) to size
+the work rather than assume the wave table's one-row shape is accurate.
+
+**Finding 1 — Wave 5 already absorbed more of client.c/server.c than the wave table shows.**
+`ShellTick.swift`/`BuilderTick.swift`/`MineChain.swift` port the *merged* `recvcl<action>`
+server-effect + local-effect pairs, and `MineChain.swift` additionally absorbed the local-effect
+halves of `recvsrsmallboom`/`recvsrsuperboom`/`recvsrflood`/`recvsrdroppill`. Genuinely unstarted:
+the wire codec (~40 `CL*`/`SR*` structs + `CLUpdate`/preambles, ~350 lines, pure, differentially
+testable), the tick orchestrators `runclient()`/`runserver()` (~350 lines), ~35 `recvsr*` client
+broadcast handlers (~1670 lines), ~20 `sendcl*` senders (~450 lines), server session logic
+(join/kick/ban/alliance/preamble assembly, ~1200 lines, partly pure), transport
+(sockets/select/pthreads, ~1500 lines, not pure, not differentially testable), tracker + NAT-PMP
+(`tracker.c`/`resolver.c`/`TCMPortMapper.framework`, ~550 lines + framework), and the Cocoa UI
+(`Mac OS X/*.m`, 5,288 lines). `Buf.swift` already ships `sendbuf`/`recvbuf`/`cntlsend`/`cntlrecv`/
+`selectreadwrite`/`selectreadread` from Wave 1 — transport work builds on these, doesn't start cold.
+
+**Finding 2 — Wave 6 as one table row is ~11,000 lines of C**, 3–5x all of Wave 5 combined. D23
+split Wave 5.3 at ~1000 lines for being too large to review as one unit.
+
+**Finding 3 — Phase 2 (glyph art) was never done.** `Sources/BoloGlyphs/main.swift` is a one-line
+comment; © Cheshire art/sounds are still in `Reference/c/`; no app target or `.xcodeproj` exists
+(SPM-only). The UI sub-wave has nothing to render.
+
+**Decided this session (not requiring a PLANNER ruling):** UI comes out of Wave 6. Wave 6 =
+networking only; UI becomes its own phase, gated on Phase 2 landing first. 5,288 lines of ObjC is
+a different risk profile from protocol work and isn't differentially testable — keeping it in
+Wave 6 makes the wave unreviewable.
+
+**Three questions logged, full detail and a proposed 6.0 trap-list seed in this session's plan
+doc (not in this repo — session-local; the numbered questions below are the durable record):**
+
+- **Q16** — Wave 6 transport: port POSIX (`select`/pthread/mutex-per-tick) bug-for-bug, or port
+  only the *wire format* byte-exact (keeps a real differential oracle + lets a Swift client join
+  the actual C server) and rebuild the *mechanism* on Network.framework + async/await? D4 (no
+  interop requirement) means the transport mechanism has no fidelity obligation, unlike the format.
+  IMPLEMENTER recommends the split (exact wire, modern transport) — CLAUDE.md's async/await
+  preference and the untestability of transliterated POSIX both point the same way — but this
+  changes what every Wave 6 sub-wave looks like, so it's logged as a decision request, not assumed.
+- **Q17** — Proposed 6.0–6.5 sub-wave split (6.0 wire codec, 6.1 tick orchestrator, 6.2 `recvsr*`
+  broadcast handlers, 6.3 server session logic, 6.4 transport + join handshake, 6.5 tracker/NAT —
+  arguably deferrable under D4). Paused pending Q16, since Q16 determines whether 6.4 exists in
+  this form.
+- **Q18** — PLAN.md's phase order (Phase 2 art before Phase 3 port) no longer matches reality;
+  Phase 3 ran to completion and Phase 2 never started. Flagging because PLAN.md's Phase 2 verify
+  step calls for a **git history rewrite** to strip original assets, which only gets more
+  expensive with every commit made before it happens — not recommending a specific resequencing,
+  just surfacing the cost curve.
+
+**Finding relevant to open Q14 (explosions-list attribution):** `sendclupdate()` (client.c:3572)
+serialises only `client.players[client.player].explosions` — the sender's own per-player list.
+`dgramclient()` (client.c:1427) clears-and-replaces the *receiving* client's mirror of that same
+per-player list from each packet. `client.explosions` (the `-1`-sentinel list) is **never
+transmitted**. Doesn't settle Q14 outright, but rules out any answer that would put a replicated
+explosion in the non-transmitted list, and supports PARITY's existing read that Q14 is a
+presentation-layer question, not a mechanical-consumer one.
+
+**Trap-list seed for the eventual 6.0 pre-brief** (not yet Wave-5 rigor — that follows Q16/Q17):
+mixed encodings in one packet (raw IEEE-754 bit-swap for tank/builder floats vs. 1/256 fixed-point
+for shell/explosion positions vs. 8-bit turns for directions — three schemes in one struct);
+signed sequence-wraparound comparisons that must be `&-` in Swift, not `-` (traps on overflow);
+a real C bug in `sendmessage()`'s `MSGNEARBY` case — double-`htons()`, D24-class, replicate with a
+named regression test, don't fix; `INET_ADDRSTRLEN` used as a `sockaddr_in` length by numeric
+coincidence; `O_NONBLOCK` passed as a `recv()` message flag (aliases `MSG_DONTROUTE`, harmless but
+confused); an unbounded network-driven re-simulation loop in latency extrapolation
+(client.c:1447-1454) that needs a Swift-side bound regardless of C's behavior — a `writeRun`-style
+safety deviation, not a fidelity fix; and D27 applies directly to the tick orchestrator
+(`explosionlogic` loops `-1..<MAXPLAYERS`, `pilllogic` runs once not per-player, `sendclupdate`
+fires only on `seq % 5 == 0`).
+
+No code changes, no `docs/PLAN.md` edits this entry — those are PLANNER's calls. Current test
+baseline unchanged: **296** (last touched Wave 5.7).
+
+> **→ Planner:** Q16/Q17/Q18 above need rulings before a Wave 6 pre-brief can be written. Q16 is
+> the long pole — it determines the shape of the sub-wave split in Q17.
+> **→ Parity:** No action needed — no code shipped this entry.
+
+### [PLANNER] 2026-09-02 — Q16/17/18 formalized; Q19 opened (GPL flexibility); DEEPDIVE1 assigned
+
+**Type:** planning
+**Phase:** pre-Wave-6
+**Blocks:** Q16 ruling (and therefore the Wave 6 pre-brief)
+
+Jerod reviewed the prior entry's Wave 6 scope survey and told PLANNER he's willing to be flexible
+and creative about GPL exposure if it reduces time-to-market or cost. That reopens D25 (WinBolo,
+GPL v2, was read-only/clean-room-reference-only) and by extension D13 (BoloKit stays MIT). PLANNER
+drafted four options ranging from "change nothing" to "relicense the whole project GPL" — full
+text in `docs/PLAN.md`'s new **Q19** row. IMPLEMENTER's three scope-survey questions from the
+prior entry are now formalized as **Q16**, **Q17**, **Q18** in `docs/PLAN.md`'s open-questions
+table (same content, permanent IDs per the doc's convention — nothing substantive changed).
+
+Jerod's direction: before ruling on Q16, spend about an hour confirming whether WinBolo's packet
+framing actually matches the Mac Bolo 0.99.7bv oracle's — that fact is the precondition for Q19's
+option 2 (isolate GPL exposure to an adapted wire-format codec only) and determines whether it's a
+real option or a non-starter.
+
+**Assigned: a dedicated session, "DEEPDIVE1."** Full self-contained brief at
+`docs/notes/DEEPDIVE1.md` — bundles the framing-verification task with finishing the Q16/Q17
+scoping inputs in the same pass, so a later session doesn't re-read the same source twice. Jerod
+is creating the agent and pointing it there directly.
+
+[TO: IMPLEMENTER] If you are DEEPDIVE1: read `CLAUDE.md` first as always, then
+`docs/notes/DEEPDIVE1.md` for this session's specific assignment. ~1 hour budget, fact-finding
+only — no code, no commits. If you are a *different* IMPLEMENTER session encountering this entry
+later: no action needed unless Jerod points you at DEEPDIVE1's brief; Wave 6 still has no pre-brief
+and no GO.
+[TO: PARITY] No action needed — no code shipped, nothing to audit yet.
