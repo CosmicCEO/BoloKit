@@ -3,14 +3,16 @@
 > **Read this first on every session start — especially after a fresh start with no memory of
 > prior sessions.** This file is your orientation; it is NOT the full spec. Full plan, decisions
 > log, and open questions: `docs/PLAN.md`. Active chronological log: `docs/AGENT_NOTES.md`.
-> Compressed history for completed waves (1 through 5.7): `docs/notes/archive.md` — full
-> uncompressed detail for any of it is in git history. C reference: `Reference/c/`. **Wave 6.0 is
-> underway: read `docs/AGENT_NOTES.md`'s "Wave 6.0 pre-brief (full)" entry first** (oracle
-> strategy, corrected trap list, design calls, test plan). `docs/notes/DEEPDIVE1.md` is the
-> underlying wire-format spec (opcodes, `CLUpdate` layout, all three encodings, join handshake)
-> and is still authoritative for that — except its trap-list item 7, corrected in both files.
-> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 6.0 pre-brief
-> reviewed and GO issued; DEEPDIVE1's trap-list item 7 corrected — see below).
+> Compressed history for completed waves (1 through 5.7) and Wave 6.0 (wire codec, PARITY-passed
+> — full detail in `docs/AGENT_NOTES.md`, not yet moved to `archive.md`): full uncompressed detail
+> for any of it is in git history. C reference: `Reference/c/`. **Wave 6.1 (tick orchestrator) is
+> next: you have a GO to write its pre-brief.** Read Wave 6.0's pre-brief, completion report, and
+> PARITY audit in `docs/AGENT_NOTES.md` first — D27's application to 6.1 is already derived there.
+> `docs/notes/DEEPDIVE1.md` remains the wire-format spec (opcodes, `CLUpdate` layout, encodings,
+> join handshake) for whenever 6.2+ needs it again — except its trap-list item 7, corrected in
+> place.
+> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 6.0 closed,
+> PARITY PASS; Wave 6.1 pre-brief GO issued — see below).
 
 ---
 
@@ -27,10 +29,10 @@ trap lists for you going forward. Read the relevant C source yourself and write 
 before starting a wave, same rigor PARITY's audits already hold you to.
 
 ## Current state
-**Wave 5 (5.0 through 5.7) is fully complete and PARITY-passed. Wave 5.8 (docs/archive pass) is
-closed.** **Wave 6.0 (wire codec) has a reviewed pre-brief and a GO — start coding.** 6.1–6.5
-remain not started, gated behind 6.0 per D32. `docs/PLAN.md`'s decisions log D31–D34 settled
-everything that was gating the pre-brief:
+**Wave 5 (5.0 through 5.7) and Wave 6.0 (wire codec) are both complete and PARITY-passed.**
+**Wave 6.1 (tick orchestrator) has a GO to write its pre-brief — no pre-brief exists yet.** 6.2–6.5
+remain not started, gated behind 6.1 per D32. `docs/PLAN.md`'s decisions log D31–D34 settled
+everything that was gating Wave 6 generally:
 
 - **D31** — port the wire format byte-exact from the C oracle; rebuild the transport mechanism on
   Network.framework + async/await, not a POSIX/`select`/pthread transliteration.
@@ -41,21 +43,28 @@ everything that was gating the pre-brief:
   v2) may never be copied, transliterated, or closely derived from. Do not read or reference
   WinBolo source while writing Wave 6 — the wire format comes from the oracle, full stop.
 
-The 6.0 pre-brief (oracle strategy — new `Sources/CXBolo/netops.c`, corrected trap list, design
-calls, test plan) is written out in full in `docs/AGENT_NOTES.md`'s "Wave 6.0 pre-brief (full)"
-entry — start there, not `docs/notes/DEEPDIVE1.md` directly. **One correction to know before you
-read DEEPDIVE1.md:** its trap-list item 7 (a claimed double-`htons()` bug in `sendmessage()`'s
-`MSGNEARBY` case) is FALSE — verified by direct citation, it's a single effective swap, correct
-code. Do not port a "fix" for it. DEEPDIVE1.md itself is annotated at that item, but the live
-trap list to work from is the corrected one in `AGENT_NOTES.md`'s pre-brief entry. Everything else
-in DEEPDIVE1's Finding 1 (the format spec — opcodes, `CLUpdate` layout, the three encodings, the
-join handshake) and its other seven trap-list items stands as written and was re-verified against
-`Reference/c/` during the pre-brief.
+Wave 6.0's pre-brief, completion report, and PARITY's independent audit are all in
+`docs/AGENT_NOTES.md` — read them before starting 6.1, since 6.1's own D27 trap (below) was
+already flagged there and doesn't need re-deriving. **One correction to know if you read
+`docs/notes/DEEPDIVE1.md`:** its trap-list item 7 (a claimed double-`htons()` bug in
+`sendmessage()`'s `MSGNEARBY` case) is FALSE — verified independently by both Implementer and
+PARITY by direct citation, it's a single effective swap, correct code. Do not port a "fix" for
+it; DEEPDIVE1.md is annotated in place at that item. Also worth knowing before writing the 6.1
+pre-brief: 6.0 hit a real oracle-arithmetic subtlety not obvious from DEEPDIVE1 alone —
+`FWIDTH` (`bolo.h:67`) is an unsuffixed `double` literal, so several `client.c` computations
+promote to double before narrowing back to float on the wire. Not directly a 6.1 concern (6.1 is
+the tick orchestrator, not the codec), but a reminder that DEEPDIVE1's Finding 1 covers layout,
+not every arithmetic-promotion subtlety — read the actual `client.c`/`server.c` functions you're
+porting, don't rely on the spec doc alone for anything computed rather than laid out.
 
-Last code commit: `221ba97` (Wave 5.7) — no Swift has shipped since; every commit on top of it
-through this file's own update is docs-only (Wave 5.8 close-out, the D31-D34 ruling, the Wave 6.0
-pre-brief and its GO). Run `git log --oneline -5` and `git status` to confirm current HEAD before
-doing anything — this file can lag reality between updates.
+**D27 applies directly to 6.1** (flagged in 6.0's pre-brief so it wouldn't need re-deriving):
+`explosionlogic` loops `-1..<MAXPLAYERS`, `pilllogic` runs once rather than per-player, and
+`sendclupdate` fires only on `seq % 5 == 0` — design the tick orchestrator around these as
+single per-tick passes, not per-caller loops, same lesson as Wave 5.3c/5.7.
+
+Last code commit: `5c5e47a` (Wave 6.0 completion report; the code itself is `96704cd`). Run
+`git log --oneline -5` and `git status` to confirm current HEAD before doing anything — this file
+can lag reality between updates.
 
 ## Non-negotiable rules (violations block PARITY sign-off)
 
@@ -79,8 +88,9 @@ doing anything — this file can lag reality between updates.
 | 1 – 4.1 | Vector/Rect/List/Buf/ErrChk, Terrain/Tiles, Images, BMAP | ✅ Complete |
 | 5.0 – 5.7 | Physics/GameState through growtrees/pill cooldown/base replenish — full sub-wave breakdown in `docs/notes/archive.md` | ✅ Complete |
 | 5.8 | Docs/archive pass | ✅ Complete — D30 |
-| 6.0 | Wire codec (`CL*`/`SR*` structs, `CLUpdate`/preambles, all three encodings) | 🟩 GO issued 2026-09-02 — pre-brief in `docs/AGENT_NOTES.md`; start coding |
-| 6.1 – 6.5 | Tick orchestrator, `recvsr*` handlers, server session logic, transport/handshake, tracker/NAT-PMP (UI split into its own later phase, gated on Phase 2 art) | ⬜ Not started — blocked on 6.0 (see `docs/PLAN.md`'s wave table) |
+| 6.0 | Wire codec (`CL*`/`SR*` structs, `CLUpdate`/preambles, all three encodings) | ✅ Complete — PARITY PASS, `96704cd`+`5c5e47a` — 345 tests total |
+| 6.1 | Tick orchestrator (`runclient()`/`runserver()`) | 🟩 GO issued 2026-09-02 to write the pre-brief — no pre-brief yet |
+| 6.2 – 6.5 | `recvsr*` handlers, server session logic, transport/handshake, tracker/NAT-PMP (UI split into its own later phase, gated on Phase 2 art) | ⬜ Not started — blocked on 6.1 (see `docs/PLAN.md`'s wave table) |
 
 ## Key constants (Physics.swift — already committed)
 tankRadius=0.375, builderRadius=0.125, shellVelocity=7.0, maxShellRange=7.0,
