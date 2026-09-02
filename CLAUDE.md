@@ -7,7 +7,8 @@
 > uncompressed detail for any of it is in git history. C reference: `Reference/c/`. **Wave 6 wire
 > protocol map (opcodes, `CLUpdate` layout, all three encodings, join handshake, oracle bug list):
 > `docs/notes/DEEPDIVE1.md`** — read that before writing the 6.0 pre-brief; don't re-derive it.
-> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 6 unblocked, D31-D34).
+> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 6 unblocked, D31-D34;
+> added the planning-only-entries reminder below after a pre-brief went uncommitted).
 
 ---
 
@@ -89,3 +90,20 @@ that after you commit and report completion. This saves ~1 session of credit per
 4. Append completion report to `docs/AGENT_NOTES.md`
 5. Tell Jerod — he relays to PLANNER/PARITY and pushes to GitHub (PLANNER's sandbox cannot
    authenticate to `github.com/CosmicCEO/BoloKit` and does not push; that's expected, not a bug)
+
+## Planning-only entries (no Swift written) still get committed
+
+A pre-brief, scope survey, or any other planning-only session follows steps 4–5 above exactly
+like a coding wave does — **do not skip the append-and-commit step just because steps 1–3 don't
+apply.** Concretely:
+1. Append the entry to `docs/AGENT_NOTES.md`, tagged `[TO: PLANNER]`.
+2. Commit it yourself: `git add docs/AGENT_NOTES.md` (plus any other docs files you touched, e.g.
+   a new pre-brief file) → `git commit -m "..."`. This is your commit to make — not something
+   Jerod or PLANNER does on your behalf.
+3. Tell Jerod, same as any other wave.
+
+**Why this is called out explicitly:** a Wave 6.0 pre-brief was reported as "ready" in conversation
+but never appended to `docs/AGENT_NOTES.md` or committed, so PLANNER (which gates only on what's
+in this repo, not on conversation) had nothing to review. If it isn't committed, it doesn't exist
+as far as PLANNER or PARITY are concerned — a pre-brief that lives only in chat is invisible to
+both.

@@ -323,3 +323,29 @@ be re-derived.
 > fix, not a new decision. Wave 6.0 pre-brief write is still in progress; will report here again
 > once `docs/notes/WAVE6.md` lands.
 > **→ Parity:** No action needed — no code shipped this entry.
+
+### [PLANNER] 2026-09-02 — CLAUDE.md gap fix: planning-only entries were falling through
+
+**Type:** planning (process fix, no ruling)
+**Phase:** Wave 6
+**Blocks:** nothing
+
+Jerod reported the Wave 6.0 pre-brief was "ready" but it never showed up here — no new
+`[IMPLEMENTER]` entry in this file, no new commit, no pre-brief file anywhere in the tree. Root
+cause: `CLAUDE.md`'s "Git workflow" section is framed around `Write Swift → build → test →
+commit → append → tell Jerod`, which reads as conditional on there being code. A planning-only
+session (a pre-brief, a scope survey) has no code, so steps 4-5 (append to this file, commit,
+tell Jerod) apparently got skipped as "not applicable" along with 1-3.
+
+**Fix:** added a `## Planning-only entries (no Swift written) still get committed` section to
+`CLAUDE.md` right after Git workflow, spelling out that steps 4-5 apply unconditionally — append
+to this file tagged `[TO: PLANNER]`, commit it yourself, tell Jerod — regardless of whether any
+Swift was written. Named this specific incident as the reason, so it doesn't read as boilerplate.
+
+This is a process fix, not a new ruling — no `docs/PLAN.md` decision, no scope change. The
+underlying ask (write the 6.0 pre-brief per D31/D32) is unchanged and still outstanding.
+
+[TO: IMPLEMENTER] Re-send the Wave 6.0 pre-brief the way `CLAUDE.md` now spells out: append it to
+this file tagged `[TO: PLANNER]` and commit it (`docs/AGENT_NOTES.md` plus any new pre-brief file),
+then tell Jerod. Until it's committed, PLANNER has nothing to review.
+[TO: PARITY] No action needed — nothing shipped this entry.
