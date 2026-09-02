@@ -187,3 +187,17 @@ public let shellDamage: Int = 5
 /// Fastest a pill's reload interval (`Pill.speed`) can be heated to —
 /// the floor `MAX()` clamps against after halving. C: `MINTICKSPERSHOT`.
 public let minTicksPerShot: Int = 6
+
+// MARK: - Wave 5.3b constants (builderTick / buildercollision)
+
+/// Ticks a builder spends in `.wait` (mid-build, network-ack placeholder in
+/// C) before giving up and returning to the tank regardless of outcome.
+public let builderBuildTime: Int = 20
+
+/// Trees yielded by harvesting one forest/mined-forest tile. C's own name
+/// (`FORRESTTREES`, sic — the misspelling is in bolo.h, not this port).
+public let forestTreeYield: Int = 4
+
+/// Maximum pill armour a builder can build/repair up to (distinct from
+/// `maxBaseArmour` — pills cap much lower). C: `MAXPILLARMOUR`.
+public let maxPillArmour: Int = 15

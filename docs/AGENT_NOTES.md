@@ -2182,3 +2182,303 @@ UB-vs-memory-safety fix in `applyDamage`'s base branch, and the exhaustiveness o
 terrain switch's `default: damage` branch (verified by hand against the 30-case `Terrain` enum in
 the doc comment, but a second read would help). Per the post-commit-only PARITY rule, not tagging
 further action here — that's PLANNER's call.
+
+---
+
+### [PARITY] 2026-09-02 — Wave 5.3a audit (`ff807ff`)
+**Type:** audit
+**Wave:** 5.3a
+**Verdict:** PASS (findings) — one architecture question for PLANNER, one doc-comment nit. No blocking issues.
+
+Read `shellcollisiontest`/`shelllogic` (client.c:5126-5497), `killtank` (client.c:5545), `recvcldamage`
+(server.c:2804), `recvcltouch` (server.c:2236) in full against `Sources/BoloKit/ShellTick.swift`,
+per IMPLEMENTER's three specific check requests.
+
+**Confirmed correct, no issues:**
+
+- **`pills[-1]` UB fix.** Verified `recvcldamage`'s base-hit pill-heating loop really does clamp
+  with the outer `pill` variable (`server.pills[pill].speed = MAX(...)`) which is provably `-1` in
+  that branch (only reached when the earlier `findpill` call returned `-1`). This is unindexable
+  UB in C, not a well-defined replicable bug — IMPLEMENTER's substitution of the evidently-intended
+  `pills[i]` (the same pill just halved two lines up) is the right call, same class as `writeRun`'s
+  x<256 guard. Confirmed `heatPill(i, ...)` in `applyDamage`'s base branch uses `i`, not a stray
+  `-1`-equivalent.
+- **Network-authority-gate generalization, structurally sound.** Every `player == client.player`
+  gate in the C source that guards network sends (`sendcldamage`/`sendcltouch`/`sendclhittank`)
+  correctly has no Swift equivalent (no network layer exists), and the gates that guard actual
+  state mutation (`killtank()`'s armour path) stay correctly gated to `state.localPlayer`, matching
+  `tankMoveTick`'s precedent. Shell removal on tank-hit is unconditional in both C and Swift
+  (`removelist`/`shells.remove(at:)` happen outside the local-only branch) — confirmed not
+  accidentally gated.
+- **`killTank` port.** Line-for-line match against `killtank()` (client.c:5545): onboard-pill
+  bitmask scatter, `deaths++`, `dead=1`, `boat=0`, `respawncounter=0` — all present, correctly
+  gated on `!dead` (C's `if (!client.players[client.player].dead)`).
+- **Terrain-ladder exhaustiveness, both `applyDamage` switches.** Cross-checked every case
+  transition in `recvcldamage`'s boat and non-boat switches (server.c) against `applyDamage`'s two
+  switches — all transitions (`.swamp0→.river`, `.grass0→.swamp3`, `.damagedWall0→.rubble3`, etc.)
+  match exactly, including the water-adjacency road-tile special case and its matching
+  out-of-bounds-neighbor memory-safety deviation (`?? .wall` — correctly inert, since the mined-sea
+  border ring makes a real road tile at the map edge unreachable).
+- **`shellCollisionTest` terrain-switch exhaustiveness, verified by direct case enumeration, not
+  just trusting the comment (see finding below for why).** C's boat-shell switch lists 4 no-damage
+  cases + 1 special-cased `road` + 25 damage cases = 30, and its `default` is provably unreachable
+  (every enum value already listed). Swift's boat-shell switch explicitly lists the same 4 no-damage
+  cases + `road`, and folds the remaining 25 into `default: applyDamage`. Enumerated the 25-case set
+  by hand against C's explicit damage list — exact match (includes `.boat`, all four `swamp`/
+  `rubble`/`grass`/`damagedWall` variants, `forest`, and the six mined-non-sea variants). Same check
+  for the non-boat switch: Swift's 7 explicit damage cases (`wall`, `forest`, 4×`damagedWall`,
+  `boat`, `minedForest`) match C's explicit 8-case damage list... 
+
+  **Correction while writing this up: recounted and Swift's non-boat switch explicit list is 7
+  named cases covering 8 terrain values (`damagedWall0-3` is 4 cases within one case-list), which
+  does match C's non-boat damage set exactly (`wall`, `forest`, `damagedWall0-3`, `boatTerrain`,
+  `minedForest` = 8 terrain values). No discrepancy — flagging only because the arithmetic needs
+  care here, see next item.**
+
+**Finding (LOW, doc-only) — boat-shell switch's exhaustiveness comment miscounts.** The doc comment
+above the boat-shell `default:` branch reads "4 handled above + this default's 26 = 30" — but the
+switch explicitly handles 5 terrain values above the default (4 no-damage cases *plus* `road*,*
+which is also explicit, not part of the default), so the default covers 25 cases, not 26 (25+5=30,
+not 26+4=30). The underlying code is correct (verified above) — only the comment's arithmetic is
+off by one in a way that could mislead someone re-deriving the count later. Recommend a one-line
+comment fix in `ShellTick.swift` next time that file is touched; not worth a standalone commit.
+
+**Finding (MEDIUM, architecture question — not asserting a bug) — per-player `explosions` list
+attribution doesn't have a clean single-simulation equivalent, and the port's `shell.owner`-based
+choice doesn't match either of C's two different attribution rules.** Traced every `addlist(...,
+explosion)` call site touched by this wave:
+
+- `recvcldamage`'s "expire due to range" phase (`shelllogic`, client.c:5474) attributes to
+  `client.players[player].explosions` — `player` being the shell-list owner (the *correct* semantic
+  owner).
+- But `shellcollisiontest`'s pill/base/terrain-hit branches and `shelllogic`'s tank-hit-test phase
+  (client.c:5148-5343, 5427) all hardcode `client.players[client.player].explosions` — the *local
+  process's own* player, **regardless of whose shell or which target tank was involved.** This only
+  makes sense in C's actual architecture: each connected human runs their own full copy of this
+  code with `client.player` fixed to themselves, deterministically replicating everyone's shell
+  physics locally, and stores the resulting visual-effect record in *their own* list because that's
+  the only list their own screen/camera logic reads. There is no single "client.player" in a
+  merged, single-authoritative simulation for this rule to generalize onto.
+- Compounding this: pillbox-fired shells set `shell->owner = client.pills[i].owner` (client.c:5085)
+  but are appended to `client.players[client.player].shells` (client.c:5090) — i.e., a pillbox
+  shell's `.owner` field is its *damage/alliance attribution* (whose side it's on), not the shell
+  list it lives in or the "local client" role C's explosion code actually keys off. So `shell.owner`
+  isn't even the right generalization target for the `client.player`-hardcoded call sites above.
+
+  IMPLEMENTER's uniform choice of `state.players[shell.owner].explosions` is a reasonable,
+  internally-consistent pick, but it reproduces *neither* of C's two different rules exactly (it
+  matches the "expire" phase only when `shell.owner == player`, which is always true there since
+  that phase never mixes lists — but diverges from the collision/tank-hit phases' `client.player`
+  rule whenever shell.owner ≠ shooter, i.e. every pillbox shell, and whenever a shell hits a
+  *different* player's tank than would be "watching" it).
+
+  **Have not found any mechanical consumer of `players[*].explosions` beyond `explosionlogic`'s
+  counter-decay-and-remove (client.c ~5504-5530)** — no damage, no builder-kill, no other gameplay
+  math reads from it; `killpointbuilder`/`killsquarebuilder` are called directly and
+  unconditionally alongside the explosion append, never gated on which list received the entry.
+  If that holds (worth PLANNER/IMPLEMENTER double-checking, since I did not exhaustively grep every
+  future wave's planned consumers), this list is purely cosmetic effect-duration data with no
+  differential-testable consequence today — which would make the exact attribution scheme a Wave-6
+  UI-layer decision, not a Phase-3 parity gate. **Recommend:** PLANNER confirm this reading, and
+  either (a) explicitly rule the current `shell.owner` choice acceptable-for-now with a note that
+  Wave 6 may need to revisit it once there's an actual per-player UI consuming these lists, or (b)
+  ask IMPLEMENTER to pick a different, explicitly-documented convention if some future wave will
+  read these lists mechanically. Not blocking Wave 5.3b — flagging now so it isn't rediscovered
+  cold at Wave 6.
+
+[TO: PLANNER] Wave 5.3a: PASS overall, both specifically-requested memory-safety/generalization
+items (`pills[-1]`, network-authority gate) confirmed correct. One LOW doc-comment fix queued
+(non-blocking). One MEDIUM open question on `explosions`-list attribution semantics — needs a
+ruling or at least a deferred-decision note in PLAN.md before Wave 6, not before 5.3b.
+
+---
+
+### [PLANNER] 2026-09-01 — Wave 5.3a closed (PARITY PASS); GO issued for Wave 5.3b
+**Type:** planning
+**Phase:** 1 / Wave 5.3
+**Blocks:** nothing
+
+PARITY's Wave 5.3a audit reviewed: **PASS overall**, both specifically-requested items confirmed
+correct (`pills[-1]` memory-safety edge, network-authority gate on `killTank`'s dead-tank state
+mutation staying `localPlayer`-scoped like `tankMoveTick`'s precedent). Two items came back with
+it, neither blocking:
+
+- **LOW, doc-only:** the boat-shell switch's exhaustiveness comment in `ShellTick.swift` miscounts
+  (says "26" where the code and PARITY's hand-enumeration both show 25 default-handled cases,
+  code itself is correct). Not worth a standalone commit — fix opportunistically next time that
+  file is touched.
+- **MEDIUM, logged as Q14:** `explosions`-list attribution has no clean single-simulation
+  equivalent — C uses two different, mutually incompatible rules across different call sites (one
+  keyed to the shooting player, one hardcoded to "whichever process is running this code," which
+  doesn't exist in a merged sim). IMPLEMENTER's `shell.owner`-keyed choice is reasonable and
+  internally consistent but matches neither C rule exactly. PARITY found no mechanical gameplay
+  consumer of this list today — if that holds, it's cosmetic effect-duration data and the actual
+  attribution scheme becomes a Wave-6 UI-layer call, not a Phase-3 parity gate. Logged as Q14
+  rather than ruled now, since PARITY itself flagged it as "needs a ruling before Wave 6, not
+  before 5.3b" — no reason to force a decision ahead of when it's needed.
+
+Wave 5.3a marked ✅ Complete in PLAN.md's status table (PARITY PASS, Q14 open/non-blocking).
+
+[TO: IMPLEMENTER] **GO for Wave 5.3b.** D24 already unblocks the `recvclbuildroad` tautology
+(replicate bug-for-bug, regression test required). No other holds. Proceed.
+[TO: PARITY] Q14 logged in PLAN.md, targeted at Wave 6 — flag again there if it hasn't been ruled
+on by then. LOW doc-comment finding accepted, no fix scheduled separately (bundled into ordinary
+next-touch cleanup).
+
+---
+
+### [PLANNER] 2026-09-02 — Q15 opened: WinBolo server-code precedent question (Wave 6)
+**Type:** planning
+**Phase:** 1 / Wave 6 (not yet started — no impact on current Wave 5.3b work)
+**Blocks:** nothing right now; targeted at Wave 6 pre-brief
+
+Jerod, while reviewing precedent work, found `server/` files in a WinBolo repo (on GitHub, so
+almost certainly the classic open-source WinBolo, not the 2026 commercial "WinBolo 2" relaunch)
+and asked whether benchmarking those against our plan is on the table before Wave 6 is
+pre-briefed.
+
+**Current plan doesn't call for it.** D3 (fidelity target = original Mac Bolo 0.99.7bv) and D4
+(self-contained network, no WinBolo interop) both point away from WinBolo as a behavioral
+reference, and the Wave 5 benchmarks table already treats several WinBolo gameplay/physics
+behaviors as known divergences to avoid replicating (wall friction, tank deceleration, boat/land
+transition, mine self-damage, builder retrieval, pillbox range). That's about fidelity, though —
+Wave 6 (networking architecture) has no pre-brief yet either way.
+
+**Checked the license before going further:** classic WinBolo (GitHub forks — milki/winbolo,
+kippandrew/winbolo, etc., including `servercore.c`) is GPL v2 per winbolo.org's own wiki. That's
+copyleft — copying or closely deriving Wave 6 networking code from it would pull GPL obligations
+onto BoloKit, conflicting with staying MIT (D13, our retained LICENSE). Reading it purely for
+architectural understanding (session handling, NAT traversal patterns) and then writing an
+independent implementation is a different and much lower-risk activity, similar in spirit to D5's
+clean-room approach for art — but that needs to be a deliberate choice, not assumed by default.
+
+Logged as **Q15**, targeted at Wave 6, not ruled yet — waiting on the specific repo link from
+Jerod to confirm which fork/license actually applies before recommending an approach.
+
+[TO: IMPLEMENTER] No action — Wave 6 hasn't started, this doesn't touch 5.3b.
+[TO: PARITY] FYI only, nothing to audit yet.
+
+---
+
+### [PLANNER] 2026-09-02 — Q15 resolved as D25: WinBolo clean-room reference policy for Wave 6
+**Type:** planning
+**Phase:** 1 / Wave 6 (not yet started — no impact on current Wave 5.3b work)
+**Blocks:** nothing right now
+
+Jerod confirmed the repo: github.com/kippandrew/winbolo. Verified directly — classic WinBolo/
+LinBolo source (client & server, tracker, WBN, JBolo, WOME), "copyright 1998-2008 John Morrison,"
+**GPL v2**. Includes the server code Jerod was reviewing.
+
+**Ruled as D25: read-only, clean-room policy.** WinBolo's *architecture* may inform Wave 6; its
+*code* may not.
+
+- Permitted: reading WinBolo's server implementation to understand session lifecycle, NAT
+  traversal approach, protocol framing — same kind of research already planned for the UPnP/
+  NAT-PMP work in Phase 6.
+- Not permitted: copying, transliterating, or closely paraphrasing WinBolo code into BoloKit.
+  GPL v2 is copyleft; doing so would pull GPL obligations onto a project that stays MIT (D13).
+- Process: whoever pre-briefs Wave 6 documents which specific design choices, if any, were
+  informed by WinBolo, so PARITY can audit for accidental over-similarity deliberately rather
+  than stumbling onto it later. Same spirit as D5's clean-room approach for art assets.
+
+Q15 closed (moved out of Open Questions into the Decisions log as D25). No action needed from
+IMPLEMENTER or PARITY today — this is scoped to whenever Wave 6 gets pre-briefed, well after
+5.3b/5.3c/5.4-5.7.
+
+[TO: IMPLEMENTER] No action.
+[TO: PARITY] No action — flagged for you again once Wave 6 pre-brief lands, so the "informed by
+WinBolo" disclosure has something to audit against.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.3b complete: builderTick, plus a cross-cutting `mag2f`/`dot2f` fidelity fix
+
+**Type:** build
+**Phase:** 1 / Wave 5.3b
+**Blocks:** nothing — unblocks 5.3c
+
+Executed per PLANNER's `[TO: IMPLEMENTER] GO for Wave 5.3b`. New file `Sources/BoloKit/BuilderTick.swift`
+(`tankTest`, `tankOnABoatTest`, `circleSquare`, `builderSpeed`, `builderTargetSpeed`,
+`builderCollision`, seven private work handlers, `builderTick` and its five private per-status
+helpers), a reduced oracle (`builderops.c`) for the pure numeric transforms, two new `Physics.swift`
+constants (`builderBuildTime`, `forestTreeYield`, `maxPillArmour`). 48 new unit tests
+(`BuilderTickTests.swift`), 3 new differential fuzz tests (`BuilderTickDifferentialTests.swift`).
+Full suite: 199 BoloKitTests + 31 DifferentialTests, all green — no regressions against the
+151+28 baseline from 5.3a.
+
+**Two scope cuts, made deliberately and documented in the file header, not discovered
+mid-implementation:**
+
+1. **`getbuildertaskforcommand()`/`client.nextbuildercommand`/`client.nextbuildertarget` are out
+   of scope** — a fog-of-war/UI-input-layer concern (resolves a raw command + the `seentiles`
+   fog cache into a `BuilderTask`), not core simulation, same category as Wave 5.2b's
+   `testhiddenmine`/`increasevis`/`decreasevis` omissions. `builderTick`'s `.ready` case instead
+   reads `state.local.builderTask` directly as an already-resolved one-shot order — the same
+   contract `InputFlags` already has with `tankMoveTick`.
+2. **`repairPill`'s "trees needed" is derived from ground-truth `Pill.armour`, not the fog-of-war
+   tile cache** — `bmap_client.c:169` keeps `seentiles` permanently synced to
+   `kFriendlyPill00Tile + armour` whenever a pill is in view, so reading `armour` directly is
+   strictly more accurate and needs no rendering-tile model.
+
+**D24 applied exactly as ruled:** `buildRoad(at:trees:state:onMineExplosion:)`'s `if trees >= trees`
+replicates the tautology verbatim, with a named regression test
+(`gotoArrivalOnBuildRoadTautologyAlwaysSucceedsGivenAnyPositiveTrees`) asserting the build succeeds
+even with only 1 tree held (below `roadTrees = 2`), guarding against anyone "fixing" it later.
+
+**Collapsed the network round trip:** C's `kBuilderGoto` arrival sends `sendcl<action>` and parks
+in `kBuilderWork` (a pure placeholder — `case kBuilderWork: break;`) until the SERVER's
+`recvcl<action>` mutates state and replies via `sendsrbuilderack`, whose client-side handler
+(`recvsrbuilderack`) is what actually advances to `kBuilderWait`. With no client/server split,
+`arriveAtTarget` performs the `recvcl<action>` mutation and the ack's consequence synchronously,
+going straight to `.wait`. `.work` stays in the enum/switch for structural fidelity but is
+unreachable in this port.
+
+**A real off-by-one caught before shipping, not after:** `kBuilderWait`'s C guard is
+`builderwait++ > BUILDERBUILDTIME` — POST-increment, so the OLD value is compared and the field
+increments regardless. My first draft incremented first then compared the new value, which would
+fire the `.return` transition one tick early. Fixed to compare-then-increment, with a dedicated
+test (`waitTransitionsToReturnAfterBuilderBuildTimeUsingPostIncrementSemantics`) pinning the exact
+tick boundary.
+
+**Significant finding, well beyond this wave's scope — `mag2f`/`dot2f` themselves were not
+bit-faithful, since Wave 1, for broadly-random inputs:**
+
+While building the oracle for this wave's `diff * (speed / (ticksPerSec * mag2f(diff)))` movement
+step, broad fuzzing (`Float.random(in: -5...5)`, not the 9-value "nice number" grid Wave 1's own
+`VectorDifferentialTests` uses) turned up ~15-20% mismatches. Traced it to `dot2f` itself
+(`v.x*v.x + v.y*v.y`) diverging from the C oracle *before any sqrt is involved* — confirmed by
+isolating `dot2f` alone at the same fuzz range. Root cause: Clang's default `-ffp-contract=on`
+fuses the multiply-add in `dot2f` into a single `fmaf` (one rounding) on arm64; Swift's `+`/`*`
+never contract, so it always does two roundings. This is a compiler-flag issue, not a Swift
+source-code issue — no amount of `Float(Double(...))` narrowing-pattern fixing (which I tried
+first, and which made it *worse*, not better) touches it, since the divergence originates in the
+**C oracle's** compiled instruction selection, not in Swift.
+
+**Fix:** added `cSettings: [.unsafeFlags(["-ffp-contract=off"])]` to the `CXBolo` target in
+`Package.swift`, forcing the C oracle to compute exactly what its source text says, with no
+fusion. Verified: `dot2f`/`mag2f` now match bit-for-bit at 20,000 fuzzed iterations over the full
+map coordinate range (`-256...256`), and reverted an unnecessary `Vector.swift` change I'd
+tried first (`Float(sqrt(Double(...)))`) once the flag alone proved sufficient — `mag2f`'s source
+is unchanged from Wave 1.
+
+**Why this matters beyond today:** every existing differential test that transitively calls
+`mag2f`/`dot2f` (which is nearly all of them — tank physics, shell physics, collision detection)
+was previously exposed to this gap; none of them happened to fail because their fuzz ranges were
+either narrow (Wave 1's own 9-value grid) or apparently didn't sample enough "unlucky" magnitudes
+to trigger a mismatch in the number of iterations run. **Re-ran the full existing suite after
+applying the flag: 31 differential + 199 unit tests, all still green — no prior test's *expected*
+values needed to change.** This means the flag fix is a pure improvement (removes a latent gap
+without altering any already-verified behavior), not a retroactive correction to any prior wave's
+committed results.
+
+[TO: PLANNER] Wave 5.3b done and verified, commit follows this entry. The `-ffp-contract=off` fix
+is a build-configuration change with project-wide reach — recommend flagging it prominently rather
+than treating it as routine wave content, since it changes what "the C oracle" computes for every
+future wave too. Proceeding to Wave 5.3c (pillTick + forestvis) next unless redirected.
+[TO: PARITY] New commit to audit. Specifically: (1) the `-ffp-contract=off` finding and fix —
+recommend independently confirming the FMA-contraction root cause (e.g. by inspecting the
+generated assembly for `dot2f` with/without the flag) rather than taking my empirical
+fuzz-isolation as sufficient on its own, since this affects the validity of every prior wave's
+oracle comparisons; (2) the two scope cuts (`getbuildertaskforcommand`, ground-truth-armour
+`repairPill`); (3) the `builderwait++` post-increment fix. Per the post-commit-only PARITY rule,
+not tagging further action here — that's PLANNER's call.

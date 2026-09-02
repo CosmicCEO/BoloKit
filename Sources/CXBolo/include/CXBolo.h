@@ -61,4 +61,10 @@ struct ShellAdvanceResult {
 
 struct ShellAdvanceResult shelladvance_oracle(Vec2f point, float dir, float range);
 
+// Permanent verbatim extracts of builderlogic()'s pure numeric transforms
+// for oracle testing (Wave 5.3b). Reduced-parameter form — no globals.
+Vec2f builderlaunch_oracle(Vec2f target, Vec2f tank);
+Vec2f buildermove_oracle(Vec2f diff, float speed);
+Vec2f parachutemove_oracle(Vec2f diff);
+
 #endif /* CXBOLO_H */

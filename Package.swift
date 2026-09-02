@@ -11,7 +11,8 @@ let package = Package(
         .target(
             name: "CXBolo",
             path: "Sources/CXBolo",
-            publicHeadersPath: "include"
+            publicHeadersPath: "include",
+            cSettings: [.unsafeFlags(["-ffp-contract=off"])]
         ),
         .target(name: "BoloNet", dependencies: ["BoloKit"]),
         .executableTarget(name: "BoloGlyphs"),
