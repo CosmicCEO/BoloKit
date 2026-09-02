@@ -292,7 +292,13 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 
 | Wave 5.8 | Docs/archive pass — PLAN.md, AGENT_NOTES.md → archive.md, project memory, project-instructions reconciliation (Q13) | ✅ Complete — AGENT_NOTES.md compressed to docs/notes/archive.md, project memory refreshed; project-instructions reconciliation pending Jerod pasting updated text (Claude cannot edit that setting directly) |
 
-| Wave 6 | Networking (UI split out to its own phase per IMPLEMENTER's 2026-09-02 scope survey — see AGENT_NOTES.md) | ⬜ Not started — ready for pre-brief: Q16/Q17/Q19/Q20 resolved (D31-D34), DEEPDIVE1's wire-format map (`docs/notes/DEEPDIVE1.md`) serves as 6.0's spec |
+| Wave 6 | Networking — summary row; see 6.0–6.5 below for the D32 sub-wave split (UI split out to its own phase per IMPLEMENTER's 2026-09-02 scope survey — see AGENT_NOTES.md) | ⬜ Not started — Q16/Q17/Q19/Q20 resolved (D31-D34); split into 6.0–6.5 per D32 |
+| Wave 6.0 | Wire codec — `CL*`/`SR*` structs, `CLUpdate`/preambles, all three encodings (raw BE float, 1/256 fixed-point, 8-bit brads), derived byte-exact from the C oracle | ⬜ Not started — ready for pre-brief (D31; spec: `docs/notes/DEEPDIVE1.md`) |
+| Wave 6.1 | Tick orchestrator — `runclient()`/`runserver()` | ⬜ Not started — blocked on 6.0 |
+| Wave 6.2 | ~35 `recvsr*` client broadcast handlers | ⬜ Not started — blocked on 6.0/6.1 |
+| Wave 6.3 | Server session logic — join/kick/ban/alliance, preamble assembly | ⬜ Not started — blocked on 6.0–6.2 |
+| Wave 6.4 | Transport + join handshake — Network.framework + async/await (D31); builds on `Buf.swift`'s existing `sendbuf`/`recvbuf`/`cntlsend`/`cntlrecv` | ⬜ Not started — blocked on 6.0–6.3 |
+| Wave 6.5 | Tracker/NAT-PMP — permissive alternative to `TCMPortMapper` per `README.md:42-45`'s existing GPLv3-avoidance commitment (D32) | ⬜ Not started — deferrable per D4; blocked on 6.4 |
 
 
 ## Wave 5 behavioral benchmarks (PARITY audit, 2026-08-31)

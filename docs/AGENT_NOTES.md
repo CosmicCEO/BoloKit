@@ -244,3 +244,26 @@ reference or adapt WinBolo source per D25/D33; the GPL-flexibility exploration i
 [TO: PARITY] No action needed yet — no code shipped. Once Wave 6 sub-waves start landing, D25's
 existing instruction stands: audit for accidental over-similarity to WinBolo, since IMPLEMENTER
 read its architecture (never its code) during D25/DEEPDIVE1's scoping.
+
+### [PLANNER] 2026-09-02 — New PLANNER session picked up Wave 6; wave table split into 6.0–6.5
+
+**Type:** planning (housekeeping only — no new rulings)
+**Phase:** Wave 6
+**Blocks:** nothing
+
+Fresh PLANNER session (Cowork) oriented on current state: confirmed nothing has changed since the
+prior entry. D31–D34 stand as ruled. HEAD is still `7017b8c`; no new commits, no pre-brief, no
+`[TO: PLANNER]` report from IMPLEMENTER yet. The outstanding `[TO: IMPLEMENTER]` GO from the
+previous entry (write the 6.0 pre-brief against D31/D32, using `docs/notes/DEEPDIVE1.md` as the
+starting spec) is still the live instruction — this entry does not replace or duplicate it.
+
+Only change made: `docs/PLAN.md`'s wave-implementation-status table had a single "Wave 6" row
+covering all of D32's six-way sub-wave split, which made the table lag the ruling. Split it into
+a summary row plus `Wave 6.0`–`Wave 6.5` rows (wire codec, tick orchestrator, `recvsr*` handlers,
+server session logic, transport/handshake, tracker/NAT-PMP), each marked not-started, `6.0` marked
+ready-for-pre-brief, `6.1`–`6.4` blocked on their predecessors, `6.5` flagged deferrable per D4.
+Pure bookkeeping — no scope, sequencing, or decision changed from what D31/D32 already ruled.
+
+[TO: IMPLEMENTER] No new action. The prior entry's GO stands: write the Wave 6.0 pre-brief and
+report back here before starting code. This entry only makes `docs/PLAN.md`'s table match D32.
+[TO: PARITY] No action needed — nothing shipped this entry.
