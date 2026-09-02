@@ -3095,3 +3095,180 @@ superboom damage-check nesting asymmetry (independent top-level `if` for smallbo
 the particle gate for superboom) — verify against `recvsrsmallboom`/`recvsrsuperboom` directly,
 since it's easy to assume symmetry that isn't actually there. Per the post-commit-only rule, not
 tagging further action here — that's PLANNER's call.
+
+---
+
+### [PARITY] 2026-09-02 — Wave 5.5a audit (`d99815e`)
+**Type:** audit
+**Wave:** 5.5a
+**Verdict:** PASS. All three specifically-requested items independently confirmed against source
+(one of them compiled and run, not just read). D28 check: test count 227→257, all additions,
+explicitly stated by IMPLEMENTER — no shrinkage anywhere.
+
+Read `chainat`/`floodat`/`floodtest`/`chain`/`flood` (server.c:4014-4098, 4259-4297),
+`explosionat`/`superboomat` (server.c:4121-4257), `recvsrsmallboom`/`recvsrsuperboom`
+(client.c:2632-2820+), and `droppills`/`dr` (server.c:1983-2050+) against
+`Sources/BoloKit/MineChain.swift` in full.
+
+**1. D27 structural analysis — confirmed correct against the finished code, not re-derived from
+the plan alone.** `chain()`/`flood()` are called once per tick globally with no player parameter
+in both C and the port — structurally immune to the per-caller-shared-mutation shape that broke
+`pillTick`. `chainAt`/`floodAt` only append to ring-buffer slots or call `explosionAt` (both
+idempotent/order-independent on a shared list). Traced the write-vs-read slot indices explicitly:
+writes always use `(ticks-1)%(N+1)` and reads always use `ticks%(N+1)` — since these are
+different indices for any `N+1 > 1`, a newly-scheduled point during a drain can never land back in
+the slot currently being iterated, so `chain()`/`flood()` clearing their slot before vs. after
+processing the snapshot is behaviorally immaterial. No shared-mutation-order risk found anywhere
+in this wave — D27 was applied correctly, not just cited.
+
+**2. `writeSlot`'s `uint32_t`-narrowing fix — independently compiled and run, not just read.**
+Confirmed `server.ticks` is `uint32_t` (`server.h:68`) and every write site uses
+`(server.ticks - 1) % (N + 1)` (verified all 7 call sites in `chainat`/`floodat`/`explosionat`/
+`superboomat`). Wrote and compiled a small C program computing this exact expression at
+`ticks == 0` for both `N=13` (flood) and `N=7` (chain): **flood slot = 8, chain slot = 3** —
+matches `writeSlot`'s `UInt32(truncatingIfNeeded: ticks) &- 1) % UInt32(count)` result exactly (I
+ran the equivalent arithmetic by hand and cross-checked against the compiled program's output
+rather than trusting either alone). Also swept `t = 0...14` to confirm the formula's behavior past
+the one-time wraparound matches the plain `(t-1) % N` case for `t ≥ 1`, which both C and the Swift
+narrowing-then-wrap approach compute identically once no underflow is involved. This is the same
+rigor as the D26 fp-contract finding, per IMPLEMENTER's request — confirmed empirically, not
+assumed from reading the type declarations alone.
+
+**3. `smallboom`-vs-`superboom` damage-check nesting asymmetry — confirmed against
+`recvsrsmallboom`/`recvsrsuperboom` directly, and it is real, not a symmetry I should have
+assumed.** `recvsrsmallboom`'s "check for damage to tank" (`client.c:2660`) is a **top-level `if`,
+independent of** the `if (player != client.player)` particle-creation gate above it — meaning a
+smallboom damages the tank that caused it too, if that tank is still in range (self-damage is
+possible). `recvsrsuperboom`'s equivalent check (`client.c:2815`) is **nested inside** the
+`if (player != client.player)` block — meaning a superboom you caused yourself never reaches its
+own damage check at all (no self-damage, by construction of the gate). Confirmed `explosionAt`
+(`MineChain.swift:395-398`) calls `applySplashDamage` unconditionally, outside its own
+`player != localPlayer` gate (which only wraps the particle/builder-kill effects), while
+`superboomAt` (`MineChain.swift:444-471`) puts a single `guard player != localPlayer else return`
+*before* both the particle effects and the `applySplashDamage` call, correctly making the whole
+function a no-op past terrain/chain/flood scheduling when you caused it yourself. This is a
+genuinely easy asymmetry to miss (I would have assumed symmetry without reading both handlers side
+by side) and the port gets it right.
+
+**Also independently verified, not part of IMPLEMENTER's specific list:**
+- `explosionAt`'s terrain-switch exhaustiveness: hand-counted C's 28-case detonate-with-terrain-
+  change list + the separate `kMinedSeaTerrain` (detonates, no terrain change) + implicit
+  `kSeaTerrain`-only default (no detonation) against all 30 `Terrain` cases — Swift's switch
+  reproduces the same 28+1+1 partition exactly.
+- The `droppills`/`dr` NaN-clamp bug: confirmed C's y-clamp branch really does check
+  `isnan(x)` (`server.c:2007`) instead of `isnan(y)` — a genuine copy-paste bug, not a
+  transcription error on IMPLEMENTER's part. `dropPills` (`MineChain.swift:145`) replicates it
+  verbatim (`else if x.isNaN { y = 128.0 }`), with the deviation called out in a comment rather
+  than silently matching by coincidence.
+- Damage constants: `smallboomDamage=10`/`smallboomRadius=1.0` and
+  `superboomDamage=20`/`superboomRadius=1.5` match `armour -= 10`/`<= 1.0` and
+  `armour -= 20`/`<= 1.5` in the respective C handlers exactly.
+- D28 (artifact/test maintenance): IMPLEMENTER's report states 227→257 BoloKitTests (all
+  additions) and 33→33 DifferentialTests (unchanged, justified — no new float-precision surface
+  introduced). No silent shrinkage anywhere in this wave. ✅ (standing check, per D28, nothing to
+  flag.)
+
+No divergences found. Wave 5.5a: PASS.
+
+**No open questions for IMPLEMENTER from this audit** — all three specifically-requested items
+plus my own spot checks came back clean. The one thing worth Jerod's/PLANNER's attention rather
+than IMPLEMENTER's: this wave's own report already discloses that `onMineExplosion`/
+`onSuperboomTerrain` are still wired to no-op defaults everywhere upstream (`TankLocalTick.swift`/
+`ShellTick.swift`/`BuilderTick.swift`) — that's a known, explicitly-flagged gap pending the Wave 6
+tick driver, not something this audit is treating as a finding.
+
+[TO: PLANNER] Wave 5.5a: PASS, no findings. D27 (single-pass election shape) was checked against
+the actually-shipped code and holds throughout — no repeat of the 5.3c FAIL pattern. The
+`writeSlot` fix is independently confirmed correct via a compiled C cross-check (same rigor as
+D26). The smallboom/superboom self-damage asymmetry is real and correctly replicated — worth
+noting in PLAN.md's Wave 5 benchmarks table alongside the existing WinBolo-divergence list, since
+"mines don't self-damage" is already called out there but "superboom doesn't self-damage while
+smallboom does" is a related, non-obvious detail that isn't. Recommend marking Wave 5.5a ✅
+Complete and clearing IMPLEMENTER for Wave 5.5b.
+
+---
+
+### [PLANNER] 2026-09-02 — Readiness assessment for Wave 5.5b: GO issued
+**Type:** planning
+**Phase:** 1 / Wave 5.5a → 5.5b
+**Blocks:** nothing
+
+Assessed readiness for 5.5b per Jerod's request. Wave 5.5a's report and audit both reviewed in
+full, not just the verdict line.
+
+**Wave 5.5a: PASS, no findings.** All three items IMPLEMENTER specifically flagged were
+independently confirmed, not taken on report:
+1. **D27 held throughout — no repeat of the 5.3c FAIL pattern.** `chain()`/`flood()` are
+   structurally global/no-player-parameter in both C and the port; PARITY traced the write-vs-read
+   ring-buffer slot indices explicitly and confirmed they can never collide mid-drain. The
+   election-model lesson from D27 was checked against the actually-shipped code, not just cited
+   from the plan.
+2. **`writeSlot`'s `uint32_t`-narrowing fix — independently compiled and cross-checked**, same
+   rigor as D26's fp-contract finding (PARITY wrote and ran a small C program to confirm the exact
+   wraparound values at `ticks == 0`, rather than trusting the type analysis alone).
+3. **smallboom-vs-superboom self-damage asymmetry — confirmed real, not assumed-symmetric.**
+   smallboom can damage its own causer; superboom cannot, by construction of where the self-caused
+   gate sits in each C handler. Correctly replicated. Added to PLAN.md's Wave 5 benchmarks table
+   per PARITY's recommendation, alongside the existing "mines don't self-damage" line, so this
+   non-obvious distinction doesn't get assumed away in a future wave.
+
+**D28 check: clean.** 227→257 BoloKitTests, all additions; 33→33 DifferentialTests, unchanged and
+justified (no new float-precision surface). No shrinkage anywhere.
+
+**Dependencies for 5.5b all clear:** `forestvis` (needed by pillTick, not explosionTick — already
+shipped in 5.3c); the chain/flood ring-buffer state and `state.explosions`/per-player lists 5.5b
+drains now exist (5.5a, just closed); Q14 (explosions-list attribution ambiguity) is confirmed
+non-blocking here — it's about which player's list an entry lands in, not about the counter-decay-
+and-removal logic explosionTick actually performs, and remains scoped to Wave 6.
+
+Wave 5.5a marked ✅ Complete in PLAN.md.
+
+**Ready. GO issued for Wave 5.5b** (explosionTick — drains the particle lists 5.5a feeds; counter
+`> EXPLOSIONTICKS (24)` removal, strictly-greater, per the existing pre-brief trap).
+
+[TO: IMPLEMENTER] GO for Wave 5.5b. No holds.
+[TO: PARITY] Ready whenever 5.5b lands.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.5b complete: explosionTick
+
+**Type:** build
+**Phase:** 1 / Wave 5.5b
+**Blocks:** nothing — this closes out the whole Wave 5.5 pairing (5.5a producers, 5.5b consumer)
+
+Executed per PLANNER's GO. New file `Sources/BoloKit/ExplosionTick.swift` (`explosionTick`, plus
+a private `drainExplosions` helper shared by the global and per-player cases). **Test count per
+D28: 257 → 267 BoloKitTests (+10, all additions), 33 → 33 DifferentialTests (unchanged — no
+floating-point content in this wave at all, confirmed by the same grep sweep as 5.5a, not just
+assumed from the function being small).**
+
+This is the smallest wave in the Wave 5 sequence — `explosionlogic()` (client.c:5499) is ~35 lines
+and entirely integer-counter/list bookkeeping. D27 doesn't even apply in the interesting sense:
+C's driver calls this once per connected player plus once more with `player == -1` for the global
+list, but every one of those calls operates on a completely disjoint list — nothing here reads or
+resets a value any *other* call could also touch (unlike `pillTick`'s single shared `counter`
+field). Ported as one function draining every list in a single pass rather than replicating the
+per-target-list signature, since the net effect across a full tick's worth of the original calls
+is identical and there's nothing to design around.
+
+**One faithfully-replicated boundary, tested at both edges:** removal is `counter > explosionTicks
+(24)`, strictly greater, not `>=`. A particle at `counter == 23` survives one more tick (becomes
+24, kept); one at `counter == 24` does not (becomes 25, removed). Both boundary tests included,
+not just one side.
+
+**Confirmed, not assumed: a disconnected player's explosion list is left completely untouched**,
+matching C's `if (client.players[player].connected)` guard around the per-player branch — a
+dedicated test sets counter already past the removal threshold on a disconnected player and
+asserts it's still there afterward (would have been removed if the guard were missing).
+
+No new `GameState`/`Physics.swift` changes — this wave only consumes fields Wave 5.1
+(`PlayerState.explosions`) and Wave 5.5a (`GameState.explosions`) already shipped.
+
+[TO: PLANNER] Wave 5.5b done and verified, commit follows this entry. **This closes the full
+Wave 5.5 pairing (5.5a + 5.5b) per D22's split.** Per PLAN.md's wave table, next up is Wave 5.6
+(`spawn()`) unless redirected.
+[TO: PARITY] New commit to audit — small one this time. The only things worth a second look: (1)
+the strictly-greater boundary at both edges (23→24 kept, 24→25 removed); (2) the disconnected-
+player-list-untouched guard. Per the post-commit-only rule, not tagging further action here —
+that's PLANNER's call.

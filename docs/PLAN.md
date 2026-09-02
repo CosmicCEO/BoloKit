@@ -278,8 +278,8 @@ Intelligence learning goal, and `GSRobot.m` shows the reference had a bot API to
 | Wave 5.3b | builderTick — builderlogic + server-side build/repair/mine/grab-trees handlers merged into the unified tick; absorbs former Wave 5.4's buildercollision | ✅ Complete — PARITY PASS, 27a76d3 (D24 applied; D26 fp-contract fix, cross-cutting) — 199+31 tests |
 | Wave 5.3c | pillTick — pilllogic + forestvis (moved from 5.5b, needed by pillTick's firing condition) | ✅ Complete — PARITY PASS after FAIL/fix cycle, 03d56b3 (shared-counter ordering bug, see D27) — 227+33 tests, no coverage lost (D28) |
 | ~~Wave 5.4~~ | ~~tankcollision, buildercollision, testAlliance, findPill/findBase~~ | ⏹ Retired (D23) — absorbed into 5.1/5.2a/5.3b |
-| Wave 5.5a | explosionAt/superboomAt/chain/flood (mine-detonation cascade), droppills (pill-scatter placement) | 🔶 GO issued 2026-09-02 (split from 5.5 per D22; design per D27's election pattern) |
-| Wave 5.5b | explosionTick (drains chain list) | ⬜ Queued (blocked on 5.5a) |
+| Wave 5.5a | explosionAt/superboomAt/chain/flood (mine-detonation cascade), droppills (pill-scatter placement) | ✅ Complete — PARITY PASS, d99815e (D27 held throughout, no repeat of 5.3c FAIL pattern) — 257+33 tests, no coverage lost (D28) |
+| Wave 5.5b | explosionTick (drains chain list) | 🔶 GO issued 2026-09-02 (unblocked — 5.5a complete) |
 | Wave 5.6 | spawn() — two-pass weighted selection; drown | ⬜ Queued |
 | Wave 5.7 | growtrees (C bug replicated), pill cooldown, base replenish | ⬜ Queued |
 
@@ -296,6 +296,7 @@ Critical behaviors where XBolo must match original Bolo 0.99.7 — NOT WinBolo:
 - **Tank deceleration:** Original brakes precisely. WinBolo overshoots. Float-precision tick accumulation (D18) is the correct safeguard.
 - **Boat-to-land transition:** Original applies resistance forces at the water/land boundary. WinBolo treats it as a plain speed-zone change. This is NOT captured by `terrainMaxSpeed` — must be ported separately in Wave 5.
 - **Mine self-damage:** Original does NOT damage the laying tank on detonation. WinBolo does. Wave 5 mine handler must explicitly skip the owner.
+- **Mine self-damage asymmetry (confirmed Wave 5.5a, PARITY):** `smallboom`'s tank-damage check is independent of the self-caused gate — a smallboom CAN damage the tank that caused it. `superboom`'s damage check is nested inside the self-caused gate — a superboom you caused yourself never damages you. Not symmetric; do not assume one implies the other in any future wave touching these paths.
 - **Builder retrieval:** Original retrieves stranded builders by proximity. WinBolo requires killing them first. Wave 5 builder-retrieval logic must match the original proximity-only check.
 - **Pillbox range:** WinBolo fires ~0.5 squares too far. Use only the C oracle constant — never a WinBolo source.
 - **Tick rate:** 50 Hz confirmed in both original and WinBolo. ✅ Consistent with `ticksPerSec` in Physics.swift.
