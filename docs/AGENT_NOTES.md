@@ -525,3 +525,65 @@ post-commit-only rule.
 instruction (over-similarity to WinBolo architecture) and specifically re-check the corrected
 trap list (items 1, 5, 6 need named regression tests per the pre-brief; item 7 should have NO
 double-swap handling — flag it if you find any).
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.0 complete: wire codec, all 54 CL*/SR* structs + CLUpdate
+
+**Type:** coding
+**Phase:** Wave 6.0
+**Blocks:** nothing — 6.0 done, 6.1 (tick orchestrator) is next per D32
+
+Commit `96704cd`. Implemented against the pre-brief two entries above, no deviations from its
+oracle strategy or design calls.
+
+**Oracle (`Sources/CXBolo/netops.c`, `include/CXBolo.h`):** `clupdate_encode_oracle`/
+`clupdate_decode_oracle` are reduced-parameter extracts of `sendclupdate()`/`dgramclient()`,
+same "verbatim extract, no globals" style as `tankops.c`/`shellops.c`. One interop-driven
+deviation from the pre-brief's sketch: `seq[MAXPLAYERS]` is passed as a separate `int32_t *`
+parameter on both encode input and decode output, not embedded as a struct field — a fixed-size
+C array as a struct member imports into Swift as an unsubscriptable N-tuple, unusable from a
+differential test. `clupdate_layout_oracle` exposes `sizeof`/`offsetof` ground truth for the
+header; `sizeof_cl_oracle`/`sizeof_sr_oracle` cover all 54 opcodes by switch. `CXBolo.h` now
+includes the real `client.h`/`server.h`/`tracker.h`.
+
+**Codec (`Sources/BoloNet/`):** `WireIO.swift` (BE read/write primitives, `fixedEncode`/
+`fixedDecode`/`bradEncode`/`bradDecode`), `CLUpdateCodec.swift` (header + shell + explosion +
+`CLUpdate.encode()`/`.decode()`, plus `isNewerSeq` for wraparound-tolerant sequence comparison),
+`ClientMessages.swift` (20 `CL*` structs), `ServerMessages.swift` (34 `SR*` structs). All as
+planned: pure value layer, no I/O, no `GameState` coupling.
+
+**Real finding, not a transcription bug — logged here because it changes what "the C oracle"
+computes for every future wave touching `FWIDTH`, same reason D26 has its own entry:** `FWIDTH`
+(`bolo.h:67`) is `#define FWIDTH (256.0)` — an unsuffixed literal, so it's a C `double`, not a
+`float`. `k2Pif` (`vector.c:17`) is `const float`. C's usual arithmetic conversions mean every
+`x*FWIDTH` and `dir*(FWIDTH/k2Pif)` in `sendclupdate()`/`dgramclient()` computes in double
+precision — `FWIDTH/k2Pif` promotes `k2Pif` to double first, then the outer multiply promotes
+`dir`/`x` to double — before truncating (encode) or rounding to the destination `float` field on
+assignment (decode). Caught by the full-256-value brad fuzz test: an all-`Float` Swift port of
+the identical formula diverged from the oracle on a real fraction of inputs (roughly 1 in 4 of
+the 256 `tankdir` byte values, in the initial run). Fixed by giving `fixedEncode`/`fixedDecode`/
+`bradEncode`/`bradDecode` `Double` intermediates matching C's actual promotion — this is the
+oracle's own arithmetic, not a Swift precision upgrade, so D18's "Float, never Double" rule
+(which governs `BoloKit`'s stored state) doesn't apply to it.
+
+**Trap list:** items 1 (`.tile` never written/read), 5 (fixed-point truncates), 6 (wraparound
+sequence compare), and the item-7 correction (no double-`htons()` in `MSGNEARBY`) each have a
+named regression test. Items 2/3/4/8 are logged in the pre-brief for their correct later
+sub-waves (6.2–6.4) and not tested here, per that entry's scope.
+
+**Test baseline: 329 → 345 (+16), all in new `Tests/DifferentialTests/NetCodecDifferentialTests.swift`.**
+No existing test file touched. The 329 baseline (not 296 — Wave 5.7's stated count, now stale by
+33 tests added in the interim per the current repo state) confirmed directly by `grep -rc
+"@Test func\|func test" Tests/` before/after this session's addition, not assumed.
+
+No `Package.swift` target/dependency changes beyond adding `BoloNet` to `DifferentialTests`'
+dependencies (needed to import the new codec types for testing).
+
+> **→ Planner:** Wave 6.0 done and committed. Ready for a 6.1 pre-brief (tick orchestrator —
+> `runclient()`/`runserver()`) whenever you want it started; D27 already applies there per the
+> pre-brief's trap-list item 8, so that pre-brief can lean on this session's groundwork rather
+> than re-deriving it.
+> **→ Parity:** `96704cd` is ready for audit. Per D25, check for accidental over-similarity to
+> WinBolo's wire-format framing (never read, but flag if anything looks coincidentally close).
+> The `FWIDTH`-is-double finding above is the one item here that isn't just "did the port match
+> the brief" — worth independently re-deriving from `bolo.h`/`vector.c` rather than taking this
+> entry's word for it, same rigor as any other oracle-behavior claim.
