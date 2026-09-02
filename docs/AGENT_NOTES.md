@@ -23,7 +23,7 @@ Body — a few lines. Be concrete. No filler.
 
 Types:
 - **[PLANNER]** — wave assignments, sign-offs, architectural decisions
-- **[IMPLEMENTER]** — completion reports, build results, deviations from spec
+- **[IMPLEMENTER]** — coding, completion reports, build results, deviations from spec
 - **[PARITY]** — audit findings, behavioral verification, sign-offs
 
 ---
@@ -3542,3 +3542,120 @@ Please update PLAN.md's wave-status row and CLAUDE.md's bootstrap to reflect thi
 PARITY for audit now that a commit hash exists. Standing by for Wave 5.7's GO — not starting it
 without one, per protocol.
 [TO: PARITY] Commit hash to audit against: `a3f9540`.
+
+`47f6fc7` (this reconciliation note) pushed to `origin/main`.
+
+---
+
+### [JEROD, via IMPLEMENTER] 2026-09-02 — Manual override: GO for Wave 5.7 issued directly, bypassing PARITY audit of 5.6
+**Type:** planning override
+**Phase:** 1 / Wave 5.6 → 5.7
+**Blocks:** nothing — recorded for the record, not a question
+
+**Jerod issued the Wave 5.7 GO directly to IMPLEMENTER**, overriding the standing protocol that
+requires PLANNER to review a PARITY audit of the prior wave before issuing GO. As of this note,
+`a3f9540` (Wave 5.6) has **not** been audited by PARITY — PARITY was only just told the commit
+hash exists two notes above. Recording this plainly so PLANNER/PARITY aren't confused later about
+why 5.7 started without the usual audit-then-GO sequence in this log: it was a deliberate,
+explicit human override, not a protocol violation by either agent. Wave 5.6's audit is still
+owed and should happen whenever PARITY next picks this up — this override doesn't retroactively
+close it out.
+
+[TO: IMPLEMENTER] Proceed with Wave 5.7 (`growtrees`, pill cooldown, base replenish) per Jerod's
+direct instruction. Full trap list already staged in `CLAUDE.md`'s "Wave 5.7 trap list" section
+and the original `WAVE 5.7` pre-brief elsewhere in this file — read both before writing code.
+[TO: PLANNER] Flagging for your awareness on your next pass — Wave 5.6 audit is still outstanding,
+independent of 5.7 now being in progress.
+[TO: PARITY] Wave 5.6 (`a3f9540`) audit is still owed whenever you pick this up — Wave 5.7 starting
+early doesn't change that.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.7 complete: growtrees, pill cooldown, base replenish
+**Type:** implementation
+**Phase:** 1 / Wave 5.7
+**Blocks:** nothing. Started under Jerod's direct override GO (see note above) — Wave 5.6's PARITY
+audit is still separately outstanding and unaffected by this.
+
+**Summary.** Ported all three server-tick mechanics into new `Sources/BoloKit/GrowTrees.swift`:
+`growTrees(state:onGrow:)` (`growtrees()`, server.c:3946), `coolPills(state:onCoolPill:)` (the "cool
+pills" loop, server.c:1206-1220), and `replenishBases(state:onReplenishBase:)` (the "replenish
+bases" loop, server.c:1222-1243). Also ported the three pure scoring helpers `growtrees` depends on
+— `treeScore`/`baseScore`/`adjacentScore` (server.c:3872-3944) — as public functions, matching the
+existing precedent of exposing pure differential-testable helpers (`forestVis`, `isForest`).
+
+**A real design conflict surfaced and fixed, not just flagged — this is the actual reason this
+report is longer than the trap list:** the existing `Pill.counter` field (shipped in Wave 5.1, used
+by Wave 5.3c's `pillTick`) and this wave's "cool pills" loop both map to a field named `counter` in
+C's shared `struct Pill` definition — but in real distributed play, `client.pills[i].counter` (fire
+cadence, counted toward `speed`, reset by `pilllogic()` on every fire/disqualify) and
+`server.pills[i].counter` (reload-degrade cadence, counted toward `coolPillTicks`, reset every 32
+ticks) are **separate array instances**, never the same memory. This port's single merged
+`GameState` had already claimed the one `counter` field for the client fire-cadence role in Wave
+5.3c. Naively porting the server's cool-pills loop onto that same field would have been exactly the
+D27 hazard restated: two independent per-role counters silently overwriting each other every tick
+(pillTick resets `counter` far more often — every fire/disqualify — than the 32-tick cooldown
+period, so the cooldown would almost never actually reach its own threshold correctly, or would
+corrupt pillTick's own firing cadence, depending on call order). **Fix:** added a second field,
+`Pill.coolCounter`, exclusively owned by this wave's `coolPills`; `counter` is now documented as
+exclusively `pillTick`'s. Added with a default value (`= 0`) in `Pill`'s init specifically so none
+of the 84 existing `Pill(...)` call sites project-wide needed touching. A dedicated regression test
+(`coolPillsNeverTouchesTheFireCadenceCounter`) runs `coolPills` 100 times and asserts `counter`
+never moves from its seeded fire-cadence value. This wasn't in the pre-brief's trap list — it only
+becomes visible once you have both `pilllogic` (5.3c, already shipped) and the cool-pills loop
+(this wave) in hand at once and compare their field usage side by side.
+
+**Trap list, all confirmed applied:**
+- `growTrees`'s outer pill/base guard checks the last-sampled `(x, y)`, not the tournament winner
+  `(growX, growY)` — replicated exactly; inner guard (inside the terrain switch) correctly uses
+  `(growX, growY)`. Both forms present, matching `docs/PLAN.md`'s known-divergences table.
+- Iteration count: `nplayers * (treesBestOf / (treesPlantRate * Int(ticksPerSec)))` — all-`Int`
+  arithmetic, `Int(ticksPerSec)` converting the one `Float` constant explicitly, giving `4200 / 500
+  = 8` via integer division (verified by a dedicated test asserting `growBestOf` advances by exactly
+  8/24 for 1/3 connected players, not some Float-tainted neighbor value).
+- `coolPills` increments `speed` (never `armour`), gated by `speed < maxTicksPerShot`, but resets
+  `coolCounter` to 0 unconditionally once the threshold is crossed — even when `speed` was already
+  at the cap and didn't move. Also applies to dead-but-not-onboard pills (`armour == 0`), matching
+  C's literal `armour != ONBOARD` guard with no additional `armour > 0` check — a dedicated
+  regression test covers this exact case since it's easy to "improve" by accident.
+- `replenishBases`'s counter increments by `nplayers`, not a flat `+1`; all three resources
+  (armour/mines/shells) increment and independently clamp every time the threshold fires, matching
+  C's `++x; if (x > MAX) x = MAX;` pattern via `min(x + 1, max)`.
+- `applyGrow`'s terrain table: mined grass/rubble/crater/swamp/road → `.minedForest`; plain variants
+  → `.forest`; everything else (including existing forest, sea, wall) is a no-op. Full switch
+  covered by dedicated tests for both branches plus a no-op case.
+
+**Testing (`Tests/BoloKitTests/GrowTreesTests.swift`, 22 new):** pure-function coverage for
+`treeScore`/`baseScore`/`adjacentScore` (tier ranking, occupancy zeroing, orthogonal-vs-diagonal
+weighting, out-of-bounds); deterministic coverage for `growTrees`'s iteration-count arithmetic,
+terrain-table branches (plain/mined/no-op), and the inner occupancy guard; a **statistical**
+regression test for the outer-guard bug itself
+(`growTreesOuterGuardChecksLastSampledCellNotTheWinner`) — since `growTrees` samples via
+`arc4random_uniform` with no injectable RNG (matching every other wave's stance: no C oracle exists
+for an independent PRNG stream, so these get statistical rather than exact-value tests). That test
+fixes the tournament winner at the maximum possible `treeScore` (60 — fully forest-surrounded grass)
+so no random sample can ever dislodge it, leaves it permanently unoccupied, then pill-occupies ~25%
+of the rest of the board and runs 60 single-relevant-sample trials: growth succeeds in some trials
+and is blocked in others, which is only possible if the outer guard's pass/fail is keyed to the
+random per-trial sample rather than the (always-clear) fixed winner. Runs in ~2s — flagged in case
+PARITY wants a faster or differently-shaped version, but stable across repeated local runs (checked
+5x, no flakes) and each grown/blocked branch has a wide statistical margin at n=60. Full
+`coolPills`/`replenishBases` coverage includes the onboard-skip, the dead-pill-still-cools trap, the
+threshold/reset/clamp behavior, the fire-cadence-counter isolation regression above, and the
+zero-connected-players edge case for both `growTrees` and `replenishBases`.
+
+**D28 test count: 274 → 296 (+22), all additions, no removals or reorganizations.** Ran the full
+suite fresh after the last edit: **296/296 passing.**
+
+**D18/Foundation sweep:** `grep -n "Double\|CGFloat\|M_PI\|Double\.pi" Sources/BoloKit/GrowTrees.swift`
+and `grep -rn "import Foundation" Sources/BoloKit/GrowTrees.swift` both zero hits — this wave is
+pure `Int` arithmetic plus one `arc4random_uniform` RNG call per sample, no float surface at all.
+
+[TO: PLANNER] Wave 5.7 complete, all trap-list items applied. One real design decision surfaced
+mid-wave (the `Pill.counter`/`coolCounter` split above) — not blocking on review since Jerod's
+override GO covers starting this wave, but flagging clearly for your and PARITY's attention since
+it touches an already-shipped Wave 5.1/5.3c field, not just new Wave 5.7 surface.
+[TO: PARITY] New commits to audit — Wave 5.6 (`a3f9540`, still outstanding per the note above) and
+this wave. For this wave specifically, please double-check: (1) the `Pill.counter`/`coolCounter`
+split is a genuine fix and not a redundant field; (2) the outer/inner guard coordinate distinction
+in `growTrees`; (3) all-`Int` arithmetic in the iteration-count formula.

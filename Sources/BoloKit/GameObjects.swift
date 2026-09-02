@@ -17,16 +17,37 @@ public struct Pill: Hashable, Sendable {
     public var owner: UInt8
     /// Reload interval in ticks — higher is slower/calmer. Not armour.
     public var speed: UInt8
-    /// Ticks since the last reload-cooldown event.
+    /// Ticks since the pill last fired (or was disqualified/reset). Mirrors
+    /// C's `client.pills[i].counter` — the CLIENT-side fire-cadence tally
+    /// `pillTick`/`pilllogic()` counts up toward `speed` before shooting.
+    /// **Not** the same counter as `coolCounter` below — see that field's
+    /// doc comment for why they had to be split (Wave 5.7 / D27).
     public var counter: UInt8
+    /// Ticks since the pill's reload interval last degraded. Mirrors C's
+    /// `server.pills[i].counter` — the SERVER-side cooldown tally that
+    /// `coolPills` (Wave 5.7, `GrowTrees.swift`) counts up toward
+    /// `coolPillTicks` before incrementing `speed`. In real distributed
+    /// play `client.pills[]` and `server.pills[]` are separate array
+    /// instances sharing one struct *definition*, so their `counter`
+    /// fields are independent memory; this port merges every player's
+    /// view into one `GameState`, so reusing a single field here would be
+    /// exactly the D27 shared-per-tick-state hazard (two independent
+    /// roles silently overwriting each other's tally every tick, since
+    /// `pillTick` resets `counter` far more often than every 32 ticks).
+    /// Split into its own field instead of reusing `counter`.
+    public var coolCounter: UInt8
 
-    public init(x: UInt8, y: UInt8, armour: UInt8, owner: UInt8, speed: UInt8, counter: UInt8) {
+    public init(
+        x: UInt8, y: UInt8, armour: UInt8, owner: UInt8, speed: UInt8, counter: UInt8,
+        coolCounter: UInt8 = 0
+    ) {
         self.x = x
         self.y = y
         self.armour = armour
         self.owner = owner
         self.speed = speed
         self.counter = counter
+        self.coolCounter = coolCounter
     }
 
     public var isOnboard: Bool { armour == pillOnboard }
