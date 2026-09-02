@@ -67,4 +67,21 @@ Vec2f builderlaunch_oracle(Vec2f target, Vec2f tank);
 Vec2f buildermove_oracle(Vec2f diff, float speed);
 Vec2f parachutemove_oracle(Vec2f diff);
 
+// Permanent verbatim extracts of forestvis()'s interpolation arithmetic
+// and pilllogic()'s shell-firing lead-targeting math for oracle testing
+// (Wave 5.3c). Reduced-parameter form — no globals.
+float forestvis_oracle(
+  float fx, float fy,
+  int isForestCenter,
+  int isForestXm1Y, int isForestXp1Y, int isForestXYm1, int isForestXYp1,
+  int isForestXm1Ym1, int isForestXm1Yp1, int isForestXp1Ym1, int isForestXp1Yp1
+);
+
+struct PillShellResult {
+  Vec2f point;
+  float dir;
+};
+
+struct PillShellResult pillshell_oracle(Vec2f tank, Vec2f old, Vec2f pill);
+
 #endif /* CXBOLO_H */
