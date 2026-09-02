@@ -742,3 +742,248 @@ day-to-day workflow changed (same git workflow, same pre-brief ownership, same c
 only where things are documented and how much is restated changed.
 [TO: PARITY] You now have your own bootstrap, `docs/PARITY.md` — read it at your next session
 start instead of relying on ad hoc instructions relayed by Jerod each time.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.1 pre-brief: tick orchestrator
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.1
+**Blocks:** the Wave 6.1 GO
+
+**Written at Jerod's direct request, ahead of the normal per-wave cadence.** `docs/PLAN.md`'s
+wave table shows 6.1 with a pre-brief GO (issued after 6.0 closed and PARITY-passed) but no
+pre-brief written yet; 6.2/6.3 are marked blocked on 6.0/6.1 and 6.0–6.2 respectively, and Wave
+6.0's own history shows PLANNER gating pre-brief-writing itself, one sub-wave at a time. Jerod
+asked for 6.1, 6.2, and 6.3 pre-briefs together in one session — this entry and the two after it
+are the result. Noting this plainly rather than letting three pre-briefs appear with no matching
+GO trail and no explanation.
+
+**Scope (D32):** `runclient()` (`client.c:425-497`) and `runserver()` (`server.c:1083-1257`) —
+composing already-shipped per-tick functions into the real sequence, plus what's genuinely new.
+
+**Already shipped, just needs sequencing, no new logic:** `tankMoveTick` (loop all `MAXPLAYERS`,
+vis increase/decrease on position change — independent per-player state, not a D27 hazard),
+`TankLocalTick`'s local-input handling, `builderTick` (loop all `MAXPLAYERS`), `pillTick` (single
+call, already D27-safe per its own FAIL/fix history), `shellTick` (loop all `MAXPLAYERS`),
+`explosionTick` (needs confirming its current signature covers the `-1..<MAXPLAYERS` sentinel
+range from `explosionlogic`, not just `0..<MAXPLAYERS`), `coolPills`/`replenishBases`/`growTrees`/
+`chain`/`flood` (all exist in `GrowTrees.swift`/`MineChain.swift` with `onX` closure callbacks
+already).
+
+**Genuinely new, `runclient()` side:**
+- `seq` increment + old-tank-position capture for the local player.
+- Lagged-player status callback: two distinct thresholds (`3*TICKSPERSEC` and `TICKSPERSEC` ticks
+  since `lastupdate`), both firing `setplayerstatus` — needs `seq`/`lastUpdate` (added to a
+  BoloNet-side table per Wave 6.0's design call) wired into this loop.
+- `CLUpdate` emission gated on `seq % 5 == 0` — mechanically ready now that 6.0's codec exists;
+  6.1 only calls `CLUpdate.encode()`, doesn't build any new encoding.
+
+**Genuinely new, `runserver()` side — the bulk of 6.1's real work:**
+- **Pause state machine.** `server.pause` is tri-state in the C: `0` (not paused), positive
+  (counting down, decrements every tick, emits `SRPause` on each second boundary), `-1`
+  (indefinite pause, no countdown). `GameState` has no `pause` field yet.
+- **Time-limit warnings.** Eight exact tick-equality checks (5 min / 1 min / 10s / 5s / 4s / 3s /
+  2s / 1s / 0) against `server.timelimit`, each firing a distinct `sendsrtimelimit` value. Exact
+  equality (`==`, not `>=`) — a tick skipped or double-counted anywhere upstream would silently
+  drop a warning. `GameState` already has `ticks` (`GameState.swift:13`); has no `timeLimit` field.
+- **Domination base-control win-condition — real trap, not obvious from a skim.**
+  `server.c:1140-1176` increments `server.basecontrol` only while base 0 is held (armour ≥
+  `MINBASEARMOUR`, owner ≠ neutral) AND every other base's owner is mutually allied with base 0's
+  owner. The reset to `0` only happens in the *inner* `else` (all-bases-check failed while base 0
+  itself is still held) — if the *outer* condition fails (base 0 not held, or `nbases == 0`),
+  `basecontrol` is left **untouched**, not reset. A naive "reset whenever the win condition isn't
+  fully met" port would diverge from this. `GameState.dominationType` (`GameObjects.swift:166`)
+  exists; the `basecontrol` counter and `game.domination.basecontrol` threshold do not.
+- **Disconnect-lagged-players decision.** `9*TICKSPERSEC` since `lastupdate` — the *decision* is
+  pure per-tick state (compare and flag), but `removeplayer()`'s actual work (socket close, buffer
+  drain, drop-pills side effect) is 6.3/6.4 territory. 6.1 should only detect and report which
+  players are stale via a callback, leaving actual removal to 6.3.
+
+**Design call, for PARITY to audit once code lands:** the orchestrator's outbound side effects
+(`SRPause`/`SRTimeLimit`/`SRBaseControl`/`SRCoolPill`/`SRReplenishBase`/`SRGrow`, etc.) must
+**not** be emitted as `BoloNet` wire-struct values directly from `BoloKit` — `Package.swift` has
+`BoloNet` depending on `BoloKit`, not the reverse, and introducing that dependency backward would
+be a real architecture regression, not a style preference. Continue the existing plain-data
+closure-callback convention (`onGrow: (Int, Int) -> Void`, `onCoolPill: (Int) -> Void`, already
+shipped in `GrowTrees.swift`) for every new emission point; wrapping those payloads into `SR*`
+wire structs is a `BoloNet`-side (or future app-layer) adapter's job, not `BoloKit`'s.
+
+**Trap-list carryover from 6.0's own pre-brief (item 8), restated here so 6.1 doesn't re-derive
+it:** `explosionlogic` loops `-1..<MAXPLAYERS`, `pilllogic` runs once not per-player, `sendclupdate`
+fires only on `seq % 5 == 0`.
+
+**Test plan:** unit tests for the pause/timelimit/basecontrol state machines against hand-computed
+tick sequences (pure control flow over already-oracle-tested primitives, no C oracle needed for
+the sequencing itself) plus a named test exercising both the basecontrol increment path and the
+untouched-not-reset path, since that asymmetry is exactly the kind of thing a partial test suite
+would miss.
+
+**Out of scope for 6.1:** `recvsr*` handlers (6.2), session/join/kick/ban/alliance (6.3),
+transport/sockets (6.4), tracker/NAT-PMP (6.5).
+
+No code changes this entry. Test baseline unchanged: **345** (confirmed via `grep -rc` immediately
+before writing this entry, not assumed).
+
+> **→ Planner:** Wave 6.1 pre-brief is complete and awaits a GO, same as 6.0's process. See the
+> note at the top of this entry re: writing this (and 6.2/6.3) ahead of the normal per-wave GO
+> sequence, at Jerod's direct request.
+> **→ Parity:** No action needed yet — no code shipped.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.2 pre-brief: `recvsr*` broadcast handlers
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.2
+**Blocks:** the Wave 6.2 GO
+
+Written in the same batch as the 6.1 entry above, same caveat applies: at Jerod's direct request,
+ahead of the normal per-wave GO sequence — `docs/PLAN.md` currently marks 6.2 "blocked on 6.0/6.1."
+
+**Scope (D32):** the ~33 `recvsr*` functions in `client.c` (all 34 `SR*` opcodes except
+`SRHANGUP`, which has no handler — "not used" per `bolo.h:210`).
+
+**Central architectural finding, more important than any individual trap.** In real distributed
+Bolo, `recvsr*` exists because each player's process holds its own `client` struct, and the
+server's broadcasts are how a remote client's copy stays in sync with server-authoritative
+decisions it didn't compute itself. `BoloKit.GameState` has no such duplication — one process, one
+state. Sampled `recvsrsmallboom`/`recvsrsuperboom`/`recvsrgrow` directly and confirmed: Wave 5.5a's
+`explosionAt`/`superboomAt` (`MineChain.swift`) **already fully absorb** the tank-damage-cascade
+logic these handlers contain (including the smallboom-vs-superboom nesting asymmetry — see that
+file's own doc comments, which call this out explicitly). Wave 5's tick functions are the
+*authoritative-role* computation (randomized decisions included, e.g. `growTrees`'s weighted
+selection). `recvsr*`'s real job for a *client* role is different in kind, not degree: **apply a
+given, already-decided value directly** (`client.terrain[y][x] = kForestTerrain` in `recvsrgrow`
+— no re-invocation of `growTrees`, which would pick a *different* random winner locally and desync
+from the server's actual choice). So 6.2 is not "wire the existing tick functions to incoming
+messages" — it's a new, distinct category of thin state-application functions, most of which have
+no Wave-5 counterpart to reuse.
+
+**Recurring shape — player lifecycle (`rejoin`/`exit`/`disc`/`kick`/`ban`):** near-identical
+bodies (print a message, conditionally decrease fog-of-war visibility, mark disconnected/
+`seq = 0`, fire a status callback) are a strong candidate for one shared Swift helper parameterized
+by reason. **Real, deliberate asymmetry to preserve, not smooth over:** `recvsrplayerexit`
+(`client.c:2045-2080`) gates its vis-decrease only on `seq != 0 && testalliance(...)` — it does
+**not** check `player != client.player` — while `recvsrplayerdisc`/`recvsrplayerkick`
+(`client.c:2082-2154`) add that self-check explicitly. A shared helper needs a parameter for this,
+not a single hardcoded condition.
+
+**Resource/pill/base mutation handlers** (`repairpill`/`coolpill`/`capturepill`/`buildpill`/
+`droppill`/`replenishbase`/`capturebase`/`refuel`/`grabboat`) — apply-given-value setters against
+the existing `Pill`/`Base` model (`GameObjects.swift`), each with a UI status callback. Expected
+to be short, mechanical — no oracle needed, same reasoning as the lifecycle handlers.
+
+**Damage/explosion handlers** (`damage`/`smallboom`/`superboom`/`hittank`) — terrain/pill/base
+mutation (apply-given-value, not recompute) plus **new evidence directly relevant to open Q14**
+(`docs/PLAN.md`): `recvsrdamage`/`recvsrsmallboom`/`recvsrsuperboom` are the actual producers that
+insert into `client.explosions` — the `-1`-sentinel, never-transmitted list — gated on
+`srX->player != client.player`. This is concrete confirmation (not just the earlier
+sendclupdate-side inference from the Wave 6 scope survey) that the never-transmitted list's
+producer is exactly these broadcast handlers, for anyone else's action, never the local player's
+own. Handing this to PLANNER as additional Q14 evidence, not a resolution by itself.
+
+**`mineack`/`builderack`** — acks for the *local* player's own outstanding builder command, not a
+broadcast about another player. Needs checking against `BuilderTick.swift`'s existing
+`builderStatus`/`builderTask` model for the natural attachment point before assuming new state is
+required.
+
+**`setalliance`/`timelimit`/`basecontrol`/`pause`** — straightforward flag/counter updates, no
+recomputation risk.
+
+**`sendmesg`** — chat relay, no `GameState` mutation at all (just text + sender + mask for a UI
+layer to render). Design call, flagged for PARITY to audit: this doesn't belong in `BoloKit` —
+recommend it as a pure `BoloNet`/app-layer passthrough with nothing to differentially test, rather
+than leaving it ambiguous.
+
+**Already done, not 6.2's job:** the *local-effect* halves of `smallboom`/`superboom`/`flood`/
+`droppill` (Wave 5.5a, per the original Wave 6 scope survey's Finding 1) and `damage`/`touch`
+(Wave 5.3a, server-side `recvcldamage`/`recvcltouch` — a different function pair entirely: server
+receiving a client's request, not client receiving a server broadcast). 6.2 must not re-port
+either.
+
+**Test plan:** unit tests per handler against hand-built `GameState` fixtures (apply-given-value
+checks, not oracle fuzzing — no pure numeric transform here worth a C extract, unlike 6.0/6.1's
+physics-adjacent pieces), plus a named regression test for the player-lifecycle asymmetry above.
+
+**Out of scope for 6.2:** tick orchestrator (6.1), session/join/kick/ban/alliance (6.3), transport
+(6.4), tracker/NAT-PMP (6.5).
+
+No code changes this entry. Test baseline unchanged: **345**.
+
+> **→ Planner:** Wave 6.2 pre-brief is complete and awaits a GO. The `sendmesg`-doesn't-belong-in-
+> BoloKit call and the new Q14 evidence are the two items most worth your attention before GO'ing
+> this one — everything else is either mechanical or already covered above.
+> **→ Parity:** No action needed yet — no code shipped.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.3 pre-brief: server session logic
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.3
+**Blocks:** the Wave 6.3 GO
+
+Written in the same batch as the 6.1/6.2 entries above, same caveat: at Jerod's direct request,
+ahead of the normal per-wave GO sequence — `docs/PLAN.md` currently marks 6.3 "blocked on
+6.0–6.2."
+
+**Finding, flagged before scope — a real gap in what Wave 6.0 actually delivered.**
+`docs/PLAN.md`'s Wave 6.0 row describes the delivered scope as "`CL*`/`SR*` structs,
+`CLUpdate`/**preambles**." I did not implement preamble structs — `JOIN_Preamble` (`bolo.h:448`),
+`BOLO_Preamble` (`bmap.h:18`), or the tracker's `TRACKER_Preamble`/`TrackerHost`/`TrackerHostList`
+(`tracker.h`). Confirmed by grep: no `Preamble` type exists anywhere in `Sources/BoloNet/`. 6.0's
+actual commits (`96704cd`/`5c5e47a`) only cover `CLUpdate` + the 20 `CL*`/34 `SR*` structs, and
+PARITY's audit (which passed) never checked for preambles because nothing in the pre-brief
+promised them — so this isn't a PARITY miss, it's a pre-brief scope gap. This matters for 6.3
+specifically: `joinplayerserver()` (`server.c:714-912`) assembles a `BOLO_Preamble` field-by-field
+as its core purpose, and `joinclient()` builds a `JOIN_Preamble` to send. Neither has a Swift wire
+type yet. **Recommending 6.3 absorb the three preamble struct definitions as codec work**
+(mechanically identical to 6.0's `CL*`/`SR*` pattern — pure structs, `sizeof`/`offsetof` oracle
+checks, no I/O), done first within 6.3 before its session-logic content, rather than reopening 6.0
+or inventing a 6.0.1. This is a recommendation, not a unilateral scope change.
+**`docs/PLAN.md`'s Wave 6.0 row text is now on record as inaccurate — I'm not correcting it
+myself** (that file is PLANNER's, per `CLAUDE.md`'s role boundary, no carve-out for "obviously
+factual" fixes); flagging it here so PLANNER can fix it with full context.
+
+**Scope (D32):** join/kick/ban/alliance + preamble assembly (per the finding above, preambles
+first).
+
+**`joinplayerserver()` (`server.c:714-912`) is genuinely mixed — pure decision logic wrapped in
+transport plumbing, worth separating cleanly:**
+- Pure: version check, password check, `allowjoin` check, ban-list scan (name + IP match), rejoin
+  detection (name match among currently-disconnected-but-`used` slots), new-slot selection (first
+  never-used slot, else the *oldest* disconnected-but-previously-used slot by `ticks -
+  lastupdate`), server-full detection, and the `BOLO_Preamble` field values themselves.
+- Not pure, stays out of scope here: `cntlsock` assignment, `writebuf`/`sendbuf` calls,
+  `TCP_NODELAY` socket option, `serversavemap()`'s actual byte encoding (a BMAP concern, already
+  ported in Wave 4.1 — only the call site is new here).
+
+**`kickplayer()`/`banplayer()`/`removeplayer()` (`server.c:476-612`)** — thin wrappers over
+lock/emit/removeplayer/unlock. Pure core: `removeplayer`'s "which onboard pills does this player
+own, drop them" computation (`droppills`, already shipped in `MineChain.swift` — 6.3 just calls it
+with the right arguments) plus `banplayer`'s ban-list insertion (name + IP, matching
+`joinplayerserver`'s ban check above — same data, same struct, worth sharing one Swift type).
+Socket close and mutex lock/unlock are 6.4.
+
+**Alliance (`requestalliance`/`leavealliance`, `client.c:6314-6389+`; `recvclsetalliance`,
+`server.c:3123-3145`)** — real, non-trivial business logic, not just a bitmask copy: mutual-
+consent semantics (a request sets *your* bit for them; it's a live alliance only once *their* bit
+for you is also set) drive different UI feedback ("requested" vs. "accepted") and, on acceptance,
+a real state cascade — fog-of-war `increasevis` for their tank/pills/bases, refresh calls. The
+server side (`recvclsetalliance`) is a trivial accept-and-broadcast with **no** consent-checking of
+its own — the negotiation lives entirely client-side. This asymmetry (server never validates
+alliance requests) is worth a trap-list note, not an assumed bug to "fix."
+
+**Test plan:** unit tests for slot-selection (rejoin vs. new vs. LRU-eviction vs. server-full), the
+ban-list match logic, the alliance mutual-consent state transitions (request → pending →
+accepted, and the asymmetric UI-message branch), and `removeplayer`'s pill-drop computation
+against `MineChain.swift`'s existing `dropPills`. Plus `sizeof`/`offsetof` layout tests for the
+three new preamble structs, matching 6.0's pattern.
+
+**Out of scope for 6.3:** tick orchestrator (6.1), `recvsr*` handlers (6.2), transport/handshake
+mechanism (6.4), tracker/NAT-PMP (6.5).
+
+No code changes this entry. Test baseline unchanged: **345**.
+
+> **→ Planner:** Wave 6.3 pre-brief is complete and awaits a GO. Two things need your ruling
+> before or alongside that GO: (1) the preamble-structs recommendation above — confirm 6.3 absorbs
+> them, or redirect; (2) `docs/PLAN.md`'s Wave 6.0 row text needs correcting to match what 6.0
+> actually shipped, since it currently overstates delivered scope.
+> **→ Parity:** No action needed yet — no code shipped. Once 6.3 lands, the alliance
+> mutual-consent asymmetry (server trusts, client negotiates) and the preamble-struct layout are
+> the two things most worth independent re-derivation, same rigor as 6.0's FWIDTH finding.
