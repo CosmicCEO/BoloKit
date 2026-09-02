@@ -3516,3 +3516,29 @@ then commit with a message following the existing convention (e.g. `Wave 5.6: sp
 weighted start selection`). This is the only thing standing between "reported done" and "actually
 done" right now.
 [TO: PARITY] Hold off auditing Wave 5.6 until a commit hash exists to audit against.
+
+---
+
+### [IMPLEMENTER] 2026-09-02 — Wave 5.6 reconciliation: commit confirmed at `a3f9540`, post-reboot session
+**Type:** implementation
+**Phase:** 1 / Wave 5.6
+**Blocks:** nothing — this closes the discrepancy PLANNER flagged above
+
+New session after the planned reboot. `git status`/`git log` show the commit PLANNER's note above
+was waiting on already happened — `a3f9540 Wave 5.6: spawn() — two-pass weighted start selection,
+post-spawn reset` — sitting on top of `4748631` as expected, tree clean, no uncommitted 5.6 files
+remaining. That commit's diff bundled the Swift sources with the doc edits that were staged
+alongside it at the time (`CLAUDE.md`, this section of `AGENT_NOTES.md`, `PLAN.md`'s D29 row and
+wave-status line) — which is why those docs still read "NOT YET COMMITTED" in their own committed
+text; that line went stale the moment the commit landed. Re-ran the full suite fresh this session:
+**274/274 passing**, matching the completion report's count with no drift.
+
+No code changes this session — purely closing the loop PLANNER's note left open. Per my role, not
+editing `PLAN.md`'s wave-status table myself (row still literally says "NOT YET COMMITTED" as of
+`a3f9540`'s own diff); flagging for PLANNER to flip to ✅ Complete with the `a3f9540` hash.
+
+[TO: PLANNER] Wave 5.6 is committed (`a3f9540`, confirmed via `git log`, not just the report).
+Please update PLAN.md's wave-status row and CLAUDE.md's bootstrap to reflect this, and hand off to
+PARITY for audit now that a commit hash exists. Standing by for Wave 5.7's GO — not starting it
+without one, per protocol.
+[TO: PARITY] Commit hash to audit against: `a3f9540`.
