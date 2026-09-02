@@ -4,9 +4,10 @@
 > prior sessions.** This file is your orientation; it is NOT the full spec. Full plan, decisions
 > log, and open questions: `docs/PLAN.md`. Active chronological log: `docs/AGENT_NOTES.md`.
 > Compressed history for completed waves (1 through 5.7): `docs/notes/archive.md` — full
-> uncompressed detail for any of it is in git history. C reference: `Reference/c/`.
-> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 5.8, docs/archive
-> compression pass).
+> uncompressed detail for any of it is in git history. C reference: `Reference/c/`. **Wave 6 wire
+> protocol map (opcodes, `CLUpdate` layout, all three encodings, join handshake, oracle bug list):
+> `docs/notes/DEEPDIVE1.md`** — read that before writing the 6.0 pre-brief; don't re-derive it.
+> Updated by PLANNER at each wave transition — this update: 2026-09-02 (Wave 6 unblocked, D31-D34).
 
 ---
 
@@ -23,14 +24,28 @@ trap lists for you going forward. Read the relevant C source yourself and write 
 before starting a wave, same rigor PARITY's audits already hold you to.
 
 ## Current state
-**Wave 5 (5.0 through 5.7) is fully complete and PARITY-passed.** Wave 5.8 (this docs/archive
-compression pass) is in progress under PLANNER. **Wave 6 (networking + Cocoa UI) has not started
-and has no pre-brief yet** — per D25, WinBolo's architecture may be read for reference, its code
-(GPL v2) may not be copied or closely derived from.
+**Wave 5 (5.0 through 5.7) is fully complete and PARITY-passed. Wave 5.8 (docs/archive pass) is
+closed.** **Wave 6 (networking only — UI was split out to its own phase, gated on Phase 2 art
+landing first) has no pre-brief yet, but is unblocked and ready for one.** `docs/PLAN.md`'s
+decisions log D31–D34 settled everything that was gating it:
 
-Last commits: `221ba97` (Wave 5.7, last code commit) → docs-only commits for Wave 5.8 on top.
-Run `git log --oneline -5` and `git status` to confirm current HEAD before doing anything —
-this file can lag reality between updates.
+- **D31** — port the wire format byte-exact from the C oracle; rebuild the transport mechanism on
+  Network.framework + async/await, not a POSIX/`select`/pthread transliteration.
+- **D32** — the 6.0–6.5 sub-wave split is confirmed (wire codec → tick orchestrator → `recvsr*`
+  broadcast handlers → server session logic → transport/handshake → tracker/NAT).
+- **D33/D34** — the GPL-flexibility exploration (Q19/Q20) is closed. **D25 stands as originally
+  written and is not loosened**: WinBolo's architecture may be read for reference, its code (GPL
+  v2) may never be copied, transliterated, or closely derived from. Do not read or reference
+  WinBolo source while writing Wave 6 — the wire format comes from the oracle, full stop.
+
+Your starting point for the 6.0 pre-brief is `docs/notes/DEEPDIVE1.md`'s protocol map (opcodes,
+`CLUpdate` layout, the three position/direction encodings, the join handshake, and eight cataloged
+oracle bugs) — it's already at spec level; write your pre-brief against it rather than re-reading
+`client.c`/`server.c` from scratch.
+
+Last commits: `221ba97` (Wave 5.7, last code commit) → docs-only commits through `0ce198a`
+(Q16/17/19/20 ruling) on top. Run `git log --oneline -5` and `git status` to confirm current HEAD
+before doing anything — this file can lag reality between updates.
 
 ## Non-negotiable rules (violations block PARITY sign-off)
 
@@ -45,6 +60,7 @@ this file can lag reality between updates.
 | **D27 — shared per-tick state** | If a function you're porting takes what were N independent per-client replicas in C and collapses them into ONE shared field in the merged sim (e.g. `pills[i].counter`), do NOT port it as "call once per connected player/entity, in a loop." A later evaluation in the same tick can silently overwrite an earlier one's result (this broke Wave 5.3c, and nearly recurred in 5.7's `Pill.counter`/`coolCounter` split). Design it as a single per-tick election/pass instead. |
 | **D28 — artifact/test maintenance** | No test or doc coverage shrinks without an explicit, stated replacement. Every completion report must state the before/after test count; call out any DECREASE explicitly with the reason. |
 | **D29 — kPif vs Float.pi** | Use `kPif` for `dir * (π/8)`-style conversions, matching existing call sites — not `Float.pi`. Bit-identical either way; this is the settled convention. |
+| **D25/D33 — no WinBolo-derived code** | WinBolo (github.com/kippandrew/winbolo, GPL v2) may inform your understanding of networking architecture in the abstract; its code may never be copied, transliterated, or closely paraphrased into Wave 6. The GPL-flexibility question this raised (Q19/Q20) was explored and closed — BoloKit stays MIT, the wire format is derived from the C oracle only. If you find yourself looking at WinBolo source while writing a function, stop and write it from a design description instead. |
 
 ## Wave status (full detail: `docs/PLAN.md`'s wave table; compressed history: `docs/notes/archive.md`)
 
@@ -52,8 +68,8 @@ this file can lag reality between updates.
 |---|---|---|
 | 1 – 4.1 | Vector/Rect/List/Buf/ErrChk, Terrain/Tiles, Images, BMAP | ✅ Complete |
 | 5.0 – 5.7 | Physics/GameState through growtrees/pill cooldown/base replenish — full sub-wave breakdown in `docs/notes/archive.md` | ✅ Complete |
-| 5.8 | Docs/archive pass (this update) | 🔶 In progress, PLANNER-owned |
-| 6 | Networking + Cocoa UI | ⬜ Not started — no pre-brief yet; needs one before any GO |
+| 5.8 | Docs/archive pass | ✅ Complete — D30 |
+| 6 | Networking (UI split into its own later phase, gated on Phase 2 art) | ⬜ Not started — unblocked (D31-D34), no pre-brief written yet; write one against `docs/notes/DEEPDIVE1.md` before any GO |
 
 ## Key constants (Physics.swift — already committed)
 tankRadius=0.375, builderRadius=0.125, shellVelocity=7.0, maxShellRange=7.0,
