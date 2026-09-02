@@ -25,6 +25,11 @@ public struct GameState: Sendable {
     /// Delayed sea-flood ring buffer (Wave 5.5a). Same ring-buffer shape as
     /// `chains`, sized `floodTicks + 1`. Mirrors `server.floods` (server.c).
     public var floods: [[Pointi]]
+    /// Per-game configuration set once at connect time (Wave 5.6). Mirrors
+    /// `client.game.domination.type`. C's top-level `client.gametype` always
+    /// equals `kDominationGameType` in this port — no other top-level mode
+    /// was ever finished in the reference source (see `DominationType`).
+    public var dominationType: DominationType
 
     public init(
         terrain: TerrainGrid = .mapDefault(),
@@ -38,7 +43,8 @@ public struct GameState: Sendable {
         grow: GrowState = GrowState(),
         explosions: [Explosion] = [],
         chains: [[Pointi]] = Array(repeating: [], count: chainTicks + 1),
-        floods: [[Pointi]] = Array(repeating: [], count: floodTicks + 1)
+        floods: [[Pointi]] = Array(repeating: [], count: floodTicks + 1),
+        dominationType: DominationType = .open
     ) {
         self.terrain = terrain
         self.pills = pills
@@ -52,5 +58,6 @@ public struct GameState: Sendable {
         self.explosions = explosions
         self.chains = chains
         self.floods = floods
+        self.dominationType = dominationType
     }
 }

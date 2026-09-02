@@ -135,6 +135,19 @@ public enum BuilderTask: Int, Hashable, Sendable {
     case placeMine = 7
 }
 
+// MARK: - DominationType
+//
+// C's `client.game.domination.type` (Reference/c/bolo.h) — sub-mode of the
+// only top-level game type this codebase ever implements (`kDominationGameType`;
+// C's other top-level types — CTF/KOTH/Ball/Body — hit `assert(0)` in
+// `spawn()` and were never finished in the reference source).
+
+public enum DominationType: Sendable {
+    case open
+    case tournament
+    case strict
+}
+
 // MARK: - InputFlags
 
 public struct InputFlags: OptionSet, Sendable {
