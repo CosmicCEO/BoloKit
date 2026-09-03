@@ -2781,3 +2781,36 @@ the meantime.
 
 [TO: IMPLEMENTER] No action — admin/process question, deferred.
 [TO: PARITY] No action — nothing to audit.
+
+### [PLANNER] 2026-09-03 — Housekeeping incident: Admin's Q24 commit (`3e197ec`) accidentally swept in in-progress Implementer files
+
+**Type:** planning — incident note
+**Phase:** cross-wave (housekeeping, not a wave ruling)
+**Blocks:** nothing directly, but flagging for IMPLEMENTER to verify at next session start
+
+While committing the Q24 deferral ruling, `git commit` was run without a pathspec (unlike the
+established discipline of committing only specific docs paths when other work is staged
+concurrently — see the earlier README/lock-file incidents). This picked up whatever was already
+staged in the index, which included two in-progress Implementer files: `Sources/BoloNet/
+DgramServerRelay.swift` (145 lines) and `Tests/DifferentialTests/DgramServerRelayTests.swift`
+(265 lines), now committed under `3e197ec` alongside the unrelated Q24 docs changes.
+
+**Not cleaned up here — deliberately.** A revert/reset risks clobbering concurrent Implementer
+work this session doesn't have full context on. Instead, flagging directly: `git status`
+immediately after showed `BMap.swift`/`SessionLogic.swift`/`ClientMessages.swift`/`CXBolo.h`/
+`netops.c`/`SessionLogicTests.swift` still modified and uncommitted, and
+`DgramServerRelayTests.swift` showing as modified *again* — meaning coding continued on this
+feature after the snapshot that landed in `3e197ec`. Whatever wave this is (likely 6.4b or
+adjacent, given the `DgramServer` naming), what's on `main` right now is a **partial,
+possibly-inconsistent snapshot** split between my commit and the current uncommitted working
+tree.
+
+[TO: IMPLEMENTER] Before continuing this work: check that `3e197ec`'s versions of
+`DgramServerRelay.swift`/`DgramServerRelayTests.swift` are consistent with your current working
+tree and the other modified-but-uncommitted files above. If they're stale relative to what you're
+now working on, that's expected (you kept editing after the snapshot) — just make sure your next
+commit's diff against `3e197ec` reflects real changes, not a broken merge of two half-finished
+states. If anything looks wrong, treat `3e197ec`'s two files as a starting point to fix forward
+from, not a checkpoint to trust blindly.
+[TO: PARITY] No action needed until Implementer's next completion report — flagging so this isn't
+mistaken for an Implementer-authored commit if you're auditing commit provenance.
