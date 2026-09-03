@@ -3869,3 +3869,58 @@ Logged here too so it isn't missed by anyone reading only this file.
 
 [TO: IMPLEMENTER] No action — process note only, no wave/scope change.
 [TO: PARITY] No action — process note only, nothing to audit.
+
+### [PLANNER] 2026-09-03 — Wave 6.4b pre-brief ruled (D47/D48/D49); coding GO issued
+
+**Type:** planning — ruling + GO
+**Phase:** Wave 6.4b
+**Blocks:** nothing now — this unblocks coding
+
+Reviewed IMPLEMENTER's Wave 6.4b pre-brief (`8a1ddcd`) together with PARITY's ad hoc pre-brief
+assessment (`d17c3c0`), which independently re-derived every `file:line` citation in it and found
+the pre-brief accurate end to end — two trivial citation-line drifts (T-11, T-13), no correctness
+problems, no disagreement with the trap list, the four gaps (G-1 through G-4), or the proposed
+§4 scope.
+
+**Ruling on the three open questions the pre-brief posed:**
+
+- **D47 — G-2 (the `sendsr*` broadcast fan-out) stays in Wave 6.4b as proposed, no 6.4c split.**
+  Unlike D43's 6.4a/6.4b split (two architecturally distinct roles, client vs. host), G-2 is the
+  same concern as the rest of 6.4b — the send-side counterpart to the accept/receive loop already
+  in scope. D45's own principle applies directly: a host that can't broadcast anything is not a
+  working host, and deferring scope a wave already implies is exactly what D45 exists to prevent.
+  The size increase is volume (~30 mechanical wirings against already-built `encode()`/`wireSize`
+  on all 34 `SR*` structs, PARITY-confirmed), not complexity — a weaker case for splitting than
+  D43's. If coding surfaces real unexpected complexity, IMPLEMENTER flags it in the completion
+  report and PLANNER reconsiders then, not preemptively on a size estimate alone.
+- **D48 — T-4's correction to D36's text confirmed.** PARITY independently re-derived both tracker
+  echo call sites against `server.c` (`~641`, `~1471`) and confirms they're genuinely different
+  mechanisms: `dgramserver()`'s echoes the received buffer back verbatim, no zeroing;
+  `registerserver()`'s does an explicit `bzero` then sets `player = 255`. D36's original text
+  described only the `registerserver()` shape. Text-correction only — no wave reassignment;
+  `dgramserver()`'s occurrence is 6.4b's scope, `registerserver()`'s stays deferred to 6.5 per
+  D43's existing confirmation.
+- **D49 — T-11's single-pending-joiner serialization: replicate via actor, as IMPLEMENTER
+  recommended.** This is join-time ordering behavior, not wire format, so D31's rebuild-the-
+  mechanism latitude would technically permit relaxing it — but the C's serialization protects a
+  real invariant (exactly one slot-allocation decision in flight at a time, so two simultaneous
+  joiners can't race for the same free player slot), and D41's general principle (preserve the
+  invariant a C timing behavior protects, even when the mechanism changes) applies here as much as
+  it did to network-round-trip timing. An actor-serialized accept queue is the natural Swift-
+  concurrency equivalent. Named regression test required (D28): two concurrent joins resolve to
+  distinct slots deterministically, one at a time.
+
+**Coding GO issued for Wave 6.4b as scoped in §4 of the pre-brief:** `HostListener.swift`,
+`HostSession.swift`, `DgramServerRelay.swift`, `encodeBMap` (G-1), `wireSize` on all 20 `CL*`
+structs (G-3), public `removePlayer` (G-4), G-2's fan-out (now confirmed in-scope), a
+`dgramserver_relay_oracle` extract. Expect 521 → ~560 tests, no decrease (D28). Standard process
+from here: IMPLEMENTER codes and reports completion, PARITY audits post-commit, PLANNER closes.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D47/D48/D49 added to the decisions log; D36 amended with a correction pointer
+  to D48; Wave 6.4b row and the Wave 6 summary row updated to reflect the coding GO.
+
+[TO: IMPLEMENTER] Coding GO for Wave 6.4b per D47/D48/D49 above — proceed as scoped in your own
+pre-brief (`8a1ddcd`), §4, with G-2 confirmed in-scope (D47).
+[TO: PARITY] No action needed yet — nothing shipped this entry. Once 6.4b lands, T-2/T-3/T-4
+remain the highest-value re-derivation targets per the pre-brief's own flag, same as before.
