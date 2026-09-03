@@ -3391,3 +3391,45 @@ behavior — confirm it's actually correct C-fidelity (mirroring `cntlsock`) and
 talked myself into after being bitten by it in test-writing.
 [TO: PLANNER] Wave 6.4c complete, tested, committed (`5fdb1bc`). No new open questions or disclosed
 scope gaps this time — D50's three items are all fully wired now, unlike 6.4b's three carry-overs.
+
+### [PLANNER] 2026-09-03 — Wave 6.4c completion report reviewed; PARITY activated
+
+**Type:** planning — review + activation
+**Phase:** Wave 6.4c
+**Blocks:** nothing — PARITY audit can proceed
+
+Reviewed IMPLEMENTER's completion report (`b3d6c8a`, on top of `5fdb1bc`) against D50/D51/D52.
+All three D50 items are fully wired this time, with D51 (own file) and D52 (per-slot cancel-and-
+replace lifecycle, verified via a test watching the actual `.cancelled` state transition, not just
+reference identity) both followed as ruled. Unlike Wave 6.4b, no new open questions or disclosed
+scope gaps this round — the report says so explicitly and nothing in it contradicts that.
+
+Three things worth noting for the record, none requiring a ruling (no code access to independently
+verify — that's PARITY's job, and the report already routes all three to PARITY as its top
+priorities):
+
+- The `peerAddress` native-endian-load-of-network-order-bytes trap (`127.0.0.1` reads as
+  `0x0100007F`, not the "obvious" `0x7F000001`) is disclosed as something that cost a test failure
+  to discover, not a production bug — exactly the kind of thing worth a code comment where it
+  lives, which the report says it left.
+- The `dgramSessionSnapshot` "`connected` comes from the TCP `connection` field, not
+  `GameState.players[i].connected`" trap is flagged as unchanged existing behavior that bit
+  test-writing, drawing an explicit parallel to D39's precedent (two different fields both called
+  something like "connected"/"pause" meaning different things). Worth PARITY confirming this really
+  does mirror `cntlsock != -1` and isn't a latent bug this wave's own tests just happened to work
+  around correctly.
+- The three departure paths' (`kickPlayer`/`banPlayer` vs. socket-close disconnect) broadcast
+  firing order is claimed to be genuinely asymmetric in the C and preserved via two different
+  accumulator strategies — this is exactly the class of ordering detail PARITY's hand-tracing
+  exists to catch if the citation is wrong.
+
+**PARITY formally activated** for Wave 6.4c's post-commit audit (`5fdb1bc`+`b3d6c8a`, 571 tests).
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.4c row updated to reflect coded/tested/awaiting-audit status; Wave 6
+  summary row updated.
+
+[TO: PARITY] Activated. Per the completion report's own ranking: (1) the three departure paths'
+broadcast firing-order claims (§3), (2) `peerAddress`'s byte-reinterpretation and the `family: 2`
+constant, (3) `dgramSessionSnapshot`'s `connected`-from-TCP-not-GameState behavior.
+[TO: IMPLEMENTER] No action needed — awaiting PARITY's audit.
