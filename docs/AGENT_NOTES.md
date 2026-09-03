@@ -3619,3 +3619,154 @@ completely silent failure mode, no crash, no visibly wrong behavior until a spec
 timer never fires) is exactly the class of bug that only survives a hand-trace against the actual
 C, not a test suite that happened not to assert on the value it set up. No action needed until
 6.4b's pre-brief lands.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4b pre-brief: host-side transport
+
+**Type:** planning only — pre-brief, no Swift written this entry
+**Phase:** Wave 6.4b
+**Blocks:** coding start, pending PLANNER's GO
+
+Baseline: 521 tests (`@Test` declarations, grep-confirmed across `Tests/BoloKitTests/` +
+`Tests/DifferentialTests/`), working tree clean at `d054ab5`.
+
+**§1 — D45's mandated check, done first as instructed: PASS.** The C server's own player record
+(`server.h:100-116`) is far thinner than the client's — no `dead`, no `dir`/`speed`/`kick*`, no
+builder fields, no shell list; just `used`/`cntlsock`/`addr`/`dgramaddr`/`name`/`host`/`seq`/
+`lastupdate`/`alliance`/`tank`/`recvbuf`/`sendbuf`. Checked `joinplayerserver()`'s "initialize
+player" block (`server.c:808-905`) field by field against `applyJoin`/`SessionLogic.swift:105-113`:
+every field with a `GameState` home is written (`alliance`, `name` — non-rejoin only, matching the
+C's own guard — `used`, `connected`, `address`). The four that aren't (`dgramaddr`, `seq`,
+`lastupdate`, `recvbuf`) are genuine transport session state 6.3 explicitly and correctly scoped
+out (`SessionLogic.swift:44-49` already documents `ticksSinceLastUpdate` as caller-supplied for
+exactly this reason) — materially unlike 6.4a's gap, where a `GameState`-mutating function simply
+didn't exist anywhere. **6.3 has no mirror-image gap. Confirmed, not assumed.**
+
+Corollary: 6.4b owns a `HostSessionTable` — one row per slot carrying exactly the five fields
+`GameState` deliberately lacks (`connection`, `dgramEndpoint`, `seq: Int32`, `lastUpdate: UInt64`,
+the `Buf` byte queue per D42).
+
+**§2 — Four real gaps `docs/PLAN.md`'s 6.4b row doesn't name, found doing the §1 read:**
+
+- **G-1 — `serversavemap()` has no Swift home.** `joinplayerserver():885` needs it to build the
+  map-bytes payload that follows `BoloPreamble` on the wire; `assembleBoloPreamble` already takes
+  `mapLength` from a caller that doesn't exist yet. `BMap.swift:434`'s own comment already assigns
+  this to 6.4b in prose ("the encode half … is Wave 6.4b's concern") — PLAN's row never picked it
+  up. Cheap: `BMapDecodeTests.swift:8-33`'s private `encodeFullBMap` test helper already implements
+  this exact byte layout; this is a promotion to production (`encodeBMap`), not new logic (D28:
+  the helper's coverage moves, doesn't vanish). Size comes from `serverloadmapsize()`
+  (`bmap_server.c:348-374`) — preamble(12) + 5·npills + 6·nbases + 3·nstarts + Σ`run.datalen`,
+  **including the 4-byte sentinel run** (`len += run.datalen` runs before the `r == 1` exit check;
+  `readrun` does set `datalen = 4` on the sentinel, `bmap.c:83` — verified, not assumed).
+- **G-2 — the `sendsr*` broadcast fan-out (`sendtoall`/`sendtoallex`/`sendtoone`,
+  `server.c:3818-3870`) has no owner.** This is the actual mechanism behind every
+  `onShouldBroadcast*`/`onXStatusChanged` callback Waves 6.1/6.2/6.3/6.6 already surfaced. Wave
+  6.6's own pre-brief deferred it to "Wave 6.4" (this file, 1416), but 6.4a built only the client's
+  *receive* side (`TCPSession.swift`). **Proposing this as owned 6.4b scope**, per the same D45
+  argument that closed 6.4a: a host that can't broadcast anything is not a working host, and
+  deferring scope a wave already implies is exactly what D45 exists to prevent. Flagging it
+  explicitly as the wave's single biggest item — all 34 `SR*` structs already have `encode()` and
+  `wireSize` (grep-confirmed), so the bulk of this is ~30 mechanical callback→opcode wirings, but
+  it roughly doubles 6.4b's size versus PLAN's row as written. If PLANNER reads this differently, a
+  6.4c split is the obvious alternative (same precedent as D23/D43).
+- **G-3 — none of the 20 `CL*` structs have `wireSize`.** 6.4a added `wireSize` to all 34 `SR*`
+  structs for exactly this reason on the client side (`ServerMessages.swift`); the server's TCP
+  framing needs the same to size a read per opcode. `ClientMessages.swift` has none
+  (grep-confirmed). Additive, mirrors the 6.4a precedent one-for-one. `CLSendMesg` is the one
+  variable-length case (NUL-terminated `text` tail) — same read-until-NUL handling
+  `TCPSession.swift:199-208` already established for `SRSendMesg`.
+- **G-4 (minor) — `removeplayer()` has no public Swift entry point.**
+  `SessionLogic.swift:122`'s `removePlayerPills` is `private`, reached only via
+  `kickPlayer`/`banPlayer`. The socket-close disconnect path (`server.c:1667-1740`) calls
+  `removeplayer()` directly — 6.4b's own accept/receive loop. Needs a public
+  `removePlayer(player:state:)` = `connected = false` + drop onboard pills.
+
+**§3 — Trap list, all verified by direct read:**
+
+- **T-1 — `seq` resets at disconnect, not at join.** `joinplayerserver()`'s
+  `server.players[player].seq = 0;` is **commented out** (`server.c:842`); `removeplayer()` does
+  the reset instead (`server.c:594`). A rejoining player inherits its pre-disconnect seq counter.
+  Resetting at join would look harmless and silently break dedup across a rejoin.
+- **T-2 — `dgramserver()` applies only `tank.x`/`tank.y`, nothing else** (`server.c:670-672`) —
+  because §1 shows those are the only physics fields the C server even has. **Do not reuse
+  `applyRemotePlayerUpdate`** (`DgramClientApply.swift`) here — it applies ~15 fields plus shells/
+  explosions/dead-reckoning, all client-side concerns. D34's "thin trusting relay" made concrete.
+- **T-3 — UDP peer validity matches address only, then updates the port.**
+  `server.c:663-667` compares `sin_family`+`sin_addr`, then overwrites `sin_port` from the packet
+  (`:674-676`). `NWEndpoint` equality is host+port, so a naive endpoint comparison would reject
+  exactly the packets the C accepts (a client behind a NAT that rebinds its local port mid-session).
+  Compare host only; treat port as always-refreshable.
+- **T-4 — small correction to D36's text: the two tracker echoes are not the same one.** D36
+  describes "zeroed `CLUpdate`, `player == 255`" — that's `registerserver()`'s echo
+  (`server.c:1470-1471`, explicit `bzero` then `player = 255`), correctly deferred to 6.5.
+  `dgramserver()`'s echo — in 6.4b's scope — sends the **received bytes back verbatim**, no
+  zeroing (`server.c:637-645`). Flagging the correction rather than silently following the
+  original text.
+- **T-5 — the echo test must run before decode.** `player == 255` fails `CLUpdate.decode`'s
+  `player < maxPlayers` guard (`CLUpdateCodec.swift:276`), so the raw-byte test (`count ==
+  CLUpdateHeader.wireSize` and `bytes[0] == 255` — `player` is wire byte 0, confirmed against
+  `client.h:311`) has to precede any decode attempt.
+- **T-6 — the C's own sanity check is already `CLUpdate.decode`'s.** `server.c:648-654`'s length
+  and player-range guards are exactly `CLUpdateCodec.swift:276-282`'s, including strict length
+  equality. Reuse, don't re-derive.
+- **T-7 — seq store, `lastupdate`, tank apply, port update, and relay all sit inside the
+  `isNewerSeq` gate** (`server.c:668`, `(int32_t)(seq - players[p].seq) > 0`). A stale packet isn't
+  relayed either. `isNewerSeq` (`CLUpdateCodec.swift:329`) already exists.
+- **T-8 — relay forwards the raw datagram unmodified**, original bytes and length
+  (`server.c:682`). Relay predicate is `i != player && cntlsock != -1` — does **not** check `used`.
+- **T-9 — `applyJoin` must run before `assembleBoloPreamble` is built**, so the joining player's
+  own roster row in the preamble it receives already reads `used=true, connected=true`
+  (`server.c:836-853` ordering).
+- **T-10 — TCP and UDP share one port**: `initserver()` binds TCP, reads back the (possibly
+  ephemeral) port via `getsockname`, then binds UDP to that same port (`server.c:256-274`).
+- **T-11 — one pending joiner at a time.** `listensock` only enters `readfds` when
+  `joiningplayer.cntlsock == -1` (`server.c:825-828`) — joins are serialized. Recommend an actor to
+  replicate this rather than letting concurrent accepts race the slot-allocation logic.
+- **T-12 — the socket-close disconnect path owns its own `pauseOnPlayerExit` trigger**
+  (`server.c:1685-1688` + 3 sibling copies): `removeplayer` → `sendsrplayerexit`/`disc` → if
+  `pauseonplayerexit`, `server.pause = -1` + `sendsrpause(255)`. Distinct from `runTick`'s
+  stale-player trigger for the same effect (Wave 6.1/D35) — wire to `state.serverPauseTicks`
+  (D39's server-domain field), not `clientPauseDisplaySeconds`.
+- **T-13 — `kHangupClientMessage` counts as normal exit** (`recvplayerserver()` returns success on
+  it, `server.c:1069`) vs. any other failure counting as abnormal — two different broadcasts
+  (`sendsrplayerexit` vs. `sendsrplayerdisc`) off one code path.
+- **T-14 — `players[i].host` is never assigned anywhere in `server.c`** (grep-confirmed;
+  `GameObjects.swift:216-220` already documents this precedent). Stays empty; not a gap.
+- **T-15 — `kServerTimeLimitReachedJOIN` is never sent** by anything in `server.c` (only read in
+  `client.c:645`). `JoinRejection`'s omission of it (`SessionLogic.swift:21-32`) is correct;
+  `JoinClientError.serverTimeLimitReached` is a dead protocol branch. Disclosure only.
+- **T-16 — the server never spawns a joining player.** No `spawn()` call in `joinplayerserver()`;
+  the client spawns itself (`applyBoloPreamble:83`) and asserts position via `CLUpdate`. Confirmed
+  deliberate asymmetry with 6.4a, not an omission.
+
+**§4 — Proposed scope, files, verification:**
+
+New files: `Sources/BoloNet/HostListener.swift` (`NWListener` accept loop, serialized per T-11,
+wired to `evaluateJoinRequest` → `applyJoin` → `assembleBoloPreamble` in that order per T-9);
+`Sources/BoloNet/HostSession.swift` (`HostSessionTable` + per-player TCP receive loop dispatching
+`CL*` to Wave 6.6's `recvCl*` handlers, mirroring `TCPSession.swift`; disconnect handling per
+T-12/T-13; G-2's fan-out); `Sources/BoloNet/DgramServerRelay.swift` (`dgramserver()`'s pure
+decision core, T-2 through T-8, kept separate from the `NWListener`-over-UDP mechanism, same split
+as `DgramClientApply.swift`/`UDPSession.swift`). Additive: `BMap.swift`'s `encodeBMap` (G-1);
+`wireSize` on all 20 `CL*` structs (G-3); public `removePlayer` in `SessionLogic.swift` (G-4); a
+`dgramserver_relay_oracle` verbatim extract in `Sources/CXBolo/netops.c` following the established
+`*_oracle` pattern. Design calls disclosed rather than asked: host UDP via
+`NWListener(using: .udp)` with one `NWConnection` per remote endpoint (T-3's port update becomes
+"replace the stored connection for that slot"); `import Foundation` for `Data` in new `BoloNet`
+files per D46's existing approval.
+
+Verification: `swift build`/`swift test`, expect 521 → ~560, no decrease (D28 — `encodeFullBMap`'s
+coverage moves into `encodeBMap`'s own tests, doesn't vanish); a `dgramserver_relay_oracle`
+differential harness covering T-3/T-4/T-5/T-7/T-8; named regressions for T-1 (seq survives a
+rejoin, zeroes on disconnect), T-2 (relay applies only tank x/y), T-9 (joining player's own
+preamble row reads connected), T-12 (`serverPauseTicks` → -1 on socket-close disconnect when
+`pauseOnPlayerExit`); `encodeBMap` checked both by round-trip against `decodeBMap` and by feeding
+its output to the C decode oracle directly.
+
+> **→ Planner:** Three things need your ruling before I start coding: (1) G-2's placement — 6.4b as
+> proposed, or split into a new 6.4c given it roughly doubles the wave's size; (2) confirm the T-4
+> correction to D36's echo description; (3) whether T-11's single-joiner serialization should be
+> replicated (my recommendation) or relaxed for this port. Everything else above is ready to code
+> as described once you GO it.
+> **→ Parity:** No action needed yet — nothing shipped this entry. Once 6.4b lands, T-2/T-3/T-4's
+> is the area most worth independently re-deriving, given how easy it would be to accidentally
+> reuse 6.4a's `applyRemotePlayerUpdate` machinery here (T-2's whole point is that you must not).
