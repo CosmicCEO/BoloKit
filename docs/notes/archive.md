@@ -110,3 +110,39 @@ replacement) adopted mid-wave and applied retroactively to the status table; tes
 IMPLEMENTER now owns detailed code-level planning (trap lists, C-source pre-briefs); PLANNER is
 limited to high-level project management (sequencing, GOs, decisions log, cross-wave policy) from
 this point forward.
+
+## Wave 6.0–6.1 (2026-09-02 – 2026-09-03)
+
+- **Pre-Wave-6 process work:** Wave 5.8's docs/archive pass closed (D30) with one sub-item left
+  for Jerod (project-instructions text, not directly editable by Claude). IMPLEMENTER's Wave 6
+  scope survey found the original single "Wave 6" table row was ~11,000 lines of C, unreviewable
+  as one unit — split into 6.0–6.5 per D32, with UI carved out to its own phase. Q16–Q20 ruled
+  (D31–D34): wire format ported byte-exact from the C oracle, transport mechanism rebuilt on
+  Network.framework + async/await (no fidelity obligation on the mechanism itself, per D4);
+  WinBolo usable as a read-only architectural reference only, never copied from (GPLv2 vs.
+  BoloKit's MIT posture); WinBolo-server substitution and a bundled `TCMPortMapper` both rejected.
+  **Cold-start restructure:** the single IMPLEMENTER-only `CLAUDE.md` was split into three
+  role-specific bootstraps (`CLAUDE.md`, `docs/PARITY.md`, `docs/PLANNER.md`), with
+  `docs/AGENT_NOTES.md`/`docs/PLAN.md` as the two common references — stops wave-status content
+  from being duplicated (and going stale) across bootstrap files. A commit-discipline rule was
+  added after two incidents of work reported "ready" in conversation with nothing committed.
+- **Wave 6.0** (`96704cd`+`5c5e47a`): wire codec — all 54 `CL*`/`SR*` structs, `CLUpdate`, all
+  three encodings (raw BE float, 1/256 fixed-point, 8-bit brads), derived byte-exact from the C
+  oracle. IMPLEMENTER independently caught an `FWIDTH`-double issue before PARITY's audit, which
+  PARITY then independently re-derived rather than taking the completion report's word for it.
+  PARITY PASS, no findings. Test count 329→345 (+16). Preamble structs (`JOIN_Preamble`/
+  `BOLO_Preamble`/`TRACKER_Preamble`) were originally claimed in this wave but never actually
+  built — corrected and reassigned to Wave 6.3 without reopening 6.0.
+- **Wave 6.1** (`d0a9834`+`b028bf8`, then D35 fix `1e0cbe6`+`91c4a8d`, then re-audit `3d4563a`):
+  tick orchestrator — `runclient()`/`runserver()`, new pause/timelimit/domination-basecontrol
+  state machines. First PARITY pass found two findings (D35): a missing `pauseonplayerexit` →
+  `server.pause = -1` side effect (real gap inside the exact function this wave claims to fully
+  port) and an undisclosed `seq != 0` move-tank gate. Jerod ruled both get fixed before the Wave
+  6.2 GO rather than deferred as tracked debt (unlike Wave 5.9's mine-cascade gap, neither was
+  independent of 6.2+). Both fixed, PARITY re-audited clean. Test count 345→363 (+18 net).
+  Closed 2026-09-03; GO issued for Wave 6.2 coding.
+
+**Cross-cutting:** D28's coverage-never-shrinks-silently discipline held throughout — every test
+count delta across 6.0/6.1 was an addition or an explicit, reasoned replacement. Full
+uncompressed entries (process history, both pre-briefs in full, the D35 finding/fix/re-audit
+cycle) preserved in git history per D28.
