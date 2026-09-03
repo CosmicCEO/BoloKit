@@ -37,6 +37,9 @@ public struct JoinPreamble: Sendable, Hashable {
         }
         return JoinPreamble(version: version, name: name, pass: pass)
     }
+
+    /// Fixed wire size: `ident[8]` + `version`(1) + `name[16]` + `pass[32]`.
+    public static let wireSize = 8 + 1 + 16 + 32
 }
 
 /// Ported from `struct BOLO_Preamble` (`bmap.h:18-39`) -- the server's
@@ -89,6 +92,9 @@ public struct BoloPreamble: Sendable, Hashable {
             }
             return PlayerEntry(used: usedByte != 0, connected: connectedByte != 0, seq: seq, name: name, host: host, alliance: alliance)
         }
+
+        /// `used`(1) + `connected`(1) + `seq`(4) + `name[16]` + `host[32]` + `alliance`(2).
+        fileprivate static let wireSize = 1 + 1 + 4 + 16 + 32 + 2
     }
 
     public var version: UInt8
@@ -165,6 +171,13 @@ public struct BoloPreamble: Sendable, Hashable {
             players: players, mapLength: mapLength
         )
     }
+
+    /// Fixed wire size, independent of any instance's field values --
+    /// every field is fixed-width, including the `maxPlayers`-length
+    /// roster (`bmap.h:18-39`, no length prefix). Wave 6.4a's join
+    /// handshake needs this to know how many bytes to read before
+    /// decoding; matches `CLUpdateHeader.wireSize`'s established pattern.
+    public static let wireSize = 8 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + maxPlayers * PlayerEntry.wireSize + 4
 }
 
 /// Ported from `struct TRACKER_Preamble` (`tracker.h:35-38`) -- note
