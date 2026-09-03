@@ -1608,3 +1608,51 @@ change to that GO. Once 6.6's completion report lands (and clears PARITY), tell 
 Wave 6.4's pre-brief GO right away since its own gate is already clear.
 [TO: PARITY] Nothing needed until Wave 6.6 lands. Same note as last time: D40's `recvclbuildroad`
 replication is the one item there most worth an independent re-derivation.
+
+### [PLANNER] 2026-09-03 — Wave 5.9 scoped agent proposed and bootstrapped, pending Jerod's evaluation
+
+**Type:** planning — new-agent proposal
+**Phase:** Wave 5.9 (independent of the 6.x sequence)
+**Blocks:** nothing — Wave 6.6 continues unaffected either way
+
+Proposed to Jerod, and he's agreed to evaluate it: spinning up a second, narrow-scope Implementer
+agent dedicated solely to Wave 5.9 (mine-cascade injection-point wiring), running in parallel to
+the main Implementer session currently on Wave 6.6. Rationale: Wave 5.9 has been confirmed
+independent of Wave 6.2-6.6 twice now (originally at Wave 6.1's opening, reconfirmed at Wave
+6.6's pre-brief), its design is already settled (engine functions shipped Wave 5.5a), and it's
+been sitting idle behind the 6.x queue purely for lack of a session to pick it up — a good fit for
+running in parallel rather than waiting its turn.
+
+**`docs/WAVE59_BOOTSTRAP.md` written** — the startup/scope/rules doc for that agent. Key points
+not covered elsewhere in this note, since the file itself is the source of truth:
+
+- Scope is exactly the four trigger sites (`enterTile`, `grabTile`, `tankMoveTick`'s dead-tumble,
+  `smallboom`/`superboom`) wired to the already-shipped `onMineExplosion`/`onSuperboomTerrain`/
+  `onDropPills` callbacks, with correct causer attribution. No design authority, no scope
+  expansion, no self-declared "done."
+- **Isolation is the load-bearing addition this bootstrap has that the other three roles' don't
+  need:** a `git worktree`/separate-branch requirement (`wave-5.9-mine-cascade`), an explicit
+  off-limits file list matching Wave 6.6's active scope (`BoloNet/**`, `RunTick.swift`,
+  `RecvSR.swift`, `SessionLogic.swift`, `RecvCL.swift`), and a redirect of its pre-brief/completion
+  reports to a new standalone `docs/notes/WAVE59_REPORT.md` rather than `docs/AGENT_NOTES.md`/
+  `docs/PLAN.md` directly — both of those are being actively edited on `main` by the live
+  Planner/Parity/Implementer rotation and would conflict with a concurrent branch's edits. I'll
+  fold its report into the shared docs at merge time instead.
+- Same two-stage pre-brief-then-code gate every other wave uses, same non-negotiable rules index
+  (D18/D24/D26-D29), same "log ambiguity as a question, don't resolve solo" discipline.
+- Explicitly told not to merge to `main` itself, not to rebase mid-wave, and not to declare the
+  wave closed — PLANNER reviews, PARITY audits, same as always.
+
+**Not yet spawned — awaiting Jerod's go-ahead on where to run it** (his own local Xcode-agent
+session vs. Claude CLI), since that's an interface choice on his end, not something this session
+sets up for him.
+
+**Docs updated (committed alongside this entry):**
+- `docs/WAVE59_BOOTSTRAP.md` — new file, the scoped agent's full bootstrap.
+
+[TO: IMPLEMENTER] No action — this doesn't touch Wave 6.6's scope or your files. Purely FYI that a
+second session may start work on Wave 5.9 in a separate worktree soon; if you ever see a
+`wave-5.9-mine-cascade` branch or a `../XBolo-wave5.9` worktree directory show up alongside this
+checkout, that's expected, not an intrusion into your work.
+[TO: PARITY] No action yet — nothing to audit until the Wave 5.9 agent produces a report in
+`docs/notes/WAVE59_REPORT.md`.
