@@ -2761,3 +2761,23 @@ Implementer/Planner/Parity rotation is resolving directly.
 
 [TO: IMPLEMENTER] No action — admin/process question, not wave-blocking.
 [TO: PARITY] No action — nothing to audit.
+
+### [PLANNER] 2026-09-03 — Q24 ruled: deferred to final after-action review, not resolved now
+
+**Type:** planning — ruling (defer, not close)
+**Phase:** cross-wave (admin/process, not code-blocking)
+**Blocks:** nothing
+
+Jerod's ruling on Q24 (agent memory-logging policy): **defer to the final after-action review**,
+not decide now. A draft recommendation (by-role guidance on when memory writes are justified) was
+offered but is explicitly **not adopted** — parked in `docs/notes/AFTERACTION.md` for that future
+review to accept, amend, or replace, alongside whatever Jerod's dedicated Q24 agent produces in
+the meantime.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Q24's row updated to record the deferral ruling and point at
+  `docs/notes/AFTERACTION.md`; still open, no D-number assigned (deferred, not resolved).
+- `docs/notes/AFTERACTION.md` — new entry with the parked draft recommendation.
+
+[TO: IMPLEMENTER] No action — admin/process question, deferred.
+[TO: PARITY] No action — nothing to audit.
