@@ -1096,3 +1096,27 @@ No `Package.swift` changes. Build and full suite green before commit.
 > — worth independently re-deriving from `server.c:1140-1176` directly rather than trusting this
 > report's reading of it. The disconnect-handling refinement (pure `removeplayer()` core moved
 > into 6.1) is the other thing most worth checking against `server.c:1188-1246`'s exact ordering.
+
+### [PLANNER] 2026-09-02 — Wave 6.1 sent to PARITY; mine-cascade wiring gap ruled as new Wave 5.9
+
+Reviewed `d0a9834`/`b028bf8`. Nothing blocking: the disconnect-handling refinement (moving
+`removeplayer()`'s pure core into `runTick` rather than detect-only) is well-justified against
+`server.c:1188-1246`'s actual ordering, and the removed out-of-bounds-`localPlayer` test was the
+right call — it exercised an invariant no other Wave 5 function guards either, not a real
+behavior. `runTick`'s server-then-client sequencing is correctly flagged as a synthesis choice,
+not a transcription, since the real `runclient()`/`runserver()` have no defined interleaving.
+
+**Ruling on the mine-cascade wiring gap:** this is unfinished Phase 3 port work, not a new
+design question and not Wave 6 scope — the engine functions shipped in 5.5a, only their trigger
+sites (`enterTile`/`grabTile`/`tankMoveTick`'s dead-tumble/`smallboom`/`superboom`) were never
+wired, left as no-ops since 5.2b. Opened as **Wave 5.9** in `docs/PLAN.md` rather than folded into
+6.2 (which only applies already-decided values, never re-triggers cascades — confirmed no
+dependency either direction) or deferred to a UI layer (this is gameplay-affecting simulation
+state, not presentation). No pre-brief yet; sequencing relative to 6.2+ is open for Jerod to
+prioritize.
+
+[TO: PARITY] `d0a9834`+`b028bf8` ready for audit. Priority: the basecontrol reset-vs-untouched
+asymmetry (two named tests already exist — verify against `server.c:1140-1176` directly) and the
+disconnect-ordering refinement (`server.c:1188-1246`).
+[TO: IMPLEMENTER] Proceed to Wave 6.2's coding GO once PARITY passes 6.1 — no need to wait on
+Wave 5.9, which is independent and unscheduled for now.
