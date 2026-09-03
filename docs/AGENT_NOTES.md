@@ -2961,3 +2961,80 @@ the reasoning holds and isn't a rationalization for something simpler I should h
 (the `dropPills` broadcast gap, the unwired UDP listener, the zeroed `dgramaddr` at join) are real
 and need a ruling on whether any become tracked follow-up waves (D38/D45-style) or stay noted.
 Requesting your review before PARITY activation.
+
+### [PARITY] 2026-09-03 — Wave 6.4b post-commit audit (`b26ee69` + `c0cf490`)
+
+**Type:** post-commit audit, requested directly by Jerod ahead of Planner's formal `[TO: PARITY]`
+activation (the completion report requests Planner review first) — a deliberate override of the
+normal sequence, logged as such per the project's own precedent, not a protocol break.
+
+**Standing limitation as always:** no Swift toolchain here; every check below is a direct
+hand-read of `Reference/c/` against the shipped `Sources/`, not a build.
+
+**Verdict: PASS.** Extensive re-derivation of the completion report's claims — every substantive
+one checked out. One recurring, low-severity citation drift found (below); no behavioral or
+parity defects.
+
+**Independently confirmed:**
+
+- Test counts exact: `grep -rc "@Test"` gives 560 total, split 441 (`BoloKitTests`) / 119
+  (`DifferentialTests`), matching the report precisely.
+- **The six extended `RecvCL.swift` callback signatures** (the report's own flagged highest-value
+  item): spot-checked `recvClBuildRoad`'s `onShouldBroadcastBuild` and `recvClDamage`'s
+  `onShouldBroadcastDamage` in full. Both correctly fire only after the corresponding state
+  mutation (`state.terrain[x,y] = .road` precedes the callback in the road-build branch; the
+  damage callback's terrain-read happens in the one branch where terrain is deliberately never
+  mutated, matching the C's own unconditional read) — the C citations for all six
+  (`sendsrbuild`/`sendsrdamage`/`sendsrcapturepill`/`sendsrcapturebase`/`sendsrbuildpill`/
+  `sendsrrepairpill`, `server.c:3232/3190/3528/3604/3547-3549/3491`) independently verified
+  accurate, each reading its field from `server`-global state that has already been mutated by
+  that point in the C — hardcoding a wire constant instead of re-reading `state` mid-call (forced
+  by Swift's exclusivity rule on the same `inout state`) is provably equivalent in every case
+  checked, not a correctness shortcut.
+- **`CLSendMesg`'s masked-relay special case**: `sendsrsendmesg()` (`server.c:3147-3170`) is
+  genuinely its own inlined `for i in 0..<MAXPLAYERS where cntlsock != -1 && (mask & (1<<i))` loop
+  — not a call to `sendtoall`/`sendtoallex`/`sendtoone` under a different name. `HostSession.swift`
+  handling it as a distinct masked relay rather than routing it through the same three primitives
+  as everything else is correct, not a missed generalization.
+- **`HostListener`'s exclusivity fix**: confirmed `HostListener.connections` really is exposed as
+  an `AsyncStream<NWConnection>` (`HostListener.swift:291`) with no internal per-connection `Task`
+  spawn anywhere in the file (the only `Task {}` is the serializer's own `release()` in a `defer`,
+  unrelated) — the claimed single-consumer-drain design is what's actually there, not a
+  description of an intended fix that didn't fully land.
+- **G-1/G-4 promotions**: `encodeBMap` (`BMap.swift:545`) and public `removePlayer`
+  (`SessionLogic.swift:142`) both exist as claimed; `kickPlayer`/`banPlayer` now call
+  `removePlayer` rather than duplicating its body, confirmed by direct read.
+- **All three disclosed open issues are real, not overclaimed, and reasonably scoped out**:
+  - `dropPills` broadcast gap — grep-confirmed no `onShouldBroadcastDropPill` exists anywhere in
+    `Sources/`; `HostSession.swift`'s own header (lines 25-30) independently documents the same
+    finding. The C's `droppills()` (`server.c:1984`) does call `sendsrdroppill()` once per pill
+    (`server.c:1972`) — a real, pre-existing (Wave 5.5a) gap this wave exposed but correctly didn't
+    try to fix.
+  - Unwired live UDP listener — confirmed `DgramServerRelay.swift`'s decision core has no
+    `NWListener(using: .udp)` driver anywhere in this wave's new files; correctly excluded from
+    D47's coding GO scope, correctly flagged rather than left implicit.
+  - Zeroed `dgramaddr` at join — confirmed the C really does seed `dgramaddr` from the joining TCP
+    connection's own address inline (`server.players[player].dgramaddr =
+    server.joiningplayer.addr;`), and the Swift port seeds a zeroed placeholder instead. Currently
+    inert (no live UDP consumer yet, per the point above), so the "not a bug because nothing reads
+    it yet" reasoning holds — but see the citation note below.
+
+**Citation drift (low severity, but flagging because it's now in checked-in source comments, not
+just the ephemeral report):** the `dgramaddr` claim cites `server.c:817` in *both* the completion
+report and `HostListener.swift`'s own header comment. The actual line is `server.c:844`
+(`server.players[player].dgramaddr = server.joiningplayer.addr;`, inside `joinplayerserver()`'s
+"initialize player" block). The substance is correct — verified directly — this is a repeated
+line-number typo, not a wrong claim. Same class of citation drift as T-11/T-13 in the pre-brief
+audit (`d17c3c0`); recommend a trivial one-line comment fix next time that file is touched, no
+urgency otherwise. [TO: IMPLEMENTER]
+
+**Housekeeping note, not a parity finding:** `docs/WAVE59_BOOTSTRAP.md` → `docs/notes/
+WAVE59_BOOTSTRAP.md` is still staged-but-uncommitted in the working tree (same state the
+completion report flagged and correctly worked around). This entry is committed pathspec-scoped
+to `docs/AGENT_NOTES.md` only, for the same reason Implementer's own commit was — not touching it.
+
+[TO: PLANNER] Wave 6.4b: PARITY PASS. No fixes required. The three disclosed open issues
+(`dropPills` broadcast, unwired UDP listener, zeroed `dgramaddr`) are all confirmed real and
+accurately scoped — recommend tracking them as a named follow-up (D45/D46-style) rather than
+letting "Wave 6.4b done" silently imply they're closed, per the completion report's own request
+for a ruling on this. The `server.c:817`→`:844` citation drift is cosmetic, not blocking.
