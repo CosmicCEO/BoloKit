@@ -152,23 +152,30 @@ public func drown(
 }
 
 /// Kills the local player by single-tile mine detonation under its own tank.
-/// Ported from `smallboom()` (client.c:5614). The terrain-mutation half of
-/// the C function's `sendclsmallboom` → `recvclsmallboom` → `explosionat`
-/// round trip is out of scope here (see file header); surfaced as
-/// `onMineExplosion`.
+/// Ported from `smallboom()` (client.c:5614) + `recvclsmallboom()`
+/// (server.c:3036, confirmed: `explosionat(player, x, y)` at server.c:3046).
+/// `onMineExplosion` still fires at its original spot as a pure notify hook;
+/// the actual `explosionAt` call is deferred until after `dead` is set below
+/// — it must run once the tank is already dead so its own splash-damage
+/// check self-excludes the causer, matching the C oracle's timing (see
+/// `MineChain.swift`'s file header and Wave 5.9's pre-brief in
+/// `docs/notes/WAVE59_REPORT.md`).
 public func smallboom(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 ) {
     let player = state.localPlayer
+    var explosionPoint: Pointi?
 
     if !state.players[player].dead || state.local.respawnCounter <= explodeTicks {
         state.players[player].boat = false
         state.players[player].kickSpeed = 0.0
         state.local.respawnCounter = explodeTicks + 1
         let tank = state.players[player].tank
-        onMineExplosion(Pointi(x: Int32(tank.x), y: Int32(tank.y)))
+        explosionPoint = Pointi(x: Int32(tank.x), y: Int32(tank.y))
+        onMineExplosion(explosionPoint!)
     }
 
     if !state.players[player].dead {
@@ -176,21 +183,32 @@ public func smallboom(
         state.local.deaths += 1
         state.players[player].dead = true
     }
+
+    if let point = explosionPoint {
+        explosionAt(
+            player: UInt8(player), x: Int(point.x), y: Int(point.y), state: &state,
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+        )
+    }
 }
 
 /// Kills the local player with a 2×2-tile superboom centred on its tank,
 /// spawning 9 explosion particles (4 corners + 4 edge midpoints + centre)
 /// and testing each against the local builder. Ported from `superboom()`
-/// (client.c:5647). The 2×2 crater/chain/flood terrain effect
-/// (`sendclsuperboom` → `recvclsuperboom` → `superboomat`) is out of scope
-/// here (see file header); surfaced as `onSuperboomTerrain`.
+/// (client.c:5647) + `recvclsuperboom()` (server.c:3056, confirmed:
+/// `superboomat(player, x, y)` at server.c:3066). `onSuperboomTerrain`
+/// still fires at its original spot as a pure notify hook; the actual
+/// `superboomAt` call is deferred until after `dead` is set below — see
+/// `smallboom`'s doc comment for why (same ordering hazard, same fix).
 /// `playsound` (near/far superboom by fog visibility) is a UI hook, omitted.
 public func superboom(
     state: inout GameState,
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
+    onMineExplosion: (Pointi) -> Void = { _ in },
     onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 ) {
     let player = state.localPlayer
+    var boomOrigin: Pointi?
 
     if !state.players[player].dead || state.local.respawnCounter <= explodeTicks {
         state.players[player].boat = false
@@ -207,7 +225,8 @@ public func superboom(
             y = Int(tank.y) - 1
         }
 
-        onSuperboomTerrain(Pointi(x: Int32(x), y: Int32(y)))
+        boomOrigin = Pointi(x: Int32(x), y: Int32(y))
+        onSuperboomTerrain(boomOrigin!)
 
         let fx = Float(x)
         let fy = Float(y)
@@ -241,6 +260,13 @@ public func superboom(
         state.local.deaths += 1
         state.players[player].dead = true
     }
+
+    if let origin = boomOrigin {
+        superboomAt(
+            player: UInt8(player), x: Int(origin.x), y: Int(origin.y), state: &state,
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+        )
+    }
 }
 
 // MARK: - grabTile / dropBoat / plantMine
@@ -248,16 +274,22 @@ public func superboom(
 /// Captures whatever is at `point` for the local player: an unowned or
 /// hostile pill (armed pills are handled by the caller before this is
 /// reached — see `enterTile`), a neutral/hostile/allied base, a boat left by
-/// another tank, or (surfaced as `onMineExplosion`) a mined tile.
+/// another tank, or a mined tile, which detonates via `explosionAt`.
 ///
-/// Ported from the local-effect-free `recvclgrabtile()` (server.c:2271) —
-/// in the original this runs on the SERVER after the client's `sendclgrabtile`
-/// network round trip; BoloKit has no client/server split, so this runs
-/// directly and synchronously from `enterTile`.
+/// Ported from `recvclgrabtile()` (server.c:2271) — in the original this
+/// runs on the SERVER after the client's `sendclgrabtile` network round
+/// trip; BoloKit has no client/server split, so this runs directly and
+/// synchronously from `enterTile`. The mined-terrain case's
+/// `explosionat(player, x, y)` call (server.c:2332) has no ordering hazard
+/// here (unlike `smallboom`/`superboom`) since `grabTile` never sets
+/// `dead` itself — a live tank walking onto a mine is meant to take its own
+/// splash damage.
 public func grabTile(
     at point: Pointi,
     state: inout GameState,
-    onMineExplosion: (Pointi) -> Void = { _ in }
+    onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
+    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 ) {
     let player = state.localPlayer
     let x = Int(point.x)
@@ -295,6 +327,10 @@ public func grabTile(
 
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         onMineExplosion(point)
+        explosionAt(
+            player: UInt8(player), x: x, y: y, state: &state,
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+        )
 
     default:
         break
@@ -358,10 +394,17 @@ public func enterTile(
 
     if let pill = findPill(x: x, y: y, pills: state.pills) {
         if state.pills[pill].armour > 0 {
-            superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+            superboom(
+                state: &state,
+                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+            )
         } else if !state.players[player].dead {
             if new != old {
-                grabTile(at: new, state: &state, onMineExplosion: onMineExplosion)
+                grabTile(
+                    at: new, state: &state,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onDropPills: onDropPills
+                )
             }
             if let terrain = state.terrain[x, y], isWalkableNonWater(terrain) {
                 if state.players[player].boat && new != old {
@@ -377,7 +420,11 @@ public func enterTile(
         if !state.players[player].dead, new != old {
             let owner = state.bases[base].owner
             if owner == playerNeutral || !testAlliance(Int(owner), player, players: state.players) {
-                grabTile(at: new, state: &state, onMineExplosion: onMineExplosion)
+                grabTile(
+                    at: new, state: &state,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onDropPills: onDropPills
+                )
             }
             if state.players[player].boat {
                 state.players[player].boat = false
@@ -391,7 +438,10 @@ public func enterTile(
 
     switch terrain {
     case .wall, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
-        superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+        superboom(
+            state: &state,
+            onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+        )
 
     case .sea:
         if !state.players[player].boat {
@@ -430,13 +480,20 @@ public func enterTile(
                 )
                 killSquareBuilder(at: new, state: &state, onDropPills: onDropPills)
             } else {
-                grabTile(at: new, state: &state, onMineExplosion: onMineExplosion)
+                grabTile(
+                    at: new, state: &state,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onDropPills: onDropPills
+                )
             }
         }
 
     case .minedSea:
         if new != old {
-            grabTile(at: new, state: &state, onMineExplosion: onMineExplosion)
+            grabTile(
+                at: new, state: &state,
+                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            )
         }
         // Unconditional, unlike plain `.sea` above: a mined-sea tile drowns
         // a boated tank too. C: both `sendclgrabtile` and `drown()` fire
@@ -445,7 +502,10 @@ public func enterTile(
 
     case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         if new != old {
-            grabTile(at: new, state: &state, onMineExplosion: onMineExplosion)
+            grabTile(
+                at: new, state: &state,
+                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            )
         }
     }
 }
