@@ -2153,3 +2153,70 @@ No code changes this entry.
 > `Int(ticksPerSec) * 3` dead-reckoning bound. Plus the host-vs-client architecture question tied
 > to Q22, which is yours/Jerod's call, not something I should scope by guessing.
 > **→ Parity:** No action needed yet — no code shipped this entry.
+
+### [PLANNER] 2026-09-03 — Wave 5.9 pre-brief reviewed, coding GO'd (D41 rules the ordering hazard, Q23 tracks two follow-ups)
+
+**Type:** planning — review + coding GO + one ruling + one new tracked item
+**Phase:** Wave 5.9 (own branch/worktree, independent of the 6.x sequence)
+**Blocks:** nothing in the 6.x sequence
+
+Read the Wave 5.9 agent's pre-brief (`d9116a9` on `wave-5.9-mine-cascade`) directly — this is a
+scoped agent whose reports live in `docs/notes/WAVE59_REPORT.md` on its own branch per
+`docs/WAVE59_BOOTSTRAP.md`, not this log, so I went and read it there rather than waiting for it
+to be relayed. Strong pre-brief — it caught a real, non-obvious hazard rather than mechanically
+wiring the callbacks as the wave's scope text literally describes, and disclosed two things it
+found but correctly left alone as out of its file scope.
+
+**D41 — the dead-flag ordering hazard is real, and the proposed fix is correct.** The C oracle's
+`recvsrsmallboom`/`recvsrsuperboom` self-exclusion (a causer never re-damages itself from its own
+detonation) works *only* because real network latency guarantees the causer's local `dead` flag
+is already set by the time its own broadcast round-trips back. `BoloKit` collapses client and
+server into one synchronous process — no such latency exists — so porting `smallboom`/`superboom`
+with `explosionAt`/`superboomAt` called in the C's literal statement position would let a causer
+take a second, spurious splash-damage hit from its own explosion the instant the call is wired in.
+This is not a D24 case (nothing to replicate bug-for-bug — the C's *behavior* is "causer excluded
+from own splash," full stop; only the *mechanism* it uses to achieve that behavior is
+latency-dependent and inapplicable here). Approved the pre-brief's fix — defer the
+`explosionAt`/`superboomAt` call until after `dead = true` is set, capturing the detonation point
+first — and generalized it as its own decision (**D41**) rather than a wave-local footnote, since
+this is a pattern that can recur anywhere else this port collapses distributed C timing into one
+process: identify the invariant the C's timing was protecting, and preserve *that*, not the
+literal statement order. Independently checked the agent's own verification of both entry paths
+(first-death, already-dead) and the recursive-escalation no-op case before ruling — the reasoning
+holds.
+
+**Third finding (periodic corpse-explosion `killPointBuilder` gap) ruled in-scope.** It's inside
+the same literal C function (`tankmovelogic`'s dead branch) the wave's scope text already claims,
+even though it wasn't named explicitly — consistent with how this project has always scoped waves
+to complete functions, not partial slices of them (same reasoning Wave 6.3/6.6 used when a
+pre-brief's own count turned out low). Fix it now rather than opening a fourth tracked debt item
+for something this narrow.
+
+**Q23 opened for the two disclosed off-limits-file follow-ups**, not fixed by design (the agent
+correctly stayed out of `RunTick.swift`/`RecvSR.swift`, both outside Wave 5.9's file scope per its
+own bootstrap). Both are one-line threading gaps (forward 3 new params at one `RunTick.swift` call
+site; add 1 missing closure at each of `RecvSR.swift`'s 5 call sites) with no current-behavior
+regression — tracked so they aren't lost, likely landing whenever Wave 6.4 next touches
+`RunTick.swift`'s territory, not gating anything now.
+
+**Wave 5.9 coding GO issued** on the `wave-5.9-mine-cascade` branch, full scope as the pre-brief
+lays out (including the corpse-explosion fix and the free `MineChain.swift` recursive-depth
+correctness improvement in §6, which the agent already owns and is cleared to make directly).
+
+**Docs updated on `main` (committed alongside this entry) — not on the Wave 5.9 branch, per its
+own isolation rules:**
+- `docs/PLAN.md` — Wave 5.9 row updated to Coding GO'd, D41 added to the decisions table, Q23
+  added to open questions.
+
+[TO: WAVE 5.9 AGENT — relayed via Jerod, this session has no direct line to your branch] Coding
+GO issued. Proceed exactly as the pre-brief lays out: D41 approves the deferred-call ordering fix
+as written, the corpse-explosion `killPointBuilder` gap is in-scope, `MineChain.swift`'s
+recursive-depth completion in §6 is yours to make. Leave `RunTick.swift`/`RecvSR.swift` alone as
+planned — Q23 tracks both follow-ups now, they won't be lost. Same process as the bootstrap
+describes: build, test, named regressions per D28, append your completion report to
+`docs/notes/WAVE59_REPORT.md`, commit to your branch, tell Jerod.
+[TO: IMPLEMENTER] No action — Wave 5.9 doesn't touch your Wave 6.4 pre-brief work. FYI only: Q23
+flags two small `RunTick.swift`/`RecvSR.swift` follow-ups that may be relevant once you're in
+`RunTick.swift`'s territory for 6.4 — not required now, just worth knowing they exist.
+[TO: PARITY] No action yet — nothing to audit until Wave 5.9's completion report lands (on its own
+branch) or Wave 6.4's pre-brief lands (on `main`).
