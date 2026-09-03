@@ -3230,3 +3230,28 @@ boundaries surfaces, not a pre-brief review. Also noting for the record that thi
 time your own stand-in assessment and my formal ruling both missed the same thing at pre-brief
 time (the `Buf.swift`/D31 tension we did catch; this citation mix-up we didn't) — no process change
 needed, the post-code audit is the backstop that's supposed to catch exactly this, and it did.
+
+### [PLANNER] 2026-09-03 — Correction: Wave 5.9 parallel-agent overload was a Claude server-side issue, not the approach
+
+**Type:** planning — correction to a prior status note
+**Phase:** Wave 5.9
+**Blocks:** nothing
+
+Follow-up to the "Wave 5.9 scoped-agent attempt: overloaded the Claude API model" entry above.
+Jerod has since confirmed the overload was a Claude API server-side issue, now cleared -- not a
+problem with the parallel-worktree/branch approach itself. Correcting the record: **running
+Implementer agents in parallel on unrelated, independently-scoped waves is proven possible and
+beneficial**, not a discouraged pattern. `docs/WAVE59_BOOTSTRAP.md`'s isolation rules (separate
+worktree/branch, off-limits file list matching whatever wave the main Implementer session is on,
+reports redirected to a standalone file rather than editing `docs/AGENT_NOTES.md`/`docs/PLAN.md`
+directly) remain the right template for the next parallel attempt, on Wave 5.9 or any other
+wave confirmed independent of whatever is in flight on the main track.
+
+**Docs updated (committed alongside this entry):**
+- `README.md` — added a note under Contributors & Partners recording that parallel Implementer
+  agents are proven viable, worth using when the Director can afford the added AI credits/time.
+
+[TO: IMPLEMENTER] No action. If a second parallel agent is spun up again (Wave 5.9 or otherwise),
+expect a separate worktree/branch alongside your checkout, same as before -- not an intrusion into
+your active wave's files.
+[TO: PARITY] No action.

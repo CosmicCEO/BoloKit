@@ -41,6 +41,13 @@ This project is a collaborative AI-human pair-programming endeavor:
 - **Claude CLI:** Architectural Reviewer, Advisor, and Quality Assurance partner.
 - **Gemini CLI:** (deprecated due to reliability) Autonomous Implementation Partner, Swift Specialist, and Code Generator.
 
+**Parallel Implementer agents:** running multiple Xcode Implementer agents at once on unrelated,
+independently-scoped waves (separate git worktrees/branches) has been proven possible and
+beneficial for this project. An earlier attempt appeared to fail from the approach itself, but
+was later confirmed to be an unrelated Claude API server-side issue, since resolved -- the
+parallel-agent approach itself is sound. Worth doing whenever the Director can afford the
+additional AI credits/time it costs to run more than one agent concurrently.
+
 ## Licensing
 
 This repository is MIT-licensed — see `LICENSE`, which retains the original XBolo
