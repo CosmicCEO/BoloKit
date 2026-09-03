@@ -3616,3 +3616,64 @@ direct read) — worth a second look if you want to confirm it can't produce a f
 timing this environment could plausibly produce.
 [TO: PLANNER] D53 fix complete, tested, committed (`534aa57`). Requesting PARITY re-audit per the
 standard sequence, then Wave 6.4c close.
+
+### [PARITY] 2026-09-03 — D53 re-audit: fix confirmed, Wave 6.4c can close
+
+**Type:** post-commit re-audit of a confirmed finding's fix (`534aa57` + `172a1d0`), normal
+sequence (Planner ruled D53, requested this re-audit).
+
+**Standing limitation as always:** no Swift toolchain here; every check below is a direct
+hand-read of the actual diff and current source, not a build.
+
+**Verdict: PASS. The fix closes the gap correctly; `.abnormal` is genuinely untouched; both named
+regression tests are sound.**
+
+**The fix itself, read in full (not just the diff), confirms:** `handlePlayerDisconnect`'s
+`.normal` case now calls `table.sendToAll(SRPlayerExit(...).encode())`; `.abnormal` is still
+`table.sendToAllExcept(player, SRPlayerDisc(...).encode())`, byte-for-byte unchanged from before
+D53. `sendToAll` (`HostSession.swift:217-221`, unchanged, already independently verified in the
+original 6.4c audit) iterates every slot with `connection != nil` — since `table.disconnect(player)`
+runs *after* this switch, the departing player's slot is still live at send time, so `sendToAll`
+genuinely reaches them. This is the correct, minimal fix for the confirmed gap — verified by
+re-reading the function in full, not just trusting the diff hunk.
+
+**Both named regression tests independently assessed, not just read as present:**
+
+- `handlePlayerDisconnectNormalBroadcastsPlayerExitToEveryoneIncludingSelf`: reads from
+  `links[0].clientEnd` (confirmed, via `makeTableWithPlayers`'s own definition, `links[0]` is
+  registered as player 0's connection and `clientEnd` is documented as "what the player's real
+  client would have received" — so this really is the departing player's own view, not a
+  same-named stand-in) *and* `links[1].clientEnd`, asserting `SRPlayerExit` decodes correctly from
+  both. This genuinely proves the property for both recipients, not just that the function
+  completes without crashing.
+- `handlePlayerDisconnectAbnormalDoesNotReachTheDepartingPlayer` — the negative-assertion pattern
+  Implementer specifically flagged for scrutiny. Traced why it's sound rather than taking the
+  "resolved in ~0.07s" claim on faith: `table.disconnect(player)` (`HostSession.swift:187-190`)
+  cancels `slots[player].connection` — the *server-side* end of the departing player's own
+  connection — immediately after the (correctly self-excluding) broadcast. On loopback, canceling
+  one end of an `NWConnection` reliably makes the other end's pending `receive(...)` complete with
+  an error promptly; `receiveExactly` (`HostSessionTests.swift:69-81`) treats any completion error
+  as a throw, which `confirmNoDatagramArrives` interprets as "confirmed absent" — this is what
+  actually resolves the test quickly, not the 300ms timeout arm. Traced the counterfactual too: if
+  the `.abnormal` self-exclusion were ever accidentally removed, real `SRPlayerDisc` bytes would be
+  written to this same connection *before* `disconnect()` cancels it, and on loopback that delivery
+  is effectively instantaneous — it would win the race against the 300ms timeout and the test would
+  correctly fail (`receiveExactly` returning bytes rather than throwing). One residual, generic
+  caveat worth naming for the record rather than silently accepting: like any timeout-race negative
+  test, a sufficiently starved scheduler could in principle let the 300ms timeout arm win even when
+  bytes are in flight, producing a false pass — a standard trade-off of this test shape, not a flaw
+  specific to this test, and 300ms is generous enough on loopback that this is a low-probability
+  caveat rather than a real risk today.
+- The header-comment fix (previously asserting the correct behavior while the code didn't implement
+  it — PARITY's original finding) now matches the implemented behavior, including the corrected
+  reasoning for *why* the old "redundant, skip it" argument was wrong. Read in full, accurate.
+
+**Test count exact:** `grep -rc "@Test"` gives 572, matching the completion report precisely
+(571→572: one test renamed/extended in place, one new — confirmed by reading both test names in
+the diff, not just trusting the arithmetic).
+
+**No new findings.** D53 is closed from PARITY's side.
+
+[TO: PLANNER] D53 fix confirmed correct, both regression tests independently assessed as sound
+(including the negative-assertion pattern, scrutinized as Implementer requested). No blockers
+remain on PARITY's side — Wave 6.4c is clear to close.
