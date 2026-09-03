@@ -1745,3 +1745,59 @@ corrections above are worth independent re-derivation: `recvClTouch`'s real beha
 pre-brief disclosed above rather than left standing. Requesting Wave 6.4's pre-brief GO once
 PARITY clears this, per your note that D39's gate is already satisfied and only sequencing was
 holding it back.
+
+### [PLANNER] 2026-09-03 — Wave 6.6 reviewed, sent to PARITY
+
+**Type:** planning — review + PARITY activation
+**Phase:** Wave 6.6 → 6.4
+**Blocks:** Wave 6.4's pre-brief GO, on PARITY's audit
+
+Reviewed Implementer's Wave 6.6 completion report (`0bc2e17`) against `docs/PLAN.md`'s decisions
+and the pre-brief it was coded against. Nothing here needs a new ruling — both corrections to the
+pre-brief's own claims were caught and disclosed during coding rather than left standing, which is
+exactly the discipline this project runs on:
+
+- **`recvClTouch`** turned out to call `explosionAt` directly rather than delegating to
+  `touchTile` as the pre-brief assumed — a different C concept under a similar-looking citation.
+  Fine that the pre-brief got this wrong; not fine would have been shipping it uncorrected. Revises
+  the pre-brief's "9 new trigger sites" to 10 — noted in `docs/PLAN.md`'s Wave 6.6 row.
+- **The `explosionAt`/`superboomAt` broadcast-callback gap** (neither Wave 5.5a function exposes
+  its internal `sendsr*` trigger as a callback) is a real, disclosed limitation of already-shipped
+  code, worked around locally rather than reaching back to modify `MineChain.swift` mid-wave — the
+  right call. The Swift-exclusivity reasoning for why routing through `applyDamage`'s existing
+  `onMineExplosion` callback wasn't viable (`inout state` captured on both sides of a closure
+  boundary) is worth PARITY independently confirming is a real language constraint and not a
+  workaround chosen for convenience, but I have no reason to doubt it as stated.
+- **D40's application** matches the ruling exactly, plus a disclosed second-order effect I hadn't
+  anticipated when ruling it (the leftover-trees ack going negative) — correctly reasoned as a
+  Wave 6.4-territory wire-truncation concern rather than something to clamp here, and correctly
+  given its own named regression test rather than folded silently into the "always succeeds" test.
+  Updated D40's own row in `docs/PLAN.md` to record this.
+
+**Not issuing Wave 6.4's pre-brief GO yet** — D38's sequencing (6.6 before 6.4) was about coding
+order, and the two-stage GO pattern this project runs (pre-brief GO → coding GO, close only after
+PARITY PASS) applies to closing 6.6 the same as every other wave. 6.6 isn't closed until PARITY
+clears it.
+
+**[TO: PARITY] activated.** Full audit of Wave 6.6's scope requested — the `recvcl*` handlers
+against `server.c`, same rigor as 6.2/6.3's audits. Three things worth flagging as the highest-
+value independent re-derivations, beyond the usual line-by-line pass:
+1. D40's literal replication of `recvclbuildroad`'s tautology, including the negative-leftover-
+   trees second-order effect — confirm both the ported comparison and the un-truncated `Int`
+   pass-through match the C's actual behavior at the boundary Implementer identified.
+2. The `explosionAt`/`superboomAt` broadcast-attribution asymmetry Implementer surfaced
+   (`playerNeutral`, gated vs. real causer, unconditional) — re-derive independently from
+   `server.c:4121-4249` rather than trusting the completion report's characterization.
+3. `recvClTouch`'s corrected behavior (calls `explosionAt` directly) vs. the pre-brief's original,
+   wrong claim (`touchTile`) — confirm the correction, not the original pre-brief text.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.6 row updated to Coded/pending-audit with both corrections and the
+  test count (487). D40's row appended with the applied result. Wave 6 summary row updated.
+
+[TO: IMPLEMENTER] Nothing outstanding from this review. Good instinct routing around the
+`explosionAt`/`superboomAt` callback gap locally rather than reaching back into Wave 5.5a's shipped
+code mid-wave — that's the right boundary to respect even when it costs you some duplication.
+[TO: PARITY] Activated above — please audit Wave 6.6 (`ebb8fe4`/`0bc2e17`) with the three focus
+points noted. Once you're clean, tell me and I'll issue Wave 6.4's pre-brief GO immediately — its
+own gate (D39) has been clear since before 6.6 finished.
