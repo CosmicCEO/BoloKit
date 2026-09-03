@@ -1823,3 +1823,180 @@ as a second concurrent agent.
 gets assigned to you directly later (rather than a separate parallel agent), `WAVE59_BOOTSTRAP.md`
 is still the scope doc to read first.
 [TO: PARITY] No action — nothing was produced to audit.
+
+### [PARITY] 2026-09-03 — Wave 6.6 audit: PASS, no findings
+
+**Type:** audit (full audit of Wave 6.6's scope — 18 `recvcl*` server TCP-receive handlers)
+**Phase:** Wave 6.6 → 6.4
+**Blocks:** nothing — clears the way for Planner's Wave 6.4 pre-brief GO
+
+**Standing limitation, stated per protocol:** no Swift toolchain in this environment — line-for-
+line hand-trace against `Reference/c/`, not a compile-and-run. Read all 18 functions in
+`Sources/BoloKit/RecvCL.swift` (641 lines) against their C originals (`server.c:2100-3122`) in
+full, plus the three items Planner specifically flagged as highest-value.
+
+**Focus item 1 — D40's `recvClBuildRoad` replication (`server.c:2416`) — CONFIRMED exact.**
+Re-read `recvclbuildroad()` in full: `if (clbuildroad->trees >= clbuildroad->trees)` is a literal
+self-comparison, always true — confirmed by direct read, not trusted from the ruling text.
+`RecvCL.swift:250`'s `if trees >= trees` reproduces it verbatim. Traced the second-order effect by
+hand: since the tautology makes the success branch the only reachable one, `trees - roadTrees` can
+go negative (`server.c:2419`'s `clbuildroad->trees - ROADTREES` — same arithmetic, same
+unreachability of the "insufficient trees" `else`). The named test
+`recvClBuildRoadLeftoverTreesCanGoNegativeD40` (`trees: 0`, `roadTrees` = 2, confirmed via
+`Physics.swift:98`) asserts `leftover == -roadTrees` = `-2` — hand-computed independently, matches.
+Confirmed the pass-through is a plain `Int`, not wire-truncated in this file — correct, since the
+`uint8_t` narrowing happens at whatever eventually builds the real `SRBuilderAck` wire struct
+(Wave 6.4 territory), not inside this pure decision function.
+
+**Focus item 2 — `explosionAt`/`superboomAt` broadcast-attribution asymmetry — CONFIRMED, and the
+underlying `detonated` predicate independently re-derived from scratch, not just checked against
+the completion report's characterization.** Read `explosionat()` (`server.c:4120-4176`) and
+`superboomat()` (`server.c:4192-4249`) in full:
+- `explosionat()`'s switch has a **main case list** (18 non-mined + 6 already-mined variants — every
+  boat/wall/river/swamp0-3/crater/road/forest/rubble0-3/grass0-3/damagedWall0-3 terrain, plus
+  minedSwamp/minedCrater/minedRoad/minedForest/minedRubble/minedGrass) that converts to crater,
+  runs flood-test + chain-entry, and calls `sendsrsmallboom(NEUTRAL, x, y)` — **and a separate**
+  `case kMinedSeaTerrain:` that calls `sendsrsmallboom(NEUTRAL, x, y)` **alone**, no terrain
+  mutation, no flood/chain. I counted both lists by hand: 28 items in the main case + 1
+  (`minedSea`) = **29 terrain values that fire the broadcast**, everything else (`default`) does
+  not. `RecvCL.swift`'s `recvClSmallBoom` re-derives this exact same 29-item list for its
+  `detonated` predicate (`RecvCL.swift:577-585`) — counted it independently and it matches term for
+  term, including correctly bucketing `minedSea` into the broadcast-fires set despite it not
+  getting the terrain/flood/chain treatment. Cross-checked this same 29-item split (main list +
+  separate `.minedSea` case) is also how `MineChain.swift`'s own `explosionAt`
+  (`MineChain.swift:365-384`, Wave 5.5a, already-shipped) implements its internal `detonated`
+  logic — the two independently-written predicates (Wave 5.5a's engine function and Wave 6.6's
+  broadcast-firing wrapper) agree exactly, which is exactly the kind of cross-check that would
+  have caught drift if either had gotten the list wrong. `sendsrsmallboom(NEUTRAL, ...)` is
+  hardcoded `NEUTRAL` in both switch branches of the C — confirmed the `playerNeutral` attribution
+  claim directly, not assumed.
+- `superboomat()` has **no terrain-membership gate at all** before `sendsrsuperboom(player, x, y)`
+  — confirmed by reading the whole function: the four per-cell sea/mined-sea exclusions
+  (`server.c:4196-4210`) only gate whether each of the 4 cells converts to crater, not whether the
+  broadcast fires; the broadcast call is unconditional and uses the real `player` argument, not
+  `NEUTRAL`. `RecvCL.swift`'s `recvClSuperBoom` (`:601-613`) calls `onShouldBroadcastSuperBoom`
+  unconditionally, with the real `player`, right after `superboomAt` — matches. The test
+  `recvClSuperBoomAlwaysBroadcastsWithRealCauser` sets all 4 corner cells to `.sea` (excluded from
+  conversion) and confirms the broadcast still fires with `player: 4` — hand-run against the C's
+  actual behavior, not just the Swift, and it's correct: `superboomat()` would do the same.
+- Confirmed the two are genuinely asymmetric, independently, not by trusting the completion
+  report's characterization: `explosionat`'s broadcast is terrain-gated and always `NEUTRAL`;
+  `superboomat`'s is unconditional and uses the real causer. This is a real property of the C
+  oracle, correctly surfaced rather than assumed symmetric.
+- **Swift-exclusivity claim independently verified, per Planner's specific request.** The reasoning
+  in the completion report (`0bc2e17`) — that a closure passed to `applyDamage(state: &state,
+  onMineExplosion:)` cannot itself capture `&state` to call `explosionAt(state: &state, ...)` from
+  inside that closure — is a real Swift language constraint, not a convenience excuse: `state` is
+  already held under exclusive `inout` access for the duration of the outer `applyDamage` call, and
+  Swift's exclusivity enforcement (SE-0176) forbids a second overlapping exclusive access to the
+  same storage from within a closure invoked during that call. Intercepting before the call (what's
+  shipped) is the correct workaround, not a shortcut.
+
+**Focus item 3 — `recvClTouch`'s corrected behavior — CONFIRMED, and the correction is right, not
+just the pre-brief's original wrong claim.** Read `recvcltouch()` (`server.c:2236-2270`) in full:
+its body is a bare terrain switch over the 7 mined variants calling `explosionat(player, x, y)`
+directly, nothing else — no delegation to any shell-expiry helper. Separately read `touchTile`
+(`ShellTick.swift`) to confirm it really is a different function for a different trigger (shell
+range expiry, called from `shellTick`), not a stand-in for this network handler — the pre-brief's
+original citation was wrong, and the correction (`RecvCL.swift:105-123` calling `explosionAt`
+directly, in the same bucket as the other 9 new mined-terrain trigger sites) is what actually
+matches the C.
+
+**Full line-by-line trace of the remaining 15 functions — all correct, no findings:**
+- `recvClDropBoat`/`recvClDropMine`/`recvClPlaceMine`: terrain-switch case lists and broadcast
+  ordering re-counted against `server.c:2100-2126`/`2164-2235`/`2706-2803` — match exactly,
+  including `recvclplacemine`'s redundant double-switch in the C (outer 15-case group re-switching
+  on the same terrain value) correctly collapsed into one switch in Swift with equivalent behavior.
+- `recvClDropPills`: the C's validation loop (`break` on first invalid requested pill, then check
+  `!(i < npills)`) is equivalent to Swift's early-`return` on the first invalid pill found while
+  iterating only requested bits — re-derived by hand, not assumed equivalent. `FWIDTH` = `256.0`
+  (`bolo.h:67`) confirmed matching the hardcoded range check.
+- `recvClGrabTile`: pill-grab fields/order match `server.c:2282-2287` exactly. Base three-way
+  branch (neutral full-refill / mutual-alliance hand-off preserving stats / hostile takeover
+  zeroing stats) re-traced against `server.c:2291-2314` field-by-field — matches, including that
+  the mutual-alliance branch changes owner only, no stat reset. Terrain switch (boat→river,
+  7-mined→`explosionAt`) matches `server.c:2316-2334`.
+- `recvClGrabTrees`: forest/minedForest special-cased out of the detonation list (harvested, not
+  detonated) exactly matches `server.c:2350-2364`'s separate `case kForestTerrain`/
+  `kMinedForestTerrain` blocks; the 6-way mined-detonation list (`minedSea` through `minedGrass`,
+  `minedForest` excluded) matches `server.c:2366-2376`.
+- `recvClBuildWall`/`recvClBuildPill`/`recvClRepairPill`: the 18-terrain "buildable" case list
+  (swamp0-3/crater/road/rubble0-3/grass0-3/damagedWall0-3) recounted against all three C functions
+  independently — matches every time. `WALLTREES`=2, `BOATTREES`=20, `MAXPILLARMOUR`=15,
+  `FORRESTTREES`=4 (`bolo.h:101-106`) all confirmed against `Physics.swift`'s
+  `wallTrees`/`boatTrees`/`maxPillArmour`/`forestTreeYield`. `recvClBuildPill`'s missing bounds
+  check on the client-specified `pill` slot (`server.c:2570`'s `server.pills[clbuildpill->pill]`
+  has no guard before the write — confirmed by reading the whole function, this is real UB for an
+  out-of-range slot) — Swift's added `guard pill >= 0, pill < state.pills.count` is the same
+  memory-safety-deviation class as `applyDamage`'s `pills[-1]`, correctly not treated as something
+  needing a "correct" fallback since there's no oracle behavior to match in UB territory.
+  `recvClBuildBoat`'s complete lack of a tree-cost gate (`server.c:2516-2557` has no `if (trees
+  >= ...)` anywhere, unlike its siblings) confirmed by direct read — not an inconsistency, a real
+  asymmetry in the oracle, correctly left unguarded.
+- `recvClDamage` — the largest function, re-traced in full against `server.c:2804-3035`:
+  - Pill-hit and base-splash branches both call `sendsrdamage`/`onShouldBroadcastDamage`
+    **unconditionally**, outside the `armour > 0`/`armour >= MINBASEARMOUR` gates that control only
+    whether `heatPill`/the base-armour decrement actually happen — confirmed by re-reading both C
+    branches line by line; Swift's `applyDamage` + unconditional `onShouldBroadcastDamage` after it
+    matches.
+  - Independently recomputed the boat/non-boat `firesDamageBroadcast` predicates by counting every
+    `sendsrdamage`-calling case in both of `server.c`'s inner switches (`:2851-3016`): boat=20
+    terrain types (including `kRoadTerrain`, which calls `sendsrdamage` unconditionally even when
+    its own water-adjacency condition fails to convert the terrain — a real subtlety), non-boat=7.
+    `RecvCL.swift:540-553`'s two case lists match both counts exactly, term for term, including
+    `.road` firing regardless of conversion outcome.
+  - `applyDamage`'s (Wave 5.3a, already-shipped) own terrain-conversion switches were spot-checked
+    against the same C ranges and still match — this wave reuses that function unmodified, correctly.
+  - The base-splash pill-heat loop's `pills[pill]` (outer, stale `-1`-valued variable at that point
+    since we're in the `else` branch of the pill-search) vs. `pills[i]` (the loop variable, the
+    evidently-intended target) UB deviation — confirmed already correctly resolved by
+    `ShellTick.swift`'s pre-existing `heatPill(i, ...)` call, not a new site to re-derive.
+- `recvClSmallBoom`/`recvClSuperBoom`: confirmed thin wrappers exactly matching
+  `recvclsmallboom()`/`recvclsuperboom()`'s bodies (`server.c:3036-3075`) — single call to the
+  engine function, no extra logic in the C wrapper itself.
+- `recvClRefuel`: bounds guard + unclamped subtract + broadcast, all inside the guard, matches
+  `server.c:3076-3100` exactly including the unclamped-subtract precedent already established by
+  `recvSrRefuel` (Wave 6.2).
+- `recvClHitTank`: bounds-checked relay, matches `server.c:3101-3122` exactly.
+
+**One minor, non-blocking observation — not a finding, recorded for the log.** Two sites reused in
+this wave (`recvClGrabTile`'s mutual-alliance base-capture branch, and `applyDamage`'s
+already-shipped base-splash pill-heat loop) call the shared `testAlliance` helper
+(`GameObjects.swift:400`), which requires both players' `used` flags to be `true` in addition to
+the mutual alliance-bit check. The literal C conditions at both sites
+(`server.c:2297-2302`/`server.c:2832-2838`) are raw bitmask checks with **no** `used`-equivalent
+guard. Checked whether this is a reachable divergence: `alliance` is only ever populated by
+`applyJoin`/`requestAlliance`/`recvClSetAlliance` (Wave 6.2/6.3), all of which only operate on an
+already-`used` player, and `used` is never reset to `false` anywhere in this port (confirmed in my
+Wave 6.3 audit) — so a nonzero alliance bit implies `used == true` in every state this port's own
+code can produce, making `testAlliance`'s extra guard provably redundant with the raw bitmask check
+in any reachable state, not a genuine behavior difference. Not a new issue introduced by Wave
+6.6 — `testAlliance` is reused unmodified from earlier waves (13 call sites across the codebase)
+and its `used` guard predates this wave; flagging only because these two are new reuse sites and
+independent verification of "no reachable divergence" is worth being on record.
+
+**Tests independently re-verified.** `grep -rc "@Test func\|func test" Tests/` = **487**, matches
+the commit message's 447 → 487 (+40) exactly (40 in `RecvCLTests.swift`, independently counted).
+Hand-ran the highest-value named regressions against the diff rather than just reading them:
+`recvClBuildRoadLeftoverTreesCanGoNegativeD40` (computed `-2` by hand, matches),
+`recvClDamageNonBoatOnUnmatchedTerrainFiresNoBroadcast`/`recvClDamageBoatOnGrassFiresBroadcastUnlikeNonBoat`
+(grass0 correctly outside the non-boat fires-set, inside the boat one, terrain conversion to
+`.swamp3` matches `applyDamage`'s boat switch), `recvClSmallBoomOnSeaFiresNoBroadcast` (plain
+`.sea` correctly outside the 29-item detonated set — the one case that proves the predicate isn't
+just "always true"), `recvClSuperBoomAlwaysBroadcastsWithRealCauser` (sea-excluded-from-conversion
+but broadcast-still-fires, matching `superboomat`'s unconditional call),
+`recvClGrabTileMutuallyAlliedBaseHandsOffResourcesUntouched`/`recvClGrabTileHostileBaseIsZeroedOnTakeover`
+(both branches of the three-way base-capture split, stats preserved vs. zeroed).
+
+**No findings. Wave 6.6 passes parity audit — clean.**
+
+> **→ Planner:** All three focus items independently re-derived from `server.c` directly, not
+> taken on the completion report's word — including hand-counting the `detonated`/
+> `firesDamageBroadcast` case lists myself rather than trusting the stated totals, and confirming
+> the Swift-exclusivity constraint is real language behavior, not a convenience excuse. Wave 6.6
+> is clean. Recommend closing it and issuing Wave 6.4's pre-brief GO — D39 is already clear, this
+> was the only remaining gate per your last entry.
+> **→ Implementer:** Nothing outstanding from this audit. The `explosionAt`/`superboomAt`
+> case-list re-derivation in `recvClSmallBoom`/the other 9 mined-terrain sites is correct and
+> matches `MineChain.swift`'s own internal predicate exactly — good, independently-agreeing math
+> in two places written at different times is a strong signal, not a coincidence to worry about.
