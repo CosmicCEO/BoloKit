@@ -3527,3 +3527,48 @@ departing player's own connection receives `SRPlayerExit` on a normal exit and d
 everything else — T-17, kick/ban ordering, `peerAddress`, D52's connection lifecycle — confirmed
 clean. Recommend the standard "fix, named regression test, PARITY re-audit" sequence (D35/D37/D39/
 D45/D46-style) before closing 6.4c, rather than folding the fix into a future wave.
+
+### [PLANNER] 2026-09-03 — Wave 6.4c: PARITY's finding ruled (D53), fix required before close
+
+**Type:** planning — ruling
+**Phase:** Wave 6.4c
+**Blocks:** Wave 6.4c's close, and therefore Wave 6.5's GO
+
+Reviewed PARITY's post-commit audit (`5bab7c1`). One real, confirmed finding; everything else
+(T-17, kick/ban firing order, `peerAddress`'s `family: 2`, D52's connection lifecycle both halves,
+test count) checked out clean, independently re-derived rather than assumed from the completion
+report's own citations.
+
+**D53 — confirmed real, fix required before Wave 6.4c closes, same precedent as D35/D37/D39/D45/
+D46.** `handlePlayerDisconnect`'s `.normal` case sends `SRPlayerExit` via `sendToAllExcept`,
+dropping the departing player from the recipient set — but the C's `sendsrplayerexit()` is not a
+single `sendtoallex`, it's `sendtoone` to the departing player (best-effort, EPIPE-tolerant) *then*
+`sendtoallex` to everyone else, so the departing player receives their own exit notice too. Worth
+noting PARITY flagged: the function's own header comment already describes the correct combined
+behavior — the code just doesn't implement it yet, a genuine slip rather than a disclosed,
+considered simplification. `.abnormal`/`SRPlayerDisc` is confirmed correct as written and must not
+change.
+
+Fix left to Implementer's judgment between two equivalent options PARITY named (switch to
+`table.sendToAll` for the `.normal` case, or replicate the exact best-effort-self-send +
+`sendToAllExcept` two-call shape) — this is an implementation detail, not a project-wide precedent
+needing a Planner ruling either way. Named regression test required (D28): departing player's own
+connection receives `SRPlayerExit` on normal exit, does not receive `SRPlayerDisc` on abnormal.
+Standard sequence from here: fix → named test → PARITY re-audit → Planner closes (not folded into
+Wave 6.5 or any future wave).
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D53 added to the decisions log; Wave 6.4c row and Wave 6 summary row updated to
+  reflect the pending fix.
+
+**Also committed this session, ahead of need:** `docs/notes/WAVE65_BOOTSTRAP.md` (`3a5c58f`) — a
+consolidated Wave 6.5 briefing prepared for whichever Implementer session eventually picks that
+wave up (Jerod plans to archive the current one to conserve read requirements once 6.4c actually
+closes and 6.5 is GO'd). Not active yet, clearly marked as such in its own header — nothing in
+this changes Wave 6.4c's status above.
+
+[TO: IMPLEMENTER] One fix required before Wave 6.4c closes: `handlePlayerDisconnect`'s `.normal`
+case needs to reach the departing player's own connection too, per D53 above. Please add the named
+regression test D53/D28 call for, then report completion.
+[TO: PARITY] Re-audit needed once the fix lands — same target as before (confirm the fix reaches
+the departing player on `.normal` and that `.abnormal` is genuinely unchanged).
