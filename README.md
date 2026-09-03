@@ -5,9 +5,8 @@ Cheshire's classic multiplayer tank game *Bolo*. This project is designed as an 
 
 This repository exists to learn modern Xcode, Swift, on-device AI (FoundationModels), and multiplayer networking, and to end up with a Bolo engine you can play natively on modern macOS (macOS 26+ / Darwin 27+).
 
-Bolo is not otherwise unmaintained — [WinBolo 2](https://store.steampowered.com/app/4672140/WinBolo/)
-shipped in 2026 with native Mac support. This project is a personal learning vehicle,
-not a competing distribution.
+Bolo is not otherwise unmaintained — [WinBolo 2](https://store.steampowered.com/app/4672140/WinBolo/) shipped in 2026 with native Mac support.
+This project is a personal learning vehicle, not a competing distribution.
 
 ## Status
 
