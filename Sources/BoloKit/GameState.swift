@@ -30,6 +30,27 @@ public struct GameState: Sendable {
     /// equals `kDominationGameType` in this port — no other top-level mode
     /// was ever finished in the reference source (see `DominationType`).
     public var dominationType: DominationType
+    /// `0` = running; positive = counting down by one tick per call to
+    /// `runTick`, emitting a pause-status event on each second boundary;
+    /// `-1` = paused indefinitely, no countdown. Mirrors `server.pause`
+    /// (Wave 6.1).
+    public var pause: Int
+    /// Game time limit in seconds; `0` = no limit. Mirrors `server.timelimit`.
+    /// `runTick` derives every timing decision from `ticks` vs. this value
+    /// directly — there is no separate "reached" flag, unlike the real
+    /// distributed C's `client.timelimitreached` (see `RunTick.swift`'s
+    /// header for why that's a legitimate unification, not an omission).
+    public var timeLimit: Int
+    /// Seconds all bases must be held (by one mutually-allied owner) to win
+    /// a domination game. Mirrors `server.game.domination.basecontrol`. `0`
+    /// with any bases configured means an instant win the moment they're
+    /// all held — matches the C literally, not a guarded default.
+    public var baseControlThreshold: Int
+    /// Running tick count of consecutive ticks every base has been held by
+    /// one mutually-allied owner. Mirrors `server.basecontrol` — a
+    /// different variable from `baseControlThreshold` despite the similar
+    /// C name (`server.basecontrol` vs. `server.game.domination.basecontrol`).
+    public var baseControlCounter: Int
 
     public init(
         terrain: TerrainGrid = .mapDefault(),
@@ -44,7 +65,11 @@ public struct GameState: Sendable {
         explosions: [Explosion] = [],
         chains: [[Pointi]] = Array(repeating: [], count: chainTicks + 1),
         floods: [[Pointi]] = Array(repeating: [], count: floodTicks + 1),
-        dominationType: DominationType = .open
+        dominationType: DominationType = .open,
+        pause: Int = 0,
+        timeLimit: Int = 0,
+        baseControlThreshold: Int = 0,
+        baseControlCounter: Int = 0
     ) {
         self.terrain = terrain
         self.pills = pills
@@ -59,5 +84,9 @@ public struct GameState: Sendable {
         self.chains = chains
         self.floods = floods
         self.dominationType = dominationType
+        self.pause = pause
+        self.timeLimit = timeLimit
+        self.baseControlThreshold = baseControlThreshold
+        self.baseControlCounter = baseControlCounter
     }
 }
