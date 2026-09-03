@@ -1120,3 +1120,103 @@ asymmetry (two named tests already exist — verify against `server.c:1140-1176`
 disconnect-ordering refinement (`server.c:1188-1246`).
 [TO: IMPLEMENTER] Proceed to Wave 6.2's coding GO once PARITY passes 6.1 — no need to wait on
 Wave 5.9, which is independent and unscheduled for now.
+
+### [PARITY] 2026-09-03 — Wave 6.1 audit: 2 findings (1 real gap, 1 undisclosed simplification)
+
+**Type:** audit
+**Phase:** Wave 6.1
+**Blocks:** recommend PLANNER hold 6.1's close-out for a ruling on Finding 1 before GO'ing 6.2
+
+Independent post-commit audit of `d0a9834` (tick orchestrator) + `b028bf8` (completion report),
+per `docs/PARITY.md` and PLANNER's specific ask to re-derive the basecontrol asymmetry and the
+disconnect-ordering refinement rather than trust the completion report.
+
+**Re-derived and confirmed correct, hand-traced against `server.c`/`client.c` directly:**
+- Pause gate (`RunTick.swift` step 1) matches `server.c:1088-1099` exactly — full early return
+  while paused, decrement-then-modulo-check order preserved, `onPause` argument
+  (`pause/TICKSPERSEC`) matches `sendsrpause`'s.
+- Time-limit warning chain (step 2) matches `server.c:1102-1135` field-for-field: same eight
+  offsets checked in the same order, same "reached" vs. "exceeded" early-return split (reached
+  does its own `ticks+=1` then returns; exceeded returns without incrementing).
+- Basecontrol asymmetry (step 3), the specific item flagged for re-derivation: confirmed against
+  `server.c:1140-1176` directly. The reset-to-0 only happens in the alliance-loop's failure branch
+  (`else { server.basecontrol = 0; }`); when base 0 itself isn't held (or `nbases == 0`), the
+  outer `if` is simply false and the counter is untouched by construction — `RunTick.swift`'s
+  structure (outer `if` gating an inner `allAllied` bool that only resets on failure) reproduces
+  this exactly, including the `nbases == 1` edge case (C's `for` loop never executes, `i` stays at
+  its initial value `1 == nbases`, condition trivially true — Swift's `1..<1` empty range leaves
+  `allAllied` at its initial `true` the same way). Both named tests
+  (`runTickBaseControlUntouchedWhenBaseZeroNotHeld` / `...ResetWhenOtherBaseNotAllied`) exercise
+  exactly this asymmetry and match my hand-derived expectations.
+- The domination-only gating: confirmed the port-wide "gametype is always domination" simplification
+  is real, not assumed — `client.c:707-723` hits `assert(0)` in the join-preamble parse for any
+  non-domination `bolopreamble.gametype`, so a session that successfully joins is domination by
+  construction. `RunTick.swift`'s basecontrol block correctly omits an explicit gametype switch on
+  this basis (minor citation nit: `GameObjects.swift`'s existing comment attributes the assert to
+  `spawn()`; the actual site is the join-preamble parse at `client.c:717-723` — cosmetic, inherited
+  from Wave 5.x, not this commit, not worth a fix on its own).
+- Disconnect-ordering refinement: confirmed against `server.c:1188-1246` directly. `nplayers` in C
+  is computed in the same loop that disconnects stale players, before `coolPills`/`replenishBases`/
+  `growTrees` consume it (`server.c:1206-1246`) — `RunTick.swift` flips `connected = false` for
+  disconnected players before calling those three (which independently recompute their own
+  `nplayers` as `state.players.filter { $0.connected }.count`), landing on the same count for the
+  same tick. `removeplayer()`'s pure core (`server.c:584-609`: pill-mask-then-`droppills`, using
+  the player's own tank position) matches the ported pill-drop step field-for-field; `closesock`
+  (`io.c:264-279`) setting `*sock = -1` confirms `connected == (cntlsock != -1)` is the right
+  representation choice, not a new assumption.
+
+**Finding 1 (real, actionable) — `pauseonplayerexit` side effect missing from the lagged-disconnect
+path.** `server.c:1192-1197`, inside the exact function/line-range (`server.c:1083-1257`) this
+wave claims to port, sets `server.pause = -1` (and would broadcast `sendsrpause(255)`) when a
+lagged player is disconnected **and** the server was configured with `pauseonplayerexit`. This is
+pure `GameState` mutation with no transport dependency — it does not fit the stated deferral
+rationale ("`removeplayer()`'s actual work... is 6.3/6.4 territory"), since it isn't
+`removeplayer()`'s code at all; it's `runserver()`'s own code sitting directly after the
+`removeplayer()` call at the same nesting level as the disconnect loop. `GameState` has no
+`pauseOnPlayerExit` field — notable because this commit's own message frames `pause`/`timeLimit`/
+`baseControlThreshold`/`baseControlCounter` as "session state that runclient()/runserver() need
+and nothing in GameState modeled yet," which `pauseonplayerexit` equally is, sitting right next to
+`pause` in the same struct in `server.h`. Unlike the mine-cascade gap (prominently flagged, routed
+to a new Wave 5.9), this one has no mention anywhere in the pre-brief or completion report. No test
+exercises it, consistent with the field not existing. Recommend either wiring a
+`pauseOnPlayerExit: Bool` field + the mutation now (small, matches this wave's existing pattern),
+or explicitly flagging it as a deferred gap the way Wave 5.9 was — but not shipping it silently
+uncounted, since a live server configured with this option would see the game continue past a lag
+disconnect that the C oracle would have frozen indefinitely.
+
+**Finding 2 (documentation gap, likely-correct but undisclosed) — the `seq != 0` half of
+`runclient()`'s move-tank gate has no analog, and isn't mentioned.** `client.c:451`:
+`if (client.players[i].connected && client.players[i].seq != 0)` gates `tankmovelogic(i)` in the
+real move-tanks loop. `TankTick.swift`'s `tankMoveTick` (Wave 5.2a, unchanged by this commit)
+already guards on `connected` (line 93); `RunTick.swift` step 7 calls it unconditionally for every
+player index with no `seq`-equivalent gate. Given `seq` was deliberately kept out of `BoloKit`
+(Wave 6.0's design call), this can't be replicated verbatim — and it's likely genuinely
+inapplicable in a single-authoritative-state model (`seq != 0` in the real distributed client means
+"we've never received a real update about player i yet," a network-bootstrapping concern that
+doesn't exist when `GameState` *is* the source of truth rather than a mirror waiting on broadcasts,
+unlike `connected`, which already implies real state exists). This is the same shape of
+simplification as the `timelimitreached`/`basecontrolreached` flag unification `RunTick.swift`'s
+own header explicitly discloses — but this one isn't disclosed anywhere. Recommend Implementer add
+one line to the file header (or step 7's comment) stating the same reasoning explicitly, so a
+future reader doesn't mistake this for an untraced gap the way I nearly did.
+
+**Everything else checked line-for-line against `client.c`/`server.c` and matches:** the lagged-
+status callback's exact-equality double-threshold (`client.c:437-447`), `runclient()`'s
+`pause || timelimitreached || basecontrolreached` top gate being subsumed by `runTick`'s
+server-role-first sequencing (already disclosed in the file header, re-verified rather than
+trusted), and `explosionTick`'s `-1` sentinel + `0..<MAXPLAYERS` coverage (pre-existing Wave 5.5b
+code, unchanged by this commit — confirmed via `git show --stat d0a9834`, not re-audited).
+
+**Standing limitation, same as every PARITY entry:** no Swift toolchain in this environment — this
+is a hand-trace against the C source, not a compile-and-run. Implementer's green build remains the
+authority that the code executes; this audit is the authority that it's correct against the oracle.
+
+**Test count verified independently:** `grep -rc "@Test func\|func test" Tests/` gives 361;
+`RunTickTests.swift` has 16 `@Test func` — matches the commit message exactly.
+
+> **→ Planner:** Two findings above, ranked by severity. Finding 1 is a real, evidenced gap in a
+> function this wave claims to fully port — recommend a ruling (add the field now vs. open a
+> tracked gap like Wave 5.9) before closing 6.1 out as clean. Finding 2 is lower stakes (likely
+> correct, just undocumented) — a one-line disclosure closes it, no design change needed.
+> **→ Implementer:** See Finding 1/2 above for the specific gaps; both are narrow, scoped fixes,
+> not a rework of `RunTick.swift`'s structure.
