@@ -230,3 +230,110 @@ No code written yet. Test baseline unchanged pending GO.
 the one item I'd most want confirmed before I start — everything else is mechanical once that's
 settled. Branch: `wave-5.9-mine-cascade` (already checked out in this worktree per the bootstrap's
 setup step).
+
+### [WAVE 5.9 AGENT] 2026-09-03 — coding complete: mine-cascade injection points wired
+
+**Type:** coding
+**Phase:** Wave 5.9
+**Blocks:** nothing — ready for PARITY audit once PLANNER activates it
+
+Coded directly to Jerod's "Implement 5.9" go-ahead (no separate written PLANNER ruling landed in
+this file between the pre-brief and coding — flagging that explicitly in case PLANNER wants to
+rule on §9's three open questions after the fact rather than before). Implemented exactly the
+plan in §§4–7 above; all three findings held up once real terrain/tests exercised them.
+
+**Commit `d3d654e`.** Per-site summary:
+
+- **`grabTile`/`smallboom`/`superboom`/`enterTile`** (`TankLocalTick.swift`): added the missing
+  closure to each of `grabTile` (+`onSuperboomTerrain`, +`onDropPills`), `smallboom`
+  (+`onSuperboomTerrain`), `superboom` (+`onMineExplosion`); `enterTile`'s 5 `grabTile` call sites
+  and 2 `superboom` call sites now thread all three through. `grabTile`'s mined-terrain case keeps
+  its original `onMineExplosion(point)` notify call *and* adds the direct `explosionAt` call
+  (matching the pattern already used for `smallboom`/`superboom`'s own notify hooks — see the next
+  bullet for why I initially got this wrong for `grabTile` specifically).
+- **The §3 ordering fix, confirmed necessary in practice, not just in theory.** Implemented exactly
+  as planned: `smallboom`/`superboom` capture the detonation point/origin in a local `Optional`
+  during their first `if` block, then call `explosionAt`/`superboomAt` only after the second `if`
+  block sets `dead = true`. First test run (447 baseline + new tests, before any fixture fixes)
+  turned up two real failures that independently validate this design, not scope surprises:
+  1. `tankLocalTickStartsRefuelingOnEnteringBase` started failing with the local tank dying
+     (`deaths: 1`) on what should have been a harmless base-refuel setup. Root cause (confirmed via
+     a temporary debug test, not guessed): the test's base sits at `(5,5)`, outside the mine zone
+     `[10,245]`, which `TerrainGrid.mapDefault()` fills with `.minedSea` in its border ring — a
+     pre-existing test-fixture artifact that was harmless while `grabTile`'s mined-terrain branch
+     was a no-op, and is now correctly exposed as real self-detonation once wired. Fixed the test
+     fixture (`state.terrain[5, 5] = .grass0`), not the production code — a base was never
+     supposed to sit on permanently-mined terrain in the first place.
+  2. `enterTileMinedLandTriggersMineExplosionCallback` broke because my first draft of `grabTile`
+     *replaced* the `onMineExplosion(point)` notify call with the `explosionAt` call instead of
+     keeping both — inconsistent with how I'd already written `smallboom`/`superboom`. Fixed by
+     restoring the original notify call alongside the new engine call, matching the established
+     pattern.
+  3. Separately, the *existing* `smallboomFiresMineExplosionAtOwnTile`/
+     `superboomSpawnsNineExplosionsAndKillsDeaths`/`superboomShiftsDownOnLowFraction` tests (all
+     positioned at `(5.5, 5.5)`/`(5.6, 5.6)`/`(5.2, 5.2)`, i.e. the *same* mined-sea border-ring
+     square) continued passing throughout — which is itself evidence the ordering fix works:
+     without it, these would have shown the identical double-death/double-splash-damage symptom as
+     finding 1.
+- **`tankMoveTick`'s dead-tumble path** (`TankTick.swift`): added the three new closure params;
+  the `explodeTicks` boundary now calls real `superboom()`/`smallboom()` alongside the existing
+  `onSuperboom()`/`onSmallboom()` notify hooks (kept, unchanged, so `RunTick.swift`'s existing call
+  keeps compiling — confirmed no edit to that file was needed, exactly as §5 predicted); the
+  periodic corpse-explosion sub-branch now also calls `killPointBuilder`.
+- **`MineChain.swift`'s `applySplashDamage`**: both calls now pass all three closures, closing its
+  own recursive-depth gap (§6). Updated the stale doc comment on
+  `explosionAtSplashLethalWithMinesEscalatesToSuperboom` (`MineChainTests.swift`) that had said the
+  2×2 terrain mutation "defaults to a no-op here" — no longer true, and added assertions confirming
+  all 4 cells actually convert to `.crater` now.
+
+**A crash I did not anticipate in the pre-brief, root-caused and fixed — not a design flaw, a test
+fixture gap.** First full-suite run after adding the new tests showed 32 tests failing with
+"Crash," spread across unrelated files — the same collateral-damage shape Wave 6.2's own
+completion report already flagged (a crash in one parallel-executed test takes the whole worker
+process down, misattributing the failure to whatever else was running). Isolated by running new
+tests individually (`RunSomeTests`) until finding the one that crashes even alone:
+`tankMoveTickDeadTumbleExplosionKillsPointBuilder`. Root cause: `killBuilder` (already-shipped,
+untouched by me) picks `arc4random_uniform(UInt32(state.starts.count))` and indexes
+`state.starts[start]` — my test's `makeAliveState` helper never populates `state.starts`, so this
+is an out-of-bounds index into an empty array. Fixed by adding a single `Start` to the test fixture
+(matching the existing `killBuilderRespawnsAsParachuteAtAStart` test's own pattern) — not a
+production bug, a test-authoring gap on my part. Full suite re-run clean afterward: **453/453
+passing.**
+
+**Also worth noting, not a finding:** confirmed empirically (not just by inspection) that neither
+`RunTick.swift` nor `RecvSR.swift` needed touching — the full suite, including every existing
+`RecvSR.swift`-driven test (e.g. `recvSrSuperBoomDamagesLocalTankWithinRadiusAndEscalates`) and
+every `RunTick.swift`-driven test, passed unmodified against the new `smallboom`/`superboom`/
+`grabTile` signatures, exactly as §5/§7 predicted from reading the call sites rather than assuming.
+
+**Test baseline: 447 → 453 (+6), all named regression tests listed in commit `d3d654e`'s message.**
+No test coverage removed (D28). No `Double`/`CGFloat` introduced (D18) — spot-checked, all new
+code is `Float`/`Int`/`UInt8` matching the surrounding files. `-ffp-contract=off` (D26) untouched,
+no `Package.swift` changes. No `import Foundation` added.
+
+**Not resolved by me, restated from §9 for whoever reviews this:**
+1. The §3 ordering-fix design call — implemented as proposed, holds up under the empirical
+   evidence in this report, but this agent's own confirmation isn't a substitute for PLANNER/PARITY
+   sign-off the way every other wave's non-trivial design call gets one.
+2. The periodic-corpse-explosion `killPointBuilder` gap (§4, third finding) — implemented as
+   in-scope; flagging again that it wasn't in the original wave-scope text PLANNER/Jerod wrote, in
+   case that matters for how this gets recorded in `docs/PLAN.md`.
+3. The two off-limits-file follow-ups (§5, §7) remain open — `RunTick.swift`'s `tankMoveTick` call
+   needs 3 more forwarded arguments (currently harmless — dead-tumble pill-scatter is a no-op, same
+   as before this wave) and `RecvSR.swift`'s 5 `smallboom`/`superboom` calls each need their one
+   missing closure (currently harmless — only a depth-2 recursive-cascade edge case). Neither
+   blocks this wave's correctness; both are one-line-per-site once someone with access to those
+   files picks them up.
+
+[TO: PLANNER] Ready for your review and, once you're satisfied, a `[TO: PARITY]` activation.
+Priority for that audit, in order: (1) the §3 ordering fix — re-derive
+`recvsrsmallboom`/`recvsrsuperboom`'s `!dead` timing argument independently, since it's the one
+piece of reasoning in this wave that isn't a direct line-for-line port; (2) the causer-attribution
+claim (`state.localPlayer` uniformly) against `recvclsmallboom`/`recvclsuperboom`/`recvclgrabtile`
+directly; (3) the third finding (`killPointBuilder` in the periodic corpse-explosion branch) against
+`client.c:3993-4006` directly, since it's the one piece of scope that got expanded past the
+original wave description. Branch `wave-5.9-mine-cascade`, commits `d9116a9` (pre-brief) and
+`d3d654e` (coding). Test baseline 447 → 453 (+6), full suite green.
+[TO: Jerod] Wave 5.9 coding is done and committed on `wave-5.9-mine-cascade`. Stopping here per the
+bootstrap's instructions — not merging to `main`, not declaring the wave closed. Please relay to
+PLANNER for review and, if it looks good, the PARITY activation.
