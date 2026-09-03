@@ -65,6 +65,7 @@ public struct SRPlayerJoin: Sendable, Hashable {
     public init(player: UInt8, name: String, host: String) {
         self.player = player; self.name = name; self.host = host
     }
+    public static let wireSize = 50
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.playerJoin.rawValue)
@@ -85,6 +86,7 @@ public struct SRPlayerRejoin: Sendable, Hashable {
     public var player: UInt8
     public var host: String
     public init(player: UInt8, host: String) { self.player = player; self.host = host }
+    public static let wireSize = 34
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.playerRejoin.rawValue)
@@ -103,6 +105,7 @@ public struct SRPlayerRejoin: Sendable, Hashable {
 public struct SRPlayerExit: Sendable, Hashable {
     public var player: UInt8
     public init(player: UInt8) { self.player = player }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.playerExit.rawValue); w.putU8(player); return w.bytes
     }
@@ -117,6 +120,7 @@ public struct SRPlayerExit: Sendable, Hashable {
 public struct SRPlayerDisc: Sendable, Hashable {
     public var player: UInt8
     public init(player: UInt8) { self.player = player }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.playerDisc.rawValue); w.putU8(player); return w.bytes
     }
@@ -131,6 +135,7 @@ public struct SRPlayerDisc: Sendable, Hashable {
 public struct SRPlayerKick: Sendable, Hashable {
     public var player: UInt8
     public init(player: UInt8) { self.player = player }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.playerKick.rawValue); w.putU8(player); return w.bytes
     }
@@ -145,6 +150,7 @@ public struct SRPlayerKick: Sendable, Hashable {
 public struct SRPlayerBan: Sendable, Hashable {
     public var player: UInt8
     public init(player: UInt8) { self.player = player }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.playerBan.rawValue); w.putU8(player); return w.bytes
     }
@@ -158,6 +164,7 @@ public struct SRPlayerBan: Sendable, Hashable {
 
 public struct SRHangUp: Sendable, Hashable {
     public init() {}
+    public static let wireSize = 1
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.hangUp.rawValue); return w.bytes
     }
@@ -173,6 +180,11 @@ public struct SRSendMesg: Sendable, Hashable {
     public var to: UInt8
     public var text: String
     public init(player: UInt8, to: UInt8, text: String) { self.player = player; self.to = to; self.text = text }
+    /// The fixed portion only (opcode+player+to) -- `text` is a
+    /// NUL-terminated tail with no length prefix, so it isn't part of a
+    /// fixed wire size. A TCP reader must read these 3 bytes first, then
+    /// keep reading one byte at a time until (and including) the NUL.
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.sendMesg.rawValue)
@@ -197,6 +209,7 @@ public struct SRDamage: Sendable, Hashable {
     public init(player: UInt8, x: UInt8, y: UInt8, terrain: UInt8) {
         self.player = player; self.x = x; self.y = y; self.terrain = terrain
     }
+    public static let wireSize = 5
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.damage.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); w.putU8(terrain)
@@ -214,6 +227,7 @@ public struct SRGrabTrees: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.grabTrees.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -230,6 +244,7 @@ public struct SRBuild: Sendable, Hashable {
     public var y: UInt8
     public var terrain: UInt8
     public init(x: UInt8, y: UInt8, terrain: UInt8) { self.x = x; self.y = y; self.terrain = terrain }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.build.rawValue); w.putU8(x); w.putU8(y); w.putU8(terrain); return w.bytes
     }
@@ -245,6 +260,7 @@ public struct SRGrow: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.grow.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -260,6 +276,7 @@ public struct SRFlood: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.flood.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -276,6 +293,7 @@ public struct SRPlaceMine: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(player: UInt8, x: UInt8, y: UInt8) { self.player = player; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.placeMine.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -292,6 +310,7 @@ public struct SRDropMine: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(player: UInt8, x: UInt8, y: UInt8) { self.player = player; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.dropMine.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -307,6 +326,7 @@ public struct SRDropBoat: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.dropBoat.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -322,6 +342,7 @@ public struct SRRepairPill: Sendable, Hashable {
     public var pill: UInt8
     public var armour: UInt8
     public init(pill: UInt8, armour: UInt8) { self.pill = pill; self.armour = armour }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.repairPill.rawValue); w.putU8(pill); w.putU8(armour); return w.bytes
     }
@@ -336,6 +357,7 @@ public struct SRRepairPill: Sendable, Hashable {
 public struct SRCoolPill: Sendable, Hashable {
     public var pill: UInt8
     public init(pill: UInt8) { self.pill = pill }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.coolPill.rawValue); w.putU8(pill); return w.bytes
     }
@@ -351,6 +373,7 @@ public struct SRCapturePill: Sendable, Hashable {
     public var pill: UInt8
     public var owner: UInt8
     public init(pill: UInt8, owner: UInt8) { self.pill = pill; self.owner = owner }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.capturePill.rawValue); w.putU8(pill); w.putU8(owner); return w.bytes
     }
@@ -370,6 +393,7 @@ public struct SRBuildPill: Sendable, Hashable {
     public init(pill: UInt8, x: UInt8, y: UInt8, armour: UInt8) {
         self.pill = pill; self.x = x; self.y = y; self.armour = armour
     }
+    public static let wireSize = 5
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.buildPill.rawValue); w.putU8(pill); w.putU8(x); w.putU8(y); w.putU8(armour)
@@ -388,6 +412,7 @@ public struct SRDropPill: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(pill: UInt8, x: UInt8, y: UInt8) { self.pill = pill; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.dropPill.rawValue); w.putU8(pill); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -402,6 +427,7 @@ public struct SRDropPill: Sendable, Hashable {
 public struct SRReplenishBase: Sendable, Hashable {
     public var base: UInt8
     public init(base: UInt8) { self.base = base }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.replenishBase.rawValue); w.putU8(base); return w.bytes
     }
@@ -417,6 +443,7 @@ public struct SRCaptureBase: Sendable, Hashable {
     public var base: UInt8
     public var owner: UInt8
     public init(base: UInt8, owner: UInt8) { self.base = base; self.owner = owner }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.captureBase.rawValue); w.putU8(base); w.putU8(owner); return w.bytes
     }
@@ -436,6 +463,7 @@ public struct SRRefuel: Sendable, Hashable {
     public init(base: UInt8, armour: UInt8, shells: UInt8, mines: UInt8) {
         self.base = base; self.armour = armour; self.shells = shells; self.mines = mines
     }
+    public static let wireSize = 5
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.refuel.rawValue); w.putU8(base); w.putU8(armour); w.putU8(shells); w.putU8(mines)
@@ -454,6 +482,7 @@ public struct SRGrabBoat: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(player: UInt8, x: UInt8, y: UInt8) { self.player = player; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.grabBoat.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -468,6 +497,7 @@ public struct SRGrabBoat: Sendable, Hashable {
 public struct SRMineAck: Sendable, Hashable {
     public var success: UInt8
     public init(success: UInt8) { self.success = success }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.mineAck.rawValue); w.putU8(success); return w.bytes
     }
@@ -484,6 +514,7 @@ public struct SRBuilderAck: Sendable, Hashable {
     public var trees: UInt8
     public var pill: UInt8
     public init(mines: UInt8, trees: UInt8, pill: UInt8) { self.mines = mines; self.trees = trees; self.pill = pill }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.builderAck.rawValue); w.putU8(mines); w.putU8(trees); w.putU8(pill)
@@ -502,6 +533,7 @@ public struct SRSmallBoom: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(player: UInt8, x: UInt8, y: UInt8) { self.player = player; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.smallBoom.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -518,6 +550,7 @@ public struct SRSuperBoom: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(player: UInt8, x: UInt8, y: UInt8) { self.player = player; self.x = x; self.y = y }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.superBoom.rawValue); w.putU8(player); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -533,6 +566,7 @@ public struct SRHitTank: Sendable, Hashable {
     public var player: UInt8
     public var dir: Float
     public init(player: UInt8, dir: Float) { self.player = player; self.dir = dir }
+    public static let wireSize = 6
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ServerOpcode.hitTank.rawValue); w.putU8(player); w.putRawFloat(dir)
@@ -550,6 +584,7 @@ public struct SRSetAlliance: Sendable, Hashable {
     public var player: UInt8
     public var alliance: UInt16
     public init(player: UInt8, alliance: UInt16) { self.player = player; self.alliance = alliance }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.setAlliance.rawValue); w.putU8(player); w.putU16(alliance); return w.bytes
     }
@@ -564,6 +599,7 @@ public struct SRSetAlliance: Sendable, Hashable {
 public struct SRTimeLimit: Sendable, Hashable {
     public var timeRemaining: UInt16
     public init(timeRemaining: UInt16) { self.timeRemaining = timeRemaining }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.timeLimit.rawValue); w.putU16(timeRemaining); return w.bytes
     }
@@ -578,6 +614,7 @@ public struct SRTimeLimit: Sendable, Hashable {
 public struct SRBaseControl: Sendable, Hashable {
     public var timeLeft: UInt16
     public init(timeLeft: UInt16) { self.timeLeft = timeLeft }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.baseControl.rawValue); w.putU16(timeLeft); return w.bytes
     }
@@ -592,6 +629,7 @@ public struct SRBaseControl: Sendable, Hashable {
 public struct SRPause: Sendable, Hashable {
     public var pause: UInt8
     public init(pause: UInt8) { self.pause = pause }
+    public static let wireSize = 2
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ServerOpcode.pause.rawValue); w.putU8(pause); return w.bytes
     }

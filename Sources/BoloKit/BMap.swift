@@ -424,3 +424,100 @@ public func writeRun(_ run: BMapRun, data: [UInt8], into grid: inout TerrainGrid
     guard 4 + (offset + 1) / 2 == datalen else { return false }
     return true
 }
+
+// MARK: - Full-file decode (Wave 6.4a extension, D45)
+//
+// Ported from `clientloadmap()` (`Reference/c/bmap_client.c:19-100`) — the
+// full BMAP-format orchestrator this port never had, discovered mid-Wave
+// 6.4a while tracing what the missing client-side preamble-apply function
+// actually needs to populate `state.terrain`/`pills`/`bases`/`starts`.
+// Only the DECODE half; the encode half (`serversavemap()`,
+// `bmap_server.c`) is Wave 6.4b's concern (it needs real map bytes to send
+// from the server's own accept loop).
+//
+// Everything past the pure state-loading in the real function —
+// `client.seentiles`/`client.images`/`mapimage()` — is fog-of-war display
+// state, never modeled anywhere in this port (the same established
+// precedent `TankLocalTick.swift`/`BuilderTick.swift`/`RecvSR.swift`/
+// `DgramClientApply.swift` all independently document for
+// `increasevis`/`decreasevis`), so it's not ported here either.
+
+/// Decodes a full BMAP-format byte blob into `state.terrain`/`pills`/
+/// `bases`/`starts`, wiping the terrain to `.mapDefault()` first (matching
+/// the C's own "wipe the map clean" step). Returns `false` on any
+/// malformed input (bad ident/version, over-limit counts, truncated
+/// buffer, a corrupt run) — the C's own `LOGFAIL(ECORFILE)` paths, ported
+/// as a `Bool` return rather than a thrown error to match this port's
+/// established convention for the majority of its parse-and-validate
+/// functions (`CLUpdate.decode` etc.).
+public func decodeBMap(_ bytes: [UInt8], into state: inout GameState) -> Bool {
+    // BMAP_Preamble: ident[8] + version(1) + npills(1) + nbases(1) + nstarts(1) = 12 bytes.
+    let preambleSize = 12
+    guard bytes.count >= preambleSize else { return false }
+
+    let ident = Array(bytes[0..<8])
+    guard ident == Array("BMAPBOLO".utf8) else { return false }
+    let version = bytes[8]
+    guard version == 1 else { return false }  // CURRENT_MAP_VERSION (bolo.h:26)
+
+    let npills = Int(bytes[9])
+    let nbases = Int(bytes[10])
+    let nstarts = Int(bytes[11])
+    guard npills <= 16, nbases <= 16, nstarts <= 16 else { return false }  // MAXPILLS/MAXBASES/MAX_STARTS
+
+    // BMAP_PillInfo: x,y,owner,armour,speed (5 bytes). BMAP_BaseInfo:
+    // x,y,owner,armour,shells,mines (6 bytes). BMAP_StartInfo: x,y,dir (3 bytes).
+    let pillsSize = npills * 5
+    let basesSize = nbases * 6
+    let startsSize = nstarts * 3
+    let runDataStart = preambleSize + pillsSize + basesSize + startsSize
+    guard bytes.count >= runDataStart else { return false }
+
+    state.terrain = .mapDefault()
+
+    var offset = preambleSize
+    var pills: [Pill] = []
+    for _ in 0..<npills {
+        pills.append(Pill(x: bytes[offset], y: bytes[offset + 1], armour: bytes[offset + 3], owner: bytes[offset + 2], speed: bytes[offset + 4], counter: 0))
+        offset += 5
+    }
+    state.pills = pills
+
+    var bases: [Base] = []
+    for _ in 0..<nbases {
+        bases.append(Base(x: bytes[offset], y: bytes[offset + 1], armour: bytes[offset + 3], owner: bytes[offset + 2], shells: bytes[offset + 4], mines: bytes[offset + 5]))
+        offset += 6
+    }
+    state.bases = bases
+
+    var starts: [Start] = []
+    for _ in 0..<nstarts {
+        starts.append(Start(x: bytes[offset], y: bytes[offset + 1], dir: bytes[offset + 2]))
+        offset += 3
+    }
+    state.starts = starts
+
+    // Run stream: repeated {BMapRun header (4 bytes) + (datalen-4) data
+    // bytes} until the sentinel {datalen:4, y:0xff, startx:0xff, endx:0xff}
+    // is reached exactly at the end of the run data.
+    let runDataLen = bytes.count - runDataStart
+    var runOffset = 0
+    while true {
+        guard runOffset + 4 <= runDataLen else { return false }
+        let base = runDataStart + runOffset
+        let run = BMapRun(datalen: bytes[base], y: bytes[base + 1], startx: bytes[base + 2], endx: bytes[base + 3])
+
+        if run.datalen == 4, run.y == 0xff, run.startx == 0xff, run.endx == 0xff {
+            guard runOffset + Int(run.datalen) == runDataLen else { return false }
+            break
+        }
+
+        guard runOffset + Int(run.datalen) <= runDataLen else { return false }
+        let dataBytes = Array(bytes[(base + 4)..<(base + Int(run.datalen))])
+        guard writeRun(run, data: dataBytes, into: &state.terrain) else { return false }
+
+        runOffset += Int(run.datalen)
+    }
+
+    return true
+}
