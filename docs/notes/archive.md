@@ -204,3 +204,167 @@ consistently through every fix/re-audit cycle in this span (D37, D38/D39) — la
 Jerod as the project's standing planning/execution loop, recorded in `docs/notes/AFTERACTION.md`.
 Full uncompressed entries (both pre-briefs, the D37 fix/re-audit cycle, the full PARITY audits)
 preserved in git history per D28.
+
+
+## Wave 6.6, D39 fix (2026-09-03)
+
+- **D39 fix** (`029c8fc`, re-audit `b1efc12`): split the unified `GameState.pause` field into
+  `serverPauseTicks` (mirrors `server.pause`, tick-domain, decremented by `runTick`) and
+  `clientPauseDisplaySeconds` (mirrors `client.pause`, wire-domain seconds, never decremented,
+  written only by `recvSrPause`) — closing the Wave 6.3-flagged hazard where unifying `client`/
+  `server` state onto one `GameState` had merged two variables written in different units by two
+  different waves. Real regression avoided, not just a rename: the `RunTick.swift` pause gate had
+  to gain an explicit `||` union of both fields, since the old unified field was accidentally
+  covering both `runserver()`'s tri-state early-return (`server.c:1088-1099`) and `runclient()`'s
+  truthy early-exit (`client.c:430`) at once. PARITY re-derived the gate against both C functions
+  independently and traced the exact clobber scenario D39 exists to prevent (a received `SRPause`
+  on a non-hosting client writing wire-seconds into a field the countdown logic would misread as
+  ticks). Tests 445→447 (+2). ✅
+- **Wave 6.6** (`ebb8fe4`, PARITY PASS at `f31413a`): 18 `recvcl*` server TCP-receive handlers (of
+  the ~19 unassigned by D38; `recvclsendmesg` correctly dropped as a stateless relay with no
+  `GameState` effect, matching Wave 6.2's precedent for `sendmesg`/`timelimit`/`basecontrol`). Four
+  of the nineteen turned out to be thin wrappers around already-shipped engine functions
+  (`recvcldamage`→`applyDamage`, `recvclsmallboom`/`recvclsuperboom`→`explosionAt`/`superboomAt`);
+  nine new sites wire `explosionAt`/`superboomAt` directly, independent of Wave 5.9's still-open
+  gap. **D40** ruled `recvclbuildroad`'s `clbuildroad->trees >= clbuildroad->trees` self-comparison
+  replicated bug-for-bug (deterministic, well-defined — not the `pills[-1]` class of UB
+  `applyDamage` correctly declined to replicate), including its second-order effect that the
+  leftover-trees ack can go negative, passed through un-truncated as Wave 6.4's concern. Caught and
+  disclosed mid-coding, not silently absorbed: `recvClTouch` actually calls `explosionAt` directly
+  (not `touchTile` as the pre-brief assumed, revising 9 trigger sites to 10), and
+  `explosionAt`/`superboomAt` have no broadcast-trigger callback of their own — worked around by
+  re-deriving the same `detonated` terrain-membership predicate at each of the 10 call sites rather
+  than reopening Wave 5.5a's already-shipped `MineChain.swift`, after confirming a closure-based
+  route through `applyDamage`'s existing callback isn't expressible under Swift's exclusivity rules
+  (SE-0176, two overlapping `inout` accesses to the same `state`). PARITY independently hand-counted
+  `explosionAt`'s 29-item `detonated` case list (28 main-switch terrains + `.minedSea`'s standalone
+  case) against `server.c:4120-4176`/`4192-4249` and confirmed it agrees exactly with
+  `MineChain.swift`'s own internal predicate — two independently-written copies matching, not
+  assumed. Also confirmed a genuine asymmetry: `explosionat()`'s broadcast is terrain-gated and
+  always `NEUTRAL`; `superboomat()`'s is unconditional with the real causer. Tests 447→487 (+40). ✅
+
+**Cross-cutting:** D28's coverage discipline held (447→487 across this span, all additions). The
+"complete the whole C function a wave already claims, don't leave a partial slice" precedent (first
+applied Wave 5.9/6.3/6.6) recurred again inside Wave 6.6 itself (`recvClTouch`'s correction). Full
+uncompressed entries (both pre-briefs, the D39 fix/re-audit cycle, the full Wave 6.6 PARITY audit)
+preserved in git history per D28.
+
+## Wave 6.4 (2026-09-03)
+
+Wave 6.4 is BoloKit's first genuinely non-porting wave — real `Network.framework` design, not
+transcription of pure C decision logic — and split repeatedly as real, separable scope kept
+surfacing under audit. Split first into **6.4a** (client transport) and **6.4b** (host transport)
+per **D43** (same precedent as D23's Wave 5.3 split: two architecturally distinct roles, too much
+bundled work for one coding pass), then **6.4c** was opened afterward per **D50** to close three
+disclosed gaps in 6.4b's own scope boundary. **D42** confirmed `Buf.swift`'s POSIX socket half
+(`sendbuf`/`recvbuf`/`cntlsend`/`cntlrecv`) stays unused per D31 — only its socket-agnostic
+byte-queue half (`initbuf`/`writebuf`/`readbuf`) is reused; all real I/O goes through
+`NWConnection`/`NWListener`. **D44** approved a named `maxDeadReckoningExtrapolationTicks =
+Int(ticksPerSec) * 3` bound on `dgramclient()`'s unbounded extrapolation loop, a Swift-side safety
+deviation (D36's `writeRun`-class), not a fidelity fix.
+
+- **Wave 6.4a** (`e4ca245`, extended `8296346`+`810d9b2`, PARITY PASS at `0e6d714`): client-side
+  transport — `applyRemotePlayerUpdate` (`dgramclient()`'s post-decode apply, `DgramClientApply.swift`)
+  and `joinClient` (the wire-protocol join handshake, `JoinClient.swift`, built on the modern
+  `withNetworkConnection` API). First wave with real system-design work: `explosionTick` (Wave 5.5b)
+  couldn't be reused inside the dead-reckoning loop without over-aging every other player's
+  explosion list, so the per-player drain was inlined instead. **PARITY's first audit
+  (`60d5059`) found the wave incomplete, not incorrect** — everything written matched the C, but
+  `joinclient()`'s back half (`client.c:690-750`, turning a received `BoloPreamble` into an
+  initialized `GameState`: player index, roster, pause/gametype, spawn) had no Swift home anywhere,
+  traced to the original pre-brief mis-citing server-side functions
+  (`evaluateJoinRequest`/`applyJoin`/`assembleBoloPreamble`) as covering a joining client's own
+  state init — a mix-up that slipped past both Planner's formal ruling and PARITY's own earlier
+  stand-in assessment. **D45** ruled this a real, in-scope extension of 6.4a (not new/deferred
+  scope), same precedent as completing whole C functions rather than partial slices. The extension
+  (`8296346`) delivered `applyBoloPreamble` (mirroring D39's pause-sentinel translation for the
+  client's own field, reusing Wave 5.6's `spawn()`), plus persistent `UDPSession`/`TCPSession`
+  receive loops, plus a third self-found gap: `clientloadmap()`/`serversavemap()` (full BMAP file
+  orchestration) had never been ported past the row-level primitives — shipped `decodeBMap`,
+  leaving `encodeBMap` to 6.4b. **PARITY's second audit (`515429f`) found one more real bug: the
+  extension never wrote `state.baseControlThreshold` from `preamble.baseControl`**
+  (`client.c:713`), silently breaking the domination base-control win-timer for any client that
+  joined this way — not caught by the extension's own tests, which had constructed the right
+  non-default preamble value and simply never asserted on it. **D46** ruled the same as D45: fix
+  now. Fixed at `810d9b2`, re-audited clean at `0e6d714`. Three rounds of real "actually finished"
+  scrutiny on one sub-wave. Tests 487→502→521 (+34 net). ✅
+- **Wave 6.4b** (`b26ee69`, PARITY PASS at `11d792c`): host-side transport — `HostListener`
+  (`NWListener` accept loop, `evaluateJoinRequest`→`applyJoin`→`assembleBoloPreamble`+`encodeBMap`),
+  `HostSession`/`HostSessionTable` (per-player TCP receive loop dispatching all 20 `CL*` opcodes to
+  Wave 6.6's `recvCl*` handlers; the `sendsr*` broadcast fan-out — `sendToAll`/`sendToAllExcept`/
+  `sendToMask` — mirroring `sendtoall`/`sendtoallex`/`sendtoone` per site), `DgramServerRelay.swift`
+  (`dgramserver()`'s pure decision core). Pre-brief's own D45-mandated check (does Wave 6.3 have the
+  mirror-image server-side gap?) came back clean — the C server's player struct is genuinely
+  thinner than the client's, no state-mutating function was missing. Four real gaps the original
+  `docs/PLAN.md` row didn't name were found and folded in: `encodeBMap` (G-1, promoted from an
+  existing test helper, not new logic), the `sendsr*` fan-out itself (G-2, ruled in-scope by
+  **D47** rather than split into a 6.4c — same D45 principle, "a host that can't broadcast is not a
+  working host"), `wireSize` on all 20 `CL*` structs (G-3, mirroring 6.4a's `SR*` precedent), and a
+  public `removePlayer` entry point (G-4). **D48** corrected D36's text: `dgramserver()`'s tracker
+  echo (verbatim byte reply, no zeroing) is a genuinely different mechanism from
+  `registerserver()`'s (explicit `bzero` + `player=255`), not the same one D36 originally described
+  — 6.4b owns the former, 6.5 the latter. **D49** ruled `joinplayerserver()`'s single-pending-joiner
+  serialization gets replicated via a real async mutex, not relaxed, per D41's standing "preserve
+  the invariant a C timing behavior protected" principle. Implementation found the pre-brief's own
+  per-connection-`Task` sketch was unsound under Swift's exclusivity law (`state: inout GameState`
+  can't be held by two concurrent Tasks regardless of a mutex on top) — fixed by draining accepted
+  connections through a single sequential `AsyncStream` consumer instead. Six already-shipped Wave
+  6.6 `recvCl*` callback signatures needed extending (`onShouldBroadcastBuild`/`Damage`/
+  `CapturePill`/`CaptureBase`/`BuildPill`/`RepairPill`) since the real `sendsr*` C functions each
+  read one more field off already-mutated state that a caller-side closure couldn't re-read under
+  the same exclusivity constraint — fixed by having each `recvCl*` read its own extra field
+  immediately post-mutation and pass it through. Three real gaps disclosed but deliberately left
+  unfixed as out of this wave's own scope, tracked for 6.4c: `dropPills` has no broadcast
+  (pre-existing Wave 5.5a gap, exposed not created), the live UDP listener driving
+  `DgramServerRelay.swift` was never wired, and `dgramaddr` was seeded as a zeroed placeholder
+  rather than the joining connection's real address. PARITY's audit independently confirmed all
+  three C citations for the six extended callbacks, the `CLSendMesg` masked-relay special case
+  (`sendsrsendmesg()`'s own inlined loop, not a generic `sendtoall*` call), and the `HostListener`
+  exclusivity fix, catching only a cosmetic citation-line typo (`server.c:817`→`:844`). Tests
+  521→560 (+39). ✅ **D50** bundled all three disclosed gaps into a new Wave 6.4c, sequenced before
+  Wave 6.5 (whose own tracker-echo work also touches the UDP receive path).
+- **Wave 6.4c** (`5fdb1bc`, D53 fix `534aa57`, PARITY PASS at `999dbde`): live UDP wiring, real
+  `dgramaddr`, and the `SRDropPill` broadcast. **D51** put the new UDP accept loop
+  (`HostDgramListener.swift`) in its own file, matching the established one-listener-per-file
+  convention. **D52** bounded the same per-peer-`NWConnection` growth hazard `NWListener`+UDP
+  reintroduces (one connection per remote 4-tuple, unlike the C's single `recvfrom()` socket) by
+  connection lifecycle rather than an arbitrary cap: `HostSessionTable.dgramConnection` tracks one
+  live flow per slot (bounded by `maxPlayers`), explicitly canceling a slot's superseded connection
+  on a port-mismatch swap rather than merely dropping the reference. `peerAddress(from:)` extracts
+  a real IPv4 `family`/`addr`/`port` from an accepted `NWConnection`'s endpoint, matching
+  `server.c:844`'s literal `dgramaddr` assignment port-included (confirmed the C's own
+  seed-wrong-then-correct-via-first-packet design is intentional, not a bug to route around) —
+  caught a real native-endian-load-of-network-order-bytes trap along the way (`127.0.0.1` reads as
+  `0x0100007F`, not the "obvious" `0x7F000001`), disclosed rather than left as a silent trap.
+  `SRDropPill` wired via a new `onShouldBroadcastDropPill` callback threaded through
+  `dropPillSearch` (`MineChain.swift`), firing on the *search cell's* `x`/`y` — not the outer scatter
+  origin, a real trap (**T-17**) confirmed by direct read of `dr()`/`sendsrdroppill()`'s
+  post-mutation field read. Correctly preserved a genuine C asymmetry: `kickplayer()`/`banplayer()`
+  send their own broadcast *before* `removeplayer()`, while the socket-close disconnect path calls
+  `removeplayer()` *before* its broadcast — the opposite order — replicated via two different
+  accumulator strategies, not one shared shortcut. **PARITY's audit found one real, confirmed bug:**
+  `handlePlayerDisconnect`'s `.normal` case broadcast `SRPlayerExit` via `sendToAllExcept`, dropping
+  the departing player from the recipient set — but `sendsrplayerexit()` is not one `sendtoallex`
+  call, it's a best-effort `sendtoone` to the departing player *first* (EPIPE-tolerant, the socket
+  may be half-closed), *then* `sendtoallex` to everyone else, so the departing player receives their
+  own exit notice too. (`.abnormal`/`SRPlayerDisc` was already correct — a genuine single
+  `sendtoallex`, no self-send.) Notably, the function's own header comment already described the
+  correct combined behavior; the code beneath it simply hadn't been wired to match — a real slip,
+  not a disclosed simplification. **D53** ruled the standard fix-before-close (same precedent as
+  D35/D37/D39/D45/D46): switched to `table.sendToAll` for the `.normal` case, left `.abnormal`
+  untouched, added named regression tests including a timeout-race negative-assertion pattern new
+  to this project's test suite — PARITY specifically traced the counterfactual (what happens if
+  `.abnormal`'s exclusion were accidentally removed) to confirm the test would actually catch it,
+  not just that it currently passes. Tests 560→571→572 (+12 net). ✅
+
+**Cross-cutting:** D28's coverage discipline held throughout (487→502→521→560→571→572, every
+delta an addition). This is the first wave family where the standard post-code audit itself became
+the primary scope-completion mechanism rather than a correctness check alone — 6.4a needed three
+audit rounds (D45, D46) and 6.4c needed one (D53) before closing, each catching real, previously
+undisclosed gaps in a wave's own already-claimed scope, none of them cosmetic. The
+"replicate the invariant a C timing/ordering behavior protects, not its literal mechanism" principle
+(first established Wave 5.9's **D41**, on the dead-flag ordering hazard `smallboom`/`superboom`
+introduce once client/server timing collapses into one synchronous process) recurred directly in
+Wave 6.4b's **D49** ruling on join serialization. Full uncompressed entries (all three sub-waves'
+pre-briefs, completion reports, and PARITY audits, including the ad hoc pre-code PARITY assessments
+Jerod requested for 6.4 and 6.4b) preserved in git history per D28.
