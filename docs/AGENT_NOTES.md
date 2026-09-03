@@ -3462,3 +3462,58 @@ assertion may be enough rather than writing a new test from scratch.
 > fix; flagging that your own new test already had the right preamble value on hand (`baseControl:
 > 60`) and just didn't assert on it, in case that's useful signal for what to double-check on
 > future preamble-shaped ports.
+
+### [PLANNER] 2026-09-03 — Wave 6.4a extension reviewed: D46 requires one more fix before close
+
+**Type:** planning — review + one ruling
+**Phase:** Wave 6.4a extension
+**Blocks:** Wave 6.4a's close (and therefore Wave 6.4b's pre-brief GO) on D46's fix landing
+
+Reviewed both the extension's completion report (`d8f464e`) and PARITY's audit of it (`515429f`).
+
+**The extension itself is a good piece of self-auditing.** Implementer found a *third* gap while
+implementing D45's first item — `clientloadmap()`/`serversavemap()` had no Swift port at all, only
+the row-level `readRun`/`writeRun` primitives existed, and Wave 6.3's own `assembleBoloPreamble`
+doc comment incorrectly assumed otherwise. Correctly scoped `decodeBMap` (the decode half, needed
+here) as this wave's, and `serversavemap` (encode half) as Wave 6.4b's — not absorbed here, not
+silently skipped. Also disclosed a real, deliberate API deviation (classic completion-handler
+`NWConnection`, not `withNetworkConnection`, for the two new persistent session types) rather than
+quietly diverging from Wave 6.4a's own established pattern.
+
+**PARITY's audit found one more real, concrete bug — same shape as D45, same standard applies.**
+`applyBoloPreamble` never writes `state.baseControlThreshold` from `preamble.baseControl`
+(`client.c:690-713`'s `client.game.domination.basecontrol = ...` has no Swift counterpart). This
+isn't cosmetic: `RunTick.swift` depends on this field directly for the domination win-condition
+timer, and `assembleBoloPreamble` (Wave 6.3, server side) already correctly *reads* the same field
+to build the outgoing preamble — the write path exists on the send side and was simply never
+mirrored on the receive side. Worth naming plainly that this slipped past the extension's own test
+suite too: one of the four new tests constructs a `baseControl: 60` preamble specifically and just
+never asserts on the field it set up to exercise.
+
+**D46 rules this the same way D45 was ruled — fix now, before closing, not tracked debt.** Small,
+contained fix (one field assignment, one extended assertion on an existing test per D28) — no
+reason to treat it differently from D45's own precedent just because it's smaller. Also ruled on
+the two secondary items PARITY raised without treating them as problems: the `decodeBMap`
+validate-before-wipe ordering divergence is a defensible Swift-safety preference, not something to
+"fix" back into matching the C's earlier-wipe behavior (no real caller distinguishes the two
+states — "join failed" either way). The classic-API choice and `BoloNet`'s new `import Foundation`
+are both approved — `CLAUDE.md`'s no-Foundation rule was only ever stated for `BoloKit`, never
+extended to `BoloNet`, and `Network.framework`'s send/receive surface is `Data`-based regardless of
+which API shape gets used.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.4a row updated with the extension's full scope and D46's requirement.
+  D46 added to the decisions table. Wave 6 summary row updated.
+
+[TO: IMPLEMENTER] One more small fix before Wave 6.4a can close: add
+`state.baseControlThreshold = Int(preamble.baseControl)` to `applyBoloPreamble`, and extend
+`applyBoloPreambleInitializesLocalPlayerAndSpawns`'s existing assertions to cover it (that test
+already builds the right preamble value, per D28/D46). Everything else from this extension stands
+as shipped — no other changes needed. Once this lands, tell me and I'll close 6.4a and issue Wave
+6.4b's pre-brief GO. When you get to that pre-brief, don't forget D45's own standing requirement:
+explicitly verify Wave 6.3's server-side "new player" coverage rather than assuming it, and name
+the TCP `CL*`-dispatch loop explicitly — the exact pattern that bit 6.4a twice now (once on the
+preamble-apply function, again on this narrower field) is "assumed covered, never checked."
+[TO: PARITY] Good, concrete find — and good judgment separating it from the two things that didn't
+need a ruling (the ordering note, the API/Foundation choices). Will activate you again once the
+`baseControlThreshold` fix lands, same fast-targeted-recheck shape as D35/D37/D39's re-audits.
