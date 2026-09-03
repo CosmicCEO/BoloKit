@@ -2000,3 +2000,50 @@ but broadcast-still-fires, matching `superboomat`'s unconditional call),
 > case-list re-derivation in `recvClSmallBoom`/the other 9 mined-terrain sites is correct and
 > matches `MineChain.swift`'s own internal predicate exactly — good, independently-agreeing math
 > in two places written at different times is a strong signal, not a coincidence to worry about.
+
+### [PLANNER] 2026-09-03 — Wave 6.6 closed (PARITY PASS); Wave 6.4 pre-brief GO issued; Wave 5.9 now active
+
+**Type:** planning — close-out + GO + status note
+**Phase:** Wave 6.6 → 6.4; Wave 5.9 (separate track)
+**Blocks:** nothing
+
+PARITY's Wave 6.6 audit (`f31413a`) is clean across all 18 `recvcl*` handlers and all three focus
+items I flagged — independently re-derived rather than taken on faith: hand-counted both the
+29-item `explosionAt` `detonated` case list and `recvClDamage`'s 20-item boat/7-item non-boat
+`firesDamageBroadcast` lists directly from `server.c` rather than trusting the stated totals;
+cross-checked that `RecvCL.swift`'s re-derived `detonated` predicate agrees exactly with
+`MineChain.swift`'s own internal one (two independently-written copies matching is a real
+cross-check, not assumed); and independently confirmed the Swift-exclusivity claim behind why the
+`explosionAt`/`applyDamage` callback workaround was necessary is a real SE-0176 constraint, not a
+convenience shortcut, per my specific request. **Wave 6.6 is complete and PARITY-passed.** Full
+chain: `ebb8fe4`+`0bc2e17` (487 tests, +40) → `f31413a` (audit, PASS).
+
+One non-blocking observation recorded, not a finding: `testAlliance`'s `used` guard is stricter
+than the C's raw bitmask check at two of this wave's reuse sites, but PARITY proved it's
+provably redundant given how `used`/`alliance` are correlated everywhere else in this port (not a
+new issue, `testAlliance` itself predates this wave) — noted for the record, no ruling needed.
+
+**Wave 6.4's pre-brief GO issued.** Both its gates are now clear: D39 (closed, re-audited `b1efc12`)
+and Wave 6.6 (closed, this entry). Implementer: write your own pre-brief for Wave 6.4 (transport +
+join handshake, Network.framework/async-await per D31, plus D36's `dgramclient()` post-decode
+CLUpdate-application logic and the server-side tracker `player == 255` reachability echo) directly
+into this log, same two-stage process as every prior sub-wave.
+
+**Wave 5.9 status: now active, per Jerod, under its own session** — the earlier attempt to run it
+as a second agent forked from the main Implementer's own worktree/branch setup hit an API overload
+before producing code (recorded two entries back). Whatever session picked it up now is doing so
+separately; `docs/WAVE59_BOOTSTRAP.md` is still the scope doc it should be reading. This doesn't
+touch or gate Wave 6.4 in any way — flagging only so the log reflects current reality rather than
+the "still unstarted" note from two entries ago.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.6 row closed with full commit chain and test count. Wave 6.4 row moved
+  to pre-brief GO'd. Wave 6 summary row updated, including Wave 5.9's now-active status.
+
+[TO: IMPLEMENTER] Wave 6.6 closed for real. **Cleared to write Wave 6.4's pre-brief** — transport
++ join handshake plus D36's two additions. Usual process: pre-brief into this log → tell Jerod →
+wait for my coding GO before writing any Swift.
+[TO: PARITY] No action needed until Wave 6.4's pre-brief lands and I issue its coding GO, or until
+whatever's landing from Wave 5.9's now-active session produces a completion report. Excellent
+rigor on the case-list re-derivations and the exclusivity-constraint check — that's exactly the
+"don't take the completion report's word for it" standard this role exists for.
