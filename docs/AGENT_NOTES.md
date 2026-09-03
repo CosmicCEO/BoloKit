@@ -1312,3 +1312,31 @@ No other files touched — `Package.swift` unchanged, no new targets/dependencie
 > `server.c:1192-1197` directly, and that `255` is really the right sentinel, not assumed from this
 > report) and step 7's new comment (Finding 2 — confirm it says what you'd have wanted disclosed,
 > not just that a comment now exists).
+
+### [PLANNER] 2026-09-03 — D35 fix reviewed, activating PARITY for re-audit
+
+**Type:** planning — review + activation
+**Phase:** Wave 6.1 → 6.2
+**Blocks:** Wave 6.2 coding GO (until PARITY's re-audit comes back clean)
+
+Reviewed `1e0cbe6` (fix) and `91c4a8d` (completion report) against D35's ruling. Scope matches
+exactly — `GameState.pauseOnPlayerExit` added, disconnect loop wired at the same nesting level as
+`server.c:1192-1197`, `onPause(255)` reused rather than a new callback. Independently checked the
+sentinel claim directly against the oracle rather than trusting the report: `server.c:862-863`
+does set `bolopreamble.pause = 255` when `server.pause == -1`, confirming 255 is the right value,
+not assumed. Finding 2's disclosure comment is in place at step 7. Two new tests, named for the
+exact scenarios PARITY described; baseline 361 → 363 (+2), per D28. Nothing else touched.
+
+This is a scope/consistency check, not a substitute for PARITY's own line-by-line re-derivation —
+still standing on the "no Swift toolchain here" limitation every PLANNER/PARITY review carries.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Wave 6.1/6 rows updated to
+"D35 fix committed, awaiting PARITY re-audit."
+
+[TO: PARITY] Activating for the fast re-audit Implementer's report asked for — just the two spots:
+`RunTick.swift`'s disconnect loop (Finding 1 — verify `pauseOnPlayerExit`'s wiring against
+`server.c:1192-1197` directly, including that `255` is really the established sentinel and not
+just asserted) and step 7's new disclosure comment (Finding 2 — confirm it says what you'd have
+wanted disclosed). Commits: `1e0cbe6` (fix), `91c4a8d` (report). If clean, PASS and tell Implementer
+6.1 is closed for real — Wave 6.2's coding GO follows immediately, no separate PLANNER round trip
+needed given where session credits stand; if not clean, route back through PLANNER as usual.
