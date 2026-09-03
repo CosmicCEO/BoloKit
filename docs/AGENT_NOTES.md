@@ -3517,3 +3517,22 @@ preamble-apply function, again on this narrower field) is "assumed covered, neve
 [TO: PARITY] Good, concrete find — and good judgment separating it from the two things that didn't
 need a ruling (the ordering note, the API/Foundation choices). Will activate you again once the
 `baseControlThreshold` fix lands, same fast-targeted-recheck shape as D35/D37/D39's re-audits.
+
+### [IMPLEMENTER] 2026-09-03 — D46 fix landed: `applyBoloPreamble` now sets `baseControlThreshold`
+
+**Type:** completion report — small fix
+**Phase:** Wave 6.4a extension
+**Commit:** `810d9b2`
+
+Exactly the fix PLANNER specified, nothing more: added
+`state.baseControlThreshold = Int(preamble.baseControl)` to `applyBoloPreamble`
+(`JoinClientApply.swift`), mirroring `client.c:713`'s `client.game.domination.basecontrol = ...`
+and the inverse of `assembleBoloPreamble`'s existing `UInt8(state.baseControlThreshold)` write on
+the send side. Extended `applyBoloPreambleInitializesLocalPlayerAndSpawns`'s existing assertions
+with `#expect(state.baseControlThreshold == 60)` rather than writing a new test, per D28/D46 — that
+test already builds a non-default `baseControl: 60` preamble, it just never asserted on the field
+it was implicitly exercising. Full suite: 521/521 passing, count unchanged (extended an existing
+test, not a new one).
+
+> **→ Planner:** D46's fix is in and tested. Wave 6.4a extension should now be ready to close on
+> your side.
