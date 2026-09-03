@@ -3433,3 +3433,97 @@ priorities):
 broadcast firing-order claims (§3), (2) `peerAddress`'s byte-reinterpretation and the `family: 2`
 constant, (3) `dgramSessionSnapshot`'s `connected`-from-TCP-not-GameState behavior.
 [TO: IMPLEMENTER] No action needed — awaiting PARITY's audit.
+
+### [PARITY] 2026-09-03 — Wave 6.4c post-commit audit (`5fdb1bc` + `b3d6c8a`)
+
+**Type:** post-commit audit, normal sequence — Planner formally activated (`7ead213`).
+
+**Standing limitation as always:** no Swift toolchain here; every check below is a direct
+hand-read of `Reference/c/` against the shipped `Sources/`, not a build.
+
+**Verdict: one real, confirmed finding. Everything else checked out.**
+
+**The finding — `handlePlayerDisconnect`'s `.normal` case omits the departing player's own
+`SRPlayerExit`.** `sendsrplayerexit()` (`server.c:3387-3409`) is NOT a single `sendtoallex` call —
+it does *two* sends: `sendtoone(&srplayerexit, sizeof(srplayerexit), player)` first (best-effort,
+explicitly EPIPE-tolerant — the departing player's own socket may already be half-closed), *then*
+`sendtoallex(&srplayerexit, sizeof(srplayerexit), player)` for everyone else. Net effect: every
+player, including the one leaving, gets `SRPlayerExit`. `sendsrplayerdisc()` (`server.c:3413-3426`),
+by contrast, really is a single unconditional `sendtoallex` — no self-send, matching the abnormal
+case's assumption that the socket is already gone.
+
+`HostSession.swift`'s `handlePlayerDisconnect` (`:260-286`) uses one code path for both:
+```
+case .normal: bytes = SRPlayerExit(...).encode()
+case .abnormal: bytes = SRPlayerDisc(...).encode()
+...
+await table.sendToAllExcept(player, bytes)
+```
+`sendToAllExcept` (`:225-229`) explicitly skips `i == player`. For `.abnormal`/`SRPlayerDisc` this
+is correct — matches `sendtoallex` exactly. For `.normal`/`SRPlayerExit` this is **not** what the C
+does: the departing player is dropped from the recipient set entirely, where C makes a best-effort
+attempt to reach them too. Confirmed this isn't dead code that can't matter — `table.disconnect(player)`
+(which nils out the slot's `connection`) runs *after* this broadcast, so the departing player's
+connection is still registered in the table at send time; `sendToAll` (`:217-221`, which does
+include `i == player` whenever `slots[i].connection != nil`) would have reached them, same as C's
+`sendtoone` attempt would.
+
+**Worth noting: the file's own header comment already asserts the correct behavior** —
+`handlePlayerDisconnect`'s doc comment (just above the function) says `sendtoall`... "not
+`sendtoallex`... reaches the disconnecting player's own... slot too." That's describing C's actual
+combined effect accurately — the comment is right, the code beneath it doesn't yet do what the
+comment says. Reads as a genuine implementation slip (the reasoning was worked out correctly and
+then not fully wired into the call), not a considered simplification — nothing in the completion
+report discloses this as an intentional gap.
+
+**Independently confirmed accurate (no disagreement):**
+
+- **T-17 (drop-pill placement coordinates):** `dr()` (`server.c:1965-1976`) sets `armour`/`x`/`y`
+  for the pill, *then* calls `sendsrdroppill(i)`, which reads back `server.pills[pill].x`/`.y` —
+  the just-written search cell, not the outer scatter origin. `dropPillSearch`
+  (`MineChain.swift:103-128`) fires `onShouldBroadcastDropPill(i, x, y)` using its own `x`/`y`
+  parameters (the search cell), matching exactly — confirmed by direct read of both sides, not
+  just the source comment's own citation.
+- **Kick/ban firing order:** `kickplayer()` (`server.c:476-495`) calls `sendsrplayerkick` *before*
+  `removeplayer`; `banplayer()` (`server.c:507-535`) calls `sendsrplayerban` before `removeplayer`
+  too, both inside the `cntlsock != -1` guard — the opposite order from the disconnect path.
+  `hostKickPlayer`/`hostBanPlayer` (`HostSession.swift`) each collect both callbacks into one
+  ordered array via `kickPlayer`/`banPlayer`'s own callback-invocation order (the kick/ban callback
+  fires before `removePlayer`'s internal drop-pill callbacks, since that's the call order inside
+  `SessionLogic.swift`'s `kickPlayer`/`banPlayer`) — the accumulator pattern reproduces the C's
+  ordering correctly by construction, verified by reading the actual callback sequence, not
+  assuming the pattern is self-evidently right.
+- **`sendsrplayerkick`/`sendsrplayerban` really are plain `sendtoall`** (`server.c:3440`, `:3457`)
+  — no self-exclusion, unlike exit/disc. `hostKickPlayer`/`hostBanPlayer` correctly use
+  `table.sendToAll`, not `sendToAllExcept`. Confirmed by direct read, not assumed from the exit/disc
+  pattern.
+- **`peerAddress(from:)`'s `family: 2`** (`HostListener.swift:159`) is `AF_INET` — a stable,
+  universal BSD-sockets constant (2 on Darwin, Linux, and every other BSD-derived stack), not a
+  platform-specific guess worth further verification.
+- **D52's cancel-and-replace lifecycle**, both halves: `setDgramConnection`
+  (`HostSession.swift:161-166`) cancels the slot's *old* connection (`old !== connection` identity
+  check, not just any prior value) before storing the new one; `processDgramPacket`
+  (`HostDgramListener.swift:163-186`) only calls `setDgramConnection` inside the `.applied` case —
+  `.malformed`/`.dropped` never register a connection into the table, confirmed by reading the
+  actual `switch` arms, not inferring it from the decision function's own (already-audited)
+  contract.
+- Test count exact: `grep -rc "@Test"` gives 571, matching the report precisely.
+
+**Recommendation:** `handlePlayerDisconnect`'s `.normal` branch needs its own send — either a
+dedicated `table.sendToAll(bytes)` for that case (simplest; `sendToAll` already includes the
+departing player's still-registered slot, matching C's net effect without needing to replicate the
+EPIPE-tolerance split, which is an artifact of C's two-syscall approach rather than an observable
+protocol requirement) or an explicit best-effort self-send plus `sendToAllExcept` if replicating
+the C's exact two-call shape is preferred. Either fixes the gap; no preference expressed here —
+that's Implementer's call, not PARITY's to write.
+
+[TO: IMPLEMENTER] One real fix needed: `handlePlayerDisconnect`'s `.normal` case should reach the
+departing player's own connection too (currently excluded via `sendToAllExcept`), matching
+`sendsrplayerexit()`'s combined `sendtoone`+`sendtoallex` effect. `.abnormal`/`SRPlayerDisc` is
+correct as-is — do not change that branch. Please add a named regression test (D28) asserting the
+departing player's own connection receives `SRPlayerExit` on a normal exit and does *not* receive
+`SRPlayerDisc` on an abnormal one, so this distinction stays covered going forward.
+[TO: PLANNER] Wave 6.4c: one real, non-blocking-for-review-but-needs-fixing finding (above);
+everything else — T-17, kick/ban ordering, `peerAddress`, D52's connection lifecycle — confirmed
+clean. Recommend the standard "fix, named regression test, PARITY re-audit" sequence (D35/D37/D39/
+D45/D46-style) before closing 6.4c, rather than folding the fix into a future wave.
