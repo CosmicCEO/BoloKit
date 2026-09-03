@@ -23,13 +23,18 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 
 // MARK: - heatPill / applyDamage
 
+/// Q21 (D37): `heatPill` resets `Pill.coolCounter` (the SERVER-side
+/// cooldown tally `coolPills` owns), never `Pill.counter` (the CLIENT-side
+/// fire-cadence tally `pillTick` owns) — fixed from a Wave 5.3a field-
+/// mapping bug that had been resetting the wrong one.
 @Test func applyDamagePillDirectHitHeatsAndDecrementsArmour() {
     var state = makeState(players: [connectedPlayer()])
-    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5)]
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5, coolCounter: 9)]
     applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
     #expect(state.pills[0].armour == 9)
     #expect(state.pills[0].speed == 20)
-    #expect(state.pills[0].counter == 0)
+    #expect(state.pills[0].counter == 5)  // untouched: not heatPill's field
+    #expect(state.pills[0].coolCounter == 0)  // reset: the correct field
 }
 
 @Test func applyDamagePillDirectHitClampsSpeedToMinTicksPerShot() {
@@ -56,14 +61,15 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     ally.alliance = 0b01  // allied with player 0
     var state = makeState(players: [owner, ally])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 0, shells: 10, mines: 10)]
-    state.pills = [Pill(x: 52, y: 50, armour: 10, owner: 1, speed: 40, counter: 5)]  // 2 squares away, allied
+    state.pills = [Pill(x: 52, y: 50, armour: 10, owner: 1, speed: 40, counter: 5, coolCounter: 9)]  // 2 squares away, allied
     applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
     #expect(state.bases[0].armour == 45)
     #expect(state.bases[0].counter == 0)
-    // Base-splash heating does NOT decrement armour, only speed/counter.
+    // Base-splash heating does NOT decrement armour, only speed/coolCounter.
     #expect(state.pills[0].armour == 10)
     #expect(state.pills[0].speed == 20)
-    #expect(state.pills[0].counter == 0)
+    #expect(state.pills[0].counter == 5)  // untouched: not heatPill's field
+    #expect(state.pills[0].coolCounter == 0)  // reset: the correct field
 }
 
 @Test func applyDamageResourcedBaseDoesNotHeatNonAlliedPillsNearby() {

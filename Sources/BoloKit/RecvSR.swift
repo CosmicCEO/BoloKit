@@ -434,7 +434,8 @@ public func recvSrSmallBoom(
     player: UInt8, x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onTankStatusChanged: () -> Void = {}
 ) {
     if state.terrain[x, y] != .sea && state.terrain[x, y] != .minedSea {
         state.terrain[x, y] = .crater
@@ -447,6 +448,12 @@ public func recvSrSmallBoom(
         killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onDropPills: onDropPills)
     }
 
+    // Unconditional on `player` — deliberately NOT gated the way
+    // `recvSrSuperBoom`'s equivalent block is. Brace-verified against
+    // `client.c:2660-2686`: this `if` is a sibling of the explosion-
+    // creation block above, not nested inside it (contrast
+    // `recvsrsuperboom`, `client.c:2737-2851`, where it genuinely is
+    // nested — see that function's doc comment). Do not add a gate here.
     let localPlayer = state.localPlayer
     if !state.players[localPlayer].dead, mag2f(state.players[localPlayer].tank - point) <= smallboomRadius {
         state.local.armour -= smallboomDamage
@@ -462,19 +469,33 @@ public func recvSrSmallBoom(
                 killTank(state: &state, onDropPills: onDropPills)
             }
         }
+
+        onTankStatusChanged()
     }
 }
 
 /// Ported from `recvsrsuperboom()` (`client.c:2709-2868`) — a 2×2-tile
 /// crater conversion, 9 explosion particles (4 corners + 4 edges +
-/// center, the same layout `superboom()` already ships), and the same
-/// tank-damage cascade as `recvSrSmallBoom` at `superboomRadius`/
-/// `superboomDamage` instead.
+/// center, the same layout `superboom()` already ships), and a
+/// tank-damage cascade at `superboomRadius`/`superboomDamage`.
+///
+/// **Not the same shape as `recvSrSmallBoom` (Wave 6.2 PARITY audit,
+/// Finding 1, D37):** brace-depth-verified against `client.c:2737-2851`
+/// — the tank-damage check here is genuinely nested *inside*
+/// `if (player != client.player)`, not a sibling `if` the way
+/// `recvSrSmallBoom`'s equivalent check is. A broadcast superboom
+/// attributed to the local player must skip local-tank damage entirely
+/// (it was already applied optimistically when the local player
+/// triggered it, Wave 5.2b's precedent) — matching the identical
+/// nesting-differs-from-smallboom asymmetry `MineChain.swift`'s
+/// `superboomAt` already documents for the authoritative-role twin of
+/// this function.
 public func recvSrSuperBoom(
     player: UInt8, x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onTankStatusChanged: () -> Void = {}
 ) {
     for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
         let tx = x + dx
@@ -509,23 +530,25 @@ public func recvSrSuperBoom(
             state.explosions.append(Explosion(point: point))
             killPointBuilder(at: point, state: &state, onDropPills: onDropPills)
         }
-    }
 
-    let localPlayer = state.localPlayer
-    let center = Vec2f(x: Float(x) + 1.0, y: Float(y) + 1.0)
-    if !state.players[localPlayer].dead, mag2f(state.players[localPlayer].tank - center) <= superboomRadius {
-        state.local.armour -= superboomDamage
-        state.players[localPlayer].boat = false
+        let localPlayer = state.localPlayer
+        let center = Vec2f(x: Float(x) + 1.0, y: Float(y) + 1.0)
+        if !state.players[localPlayer].dead, mag2f(state.players[localPlayer].tank - center) <= superboomRadius {
+            state.local.armour -= superboomDamage
+            state.players[localPlayer].boat = false
 
-        if state.local.armour < 0 {
-            state.local.armour = 0
-            if state.local.mines > 32 {
-                superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
-            } else if state.local.mines > 0 || state.local.shells > 0 {
-                smallboom(state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
-            } else {
-                killTank(state: &state, onDropPills: onDropPills)
+            if state.local.armour < 0 {
+                state.local.armour = 0
+                if state.local.mines > 32 {
+                    superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+                } else if state.local.mines > 0 || state.local.shells > 0 {
+                    smallboom(state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+                } else {
+                    killTank(state: &state, onDropPills: onDropPills)
+                }
             }
+
+            onTankStatusChanged()
         }
     }
 }

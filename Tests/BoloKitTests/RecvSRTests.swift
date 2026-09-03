@@ -430,6 +430,74 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(state.players[0].dead)
 }
 
+/// Wave 6.2 PARITY audit, Finding 1 (D37): the tank-damage check is nested
+/// *inside* `player != client.player` (`client.c:2737-2851`, brace-depth-
+/// verified) — a superboom attributed to the local player must skip local-
+/// tank damage entirely. This was the exact case PARITY flagged as silently
+/// uncovered before the fix: pre-fix, the damage block ran unconditionally
+/// and this assertion would have failed.
+@Test func recvSrSuperBoomCausedByLocalPlayerSkipsLocalTankDamage() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+    state.players[0].tank = Vec2f(x: 51.0, y: 51.0)
+    state.local.armour = 5
+    recvSrSuperBoom(player: 0, x: 50, y: 50, state: &state)
+    #expect(state.local.armour == 5)  // untouched: self-attributed superboom
+    #expect(!state.players[0].dead)
+}
+
+/// Finding 2 (D37): `onTankStatusChanged` must fire whenever local-tank
+/// damage is actually applied, matching `recvSrHitTank`/`recvSrMineAck`'s
+/// existing pattern — previously missing from both boom handlers.
+@Test func recvSrSmallBoomFiresOnTankStatusChangedWhenLocalTankDamaged() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .grass0
+    state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+    state.local.armour = 20
+    var fired = false
+    recvSrSmallBoom(player: 1, x: 50, y: 50, state: &state, onTankStatusChanged: { fired = true })
+    #expect(fired)
+}
+
+@Test func recvSrSmallBoomDoesNotFireOnTankStatusChangedOutsideRadius() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .grass0
+    state.players[0].tank = Vec2f(x: 200.5, y: 200.5)
+    state.local.armour = 20
+    var fired = false
+    recvSrSmallBoom(player: 1, x: 50, y: 50, state: &state, onTankStatusChanged: { fired = true })
+    #expect(!fired)
+}
+
+@Test func recvSrSuperBoomFiresOnTankStatusChangedWhenLocalTankDamaged() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+    state.players[0].tank = Vec2f(x: 51.0, y: 51.0)
+    state.local.armour = 20
+    var fired = false
+    recvSrSuperBoom(player: 1, x: 50, y: 50, state: &state, onTankStatusChanged: { fired = true })
+    #expect(fired)
+}
+
+@Test func recvSrSuperBoomCausedByLocalPlayerDoesNotFireOnTankStatusChanged() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+    state.players[0].tank = Vec2f(x: 51.0, y: 51.0)
+    state.local.armour = 20
+    var fired = false
+    recvSrSuperBoom(player: 0, x: 50, y: 50, state: &state, onTankStatusChanged: { fired = true })
+    #expect(!fired)
+}
+
 @Test func recvSrHitTankAppliesKickAndDamageEscalatingToKillTank() {
     var state = makeState(players: [connectedPlayer()], localPlayer: 0)
     state.local.armour = 3

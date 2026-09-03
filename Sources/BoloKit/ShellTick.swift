@@ -60,17 +60,31 @@ public func shellAdvance(_ shell: inout Shell) {
 // MARK: - heatPill
 
 /// Halves a pill's reload interval (`speed` — lower is faster fire),
-/// clamped to `minTicksPerShot`, and resets its cooldown counter. A direct
-/// hit also decrements armour; the base-splash case (`applyDamage`'s base
-/// branch) does not. Ported from the pill-heating logic duplicated at
-/// `recvcldamage()`'s two call sites (server.c:2815, 2833).
+/// clamped to `minTicksPerShot`, and resets its cooldown-degradation
+/// tally. A direct hit also decrements armour; the base-splash case
+/// (`applyDamage`'s base branch) does not. Ported from the pill-heating
+/// logic duplicated at `recvcldamage()`'s two call sites (server.c:2815,
+/// 2833), a SERVER-side function — `server.pills[pill].counter` there is
+/// the cooldown tally `coolPills` (Wave 5.7) owns, which this port calls
+/// `Pill.coolCounter`, not `Pill.counter` (the CLIENT-side fire-cadence
+/// tally, a different C variable — see `Pill.counter`'s own doc comment).
+///
+/// **Fix, Wave 6.2 PARITY audit / Q21 (D37):** this line reset
+/// `Pill.counter` from Wave 5.3a until now. Real effect, not just a
+/// mislabeled field: pill damage was spuriously resetting the
+/// in-progress fire-cadence tally `PillTick.swift` owns (interrupting an
+/// already-charging shot) while never resetting the cooldown-degradation
+/// tally `coolPills` expects to own exclusively — letting an
+/// already-halved `speed` degrade again sooner than the real game
+/// allows. `recvSrDamage` (`RecvSR.swift`, Wave 6.2) never called this
+/// function and was unaffected.
 private func heatPill(_ index: Int, state: inout GameState, decrementArmour: Bool = true) {
     if decrementArmour {
         state.pills[index].armour -= 1
     }
     state.pills[index].speed /= 2
     state.pills[index].speed = max(state.pills[index].speed, UInt8(minTicksPerShot))
-    state.pills[index].counter = 0
+    state.pills[index].coolCounter = 0
 }
 
 // MARK: - applyDamage
