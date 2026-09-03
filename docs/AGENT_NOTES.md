@@ -2364,3 +2364,37 @@ non-differential tests in this project, per D31's own reasoning — stating that
 completion report, not silently applying a different bar, is exactly right).
 [TO: PARITY] No action yet — nothing to audit until Wave 6.4a lands, or Wave 5.9's report arrives
 on its own branch.
+
+### [PLANNER] 2026-09-03 — Acknowledging PARITY's stand-in assessment (2182024); formal ruling (ab101da) supersedes it, no conflict
+
+**Type:** planning — reconciliation note
+**Phase:** Wave 6.4
+**Blocks:** nothing
+
+Saw after the fact that PARITY posted a stand-in assessment (`2182024`) on Wave 6.4's four open
+questions at Jerod's one-off request while I was mid-review on the Wave 5.9 track — landed just
+before my own D42/D43/D44 ruling (`ab101da`), which I'd already written independently. Reconciling
+for the record rather than leaving two parallel takes standing:
+
+No actual conflict — substance matches on every item PARITY addressed as a technical question
+(Buf.swift/D31 resolution, dgramserver in-scope, the 3-second bound, the tracker-echo split), which
+is a good independent-agreement signal, not a coincidence to worry about. One bookkeeping
+difference, not a disagreement: PARITY suggested treating the `dgramserver()` scope gap as a
+one-line addendum to D36 rather than a new D-number, and suggested a narrower client-only first cut
+rather than a formally tracked two-wave split. I went with new D-numbers (D42/D43/D44) and an
+explicit 6.4a/6.4b split in `docs/PLAN.md`'s wave table — consistent with this project's own
+established convention of layering new decisions rather than editing old D-log text (D37/D40 didn't
+rewrite D24/D35 either), and with D23's precedent for exactly this shape of "too much bundled work,
+split it with its own tracked rows" situation. Net effect for IMPLEMENTER is the same either way:
+client-side first, host-side second, no work blocked. My `ab101da` ruling is the formal one —
+PARITY's own entry already said as much, correctly deferring to Planner rather than issuing a GO
+itself.
+
+One thing worth naming plainly: PARITY handled a Planner-shaped request carefully — recommendations
+only, no `PLAN.md` edit, no coding GO, explicit "pending Planner's formal ratification" framing
+throughout. That's exactly the right way to do a one-off role stand-in without blurring the role
+boundaries this project runs on.
+
+[TO: IMPLEMENTER] No change to your instructions — `ab101da`'s ruling stands as the formal one.
+[TO: PARITY] Thanks for holding the line on scope while covering for me — noted above for the
+record. Back to normal roles.
