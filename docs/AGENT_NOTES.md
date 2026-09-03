@@ -3677,3 +3677,45 @@ the diff, not just trusting the arithmetic).
 [TO: PLANNER] D53 fix confirmed correct, both regression tests independently assessed as sound
 (including the negative-assertion pattern, scrutinized as Implementer requested). No blockers
 remain on PARITY's side — Wave 6.4c is clear to close.
+
+### [PLANNER] 2026-09-03 — Wave 6.4c closed (PARITY PASS, D53 fix confirmed); Wave 6.5 pre-brief GO issued
+
+**Type:** planning — close-out + GO
+**Phase:** Wave 6.4c close / Wave 6.5 open
+**Blocks:** nothing — Wave 6.5 is available to start now
+
+Reviewed PARITY's re-audit (`999dbde`) of the D53 fix (`534aa57`+`172a1d0`). Verdict: **PASS**.
+The fix is the minimal correct change (`.normal` now calls `table.sendToAll`, `.abnormal` provably
+untouched, re-read in full not just diffed); both named regression tests were independently
+assessed as sound, including a specific trace of *why* the new negative-assertion
+(`confirmNoDatagramArrives`) test pattern resolves correctly rather than merely happening to pass
+— PARITY traced the counterfactual (what would happen if `.abnormal`'s self-exclusion were
+accidentally removed) and confirmed the test would actually catch it, not just that it currently
+passes. One generic, low-probability caveat noted for the record (a sufficiently starved scheduler
+could in principle let a timeout-race negative test false-pass) — not specific to this test, not
+blocking.
+
+**Wave 6.4c is closed — PARITY PASS.** Full chain, six commits from pre-brief to close:
+`091c364` → `bc34c95` (D51/D52) → `5fdb1bc`+`b3d6c8a` → `7ead213` → `5bab7c1` (D53 found) →
+`534aa57`+`172a1d0` (fixed) → `999dbde` (confirmed). This is the second wave in the 6.4 family to
+need a post-ship fix before closing (6.4a needed three rounds via D45/D46; 6.4c needed one via
+D53) — both times the standard fix→test→re-audit sequence caught and closed the gap correctly
+before anything shipped uncorrected.
+
+**Wave 6.5 pre-brief GO issued.** D50's sequencing condition (6.4c closes before 6.5 starts) is
+satisfied. Per Jerod's plan to archive the current Implementer session to conserve read
+requirements, the next Implementer session picking this up should start from
+`docs/notes/WAVE65_BOOTSTRAP.md` (prepared and committed ahead of time, `3a5c58f`) rather than
+reconstructing context from this file's full history — that document already covers scope, wire-
+format facts, the licensing constraint, decisions to carry forward, and what still needs real
+research. This entry is the formal trigger that bootstrap document was gated on.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.4c row marked complete (PARITY PASS); Wave 6 summary row updated; Wave
+  6.5 row marked pre-brief GO'd, pointing to the bootstrap doc.
+
+[TO: IMPLEMENTER] Wave 6.4c is closed — no action needed on it. **Wave 6.5 is GO'd for pre-brief.**
+If you are a freshly-started session, read `docs/notes/WAVE65_BOOTSTRAP.md` first, then this
+file's tail and `docs/PLAN.md`'s Wave 6.5 row and cited decisions, then begin your own research
+against `Reference/c/` per the bootstrap's process section. Write your pre-brief before any coding.
+[TO: PARITY] No action needed yet — nothing new shipped this entry. D53 is closed on your side too.
