@@ -1244,3 +1244,183 @@ targeted, should be quick to re-audit given how contained it is) and, separately
 from Wave 6.6. Good work catching that the pause hazard was still live rather than treating
 Implementer's own note as already resolved — that confirmation is exactly why this got a real fix
 ruling instead of another deferred note.
+
+### [IMPLEMENTER] 2026-09-03 — D39 fix complete: split `GameState.pause`
+
+**Type:** coding
+**Phase:** D39 fix, gating Wave 6.4's pre-brief GO
+**Blocks:** nothing on my end — ready for PARITY's fast re-audit, then PLANNER's Wave 6.4 pre-brief
+GO
+
+Commit `029c8fc`. Executed per the ruling's exact suggested field names.
+
+**`Sources/BoloKit/GameState.swift`:** replaced `pause: Int` with `serverPauseTicks: Int` (mirrors
+`server.pause`, tick-domain, tri-state) and `clientPauseDisplaySeconds: Int` (mirrors
+`client.pause`, wire-domain seconds/-1, never counted down anywhere in `client.c` — confirmed by
+grep before this fix, reconfirmed now). No call site used the labeled `pause:` init argument
+(grep-checked before touching the signature) — every use was post-construction `state.pause = ...`
+— so this is a safe rename, not a breaking change for any caller.
+
+**`Sources/BoloKit/RunTick.swift`:** the pause gate (step 1) now checks
+`state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0`, not just the renamed server
+field. This isn't a mechanical rename — the original gate was unified *specifically* because it
+doubled as both `runserver()`'s own tri-state early-return (`server.c:1088-1099`) and
+`runclient()`'s `client.pause` truthy early-exit (`client.c:430`). Splitting storage without adding
+the second condition would have silently stopped honoring a client-domain pause signal (e.g. this
+`GameState` acting as a non-hosting spectator that received an `SRPause` broadcast) — a real
+regression, not just a name change. The countdown-and-callback logic only ever touches
+`serverPauseTicks`, matching `server.c` exactly (`client.c` never decrements `client.pause`
+either). The D35 `pauseOnPlayerExit` write (`state.pause = -1`) is purely server-domain
+(`server.c:1192-1197`) → `state.serverPauseTicks = -1`; `onPause(255)` is unaffected, it only ever
+reported the broadcast value, never read the field.
+
+**`Sources/BoloKit/RecvSR.swift`:** `recvSrPause` now writes `state.clientPauseDisplaySeconds`,
+not `state.pause` — this is the exact write site D39 exists to isolate.
+
+**`Sources/BoloNet/Preambles.swift`:** `assembleBoloPreamble`'s read → `state.serverPauseTicks`.
+Same ternary, same `TICKSPERSEC` division — PARITY's Wave 6.3 audit already confirmed this read
+was correct for the server/tick-domain role; this is a rename only, not a logic change.
+
+**Tests (D28):** 445 → 447 (2 new, 0 removed, 0 failed). Updated three existing test files'
+`state.pause` references to whichever field the scenario actually exercises
+(`RunTickTests.swift`/`PreamblesDifferentialTests.swift` → `serverPauseTicks`, since both were
+already exercising the tick-domain countdown/preamble-assembly role; `RecvSRTests.swift` →
+`clientPauseDisplaySeconds`, since `recvSrPause` is the wire-domain write). New, named regression
+tests in `RunTickTests.swift`:
+- `runTickServerAndClientPauseFieldsAreIndependent` — writes both fields via `recvSrPause` and a
+  direct `serverPauseTicks` assignment, runs one tick, asserts each field only reflects its own
+  write (the exact scenario D39 exists to prevent — pre-fix, this would have silently clobbered
+  one write with the other's units).
+- `runTickGateHonorsClientPauseEvenWhenServerPauseIsZero` — a pure `recvSrPause` write with
+  `serverPauseTicks` untouched (`0`) still causes `runTick` to skip the tick, proving the gate's
+  added `||` condition is load-bearing, not dead code.
+
+Build: succeeded. `RunAllTests`: 447 passed, 0 failed, 0 skipped.
+
+[TO: PARITY] Ready for a fast, targeted re-audit of the four touched sites (`GameState.swift`'s
+field split, `RunTick.swift`'s gate + two write sites, `RecvSR.swift`'s `recvSrPause`,
+`Preambles.swift`'s `assembleBoloPreamble` read) — same scope as D35/D37's re-audits.
+
+[TO: PLANNER] D39 fixed, tested, committed (`029c8fc`). Requesting confirmation this unblocks Wave
+6.4's pre-brief GO, pending PARITY's re-audit. Wave 6.6's pre-brief follows in the next entry below
+— written directly after this one, per your instruction that its write-up needed no further gate.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.6 pre-brief: the ~19 unassigned `recvcl*` server handlers
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.6
+**Blocks:** the Wave 6.6 coding GO
+
+Read all 19 handlers in full (`server.c:2059-3123`, everything between `recvclsendmesg` and
+`recvclsetalliance` — the latter already shipped Wave 6.3, excluded here) before writing this up,
+per the usual rigor. Two findings changed the shape of the expected work from what D38's own
+description implied; both surfaced here rather than discovered mid-coding.
+
+**Finding 1 — four of the nineteen are thin wrappers around engine functions already shipped in
+Waves 5.3a/5.5a, not fresh ports.** `recvcldamage` (`server.c:2804-3035`) is, line for line, the
+same function `ShellTick.swift`'s `applyDamage` already ports — including the documented
+`pills[-1]` undefined-behavior deviation (the base-splash branch's pill-heat clamp reads the
+*outer* `pill` lookup variable, which is always `-1` in that branch since it only runs when the
+earlier `findpill` failed; `applyDamage`'s own header already explains why this isn't replicated
+literally and why `pills[i]` — the evidently-intended target — is used instead) and the Q21
+`heatPill` counter fix. `recvcltouch` (`server.c:2236-2270`) is `touchTile`. `recvclsmallboom`
+(`server.c:3036-3055`) is a one-line call to `explosionat()` → `explosionAt` (`MineChain.swift`).
+`recvclsuperboom` (`server.c:3056-3075`) is a one-line call to `superboomat()` → `superboomAt`.
+**Nothing new to decide for any of these four** — the real remaining work is a thin
+`recvCl*` function that decodes the wire fields (already done by the caller, per every prior
+wave's convention), calls the existing engine function directly, and surfaces the `sendsr*`
+broadcast trigger as a callback (matching the `onShouldBroadcastX` pattern Wave 6.3 established
+for `recvClSetAlliance`). Flagging so nobody re-derives `applyDamage`/`explosionAt` from scratch
+under a different name.
+
+**Finding 2 — a genuinely new, valuable trigger-site resolution, independent of Wave 5.9's still-
+open gap.** Eight of the remaining handlers (`recvcltouch`, `recvclgrabtile`, `recvclgrabtrees`,
+`recvclbuildroad`, `recvclbuildwall`, `recvclbuildpill`, `recvclrepairpill`, `recvclplacemine`,
+plus `recvcldamage` itself — nine, correcting my own count on a second pass) call
+`explosionat(player, x, y)` when the target square turns out to be a mined variant. `explosionAt`
+already has a complete, self-contained signature
+(`player:x:y:state:onMineExplosion:onSuperboomTerrain:onDropPills:`) and every one of these call
+sites already knows exactly who caused it and where — no callback-vs-direct-call ambiguity the way
+Wave 5.9's tank/builder-movement trigger sites still have (those are genuinely unresolved because
+nothing at those sites currently tracks causer-player attribution cleanly). **Wave 6.6 can call
+`explosionAt`/`superboomAt` directly at these nine sites** — this is good news, not a blocker, and
+worth stating plainly: 6.6 becomes the first wave to actually wire real trigger sites for the
+mine-cascade engine, independent of and not gated on Wave 5.9.
+
+**Finding 3 — a real oracle bug, needs a ruling before coding (D24 territory).**
+`recvclbuildroad` (`server.c:2416`): `if (clbuildroad->trees >= clbuildroad->trees)` — the field
+compared to itself, always true. Every sibling does a real threshold check immediately below it in
+the same file (`recvclbuildwall`: `clbuildwall->trees >= WALLTREES`; `recvclbuildboat`: no
+comparison at all, unconditional; `recvclbuildpill`/`recvclrepairpill`: no gate, armour is just
+capped after the fact). This makes `recvclbuildroad`'s tree-cost check dead code — road building
+always succeeds regardless of trees paid, the "insufficient trees" `else` branch (`sendsrbuilderack`
+with the *unmodified* tree count, `NOPILL`) is unreachable. **Contrast with `applyDamage`'s
+`pills[-1]` case:** that one is undefined-behavior-driven (an out-of-bounds C array read with no
+deterministic, replicable observable effect), which is why non-replication was the right call
+there. This one is fully well-defined and deterministic — replicating it bug-for-bug is entirely
+possible (`if trees >= trees` compiles and runs identically in Swift, it's just always `true`).
+**Question for Planner:** replicate as `if clbuildroad.trees >= clbuildroad.trees` (obviously
+always true, a strange thing to write deliberately but not undefined), or treat this as a
+correctable typo (`ROADTREES`, matching every sibling's pattern) under D24's exception path? I
+lean toward flagging-and-asking rather than guessing, same as Q21's precedent — this one is more
+consequential than Q21 (Q21 was an internal bookkeeping field; this one changes whether road
+construction ever costs anything).
+
+**Finding 4 — `recvclsendmesg` and `recvclhittank` are near-stateless relays, may need no
+`GameState`-mutating function at all.** `recvclsendmesg` (`server.c:2059-2094`) has zero
+`GameState` effect — pure `sendsrsendmesg` broadcast relay, matching Wave 6.2's own prior finding
+that `sendmesg`/`timelimit`/`basecontrol` needed no state-mutating function, just a callback at
+whatever layer owns dispatch (Wave 6.4's territory, not this one). `recvclhittank`
+(`server.c:3101-3122`) is almost the same shape: `if (clhittank->player < MAXPLAYERS)
+sendsrhittank(...)` — a bounds check, then relay, no state at all. Proposing to keep this one as a
+minimal guard function (`recvClHitTank(player:dir:onShouldBroadcastHitTank:)`, matching
+`recvSrHitTank`'s existing shape for parity) rather than skip it entirely, but flagging that it's
+nearly trivial. `recvclsendmesg` I'd propose skipping as a `SessionLogic`/`RecvCL` function
+entirely, same as `sendmesg` was skipped in Wave 6.2 — surfaced only as a callback at the real
+dispatch layer once one exists.
+
+**Everything else (the remaining ~11) is genuinely new pure decision/mutation logic, no surprises
+beyond the usual terrain-switch transcription:** `recvcldropboat` (river→boat only, matches
+`recvSrDropBoat`'s mirror), `recvcldroppills` (a validation wrapper — every requested pill bit
+must actually be owned+onboard by `player`, plus an x/y range sanity check — around the
+already-shipped `dropPills`, `MineChain.swift`), `recvcldropmine` (terrain-switch mineification,
+matches `recvSrDropMine`'s mirror), `recvclgrabtile` (pill capture + base capture with the same
+mutual-alliance three-way branch — neutral/mutually-allied/hostile — Wave 6.2's capture-base logic
+already models the shape of, plus a terrain switch for boat-grab), `recvclgrabtrees`
+(forest→grass, matches `recvSrGrabTrees`'s mirror), `recvclbuildwall`/`buildboat`/`buildpill`
+(construction cost-and-convert, each with its own terrain-eligibility switch),
+`recvclrepairpill` (`armour += trees*4`, capped at `maxPillArmour`, refunding excess trees — same
+shape as `buildpill`'s cap logic), `recvclplacemine` (terrain-switch mineification, no `sendsrmineack`
+success/fail branch the way `recvcldropmine` has — worth a named test distinguishing the two),
+`recvclrefuel` (unclamped subtract + an array-bounds guard on `clrefuel->base < server.nbases` —
+this is the *authoritative* decision `recvSrRefuel`'s already-shipped client mirror reflects, not
+another "apply-given-value" function; matches that mirror's unclamped-subtract behavior exactly,
+confirming no new design call needed there). All physics/game constants this needs are already
+ported (`roadTrees`/`wallTrees`/`boatTrees`/`forestTreeYield`/`maxPillArmour`/`noPill`,
+`Physics.swift`, grep-confirmed) — no new constant work.
+
+**Proposed scope, files, test plan:**
+- `Sources/BoloKit/RecvCL.swift` — new file, ~19 functions (minus `recvclsendmesg` per Finding 4),
+  same "apply-given-value" design philosophy as `RecvSR.swift` (Wave 6.2) but for the server's
+  receive side. Callbacks for every `sendsr*` broadcast trigger, matching the
+  `onShouldBroadcastX`/`onXStatusChanged` naming already established.
+- `Tests/BoloKitTests/RecvCLTests.swift` — unit tests per function, plus named regressions for:
+  the four thin-wrapper functions actually delegating to the real engine calls (not
+  reimplementing them), the nine `explosionAt`/`superboomAt` trigger sites firing with correct
+  causer attribution, and whichever way Finding 3's bug gets ruled (a test asserting road building
+  always succeeds regardless of `trees`, if replicated bug-for-bug; or a test asserting it
+  correctly gates on `ROADTREES`, if corrected).
+- No new `GameState` fields expected — every one of these 19 functions reads/writes existing
+  `pills`/`bases`/`terrain`/`chains` state, the same fields Waves 5.x/6.2/6.3 already touch.
+
+**Out of scope for 6.6:** the actual TCP receive/dispatch mechanism (Wave 6.4), `recvclsetalliance`
+(already shipped Wave 6.3), Wave 5.9's tank/builder-movement trigger sites (independent gap, not
+this wave's problem to solve even though it now shares a "wire `explosionAt` at a real site"
+shape with Finding 2 above).
+
+> **→ Planner:** Awaiting your ruling on Finding 3 (`recvclbuildroad`'s self-comparison — bug-for-bug
+> or correct?) before I start coding; everything else above is ready to code as described once you
+> GO it. Findings 1/2/4 are disclosures, not blocking questions.
+> **→ Parity:** No action needed yet — no code shipped this entry. Once 6.6 lands, whichever way
+> Finding 3 gets ruled is the one thing most worth independently re-deriving from the C source
+> directly, same rigor as every prior "replicate or fix" call this project has made.
