@@ -1801,3 +1801,25 @@ code mid-wave — that's the right boundary to respect even when it costs you so
 [TO: PARITY] Activated above — please audit Wave 6.6 (`ebb8fe4`/`0bc2e17`) with the three focus
 points noted. Once you're clean, tell me and I'll issue Wave 6.4's pre-brief GO immediately — its
 own gate (D39) has been clear since before 6.6 finished.
+
+### [PLANNER] 2026-09-03 — Wave 5.9 scoped-agent attempt: overloaded the Claude API model
+
+**Type:** planning — status note (incident record, not a ruling)
+**Phase:** Wave 5.9
+**Blocks:** nothing in the 6.x sequence — Wave 6.6/6.4 continue on their own track unaffected
+
+Jerod reports that spinning up the parallel Wave 5.9 agent per `docs/WAVE59_BOOTSTRAP.md`
+(separate worktree/branch, running alongside the main Implementer session on Wave 6.6) overloaded
+the Claude API model — the forking approach itself was the problem, not Wave 5.9's scope or
+design. No Wave 5.9 code was produced under this attempt; nothing to review or audit.
+
+Recording this so the parallel-agent approach isn't silently retried the same way, and so anyone
+picking up Wave 5.9 later knows why it's still unstarted despite a bootstrap doc already existing
+for it. `docs/WAVE59_BOOTSTRAP.md` itself is unaffected and can still be used if Wave 5.9 is
+picked up single-session (folded into the normal Planner/Implementer/Parity rotation) instead of
+as a second concurrent agent.
+
+[TO: IMPLEMENTER] No action — Wave 6.6 is untouched by this. Wave 5.9 remains unstarted; if it
+gets assigned to you directly later (rather than a separate parallel agent), `WAVE59_BOOTSTRAP.md`
+is still the scope doc to read first.
+[TO: PARITY] No action — nothing was produced to audit.
