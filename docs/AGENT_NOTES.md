@@ -3158,3 +3158,75 @@ original wave description. Branch `wave-5.9-mine-cascade`, commits `d9116a9` (pr
 [TO: Jerod] Wave 5.9 coding is done and committed on `wave-5.9-mine-cascade`. Stopping here per the
 bootstrap's instructions — not merging to `main`, not declaring the wave closed. Please relay to
 PLANNER for review and, if it looks good, the PARITY activation.
+
+### [PLANNER] 2026-09-03 — Wave 5.9 merged (PARITY PASS); Wave 6.4a NOT closed — D45 rules PARITY's real scope-gap finding
+
+**Type:** planning — merge + close-out + one significant ruling
+**Phase:** Wave 5.9 (done); Wave 6.4a (reopened/extended)
+**Blocks:** Wave 6.4b's pre-brief GO, on Wave 6.4a actually finishing
+
+Two PARITY audits landed together. Handling them in order of how settled each is.
+
+**Wave 5.9: merged.** PARITY's audit (`be2e71d`) is clean — independently re-derived all three
+priority items against `Reference/c/client.c`/`server.c` directly, including the subtler-than-
+stated mechanism behind D41's ordering fix (the C's exclusion isn't an explicit "is this me" check
+at all — it's `client.player`-keyed damage testing that happens to self-exclude the causer purely
+because their own process already flipped `dead` before the broadcast round-trips back; Wave 5.9's
+actual job was narrower than "port an exclusion," it was "make sure the newly-wired call happens
+after the already-correct check has something true to see"). Folded the branch's pre-brief and
+completion report into this log (`e365d2a`), merged `wave-5.9-mine-cascade` (`9c042e7`, clean,
+no conflicts — the branch and `main` never touched the same files), removed the now-redundant
+`docs/notes/WAVE59_REPORT.md` (`c9528ab`), and cleaned up the worktree/branch. **Wave 5.9 is
+closed.**
+
+**Wave 6.4a: NOT closing it, and this is a genuinely important catch, not a nitpick.** PARITY's
+audit (`60d5059`) found everything that was *written* is correct — but found a real, disclosed-
+nowhere completeness gap: `joinclient()`'s back half (`client.c:690-750`, turning a received
+`BoloPreamble` into an initialized `GameState` — player index, roster, pause/gametype, spawn) has
+no Swift implementation anywhere in this codebase. The original pre-brief (`9c3383d`) cited
+`evaluateJoinRequest`/`applyJoin`/`assembleBoloPreamble` as covering the join handshake — those are
+all **server**-side functions (a host deciding whether to admit someone), not a **joining client's
+own** state initialization from what it receives back. That's a real mix-up, and I'm naming
+plainly that it slipped past two separate reviews before this — my own `ab101da` ruling and
+PARITY's own earlier stand-in assessment (`2182024`) — because neither of us re-derived that
+citation against `joinclient()`'s actual back half at pre-brief time, we both took the pre-brief's
+description of what it was reusing at face value. That's exactly the gap this project's post-code
+audit step exists to catch, and it worked.
+
+**D45 rules this a real, in-scope extension of Wave 6.4a, not a new wave or tracked debt.** Same
+reasoning this project has used every time a wave turns out to have unfinished pieces of its own
+already-claimed scope (Wave 5.9's corpse-explosion gap, Wave 6.3/6.6 completing whole C functions
+rather than partial slices): fix it now, as part of the wave that already owns it, not later. Two
+things get added to 6.4a's scope: (1) the missing client-side preamble-application function itself
+— flagging for whoever writes it to check whether this port already has spawn logic to reuse
+(tank respawn/parachute logic already exists per Wave 5.x) rather than write a new one from
+scratch, and to mirror D39's server/client pause-domain split correctly for the client's own field;
+(2) the persistent `NWConnection` receive loops (UDP→`applyRemotePlayerUpdate`, TCP→`SR*` dispatch)
+that PARITY separately flagged as a lower-confidence but real gap in how D43 partitioned the
+original pre-brief's scope bullets — the pure functions got sub-wave homes, the always-running
+loops that actually call them repeatedly did not, on either side of the split.
+
+**Also ruling on the mirror-image risk for Wave 6.4b, before it repeats this mistake.** PARITY
+flagged, correctly, that 6.4b might have the same shape of gap on the server side (does Wave 6.3's
+`evaluateJoinRequest`/`applyJoin` really fully cover `joinplayerserver()`'s "new player" state
+init, or was that also assumed?). D45 requires 6.4b's own pre-brief to explicitly verify this
+rather than inherit the assumption, plus explicitly name its own TCP `CL*`-dispatch receive loop
+so it doesn't fall through the same crack `SR*`-dispatch just did on the client side.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 5.9 row closed with full merge chain. Wave 6.4a row marked not-closed with
+  D45's scope extension. Wave 6.4b row updated with the verification requirement. D45 added to the
+  decisions table. Wave 6 summary row updated.
+
+[TO: IMPLEMENTER] Wave 6.4a is not done — do not treat `970a1d8` as its completion report. Extend
+scope per D45: write the missing client-side preamble-application function (check for existing
+spawn logic to reuse first) and wire the two persistent receive loops (UDP apply, TCP `SR*`
+dispatch) around the pure functions that already exist. When you get to Wave 6.4b's pre-brief,
+explicitly verify Wave 6.3's server-side coverage rather than assuming it parallels correctly —
+that assumption is exactly what went wrong here.
+[TO: PARITY] Excellent catch on 6.4a — this is precisely the class of gap ("code that exists is
+correct, but the wave isn't finished") that only a full audit against the actual C function
+boundaries surfaces, not a pre-brief review. Also noting for the record that this is the second
+time your own stand-in assessment and my formal ruling both missed the same thing at pre-brief
+time (the `Buf.swift`/D31 tension we did catch; this citation mix-up we didn't) — no process change
+needed, the post-code audit is the backstop that's supposed to catch exactly this, and it did.
