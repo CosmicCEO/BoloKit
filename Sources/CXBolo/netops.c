@@ -4,6 +4,8 @@
 #include "../../Reference/c/bolo.h"
 #include "../../Reference/c/client.h"
 #include "../../Reference/c/server.h"
+#include "../../Reference/c/bmap.h"
+#include "../../Reference/c/tracker.h"
 
 /* Permanent verbatim extracts (like tankops.c/shellops.c/builderops.c/
    pillops.c) of the pure numeric wire-format transforms from
@@ -404,4 +406,67 @@ size_t sizeof_sr_oracle(int type) {
     case SRPAUSE: return sizeof(struct SRPause);
     default: return 0;
   }
+}
+
+/* sizeof/offsetof ground truth for the three preamble structs (Wave 6.3),
+   which carry no opcode byte and so sit outside the sizeof_cl_oracle/
+   sizeof_sr_oracle dispatch above -- JOIN_Preamble (bolo.h), BOLO_Preamble
+   (bmap.h), and TRACKER_Preamble (tracker.h). BOLO_Preamble's nested
+   per-player array and its `game.domination` union are the two layout
+   traps worth an explicit offsetof check rather than trusting sizeof
+   alone. Struct definition duplicated from CXBolo.h, matching
+   CLUpdateLayoutOracle's own precedent just above -- this file never
+   includes the public header, only the reference C headers themselves. */
+struct PreambleLayoutOracle {
+  size_t sizeofJoinPreamble;
+  size_t offJoinName;
+  size_t offJoinPass;
+
+  size_t sizeofBoloPreamble;
+  size_t offBoloPlayer;
+  size_t offBoloHiddenMines;
+  size_t offBoloPause;
+  size_t offBoloGameType;
+  size_t offBoloDominationType;
+  size_t offBoloDominationBaseControl;
+  size_t offBoloPlayers;
+  size_t offBoloMapLen;
+  size_t sizeofBoloPlayerEntry;
+  size_t offEntryUsed;
+  size_t offEntryConnected;
+  size_t offEntrySeq;
+  size_t offEntryName;
+  size_t offEntryHost;
+  size_t offEntryAlliance;
+
+  size_t sizeofTrackerPreamble;
+};
+
+struct PreambleLayoutOracle preamble_layout_oracle(void) {
+  struct PreambleLayoutOracle L;
+
+  L.sizeofJoinPreamble = sizeof(struct JOIN_Preamble);
+  L.offJoinName = offsetof(struct JOIN_Preamble, name);
+  L.offJoinPass = offsetof(struct JOIN_Preamble, pass);
+
+  L.sizeofBoloPreamble = sizeof(struct BOLO_Preamble);
+  L.offBoloPlayer = offsetof(struct BOLO_Preamble, player);
+  L.offBoloHiddenMines = offsetof(struct BOLO_Preamble, hiddenmines);
+  L.offBoloPause = offsetof(struct BOLO_Preamble, pause);
+  L.offBoloGameType = offsetof(struct BOLO_Preamble, gametype);
+  L.offBoloDominationType = offsetof(struct BOLO_Preamble, game.domination.type);
+  L.offBoloDominationBaseControl = offsetof(struct BOLO_Preamble, game.domination.basecontrol);
+  L.offBoloPlayers = offsetof(struct BOLO_Preamble, players);
+  L.offBoloMapLen = offsetof(struct BOLO_Preamble, maplen);
+  L.sizeofBoloPlayerEntry = sizeof(((struct BOLO_Preamble *)0)->players[0]);
+  L.offEntryUsed = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), used);
+  L.offEntryConnected = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), connected);
+  L.offEntrySeq = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), seq);
+  L.offEntryName = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), name);
+  L.offEntryHost = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), host);
+  L.offEntryAlliance = offsetof(__typeof__(((struct BOLO_Preamble *)0)->players[0]), alliance);
+
+  L.sizeofTrackerPreamble = sizeof(struct TRACKER_Preamble);
+
+  return L;
 }

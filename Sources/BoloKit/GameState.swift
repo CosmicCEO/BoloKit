@@ -56,6 +56,22 @@ public struct GameState: Sendable {
     /// `server.pauseonplayerexit` (`server.c:1192-1197`) — a server setup
     /// option, not something `runTick` itself decides.
     public var pauseOnPlayerExit: Bool
+    /// Mirrors `server.hiddenmines` — whether mines are rendered invisible
+    /// to non-owning players. Wire-only flag (Wave 6.3's `BoloPreamble`);
+    /// no gameplay function in this port reads it yet.
+    public var hiddenMines: Bool
+    /// Mirrors `server.allowjoin` — `joinplayerserver()`'s `kDisallowJOIN`
+    /// gate (Wave 6.3).
+    public var allowJoin: Bool
+    /// Mirrors `server.passreq`. Mirrors `joinplayerserver()`'s password
+    /// gate together with `serverPassword` below (Wave 6.3).
+    public var passwordRequired: Bool
+    /// Mirrors `server.pass`.
+    public var serverPassword: String
+    /// Mirrors `server.bannedplayers` — a `ListNode` linked list in the C
+    /// source, a plain array here (no ordering/traversal behavior depends
+    /// on the list structure itself, only membership).
+    public var bannedPlayers: [BannedPlayer]
 
     public init(
         terrain: TerrainGrid = .mapDefault(),
@@ -75,7 +91,12 @@ public struct GameState: Sendable {
         timeLimit: Int = 0,
         baseControlThreshold: Int = 0,
         baseControlCounter: Int = 0,
-        pauseOnPlayerExit: Bool = false
+        pauseOnPlayerExit: Bool = false,
+        hiddenMines: Bool = false,
+        allowJoin: Bool = true,
+        passwordRequired: Bool = false,
+        serverPassword: String = "",
+        bannedPlayers: [BannedPlayer] = []
     ) {
         self.terrain = terrain
         self.pills = pills
@@ -95,5 +116,10 @@ public struct GameState: Sendable {
         self.baseControlThreshold = baseControlThreshold
         self.baseControlCounter = baseControlCounter
         self.pauseOnPlayerExit = pauseOnPlayerExit
+        self.hiddenMines = hiddenMines
+        self.allowJoin = allowJoin
+        self.passwordRequired = passwordRequired
+        self.serverPassword = serverPassword
+        self.bannedPlayers = bannedPlayers
     }
 }

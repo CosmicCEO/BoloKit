@@ -211,6 +211,19 @@ public struct PlayerState: Sendable {
     // Projectiles
     public var shells: [Shell]
     public var explosions: [Explosion]
+    // Session identity (Wave 6.3) — mirrors `server.players[i].name`/
+    // `.host`/`.addr.sin_addr`. `name` is set once on join and used for
+    // rejoin/ban matching; `host` mirrors `server.players[i].host`, which
+    // the C source declares but never actually assigns anywhere in
+    // `server.c` (grep-confirmed) — always empty here for the same reason,
+    // pending whatever DNS-resolution code a real transport (Wave 6.4)
+    // eventually supplies. `address` is a stand-in for `addr.sin_addr`,
+    // the ban list's actual (security-relevant, unspoofable-by-rejoin)
+    // match key — deliberately a separate field from `host` so a future
+    // transport can't accidentally key bans off the display hostname.
+    public var name: String
+    public var host: String
+    public var address: String
 
     public init(
         tank: Vec2f = Vec2f(x: 0, y: 0),
@@ -230,7 +243,10 @@ public struct PlayerState: Sendable {
         alliance: UInt16 = 0,
         inputFlags: InputFlags = [],
         shells: [Shell] = [],
-        explosions: [Explosion] = []
+        explosions: [Explosion] = [],
+        name: String = "",
+        host: String = "",
+        address: String = ""
     ) {
         self.tank = tank
         self.dir = dir
@@ -250,6 +266,26 @@ public struct PlayerState: Sendable {
         self.inputFlags = inputFlags
         self.shells = shells
         self.explosions = explosions
+        self.name = name
+        self.host = host
+        self.address = address
+    }
+}
+
+// MARK: - BannedPlayer
+
+/// Ported from `struct BannedPlayer` (`server.h:333-336`). Matches on
+/// `name` + `address` together, mirroring `joinplayerserver()`'s ban scan
+/// (`strncmp(name, MAXNAME) == 0 && bannedplayer->sin_addr == ...`) — see
+/// `PlayerState.address`'s doc comment for why this is `address`, not
+/// `host`.
+public struct BannedPlayer: Sendable, Hashable {
+    public var name: String
+    public var address: String
+
+    public init(name: String, address: String) {
+        self.name = name
+        self.address = address
     }
 }
 

@@ -216,4 +216,34 @@ struct CLUpdateLayoutOracle clupdate_layout_oracle(void);
 size_t sizeof_cl_oracle(int type);
 size_t sizeof_sr_oracle(int type);
 
+// Wave 6.3: JOIN_Preamble/BOLO_Preamble/TRACKER_Preamble layout ground
+// truth -- see netops.c's preamble_layout_oracle() for why these need
+// explicit offsetof checks rather than a plain sizeof_*_oracle dispatch.
+struct PreambleLayoutOracle {
+  size_t sizeofJoinPreamble;
+  size_t offJoinName;
+  size_t offJoinPass;
+
+  size_t sizeofBoloPreamble;
+  size_t offBoloPlayer;
+  size_t offBoloHiddenMines;
+  size_t offBoloPause;
+  size_t offBoloGameType;
+  size_t offBoloDominationType;
+  size_t offBoloDominationBaseControl;
+  size_t offBoloPlayers;
+  size_t offBoloMapLen;
+  size_t sizeofBoloPlayerEntry;
+  size_t offEntryUsed;
+  size_t offEntryConnected;
+  size_t offEntrySeq;
+  size_t offEntryName;
+  size_t offEntryHost;
+  size_t offEntryAlliance;
+
+  size_t sizeofTrackerPreamble;
+};
+
+struct PreambleLayoutOracle preamble_layout_oracle(void);
+
 #endif /* CXBOLO_H */
