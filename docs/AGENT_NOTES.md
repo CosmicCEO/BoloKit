@@ -3255,3 +3255,82 @@ wave confirmed independent of whatever is in flight on the main track.
 expect a separate worktree/branch alongside your checkout, same as before -- not an intrusion into
 your active wave's files.
 [TO: PARITY] No action.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4a extension: client-side preamble apply + persistent UDP/TCP loops (D45)
+
+**Type:** completion report
+**Phase:** Wave 6.4a extension (D45)
+**Commit:** `8296346`
+
+Closes both gaps D45 named plus one it didn't yet know about. Test count: 502 → 521 (+19: 5 for
+`decodeBMap`, 4 for `applyBoloPreamble`, 1 UDP loopback, 3 TCP dispatch, plus 6 already-counted in
+502 from Wave 6.4a's original scope that I'm not double-counting here). All 521 pass; 0 failed.
+
+**Third gap, found while implementing D45's first item, not previously disclosed anywhere:**
+`clientloadmap()`/`serversavemap()` (`bmap_client.c`/`bmap_server.c` — the full BMAP-format file
+orchestrators: preamble + pill/base/start-info arrays + terrain runs) had no Swift port at all.
+Only the per-row primitives they're built from (`readRun`/`writeRun`, Wave 4.1) existed.
+`assembleBoloPreamble`'s own Wave 6.3 doc comment incorrectly assumed `serversavemap`'s Swift
+output already existed ("Wave 4.1, not re-derived here") — it didn't; only the row-level
+primitives shipped that wave. Same shape of gap PARITY's audit just caught (a wave's own text
+assuming coverage nothing actually built) — surfacing it now rather than absorbing it silently.
+Wrote the DECODE half (`decodeBMap`, `BMap.swift`) since `applyBoloPreamble` needs it; the ENCODE
+half (`serversavemap`) is genuinely Wave 6.4b's problem (the server accept loop needs it to
+produce real map bytes to send) and is not written here.
+
+**What shipped:**
+- `decodeBMap` (`BMap.swift`) — `clientloadmap()`'s Swift port. Wipes terrain to `.mapDefault()`,
+  validates the preamble (ident/version/npills/nbases/nstarts bounds), populates
+  `pills`/`bases`/`starts`, then loops `writeRun` over the remaining run data. Malformed input
+  (bad ident/version, over-limit counts, truncated buffer, corrupt run) returns `false` rather
+  than trapping — no oracle behavior exists past that point, established precedent.
+- `applyBoloPreamble` (new file, `JoinClientApply.swift`, `BoloNet`) — the actual function PARITY
+  flagged missing: `client.c:690-750`'s state-modification block. Sets `localPlayer`,
+  `hiddenMines`, mirrors D39's `clientPauseDisplaySeconds` 255→-1 sentinel translation exactly the
+  way `recvSrPause` already does, inverts `assembleBoloPreamble`'s dominationType mapping, inits
+  every player slot (growing `state.players` to `preamble.players.count` if needed), decodes the
+  map via `decodeBMap`, then calls the already-shipped `spawn(state:)` (Wave 5.6) — confirmed reuse
+  rather than a new implementation, per D45's explicit ask. `seq` is deliberately not written
+  anywhere (Wave 6.0's standing call that `GameState` never stores per-player seq bookkeeping).
+- `UDPSession` (new file) — wraps `applyRemotePlayerUpdate` (already shipped) in a persistent
+  receive loop, plus `sendLocalUpdate` with no embedded cadence decision (the `seq % 5 == 0` call
+  stays the caller's).
+- `TCPSession` (new file) — reads one opcode-framed `SR*` message at a time and dispatches to the
+  matching `recvSr*` function (Wave 6.2). Added `wireSize` to all 34 `SR*` structs
+  (`ServerMessages.swift`, mechanical/additive, values cross-checked against the oracle sizes
+  `NetCodecDifferentialTests.swift`'s existing table already asserts). `sendMesg`/`timeLimit`/
+  `baseControl` have no `recvSr*` counterpart (Wave 6.2's own finding) — routed to plain callbacks
+  instead. `sendMesg`'s `wireSize` (3) covers only its fixed portion; the dispatch loop reads the
+  NUL-terminated `text` tail one byte at a time after that, since it has no length prefix.
+
+**Deliberate design deviation, disclosed rather than silent:** both session types use the classic
+completion-handler `NWConnection` API, not the `withNetworkConnection` API `JoinClient.swift`
+established for Wave 6.4a's original handshake. Reason: `withNetworkConnection` scopes the
+connection's lifetime to a closure, which fits a one-shot handshake but not a persistent,
+freely-held session object a tick driver sends into and receives from independently. Still fully
+async/await-driven (every socket call wrapped in a continuation, nothing blocks a thread) — within
+D31/D42's actual boundary, just a different part of the same framework's surface. Consequence:
+both new files needed `import Foundation` for `Data`, the first production `BoloKit`/`BoloNet`
+file to do so (every other production file, including `JoinClient.swift`, avoids it — only test
+harnesses needed it before now, because the modern API never requires the caller to spell `Data`
+by name). Flagging this explicitly in case PLANNER wants a different API choice for consistency;
+happy to redo it against `withNetworkConnection` if `Network.UDP`'s modern-API shape turns out to
+support a non-closure-scoped lifetime cleanly.
+
+**Minor, non-blocking finding, not fixed:** `BMapPreamble`'s existing doc comment (pre-dates this
+session) says "Format version, currently 0" — factually wrong per `bolo.h:26`'s
+`CURRENT_MAP_VERSION` (1). `decodeBMap` uses the correct literal `1`. Left the doc comment as-is;
+out of this wave's scope to fix drive-by.
+
+Per explicit instruction this session, stopping here — Wave 6.4b's pre-brief is drafted but not
+written to this log; needs its own session.
+
+> **→ Planner:** Wave 6.4a extension is done, built, tested (521/521), committed (`8296346`), not
+> yet pushed (Jerod pushes). Ready for PARITY whenever you activate it. Three things worth your
+> attention: (1) the classic-API-vs-`withNetworkConnection` deviation above — a real design call,
+> not an oversight; (2) the `serversavemap` gap is confirmed real and is Wave 6.4b's to close, not
+> deferred debt; (3) Wave 6.4b's pre-brief (verify-don't-assume server-side coverage, name its own
+> TCP `CL*` loop, per D45) is drafted in a scratch plan file but intentionally not written here yet
+> — next session's first job once you give the GO.
+> **→ Parity:** Same three items above if/when activated — the `Data`/Foundation deviation and the
+> classic-API choice are the two most likely to warrant a second opinion.
