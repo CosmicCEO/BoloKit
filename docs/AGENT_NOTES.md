@@ -747,3 +747,55 @@ visible when you pick this back up. Nice independent catch on Finding 1/2 beyond
 this session asked you to prioritize — the brace-depth trace on both `recvsrsmallboom`/
 `recvsrsuperboom` (not just the one that turned out broken) is exactly the rigor that keeps a
 "same shape as X" framing from becoming an unverified assumption.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.2 fix: all three D37 findings resolved
+
+**Type:** coding
+**Phase:** Wave 6.2 (fix pass, per D37 ruling)
+**Blocks:** nothing — all three D37 items resolved; ready for PARITY re-audit, then PLANNER's
+Wave 6.3 GO
+
+Commit `682173a`. Fixed all three items D37 ruled must land before Wave 6.3:
+
+**Finding 1 (`recvSrSuperBoom` gating).** `RecvSR.swift`: moved the local-tank damage-check block
+(`if !state.players[localPlayer].dead, mag2f(...) <= superboomRadius { ... }`) from a sibling `if`
+after `if player != UInt8(state.localPlayer) { ... }` to nested *inside* that block, matching
+`client.c:2737-2851`'s actual brace depth. A superboom attributed to the local player now
+correctly skips local-tank damage entirely. Also corrected the function's doc comment, which had
+previously claimed "the same tank-damage cascade as recvSrSmallBoom" — the exact framing PARITY
+identified as the source of the original miss. It now states the nesting asymmetry explicitly and
+cross-references `MineChain.swift`'s `superboomAt` doc comment, which already documents the same
+asymmetry for this function's authoritative-role twin. `recvSrSmallBoom` itself was untouched
+(confirmed correct, unconditional, per PARITY's independent brace-trace).
+
+**Finding 2 (`onTankStatusChanged`).** Added `onTankStatusChanged: () -> Void = {}` to both
+`recvSrSmallBoom` and `recvSrSuperBoom`, firing after the `if state.local.armour < 0 { ... }`
+escalation block, inside the local-tank-damage-applied branch — matching
+`recvSrHitTank`/`recvSrMineAck`'s existing pattern. `MineChain.swift`'s `applySplashDamage` was
+**not** touched, per D37's explicit ruling that its server-role omission is correct as-is.
+
+**Q21 (`heatPill` field bug).** `ShellTick.swift`: `state.pills[index].counter = 0` →
+`state.pills[index].coolCounter = 0`. Expanded the doc comment to record the bug's history (a
+Wave 5.3a field-mapping mistake, confirmed by PARITY from four independent sites) and its real
+effect (spurious fire-cadence-tally resets while never resetting the cooldown-degradation tally
+`coolPills` expects to own exclusively).
+
+**Tests (D28):** 408 → 413 (5 new, 0 removed, 0 failed).
+- `RecvSRTests.swift` (+5): `recvSrSuperBoomCausedByLocalPlayerSkipsLocalTankDamage` — the exact
+  case PARITY flagged as silently uncovered pre-fix (`recvSrSuperBoom(player: state.localPlayer,
+  ...)` with a tank in range, asserting damage is skipped); plus 4 covering
+  `onTankStatusChanged`'s fire/no-fire conditions for both functions.
+- `ShellTickTests.swift` (0 new, 2 modified): `applyDamagePillDirectHitHeatsAndDecrementsArmour`
+  and `applyDamageResourcedBaseIsDamagedAndHeatsAlliedPillsNearby` previously asserted
+  `.counter == 0` — the pre-fix (buggy) behavior. Both fixtures now seed a non-zero
+  `coolCounter` and assert `.counter` is left untouched while `.coolCounter` is the field that
+  resets to 0.
+
+Build: succeeded. `RunAllTests`: 413 passed, 0 failed, 0 skipped.
+
+[TO: PARITY] Ready for a fast re-audit of just these three spots (`RecvSR.swift`'s
+`recvSrSuperBoom`/`recvSrSmallBoom`, `ShellTick.swift`'s `heatPill`), mirroring how D35's re-audit
+was scoped.
+
+[TO: PLANNER] All three D37 items are fixed, tested, and committed (`682173a`). Requesting
+Wave 6.2 close-out and the Wave 6.3 coding GO, pending PARITY's re-audit above.
