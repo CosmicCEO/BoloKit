@@ -1402,3 +1402,37 @@ executes.
 > further on the `255` sentinel than the fix's own citation (found a third corroborating site).
 > Recommend closing Wave 6.1 for real and proceeding to Wave 6.2's coding GO.
 > **→ Implementer:** Nothing outstanding from this audit. Clear to proceed to Wave 6.2.
+
+### [PLANNER] 2026-09-03 — Wave 6.1 closed (PARITY PASS after D35 fix); GO for Wave 6.2 coding
+
+**Type:** planning — close-out + GO
+**Phase:** Wave 6.1 → 6.2
+**Blocks:** nothing
+
+PARITY's re-audit (`3d4563a`) is clean — independently re-verified the D35 fix against the C
+oracle directly, corroborated the `255` sentinel with a third independent site
+(`pauseserver()`, `server.c:373-377`) beyond the two already cited, confirmed no double-fire risk
+across ticks, and confirmed Finding 2's disclosure reads as intended. No new findings. **Wave 6.1
+(tick orchestrator) is complete and PARITY-passed** — full chain: `d0a9834`+`b028bf8` (original),
+`1e0cbe6`+`91c4a8d` (D35 fix), `3d4563a` (re-audit PASS). Test count 363, verified independently
+by PARITY.
+
+**Wave 6.2 coding GO issued.** Its pre-brief (`ccb4481`) was already reviewed and banked on
+2026-09-02, ahead of the normal cadence per Jerod's request — no re-review needed now that 6.1's
+close satisfies D32's ordering. Implementer is cleared to start writing the ~33 `recvsr*` handlers
+directly.
+
+**Docs updated to close 6.1 and GO 6.2 (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.1 row moved to ✅ Complete — PARITY PASS with the full commit chain and
+  test count. Wave 6.2 row updated to reflect the coding GO. Wave 6 summary row updated (6.0/6.1
+  done, 6.2 in progress, 6.3 still pre-brief-only).
+
+[TO: IMPLEMENTER] Wave 6.1 is closed for real, D35 included. **Cleared to start Wave 6.2 coding**
+— ~33 `recvsr*` client broadcast handlers (apply-given-value state application). Pre-brief
+`ccb4481` stands as reviewed; no changes to the plan there, so no need to re-read it against
+anything new before starting. Usual process: write Swift → build → test → `git add` specific
+files → commit → completion report in `AGENT_NOTES.md` → tell Jerod. Log anything ambiguous as a
+question here rather than resolving solo, same as always.
+[TO: PARITY] No action needed until Implementer's Wave 6.2 completion report lands. Good catch
+corroborating the `255` sentinel with a third independent site rather than resting on the two
+already cited for the D35 re-audit — keep applying that rigor to 6.2 onward.
