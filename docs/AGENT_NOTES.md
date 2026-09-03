@@ -316,3 +316,95 @@ When you get to Wave 6.5: the `TrackerHost`/`TrackerHostList` packing note above
 most likely to get silently mis-ported if approached the same way as every other (packed) wire
 struct.
 [TO: PARITY] No action needed — no code shipped this entry, nothing to audit yet.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.2 complete: 30 `recvsr*` broadcast handlers
+
+**Type:** coding
+**Phase:** Wave 6.2
+**Blocks:** nothing — 6.2 done, 6.3 (session logic) is next per D32
+
+Commit `0d44f30`. Implemented against the pre-brief above; three findings changed scope from what
+that pre-brief assumed, each surfaced as a design call rather than silently absorbed.
+
+**Finding 1 — `sendmesg`/`timelimit`/`basecontrol` have no `GameState` mutation at all.** The
+pre-brief expected "straightforward flag/counter updates" for `timelimit`/`basecontrol`; their
+actual bodies (`client.c:3030-3086`, `3088-3135`) are pure UI text formatting ("N Minutes and M
+Seconds Remaining!") with no state effect to apply — `client.timelimitreached`/`basecontrolreached`
+have no analog because `runTick` (Wave 6.1) already derives the equivalent condition from `ticks`
+vs. `timeLimit`/`baseControlThreshold` directly, every tick. **30 functions shipped, not 33** —
+`sendmesg` (already flagged in the pre-brief) plus these two, confirmed the same way once their
+bodies were actually read.
+
+**Finding 2 — `recvSrCapturePill`'s `sendclgrabtile()` branches are network sends, not direct
+mutations.** Two of its terrain-dispatch cases (`.boat`, and every mined-terrain case) call
+`sendclgrabtile()` in the real C — the local client *asking the server* to process a grab, not a
+direct call to the already-ported `grabTile()`. Calling `grabTile` directly there would re-trigger
+a state change the real client never makes on its own — the same class of mistake PLANNER ruled
+against for the mine-cascade case (Wave 5.9, per Finding 1's ruling above). Surfaced as
+`onRequestGrabTile: (Pointi) -> Void` instead of applied. `drown()`/`superboom()` in the *other*
+branches ARE direct local calls in the real C (`if (drown()) ...`, `if (superboom()) ...`) and are
+called directly here.
+
+**Finding 3 — `recvSrSetAlliance`'s "left the alliance" branch calls the real `leavealliance()`
+(`client.c:6389-6454`), not a one-line bit clear.** I initially wrote a private helper assuming
+`leavealliance(1 << player)` just clears one bit — wrong. The real function takes an arbitrary
+bitmask of *multiple* players, sends its own `CLSetAlliance` packet, and cascades a further
+status-refresh loop over every connected player. Caught this before committing by reading the
+full function rather than trusting the shape implied by the call site. Removed the incorrect
+helper; surfaced as `onShouldLeaveAlliance: (UInt16) -> Void` instead — the real implementation is
+squarely Wave 6.3's `requestalliance`/`leavealliance` scope (already in that pre-brief), not
+something safe to duplicate inline here.
+
+**Design call, stated for PARITY to audit:** `recvSrSmallBoom`/`recvSrSuperBoom` do **not** call
+`explosionAt`/`superboomAt` (`MineChain.swift`) despite the visible logic overlap (same terrain
+crater conversion, same explosion-particle creation, same tank-damage-cascade shape). Those two
+functions schedule chain/flood ring-buffer entries as part of being the *authoritative* role's
+computation; a receiving client's `recvsrsmallboom`/`recvsrsuperboom` have no such scheduling
+anywhere in `client.c` — calling them would silently add scheduling a real client never does, on
+top of whatever the authoritative side already scheduled once. Independent, terminal
+reimplementations instead, reusing `killSquareBuilder`/`killPointBuilder`/`drown`/`superboom`/
+`smallboom`/`killTank` directly (all already-shipped, all operate on `state.localPlayer`
+internally, matching their existing call sites elsewhere).
+
+**Finding, flagged for PLANNER, deliberately not fixed here (pre-existing, out of this wave's
+scope):** `recvSrDamage`'s pill/base heat logic (`client.c:1540-1577`) resets neither
+`Pill.counter` nor `Pill.coolCounter` — confirmed by direct reading, matches `client.c` exactly.
+Its server-side sibling `recvcldamage()` (`server.c:2804-2846`, ported as `heatPill`/`applyDamage`
+in `ShellTick.swift`, Wave 5.3a) resets `server.pills[pill].counter = 0`. `Pill.coolCounter`'s own
+doc comment identifies `server.pills[i].counter` as *its* C analog, not `Pill.counter`'s. If that
+mapping is right, `heatPill` has been resetting the wrong field since Wave 5.3a — a real, if
+narrow, pre-existing fidelity question, discovered only because writing `recvSrDamage` required
+reading both functions side by side. Not touched here: `recvSrDamage` doesn't call `heatPill` at
+all (writes its own inline logic matching `client.c` exactly), so this file is correct regardless
+of how the `heatPill` question resolves. Recommend PLANNER decide whether this needs its own
+tracked item (Wave 5.9-style) or a direct ruling.
+
+**Test baseline: 363 → 408 (+45), all in new `Tests/BoloKitTests/RecvSRTests.swift`.** Covers all
+30 functions: player lifecycle (join/rejoin/exit/disc/kick/ban), terrain broadcasts (damage
+including the no-counter-reset regression, grabTrees/build/grow/flood/placeMine/dropMine/
+dropBoat), pill broadcasts (repairPill/coolPill/capturePill including the boat-tile and
+sea-without-boat dispatch branches/buildPill/dropPill), base broadcasts (replenishBase/
+captureBase/refuel/grabBoat), local acks (mineAck/builderAck's per-task routing), explosions
+(smallBoom/superBoom's terrain+cascade, hitTank), and alliance/pause (the three-way accepted/left/
+requested branch, the `onShouldLeaveAlliance` surfacing, `pause`'s 255 sentinel). Two tests
+initially crashed the whole test process from an out-of-bounds `localPlayer` (same class of
+mistake as Wave 6.1's removed test — `recvSrSmallBoom`/`recvSrSuperBoom` unconditionally read
+`state.players[state.localPlayer]` for the tank-damage check, so `localPlayer` must be a valid
+index); fixed by using a real, distant player rather than an out-of-range sentinel, matching how
+Wave 6.1 resolved the same issue.
+
+No `Package.swift` changes. Build and full suite green before commit.
+
+> **→ Planner:** Wave 6.2 done and committed. Two things need your attention before/alongside a
+> close-out: (1) confirm the 30-not-33 function count and the `sendmesg`/`timelimit`/`basecontrol`
+> no-mutation finding — this changes what "6.2 complete" means relative to the pre-brief's stated
+> scope; (2) the `heatPill`/`Pill.counter` vs `Pill.coolCounter` question above needs a ruling or a
+> tracked item, independent of whether 6.2 itself is accepted. `onRequestGrabTile`/
+> `onShouldLeaveAlliance` are new callback surfaces Wave 6.3/6.4 should know exist when their turn
+> comes — 6.3 already owns `leavealliance` so `onShouldLeaveAlliance` should wire there naturally.
+> **→ Parity:** `0d44f30` is ready for audit. Priority: the three scope-changing findings above
+> (especially Finding 3 — I want independent confirmation that `onShouldLeaveAlliance`'s bitmask
+> and trigger condition match `client.c:2905-3028`'s "left" branch exactly, since I caught my own
+> first draft being wrong here), and the `explosionAt`/`superboomAt`-avoidance design call. The
+> `heatPill` finding is also worth independently re-deriving from `server.c:2804-2846` vs.
+> `client.c:1540-1577` directly rather than trusting this report's reading of it.
