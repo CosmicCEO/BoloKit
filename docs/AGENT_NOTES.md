@@ -621,3 +621,55 @@ architecture to have leaked into.
 > `recvSrSmallBoom`/`recvSrSuperBoom` (Finding 2) and possibly `applySplashDamage`
 > (`MineChain.swift`) if Planner bundles it. Not fixing either myself per PARITY's report-only
 > role — holding for your commits once Planner rules.
+
+### [PLANNER] 2026-09-03 — Q22 opened: dedicated headless server vs. in-process host; research logged
+
+**Type:** planning — research + open question
+**Phase:** cross-wave (not Wave 6.2-6.5 specific)
+**Blocks:** nothing in-flight; relevant once Wave 6.3/6.4 land or the app-UI phase starts
+
+Jerod flagged a runtime question we'd missed: does the Swift port need a standalone dedicated
+server binary, or does the future app (linking `BoloKit`+`BoloNet`) hosting in-process cover it?
+Asked for research on what other Bolo implementations did, logged for reference.
+
+**Direct source read of our own oracle settles the easy half.** `Reference/c/` ships **both**,
+confirmed by reading the actual files rather than assuming: the Cocoa client
+(`Mac OS X/GSXBoloController.m`) calls `setupserver()`/`startserverthread()`/
+`startserverthreadwithtracker()` directly from a "Host a Game" panel (in-process hosting, UPnP via
+`TCMPortMapper` — the same GPLv3 dependency D32/D34 already rule out), **and** a fully separate,
+headless `Dedicated Host` target exists (`Reference/c/Dedicated Host/main.c`, 740 lines) — CLI
+flags for map/port/password/tracker/timelimit/hidden-mines/game-type, then a text
+`status`/`pause`/`resume`/`allowjoin`/`disallowjoin`/`kick`/`ban`/`unban`/`quit` REPL, driving the
+identical locked `server.c` state the Cocoa panel drives. Both are thin frontends over one shared
+server core — the same functions Wave 6.3 is currently porting.
+
+**External research (web, cited) shows the same pattern elsewhere in the lineage.** WinBolo's own
+manual: a separate `WinBoloDS` dedicated-server program predates client-hosted play; v1.14 added
+"Built In Server" support directly in the client specifically to remove the friction of running an
+external program, and both options remain available today. LinBolo ships "client & server" from
+the same source tree per its own README (not independently verified deeper than that line — GitHub
+`robots.txt` blocked a directory-level fetch). The one counter-example is PyBolo, a from-scratch
+modern Python rewrite with no in-client hosting at all (separate server app only, thin-client/
+authoritative-server split) — weaker precedent for us since it isn't derived from the actual Bolo
+codebase lineage. The 1987/1993 original's own internal architecture is undocumented in available
+sources — not resolved, and not worth digging further per D3's behavior-only fidelity target.
+
+**Full writeup with citations: `docs/notes/HOSTMODELS.md`** (new file, following the DEEPDIVE1
+naming/citation convention). Logged as **Q22** in `docs/PLAN.md` rather than ruled here — this is
+a product/scope call for Jerod, not something PLANNER should decide unilaterally. My
+recommendation (in that doc, not a ruling): match the lineage's pattern and eventually support
+both, since `BoloKit`/`BoloNet`'s existing headless-by-design split makes a companion CLI target
+(mirroring `Reference/c/Dedicated Host/main.c`, alongside the existing `BoloGlyphs` CLI target)
+close to free once Wave 6.3's session logic and Wave 6.4's transport exist — no architecture
+change forced either way.
+
+**Docs updated (committed alongside this entry):**
+- `docs/notes/HOSTMODELS.md` — new research note, full findings + sources.
+- `docs/PLAN.md` — new **Q22** in the open-questions table, pointing at the new doc.
+
+[TO: IMPLEMENTER] No action needed now — Wave 6.2/6.3/6.4 scope is unchanged by this. Worth a
+skim when you get to Wave 6.3/6.4's pre-briefs, since `HOSTMODELS.md` names the same `server.c`
+functions those waves are already porting (`kickplayer`/`banplayer`/`lockserver`/`unlockserver`
+etc.) and the eventual `BoloHost`-style companion target (if Jerod wants it) would be a thin
+consumer of exactly what those waves build.
+[TO: PARITY] No action needed — this is a product-scope question, not a parity question.
