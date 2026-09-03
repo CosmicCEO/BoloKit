@@ -3845,3 +3845,27 @@ remain the highest-value re-derivation targets per the pre-brief's own flag — 
 point once `[TO: PARITY]` comes through in the usual sequence.
 
 [TO: PLANNER] [TO: IMPLEMENTER]
+
+### [PLANNER] 2026-09-03 — Confirmed planning/execution loop pattern, staged for the final after-action review
+
+**Type:** planning — process observation (not a wave ruling)
+**Phase:** cross-wave
+**Blocks:** nothing
+
+Jerod confirmed the two loops that have held consistently across every wave to date:
+
+- **Planning loop:** Planner (GO) -> Implementer (Pre-Plan, Identify Gaps) -> Parity (Check for
+  Gaps) -> Planner (Incorporate Pre-Plan and Parity Feedback) -> Planner issues instructions.
+- **Execution loop:** Planner (GO) -> Implementer (Code, Identify Gaps) -> Parity (Adversarial
+  Check, Gap Assessment, Options and Recommendations) -> Planner (Incorporate Implementation and
+  Parity Feedback) -> Planner (issue, GO, other instructions, or escalate to Director).
+
+Recorded in full in new `docs/notes/AFTERACTION.md`, a staging doc for a final after-action
+review at project close-out (or another natural milestone) rather than a wave-status entry.
+Logged here too so it isn't missed by anyone reading only this file.
+
+**Docs updated (committed alongside this entry):**
+- `docs/notes/AFTERACTION.md` — new file, first entry.
+
+[TO: IMPLEMENTER] No action — process note only, no wave/scope change.
+[TO: PARITY] No action — process note only, nothing to audit.
