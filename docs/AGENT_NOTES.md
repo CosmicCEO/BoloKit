@@ -3243,3 +3243,55 @@ total against 560 + additions, no regression (D28).
 > listener's per-peer-connection accounting (T-15) and the `dgramaddr` port-seeding claim in §1
 > (verified against `server.c:844`, not the previously-cited `:817`) are the two most likely spots
 > for an independent re-derivation to catch something this pre-brief got wrong.
+
+### [PLANNER] 2026-09-03 — Wave 6.4c pre-brief ruled (D51/D52); coding GO issued
+
+**Type:** planning — ruling + GO
+**Phase:** Wave 6.4c
+**Blocks:** nothing now — unblocks coding
+
+Reviewed IMPLEMENTER's Wave 6.4c pre-brief (`091c364`) against D50's scope (all three items —
+live UDP wiring, real `dgramaddr`, `SRDropPill`). All three are addressed, each backed by direct
+API/source citations (not assumed): `NWConnection.endpoint`'s concrete `.hostPort` shape on
+accepted connections, `IPv4Address.rawValue`/`NWEndpoint.Port.rawValue`, `server.c:844`'s literal
+`dgramaddr` assignment (with the `:817` citation typo folded into the same fix), and
+`server.c:1965-1976`'s `dr()`→`sendsrdroppill()` call chain for the drop-pill broadcast. Two new
+traps disclosed (T-15 unbounded UDP-flow growth, T-17 the drop-pill broadcast's placement-vs-
+scatter-origin coordinate distinction) read as genuine catches, not padding — T-17 in particular is
+exactly the kind of "easy to get backwards" detail this project's citation discipline exists to
+surface before it ships, not after.
+
+**Ruling on the two open questions:**
+
+- **D51 — `HostDgramListener` gets its own file**, matching the existing one-listener-per-file
+  convention (`HostListener.swift` for TCP accept; `UDPSession.swift`/`TCPSession.swift`'s split
+  on the client side). No reason to fold two distinct concerns (session bookkeeping vs. a
+  network-facing accept loop) into `HostSession.swift`.
+- **D52 — T-15's unbounded UDP-flow growth gets bounded this wave, but by connection lifecycle,
+  not an arbitrary cap.** Unlike D44's dead-reckoning bound (genuinely unbounded, no natural
+  limit), this one already has a natural bound disclosed back in Wave 6.4b's own pre-brief §4 —
+  "one `NWConnection` per remote endpoint (T-3's port update becomes 'replace the stored
+  connection for that slot')" — disclosed then, implicitly carried into D47's coding GO, and 6.4c
+  is where it actually gets built. Concretely: track `dgramConnection` per `HostSessionTable` slot
+  (bounded by `maxPlayers` = 16) and explicitly cancel a slot's superseded connection on a T-3
+  port-mismatch swap, rather than merely dropping the reference; a datagram that never resolves to
+  a known player slot must not have its connection retained anywhere past that one packet. This
+  keeps live-tracked UDP connections bounded to at most `maxPlayers` at any time — the real
+  invariant, not a magic number. Named regression test required (D28) per the ruling's text above.
+
+**Coding GO issued for Wave 6.4c as scoped in the pre-brief's §1-§4**, with D51/D52's refinements
+folded in. Expect the test count to grow from 560 per the pre-brief's own §4 test plan, no
+decrease (D28).
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D51/D52 added to the decisions log; Wave 6.4c row updated to reflect the coding
+  GO.
+
+[TO: IMPLEMENTER] Coding GO for Wave 6.4c per D51/D52 above — proceed as scoped in your own
+pre-brief (`091c364`), with `HostDgramListener` in its own file (D51) and the per-slot
+cancel-and-replace connection lifecycle (D52) folded into T-15's fix and its regression test.
+[TO: PARITY] No action needed yet — nothing shipped this entry. Once 6.4c lands, per the
+pre-brief's own flag: the `dgramaddr` port-seeding claim (`server.c:844`) and T-15's connection
+accounting (now specifically: does the slot's old connection actually get canceled, not just
+replaced, and does an unresolved datagram's connection actually go unretained) are the highest-
+value independent re-derivation targets.
