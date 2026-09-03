@@ -3038,3 +3038,57 @@ to `docs/AGENT_NOTES.md` only, for the same reason Implementer's own commit was 
 accurately scoped — recommend tracking them as a named follow-up (D45/D46-style) rather than
 letting "Wave 6.4b done" silently imply they're closed, per the completion report's own request
 for a ruling on this. The `server.c:817`→`:844` citation drift is cosmetic, not blocking.
+
+### [PLANNER] 2026-09-03 — Wave 6.4b closed (PARITY PASS, no fixes required); Q25 ruled, new Wave 6.4c tracks its three disclosed open issues (D50)
+
+**Type:** planning — close-out + ruling
+**Phase:** Wave 6.4b close / Wave 6.4c open
+**Blocks:** nothing — Wave 6.4c is available to start whenever Implementer picks it up
+
+Reviewed the full chain: IMPLEMENTER's completion report (`c0cf490`, on top of `b26ee69`) and
+PARITY's post-commit audit (`11d792c`, requested directly by Jerod ahead of my formal activation
+— logged per this project's now-standard ad hoc-audit precedent, not a protocol break). PARITY's
+verdict: **PASS**, every substantive claim in the completion report independently re-derived and
+confirmed — the six extended `RecvCL.swift` callback signatures, the `CLSendMesg` masked-relay
+special case, the `HostListener` `AsyncStream` exclusivity fix, both G-1/G-4 promotions. One
+cosmetic citation drift (`server.c:817` vs. the actual `:844`, repeated in `HostListener.swift`'s
+own header comment) — non-blocking, folded into Wave 6.4c's scope below since that's the next
+natural touch of that file.
+
+**Wave 6.4b closes clean — PARITY PASS, no fixes required.** Unlike Wave 6.4a's close (which took
+three rounds because real gaps kept surfacing, D45/D46), 6.4b's own scope-completeness check
+(mandated by D45) actually held on the first pass: Implementer explicitly verified Wave 6.3's
+"new player" state init was NOT a mirror-image gap of 6.4a's (confirmed, not assumed, per its own
+pre-brief §1), and PARITY independently re-confirmed the same.
+
+**Ruling on Q25** (the completion report's own request: do the three disclosed open issues become
+tracked follow-up scope, or stay noted?):
+
+- **D50 — all three become tracked follow-up scope, bundled as new Wave 6.4c, sequenced before
+  Wave 6.5's coding GO.** None of the three is a defect in what 6.4b shipped: the `dropPills`
+  broadcast gap predates Wave 6 entirely (Wave 5.5a's `droppills()` never got a broadcast
+  callback, exposed but not created here); the unwired live UDP listener and the zeroed
+  `dgramaddr` are both legitimate, correctly-disclosed scope boundaries D47's coding GO never
+  named. Bundled rather than split into three items or left as bare notes because they share one
+  theme (finish wiring the host transport for actual live gameplay, not just its pure decision
+  logic) and two are directly coupled (`dgramaddr` has no consumer to validate against until the
+  UDP listener exists). Sequenced before 6.5 because 6.5's own `registerserver()` tracker-echo
+  occurrence (D48) is also a UDP receive-path addition — cleaner to land 6.4c's UDP wiring once
+  than have two waves independently building around an absent listener.
+
+**Wave 6.4c scope** (docs/PLAN.md row added): (1) wire `NWListener(using: .udp)` driving
+`DgramServerRelay.swift`'s existing, already-tested decision core against real datagrams; (2)
+derive `dgramaddr` from the joining TCP connection's real address at join (`server.c:844`)
+instead of a zeroed placeholder — also fixes the `:817` citation typo in the same touch; (3) add
+`onShouldBroadcastDropPill` to `MineChain.swift`'s `droppills()`/`dr()` and wire `SRDropPill` in
+`HostSession.swift`, mirroring 6.4b's G-2 broadcast pattern one-for-one.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D50 added to decisions log; Wave 6.4b row marked complete; new Wave 6.4c row
+  added; Wave 6 summary row and Wave 6.5 row updated to reflect sequencing.
+
+[TO: IMPLEMENTER] Wave 6.4b is closed — no action needed on it. Wave 6.4c (D50) is open scope
+whenever you're ready to pick it up next (before Wave 6.5, per the sequencing above); write its
+own pre-brief first per the standard two-stage process.
+[TO: PARITY] No action needed yet — nothing new shipped this entry. Thanks for the fast turnaround
+on the post-commit audit.
