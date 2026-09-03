@@ -462,3 +462,162 @@ Wave-5.3a-era question, not this wave's own code; (4) the 30-vs-33 function coun
 passes 6.2, per D32's order. `onRequestGrabTile`/`onShouldLeaveAlliance` are noted for 6.3/6.4 to
 pick up; 6.3 already owns `leavealliance` so `onShouldLeaveAlliance` should wire there naturally
 per the pre-brief's existing scope.
+
+### [PARITY] 2026-09-03 — Wave 6.2 audit: 2 new findings (superboom self-damage gate, missing tank-status callback), Q21 confirmed
+
+**Type:** audit
+**Phase:** Wave 6.2
+**Blocks:** Wave 6.3 coding GO, per D32's ordering, pending Planner's ruling on Finding 1
+
+**Standing limitation, stated per protocol:** no Swift toolchain in this environment. This is a
+line-for-line hand-trace of `0d44f30` (`Sources/BoloKit/RecvSR.swift`,
+`Tests/BoloKitTests/RecvSRTests.swift`) against `Reference/c/client.c`/`server.c`, not a
+compile-and-run of the test suite. Implementer's green build remains the authority the code
+executes; this is the authority it's correct against the oracle.
+
+**Priority items from `e88ed25`, addressed in order:**
+
+**(1) Finding 3 (`onShouldLeaveAlliance`) — CONFIRMED correct, no discrepancy.** Re-derived
+`recvsrsetalliance()` (`client.c:2905-3028`) directly. Trigger condition matches exactly: fires
+only when `xor & (1 << localPlayer)` (our alliance bit toward them actually changed) AND our own
+alliance bit for them is set AND their new bit for us is now clear — precisely the "left" branch.
+`onShouldLeaveAlliance(UInt16(1 << player))` matches `leavealliance(1 << srsetalliance->player)`'s
+bitmask exactly (`RecvSR.swift:603` vs `client.c:3005`). Verified the "accepted" and "requested"
+branches too: `onPlayerStatusChanged`/`onBaseStatusChanged`/`onPillStatusChanged` firing conditions
+(unconditional per matching-owner base/pill, independent of the fog-of-war-gated
+`increasevis`/`decreasevis` calls dropped alongside `refresh`) match `client.c`'s `setbasestatus`/
+`setpillstatus` calls exactly in both branches (`client.c:2936-2955` accepted,
+`client.c:2969-2989` left) — the armour-gated `if` in each pill loop wraps only the fog-of-war
+call, not `setpillstatus`, and `RecvSR.swift` correctly reflects that (no armour gate on
+`onPillStatusChanged`).
+
+**(2) `explosionAt`/`superboomAt`-avoidance design call — sound in principle, but surfaced a real
+bug in execution (see Finding 1 below).** No double-scheduling risk: confirmed `recvsrsmallboom`/
+`recvsrsuperboom` (`client.c:2632-2903`) never touch `chains`/flood-test scheduling, matching the
+design call. But re-deriving `recvsrsuperboom` from scratch (rather than trusting the "same shape
+as recvSrSmallBoom" framing) turned up a real structural divergence — see Finding 1.
+
+**(3) Q21 (`heatPill`/`Pill.counter` vs `Pill.coolCounter`) — CONFIRMED bug, independently
+re-derived from four sites, not just the two cited in the report:**
+- `GameObjects.swift:16-35` (Pill's own doc comments): `Pill.counter` mirrors C's
+  `client.pills[i].counter`; `Pill.coolCounter` mirrors `server.pills[i].counter`.
+- `client.c:5073-5117`: `client.pills[i].counter` is used exclusively as the CLIENT fire-cadence
+  tally (`counter++`, compared against `.speed`, reset after firing) — confirms it's a different
+  variable from the one `recvcldamage` touches.
+- `server.c:1209-1217`: `server.pills[i].counter` is used exclusively as the cooldown-degradation
+  tally compared against `COOLPILLTICKS` — matches `GrowTrees.swift:150-158`'s `coolPills`
+  (Wave 5.7), which already correctly targets `Pill.coolCounter` for this exact C variable.
+- `server.c:2821` and `:2844` (`recvcldamage`, the function `heatPill` ports): resets
+  `server.pills[...].counter = 0` — i.e., the cooldown tally, which maps to `Pill.coolCounter`.
+`ShellTick.swift:73` (`heatPill`) resets `state.pills[index].counter = 0` — the wrong field.
+**Real effect, not just a mapping technicality:** taking pill/base shell damage spuriously resets
+the pill's in-progress fire-cadence tally (interfering with `PillTick.swift`'s shot timer), while
+failing to reset the cooldown-degradation tally that `coolPills` (Wave 5.7) would otherwise
+correctly leave alone post-heat — letting an already-halved `.speed` degrade again sooner than the
+real game allows. Recommend: one-line fix, `ShellTick.swift:73`'s `.counter = 0` →
+`.coolCounter = 0`. Pre-existing since Wave 5.3a, not introduced by 6.2; 6.2's own
+`recvSrDamage` doesn't call `heatPill` and is correct regardless (already confirmed in the
+completion report and re-verified here directly against `client.c:1531-1626`).
+
+**(4) 30-vs-33 count and `sendmesg`/`timelimit`/`basecontrol` no-mutation claim — CONFIRMED
+correct on both counts.** Independently counted 34 `SR*` opcodes in `bolo.h:204-236`; 4 excluded
+(`SRHANGUP` unused, `SRSENDMESG`/`SRTIMELIMIT`/`SRBASECONTROL` no `GameState` analog) = 30,
+matching `grep -c "^public func recvSr" RecvSR.swift` = 30 exactly. Read `client.c:3030-3086`
+(`recvsrtimelimit`) and `:3088-3135` (`recvsrbasecontrol`) directly: both are pure
+`asprintf`/`printmessage` text formatting; the only state write in either
+(`client.timelimitreached`/`basecontrolreached = 1`) is itself nested inside
+`if (client.printmessage)` — i.e., in the real C it doesn't fire at all without a registered UI
+callback — and Wave 6.1's `runTick` already derives the equivalent condition from `ticks` every
+tick regardless, so dropping it here is correct, not a coverage gap. Also read `client.c:1495`
+(`recvsrsendmesg`) directly: confirmed zero `GameState`-equivalent mutation, pure chat relay.
+
+**New Finding 1 (mine), CONFIRMED, not previously disclosed — severity: real behavioral
+divergence, not just a missing callback.** `recvSrSuperBoom` applies the local-tank splash-damage
+check unconditionally; `recvsrsuperboom()` (`client.c:2709-2868`) does not. Brace-depth-verified
+directly: `if (srsuperboom->player != client.player) {` opens at `client.c:2737` (depth 1→2) and
+does not close until `client.c:2851` (depth 2→1) — the tank-damage check
+(`client.c:2815-2840`, `client.armour -= 20`, the superboom/smallboom/killtank escalation,
+`settankstatus()`, `playsound()`) sits **inside** that block, at depth 2, not as a sibling `if`.
+`RecvSR.swift:487-530` gates only the explosion-particle creation on
+`player != UInt8(state.localPlayer)` (lines 487-512); the tank-damage check (lines 514-530) is
+outside that gate and runs unconditionally regardless of `player`. Net effect: when a broadcast
+superboom is attributed to the local player (`player == localPlayer` — e.g. the echo of the local
+player's own mine detonation, already applied optimistically per the `superboom()` local call,
+Wave 5.2b, the same precedent `explosionAt`'s doc comment cites for why `recvsrsmallboom` skips
+re-scheduling), the Swift port would incorrectly re-apply/apply local-tank damage a second time,
+where the C oracle skips it entirely. **This is not the same shape as `recvSrSmallBoom`** — I
+independently brace-traced `recvsrsmallboom()` too (`client.c:2632-2707`) and confirmed its
+damage-check (`client.c:2660-2686`) genuinely is a **sibling** `if`, at depth 1, not nested inside
+`if (srsmallboom->player != client.player)` — so `recvSrSmallBoom`'s unconditional damage check is
+correct, and the pre-brief/completion-report framing of "the same tank-damage cascade shape" for
+both functions is the source of the miss: they're structurally different in exactly this one way.
+Notably, `MineChain.swift`'s `superboomAt` (Wave 5.5a) already documents this precise asymmetry
+correctly in its own doc comment ("gated on `player != state.localPlayer`, this time wrapping the
+damage check too... see file header for why that nesting differs from `explosionAt`") for the
+authoritative-role twin function (`server.c:4192`) — Wave 6.2 dropped that nesting when
+terminally reimplementing the client-broadcast role. No existing test exercises
+`recvSrSuperBoom(player: state.localPlayer, ...)` with a tank in range — `RecvSRTests.swift`'s
+`recvSrSuperBoomDamagesLocalTankWithinRadiusAndEscalates` uses `player: 1`, never the local
+player, so this gap is silently uncovered.
+
+**New Finding 2 (mine), CONFIRMED, not previously disclosed — severity: missing UI-status
+notification, not a state-correctness bug.** Neither `recvSrSmallBoom` nor `recvSrSuperBoom`
+exposes an `onTankStatusChanged` callback; `client.c` calls `client.settankstatus()`
+unconditionally whenever local-tank splash damage is applied in both
+(`client.c:2678-2680` smallboom, `client.c:2833-2835` superboom, both inside the respective
+damage-check block). This is inconsistent with `recvSrHitTank` and `recvSrMineAck`
+(`RecvSR.swift:534-551`, `:385-390`), which correctly model this same C hook for their own
+armour/tank mutations — and `settankstatus` is not among the file header's declared
+"consistently out of scope" UI callbacks (`printmessage`/`playsound`/`refresh`/`increasevis`/
+`decreasevis`), so this reads as an inconsistency, not a considered scoping call. Traced the
+omission one level deeper: it's inherited from `MineChain.swift`'s private `applySplashDamage`
+helper (Wave 5.5a, `MineChain.swift:315-340`), which has the identical gap — `explosionAt`/
+`superboomAt` don't fire it either, though for those the omission is arguably more defensible
+since `server.c`'s `explosionat()`/`superboomat()` (Wave 5.5a's ported originals) have no
+`settankstatus` analog at all (confirmed via `grep settankstatus Reference/c/*.c` — every hit is
+in `client.c`, none in `server.c`). Wave 6.2's `recvSrSmallBoom`/`recvSrSuperBoom` are
+independent, terminal reimplementations rather than calls into `applySplashDamage`, per the
+design call reviewed and confirmed sound above — so this was an opportunity to add the missing
+callback rather than inherit the gap, and it wasn't taken. Recommend a single ruling covering
+both the Wave 6.2 sites and the pre-existing Wave 5.5a site.
+
+**Everything else spot-checked line-for-line against `client.c`, no further findings:** player
+lifecycle (`recvsrplayerjoin/rejoin/exit/disc/kick/ban`, `client.c:1957-2191` — confirmed the
+rejoin pill-status-refresh loop's `setpillstatus` call is correctly unconditional on armour,
+matching C's nesting exactly, and confirmed exit/disc/kick/ban really do reduce to the same
+`connected=false`/`onPlayerStatusChanged` pair once fog-of-war is dropped); terrain broadcasts
+(`recvsrgrabtrees/build/grow/flood/placemine/dropmine/dropboat`, `client.c:1628-1955` — all
+switch/case tables match exactly, including `recvSrGrabTrees`'s true "else" branch covering every
+non-mined-forest terrain, not just grass); `recvSrDamage` (`client.c:1531-1626`, matches exactly,
+no counter reset either field); `recvSrCapturePill`'s terrain-dispatch switch
+(`client.c:2251-2354` — every one of the 2 `sendclgrabtile`-deferred cases, the 2 direct-call
+cases, and the do-nothing cases matches exactly); pill/base mechanical setters
+(`recvsrcoolpill/buildpill/droppill/replenishbase/capturebase/refuel/grabboat`,
+`client.c:2234-2547`, all match); `recvSrMineAck`/`recvSrBuilderAck`
+(`client.c:2550-2629`, including the 5-way task-to-field dispatch, matches exactly);
+`recvSrHitTank` (`client.c:2870-2903`, matches exactly, `onTankStatusChanged` correctly
+unconditional); `recvSrPause` (`client.c:1474-1493`, matches exactly).
+
+**D18:** no `Double`/`CGFloat` in `RecvSR.swift` — clean.
+**D26:** `-ffp-contract=off` still present, `Package.swift:15` — untouched.
+**D28:** test count independently verified: `grep -rc "@Test func\|func test" Tests/` = **408**,
+matches the commit message's 363 → 408 (+45) exactly.
+**D25/D33:** moot, confirmed — this remains a pure value-application layer, nothing for WinBolo's
+architecture to have leaked into.
+
+> **→ Planner:** Recommend **not** closing Wave 6.2 yet. Finding 1 is a genuine behavioral
+> divergence (not a disclosed design tradeoff) and should block the close the same way D35 blocked
+> 6.1 — recommend a ruling requiring a fix (gate `RecvSR.swift:514`'s damage check behind
+> `player != UInt8(state.localPlayer)`, matching `client.c:2737-2851`'s nesting) before Wave 6.3's
+> GO, per D32's order. Finding 2 is lower-severity (a missing UI notification, not a state bug)
+> but touches both 6.2's two sites and the pre-existing Wave 5.5a `applySplashDamage` site —
+> recommend one combined ruling/tracked item rather than two. Q21 verdict: confirmed bug,
+> one-line fix, your call whether it's bundled with Finding 2's ruling or tracked separately
+> given it's Wave-5.3a-scoped.
+> **→ Implementer:** Two things to expect once Planner rules: (1) Finding 1 needs
+> `RecvSR.swift`'s `recvSrSuperBoom` damage-check block moved inside the
+> `player != UInt8(state.localPlayer)` gate (matching `recvSrSmallBoom`'s *lack* of that gate is
+> correct and should NOT change); (2) likely an `onTankStatusChanged` parameter added to both
+> `recvSrSmallBoom`/`recvSrSuperBoom` (Finding 2) and possibly `applySplashDamage`
+> (`MineChain.swift`) if Planner bundles it. Not fixing either myself per PARITY's report-only
+> role — holding for your commits once Planner rules.
