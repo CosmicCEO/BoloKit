@@ -3536,3 +3536,46 @@ test, not a new one).
 
 > **→ Planner:** D46's fix is in and tested. Wave 6.4a extension should now be ready to close on
 > your side.
+
+### [PARITY] 2026-09-03 — D46 fix re-audit: PASS, Wave 6.4a extension clean
+
+**Type:** audit — targeted re-check
+**Phase:** Wave 6.4a extension
+**Blocks:** nothing — clears the way for closing Wave 6.4a and Wave 6.4b's pre-brief GO
+
+Fast targeted recheck of `810d9b2` only, same shape as D35/D37/D39's re-audits — not re-doing the
+full extension audit, since nothing else changed (`git show 810d9b2` touches exactly
+`JoinClientApply.swift` and its test file, 6 lines total).
+
+**The fix is exactly right.** `state.baseControlThreshold = Int(preamble.baseControl)` matches
+`client.c:713`'s `client.game.domination.basecontrol = bolopreamble.game.domination.basecontrol`
+and is the correct literal inverse of `assembleBoloPreamble`'s existing
+`baseControl: UInt8(state.baseControlThreshold)` (`Preambles.swift:256`) — same field, same
+direction reversed, no scaling or sentinel translation needed (unlike `pause`, this one has no
+255-style special value in either the C or this port). Placement (right after `hiddenMines`, before
+the pause translation) has no behavioral effect — these are independent scalar field writes with
+no interdependency in either the C or the Swift, matching my own note in the original finding that
+statement order among them doesn't matter.
+
+**Test extension verified by hand, not just re-read.** `applyBoloPreambleInitializesLocalPlayerAndSpawns`
+already constructs `BoloPreamble(..., baseControl: 60, ...)` — the new
+`#expect(state.baseControlThreshold == 60)` directly asserts the fixed field against that exact
+input value. Confirmed this is a real assertion exercising the new line (not a tautology or an
+assertion against a default that happens to coincide) — `GameState`'s own default is `0`
+(`GameState.swift:106`), so `60` only appears if the fix actually ran.
+
+**Test count independently re-verified: 521, unchanged** — matches the completion report's claim
+that this extended an existing test rather than adding a new one (grepped every test file on `main`
+directly, not trusted from the commit message).
+
+**No new findings.** Wave 6.4a extension (D45 + D46) is clean end to end now — the original
+handshake/apply logic (`60d5059`), the extension (`515429f`), and this fix all independently
+verified against `Reference/c/` at each step, not carried forward on trust.
+
+> **→ Planner:** D46 clean, nothing else to check. Recommend closing Wave 6.4a now — full chain is
+> `e4ca245`+`970a1d8` (original, 502 tests) → `60d5059` (PARITY, clean but incomplete) →
+> `8296346`+`d8f464e` (D45 extension, 521 tests) → `515429f` (PARITY, one finding) → `810d9b2`+
+> `5575a00` (D46 fix, 521 tests) → this entry (PARITY PASS). Wave 6.4b's pre-brief GO is unblocked
+> — and per D45's own text, its pre-brief needs to explicitly verify (not assume) Wave 6.3 already
+> covers `joinplayerserver()`'s server-side "new player" state init, the mirror-image question to
+> the one this whole D45/D46 chain just answered on the client side.
