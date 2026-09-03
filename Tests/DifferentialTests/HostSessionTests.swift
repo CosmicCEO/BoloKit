@@ -97,6 +97,31 @@ private func sendBytes(_ connection: NWConnection, _ bytes: [UInt8]) async throw
     }
 }
 
+/// D53: proves *absence* -- `count` bytes never arrive within a short
+/// window, either because nothing was sent (times out) or because the
+/// peer closed/canceled before delivering a full payload (errors out
+/// promptly on loopback). Either outcome confirms "did not receive";
+/// only actually reading `count` real bytes counts as a failure.
+private func confirmNoDatagramArrives(_ connection: NWConnection, count: Int, timeoutNanoseconds: UInt64 = 300_000_000) async -> Bool {
+    await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+            do {
+                _ = try await receiveExactly(connection, count)
+                return false
+            } catch {
+                return true
+            }
+        }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+            return true
+        }
+        let first = await group.next() ?? true
+        group.cancelAll()
+        return first
+    }
+}
+
 /// One simulated player: `clientEnd` is the test's own handle (writes CL*
 /// bytes in as "the player sending a message"; reads SR* bytes out as
 /// "what the player's real client would have received"). `serverEnd` is
@@ -371,7 +396,14 @@ private func makeState(playerCount: Int) -> GameState {
 
 // MARK: - Disconnect / kick / ban (T-12, T-13)
 
-@Test func handlePlayerDisconnectNormalBroadcastsPlayerExitToOthersOnly() async throws {
+/// D53 (PARITY finding, Wave 6.4c audit): `sendsrplayerexit()`
+/// (`server.c:3387-3409`) is `sendtoone(player)` THEN `sendtoallex`, so
+/// the departing player receives their own exit notice too -- unlike
+/// `sendsrplayerdisc()`, a plain `sendtoallex` with no self-send. Reads
+/// from BOTH `links[0]` (the departing player) and `links[1]` (everyone
+/// else) to prove the fix reaches everyone, not renamed from the old
+/// "ToOthersOnly" title without checking the behavior actually changed.
+@Test func handlePlayerDisconnectNormalBroadcastsPlayerExitToEveryoneIncludingSelf() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
 
@@ -381,8 +413,24 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(!state.players[0].connected)
     #expect(await table.isConnected(0) == false)
 
-    let bytes = try await receiveExactly(links[1].clientEnd, SRPlayerExit.wireSize)
-    #expect(SRPlayerExit.decode(bytes) == SRPlayerExit(player: 0))
+    let ownBytes = try await receiveExactly(links[0].clientEnd, SRPlayerExit.wireSize)
+    #expect(SRPlayerExit.decode(ownBytes) == SRPlayerExit(player: 0))
+    let othersBytes = try await receiveExactly(links[1].clientEnd, SRPlayerExit.wireSize)
+    #expect(SRPlayerExit.decode(othersBytes) == SRPlayerExit(player: 0))
+}
+
+/// D53's other half, explicitly required so this distinction stays
+/// covered going forward: unlike the normal-exit case above,
+/// `sendsrplayerdisc()` never reaches the departing player itself.
+@Test func handlePlayerDisconnectAbnormalDoesNotReachTheDepartingPlayer() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    await handlePlayerDisconnect(player: 0, reason: .abnormal, state: &state, table: table)
+
+    let absent = await confirmNoDatagramArrives(links[0].clientEnd, count: SRPlayerDisc.wireSize)
+    #expect(absent)
 }
 
 @Test func handlePlayerDisconnectAbnormalBroadcastsPlayerDisc() async throws {

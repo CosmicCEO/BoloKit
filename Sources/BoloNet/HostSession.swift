@@ -252,19 +252,26 @@ public enum HostDisconnectReason: Sendable {
 /// blocks (`server.c:1667-1740`) -- `removeplayer` (T-1's `GameState`
 /// half already covered by `removePlayer`, `SessionLogic.swift`, G-4) +
 /// the reason-dependent broadcast + T-12's `pauseonplayerexit` trigger.
-/// Simplification versus the literal C: the departing player's own
-/// best-effort echo of its exit broadcast (`sendsrplayerexit`'s
-/// `sendtoone(player)` half, `server.c:3397`) is skipped here, since by
-/// the time this runs the player's own connection is already being torn
-/// down -- `sendToAllExcept` already covers every OTHER player faithfully.
+/// **D53 (PARITY finding, Wave 6.4c post-commit audit):** an earlier
+/// version of this function skipped the departing player's own exit
+/// notice, reasoning that `sendsrplayerexit`'s `sendtoone(player)` half
+/// (`server.c:3397`) was redundant since the connection is already being
+/// torn down. That reasoning was wrong -- `sendtoone` there is
+/// best-effort and EPIPE-tolerant precisely *because* C expects the
+/// socket might already be half-closed, not because the send is
+/// pointless; the real observable effect is that the departing player
+/// DOES receive their own `SRPlayerExit` whenever the send succeeds.
+/// Fixed to use `sendToAll` for `.normal`, matching that net effect
+/// without replicating the two-syscall split itself (an artifact of C's
+/// mechanism, not an observable protocol requirement).
 public func handlePlayerDisconnect(
     player: Int, reason: HostDisconnectReason, state: inout GameState, table: HostSessionTable
 ) async {
     // C ordering (server.c:1667-1740): `removeplayer()` -- and so its own
     // `sendsrdroppill` calls -- runs BEFORE `sendsrplayerexit`/`sendsrplayerdisc`,
-    // the opposite order from `kickplayer()`/`banplayer()` below. `sendtoall`
-    // (confirmed by direct read), not `sendtoallex` -- reaches the
-    // disconnecting player's own (already best-effort/`EPIPE`-tolerant) slot too.
+    // the opposite order from `kickplayer()`/`banplayer()` below.
+    // `sendsrdroppill` is a plain `sendtoall` (server.c:3571) -- reaches
+    // the disconnecting player's own still-registered slot too.
     var dropPillBroadcasts: [[UInt8]] = []
     removePlayer(player: player, state: &state, onShouldBroadcastDropPill: { pill, x, y in
         dropPillBroadcasts.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
@@ -273,12 +280,23 @@ public func handlePlayerDisconnect(
         await table.sendToAll(bytes)
     }
 
-    let bytes: [UInt8]
+    // D53 (PARITY finding, Wave 6.4c audit): `sendsrplayerexit()`
+    // (`server.c:3387-3409`) is NOT a single `sendtoallex` -- it does
+    // `sendtoone(player)` (best-effort, EPIPE-tolerant) first, THEN
+    // `sendtoallex` for everyone else, so the departing player receives
+    // their own exit notice too. `sendsrplayerdisc()` (`server.c:
+    // 3413-3426`), by contrast, really is a single unconditional
+    // `sendtoallex` -- no self-send. `sendToAll` already includes the
+    // departing player's still-registered slot (matching C's net effect
+    // without needing to replicate the two-syscall EPIPE-tolerance
+    // split, which is an artifact of C's mechanism, not an observable
+    // protocol requirement) -- do NOT change the `.abnormal` branch.
     switch reason {
-    case .normal: bytes = SRPlayerExit(player: UInt8(player)).encode()
-    case .abnormal: bytes = SRPlayerDisc(player: UInt8(player)).encode()
+    case .normal:
+        await table.sendToAll(SRPlayerExit(player: UInt8(player)).encode())
+    case .abnormal:
+        await table.sendToAllExcept(player, SRPlayerDisc(player: UInt8(player)).encode())
     }
-    await table.sendToAllExcept(player, bytes)
     await table.disconnect(player)
 
     if state.pauseOnPlayerExit {
