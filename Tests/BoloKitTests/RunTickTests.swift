@@ -201,6 +201,33 @@ private func alliedPlayers(count: Int) -> [PlayerState] {
     #expect(state.players[0].connected)
 }
 
+/// D35 Finding 1: `server.pauseonplayerexit` (server.c:1192-1197) pauses
+/// the game indefinitely, broadcasting the wire sentinel 255, whenever a
+/// lagged player is disconnected.
+@Test func runTickPauseOnPlayerExitPausesIndefinitelyOnDisconnect() {
+    var state = makeState(players: [connectedPlayer()])
+    state.pauseOnPlayerExit = true
+
+    var pauseEvents: [Int] = []
+    runTick(
+        state: &state,
+        ticksSinceLastUpdate: [9 * UInt64(ticksPerSec)],
+        onPause: { pauseEvents.append($0) }
+    )
+
+    #expect(state.pause == -1)
+    #expect(pauseEvents == [255])
+}
+
+@Test func runTickPauseOnPlayerExitDefaultFalseLeavesPauseUntouched() {
+    var state = makeState(players: [connectedPlayer()])
+    #expect(!state.pauseOnPlayerExit)
+
+    runTick(state: &state, ticksSinceLastUpdate: [9 * UInt64(ticksPerSec)])
+
+    #expect(state.pause == 0)
+}
+
 // MARK: - Lagged-status callback
 
 @Test func runTickFiresLagStatusAtBothThresholdsButNotBetween() {

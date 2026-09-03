@@ -51,6 +51,11 @@ public struct GameState: Sendable {
     /// different variable from `baseControlThreshold` despite the similar
     /// C name (`server.basecontrol` vs. `server.game.domination.basecontrol`).
     public var baseControlCounter: Int
+    /// If `true`, disconnecting a lagged player (`runTick`'s stale-player
+    /// path) also pauses the game indefinitely. Mirrors
+    /// `server.pauseonplayerexit` (`server.c:1192-1197`) — a server setup
+    /// option, not something `runTick` itself decides.
+    public var pauseOnPlayerExit: Bool
 
     public init(
         terrain: TerrainGrid = .mapDefault(),
@@ -69,7 +74,8 @@ public struct GameState: Sendable {
         pause: Int = 0,
         timeLimit: Int = 0,
         baseControlThreshold: Int = 0,
-        baseControlCounter: Int = 0
+        baseControlCounter: Int = 0,
+        pauseOnPlayerExit: Bool = false
     ) {
         self.terrain = terrain
         self.pills = pills
@@ -88,5 +94,6 @@ public struct GameState: Sendable {
         self.timeLimit = timeLimit
         self.baseControlThreshold = baseControlThreshold
         self.baseControlCounter = baseControlCounter
+        self.pauseOnPlayerExit = pauseOnPlayerExit
     }
 }

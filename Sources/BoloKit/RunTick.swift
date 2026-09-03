@@ -170,6 +170,17 @@ public func runTick(
         dropPills(player: player, x: tank.x, y: tank.y, pills: pills, state: &state)
         state.players[player].connected = false
         onPlayerDisconnected(player)
+
+        // `server.pauseonplayerexit` (server.c:1192-1197) — same nesting
+        // level as this loop, not removeplayer()'s own code. `255` is
+        // already the wire's established "indefinite pause" sentinel
+        // (see `joinplayerserver()`'s `bolopreamble.pause = 255` for
+        // `server.pause == -1`), so this reuses `onPause` rather than
+        // adding a new callback.
+        if state.pauseOnPlayerExit {
+            state.pause = -1
+            onPause(255)
+        }
     }
 
     // 5. Cool pills / replenish bases / grow trees / chain / flood — all
@@ -195,6 +206,18 @@ public func runTick(
     // 7. Client-role per-player physics — every one of these is an
     // already-shipped Wave 5 function; this orchestrator only sequences
     // them, matching runclient()'s own order (client.c:449-484).
+    //
+    // **Disclosed simplification (PARITY Finding 2, Wave 6.1 D35):** C's
+    // move-tanks loop gates on `connected && seq != 0` (client.c:451);
+    // `tankMoveTick`'s own `connected` guard covers the first half, but
+    // there's no `seq`-equivalent gate here for the second. `seq` was
+    // deliberately excluded from `BoloKit` (Wave 6.0's design call), and
+    // `seq != 0` means "never received a real update about player i yet"
+    // — a network-bootstrapping concern with no analog when `GameState`
+    // *is* the authoritative state rather than a mirror waiting on
+    // broadcasts. Same shape as the `timelimitreached`/`basecontrolreached`
+    // unification disclosed in this file's header, just not previously
+    // written down here.
     let oldTankPositions = state.players.map { $0.tank }
 
     for player in state.players.indices {
