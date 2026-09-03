@@ -35,11 +35,16 @@ decisions log.
 
 ## Contributors & Partners
 
-This project is a collaborative AI-human pair-programming endeavor:
+This project is a collaborative AI-human pair-programming endeavor, currently run as one human
+plus a structured multi-agent team:
 
 - **Jerod Price ([CosmicCEO](https://github.com/CosmicCEO)):** Lead Architect, Maintainer, and Project Director.
-- **Claude CLI:** Architectural Reviewer, Advisor, and Quality Assurance partner.
-- **Gemini CLI:** (deprecated due to reliability) Autonomous Implementation Partner, Swift Specialist, and Code Generator.
+- **Implementer (Claude, Xcode agent):** full read/write on the workspace -- writes the Swift port, owns the differential test suite against the C oracle, commits to feature branches/worktrees.
+- **Planner (Claude.ai):** owns `docs/PLAN.md` -- wave sequencing, stage-gate GOs, the decisions/open-questions log, cross-wave policy.
+- **Parity Auditor (Claude.ai, adversarial):** independent post-commit audit of Implementer's work against the C source for behavioral parity, edge cases, and silent drift; reports findings only, doesn't write fixes.
+- **Admin agent (Claude, Cowork):** project administration alongside the three roles above -- cross-checking `docs/AGENT_NOTES.md` against `docs/PLAN.md`, repo housekeeping (commits, README upkeep), and relaying status -- so the Implementer/Planner/Parity rotation can stay focused on the port itself.
+- **Deep-dive Opus agents (as needed):** spun up for focused research passes outside the normal rotation -- protocol/wire-format reverse-engineering (`docs/notes/DEEPDIVE1.md`), architecture research (`docs/notes/HOSTMODELS.md`) -- folded back into the shared docs once complete.
+- **Gemini CLI:** (deprecated due to reliability) former Autonomous Implementation Partner, Swift Specialist, and Code Generator.
 
 **Parallel Implementer agents:** running multiple Xcode Implementer agents at once on unrelated,
 independently-scoped waves (separate git worktrees/branches) has been proven possible and
