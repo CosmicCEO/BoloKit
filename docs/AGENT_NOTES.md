@@ -2047,3 +2047,109 @@ wait for my coding GO before writing any Swift.
 whatever's landing from Wave 5.9's now-active session produces a completion report. Excellent
 rigor on the case-list re-derivations and the exclusivity-constraint check — that's exactly the
 "don't take the completion report's word for it" standard this role exists for.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4 pre-brief: transport + join handshake
+
+**Type:** planning (no code this entry)
+**Phase:** Wave 6.4
+**Blocks:** the Wave 6.4 coding GO
+
+Read `joinclient()` (`client.c:499-770`), `dgramserver()` (`server.c:614-687`), `dgramclient()`
+(`client.c:1280-1472`), `registerserver()`'s tracker-echo occurrence (`server.c:1400-1478`), and
+`Sources/BoloKit/Buf.swift` in full before writing this up. Unlike every prior sub-wave (6.0-6.3,
+6.6 — all "port pure decision logic," no real system design), Wave 6.4 is genuinely different in
+kind: it requires actual Network.framework API choices and at least one architectural call
+precedent doesn't already settle. Three findings below are surfaced as open questions, not
+resolved — same discipline as D36/D38/D40.
+
+**Finding 1 — a real tension between `Buf.swift` (Wave 1) and D31, the most important open
+question here.** `Buf.swift` was ported in Wave 1 (`b729781`), long before D31 existed, as a
+literal transliteration of `buf.c` — including a "POSIX Network & Polling Functions" section:
+`sendbuf`/`recvbuf` (raw `Int32` fd, `Darwin.send`/`recv`), `selectreadwrite`/`selectreadread`
+(raw `poll`), `cntlsend`/`cntlrecv` (blocking select-then-send/recv loops). This is exactly the
+"transliterated POSIX/select/pthread glue" D31 explicitly ruled out porting ("isn't differentially
+testable, so there's no countervailing reason to port it bug-for-bug"). Yet `docs/PLAN.md`'s own
+Wave 6.4 row says the wave "builds on `Buf.swift`'s existing `sendbuf`/`recvbuf`/`cntlsend`/
+`cntlrecv`" — read literally, that contradicts D31. Confirmed by reading `joinclient()` end to
+end: it's built entirely on raw `connect`/`select`/`FD_SET`/`bind`/`getsockname` plus those exact
+`Buf.swift` functions — none of it translates to `NWConnection`'s async-callback I/O model without
+a real rewrite (Network.framework exposes no raw fd to `poll()`/`select()` on).
+
+**Proposed resolution, awaiting your confirmation, not decided unilaterally:** keep `Buf.swift`'s
+pure byte-queue half (`initbuf`/`writebuf`/`readbuf`/`freebuf`/`resizebuf` — socket-agnostic,
+genuinely reusable) as the accumulation buffer BoloNet's decode functions already consume; do
+**not** use the POSIX socket-layer half at all. Write new async/await code against
+`NWConnection`/`NWListener` for actual socket I/O, feeding bytes into/out of that same byte queue.
+This treats the PLAN.md row's phrasing as imprecise shorthand for "reuse the byte-buffer plumbing,"
+not literally the socket functions — but that's my inference, and I'd rather have it confirmed
+before building the whole wave on that reading.
+
+**Finding 2 — `dgramserver()`'s own pure decision logic looks like the same shape of unassigned
+gap D36 named for `dgramclient()`, but D36's text only cites the client side.** `dgramserver()`
+sanity-checks packet size/player-range (mostly already covered by Wave 6.0's `CLUpdate.decode`),
+validates the sender's IP against `dgramaddr` (updating the *port* dynamically rather than
+requiring a pre-registered match — simpler than `joinclient()`'s bind-to-same-port dance
+suggested), dedups via the exact wraparound-tolerant `seq` comparison already shipped as
+`isNewerSeq` (Wave 6.0), applies the raw tank-position bytes, and relays the datagram to every
+other connected player. Real, substantial, differentially-testable pure logic, same shape as
+`dgramclient()`'s named scope — flagging rather than assuming D36 silently covers it too.
+
+**Finding 3 — the dead-reckoning loop needs a concrete bound; proposing one for you to confirm or
+override.** `dgramclient()`'s extrapolation loop (`client.c:1446-1454`) iterates `(mySeq -
+theirLastKnownSeq)/2` times, calling `tankmovelogic`/`builderlogic`/`shelllogic`/`explosionlogic`
+each time — unbounded in the C, and a real griefing/DoS vector once real transport exists (a
+lagged or malicious peer can inflate this arbitrarily). D36 already said this needs *a* bound, not
+which one. Proposing `Int(ticksPerSec) * 3` (3 seconds of ticks) — enough to smooth an ordinary UDP
+burst-loss gap, small enough to bound worst-case CPU per packet. A `writeRun`-class Swift-side
+safety deviation (D36's own framing), not a fidelity fix.
+
+**Secondary scoping note, not blocking.** The tracker echo appears at two C call sites:
+`dgramserver()`'s general receive loop (D36's literal citation) and `registerserver()`'s own
+tracker-registration handshake (`server.c:1466-1478`). Proposing the first is Wave 6.4's, the
+second is Wave 6.5's (it's specific to talking to a tracker server that doesn't exist yet) —
+flagging the split rather than assuming D36's citation of both ranges meant both belong here.
+
+**Architecture question tied to the still-open Q22 (in-process host), not mine to answer by
+picking a scope silently:** does Wave 6.4's first slice need to support this instance acting as
+*host* (`NWListener` accept loop calling Wave 6.3's join-decision functions, `dgramserver`-shaped
+UDP relay) and *joining client* (`joinClient`-shaped handshake, `dgramclient`-shaped update
+application) simultaneously, or is a narrower first cut acceptable (e.g., client-only, testable
+against a manually-run reference session)?
+
+**Proposed scope breakdown, pending the above:**
+- **Wire-level join handshake** (protocol steps only, not POSIX mechanics): `JoinPreamble` send →
+  status byte → `BoloPreamble` → map bytes, byte-exact per D31/D33, reusing Wave 6.3's existing
+  `JoinPreamble`/`BoloPreamble` types and `evaluateJoinRequest`/`applyJoin`/`assembleBoloPreamble`.
+  New: an async `NWListener`-based accept loop (server) and an async `joinClient(...)`-shaped
+  function (client), both thin around the already-shipped pure logic.
+- **UDP transport**: a single `NWConnection`(`.udp`) per role feeding `CLUpdate` bytes both ways.
+- **New pure functions** (differentially testable where a C oracle exists): a server-side
+  function for Finding 2 (dedup/relay decision, tank-position apply); a client-side function for
+  `dgramclient()`'s post-decode mapping (`PlayerState` field application, shell/explosion list
+  rebuild, the bounded dead-reckoning loop, `killPointBuilder` trigger for low-counter explosions)
+  — sound/fog-of-war callbacks simplified per this port's established "fog-of-war never modeled"
+  precedent (no near/far distinction), matching `TankLocalTick.swift`/`BuilderTick.swift`/
+  `RecvSR.swift`'s own prior disclosures for the same four C calls.
+- **Dispatch wiring**: connecting decoded `CL*`/`SR*` opcodes to the already-shipped `recvCl*`
+  (6.3/6.6)/`recvSr*` (6.2) pure functions — per D38's own reasoning for sequencing 6.6 before 6.4.
+- **Tracker echo**: `dgramserver()`'s occurrence only.
+- **Out of scope**: `registerserver()`'s tracker-echo occurrence and all other tracker/NAT-PMP
+  work (Wave 6.5); Wave 5.9's mine-cascade trigger sites (independent, separately active).
+
+**Test plan:** differential tests for the two new pure functions above (server-side against a new
+oracle export mirroring `dgramserver`'s dedup/relay decision, if one doesn't already exist;
+client-side against Wave 6.0's existing `clupdate_decode_oracle` output plus hand-computed
+expectations for the bounded dead-reckoning loop); Swift-only correctness tests for the actual
+Network.framework plumbing (e.g., two local `NWConnection`s over loopback completing a full join
+handshake, matching expected `BoloPreamble` fields) — the first tests in this project that can't
+be differential by construction, per D31's own reasoning; stating this explicitly rather than
+silently applying a different bar without saying so.
+
+No code changes this entry.
+
+> **→ Planner:** Three open questions need your ruling before I start coding: (1) the `Buf.swift`/
+> D31 tension — confirm or redirect the proposed resolution; (2) whether `dgramserver()`'s pure
+> logic is in this wave's scope (same shape as D36, not explicitly named by it); (3) the proposed
+> `Int(ticksPerSec) * 3` dead-reckoning bound. Plus the host-vs-client architecture question tied
+> to Q22, which is yours/Jerod's call, not something I should scope by guessing.
+> **→ Parity:** No action needed yet — no code shipped this entry.
