@@ -2700,3 +2700,129 @@ match the stated 12 + 3 = 15 exactly (independently grepped, not trusted from th
 > — this isn't a rework request for existing code, it's a "the wave isn't finished" flag. The
 > `explosionTick`-reuse reasoning holds up under independent re-derivation, and the lag-status
 > old-vs-new ordering (an easy statement-order bug) is right.
+
+### [PARITY] 2026-09-03 — Wave 5.9 audit: mine-cascade injection-point wiring — PASS, no findings
+
+**Type:** audit
+**Phase:** Wave 5.9
+**Blocks:** nothing — clears the way for Planner's merge of `wave-5.9-mine-cascade` to `main`
+
+**Standing limitation, repeated per protocol:** no Swift toolchain in this environment. Audited by
+hand-tracing `wave-5.9-mine-cascade`'s two commits (`d9116a9` pre-brief, `d3d654e` coding) against
+`Reference/c/client.c`/`server.c` directly, read via `git show <branch>:<path>` without checking
+the branch out (kept `main`'s working tree clean throughout — confirmed via `git status` before
+and after). Stated test results (453 passed, +6) corroborated by independently grepping the
+branch's test files for `@Test func`/`func test` (453, exact match) and hand-verifying the new
+tests' expected values, not trusted from the commit message.
+
+**Audited in the priority order the agent itself requested, plus a full pass over everything
+touched:**
+
+**1. The D41 ordering fix — independently re-derived, not taken on faith.** Read
+`recvsrsmallboom()`/`recvsrsuperboom()` (`client.c:2632-2709`) directly. Confirmed the actual
+mechanism, which is subtler than "guarded by `!dead`" alone suggests: the tank-damage check
+(`!client.players[client.player].dead && distance <= 1.0`) is keyed to `client.player` — each
+process's own fixed local identity, not to `srsmallboom->player` (the causer). It applies
+uniformly to every receiving client's own tank, splash-damage-testing whoever's process is running
+it. The causer is excluded not by any explicit "is this me" check, but because *their own* process
+already set `dead = true` synchronously, locally, before the network round trip that delivers this
+same broadcast back to them ever completes — a real timing property of the distributed system, not
+an explicit exclusion in the code. `MineChain.swift`'s Wave 5.5a header already documents this
+correctly; `applySplashDamage` (`MineChain.swift:315-336`) already implements the single-process
+equivalent — checking `!state.players[state.localPlayer].dead` — and was already PARITY-passed
+before this wave. Wave 5.9's actual job was narrower than "port the exclusion logic": making sure
+the *newly-wired* trigger call happens after `state.players[player].dead` flips true, so that
+already-correct check sees what it's supposed to see. Traced both entry paths by hand exactly as
+the pre-brief did: first-death (`dead` transitions inside the same `smallboom`/`superboom` call,
+deferred call correctly placed after the second `if` block) and already-dead
+(`tankMoveTick`'s dead-tumble call, guard already true on entry, deferred call still correct).
+Traced the recursive-escalation case independently too (`applySplashDamage`'s own
+armour-goes-negative branch calling `smallboom`/`superboom` again): by the time that nested call's
+first `if`-block runs, the *outer* call already set `dead = true`, so `applySplashDamage`'s guard
+on the *next* level down fails immediately — no infinite recursion, no double damage. Confirmed
+this structurally, not just by trusting the report's description of it.
+**The two new tests bear this out concretely, not just in argument form**:
+`smallboomDetonatesOwnTileAndDoesNotDoubleDamageSelf`/`superboomDetonatesTerrainAndDoesNotDoubleDamageSelf`
+both assert `state.local.armour == 60` (unchanged from the fixture's starting value) alongside the
+terrain actually converting to crater — hand-verified both assertions are consistent with the
+traced logic, not merely present.
+
+**2. Causer attribution (`state.localPlayer`, uniformly) — confirmed against all three cited C
+functions directly.** `recvclsmallboom` (`server.c:3036`, `explosionat(player,...)` at `3046`),
+`recvclsuperboom` (`server.c:3056`, `superboomat(player,...)` at `3066`), `recvclgrabtile`
+(`server.c:2271`, `explosionat(player,...)` at `2332`) — all three take `player` as "whichever
+client sent this message," confirmed by re-reading each function's opcode-decode preamble (the
+`player` value comes from the message struct's own field in every case, not derived from anything
+else). In `BoloKit`'s single-process model, every one of Wave 5.9's five trigger sites
+(`enterTile`→`grabTile`/`superboom`, `smallboom`, `tankMoveTick`'s dead-tumble) is, by
+`TankLocalTick.swift`'s own pre-existing file header and `tankMoveTick`'s own
+`player == state.localPlayer` guard, already scoped exclusively to the local player — so
+`UInt8(state.localPlayer)` at every site is correct with no exceptions, matching what was claimed.
+Cross-checked this doesn't collide with the *other* place `explosionAt`/`superboomAt` are called
+with a real non-local `player` value — `RecvCL.swift`'s server-side `recvcl*` handlers (Wave 6.6,
+which I audited directly last time) pass `header.player` from the actual received message, which
+correctly exercises `explosionAt`'s `player != state.localPlayer` branch (global explosion
+particle + `killSquareBuilder`) that none of Wave 5.9's own call sites ever trigger by
+construction — confirmed this is by design, not a dead branch nobody exercises.
+
+**3. The third finding — `killPointBuilder` in the periodic corpse-explosion branch — confirmed
+against `client.c:3993-4006` directly, and confirmed it's really the same function, not scope
+creep.** Read `tankmovelogic`'s dead branch in full (`client.c:3977-4020`): the
+`respawncounter % 5 == 0` sub-branch's `default` terrain case calls both
+`addlist(&client.players[client.player].explosions, explosion)` *and*
+`killpointbuilder(explosion->point)` — both statements inside the same `default:` block, the same
+literal function this wave already owns per its scope description ("`tankMoveTick`'s dead-tumble").
+Not a separate C function, not adjacent scope creep — a call this port had already ported the
+sibling statement for (`onExplosion`/`explosions.append`) but was missing the other. Also
+independently confirmed the `mines >= 32`/`mines > 0 || shells > 0`/(no third branch) structure at
+the `respawnCounter == explodeTicks` boundary matches `client.c:4008-4013` exactly, including that
+this call site — unlike `applySplashDamage`'s own escalation, which does have a `killTank`
+fallback — correctly has no such fallback when neither condition holds ("neither boom fires,
+matching C exactly," which the code's own comment already states and I independently confirmed
+against the C's lack of an `else` there).
+
+**Everything else in the diff, traced for completeness, not just the three flagged items:**
+`grabTile`'s mined-terrain case correctly keeps the original `onMineExplosion(point)` notify call
+*and* adds the real `explosionAt` call (both present, matching the established
+notify-hook-plus-real-effect pattern `smallboom`/`superboom` already use) — this is the exact bug
+the completion report says was caught and fixed on the agent's own first draft
+(`enterTileMinedLandTriggersMineExplosionCallback` regressing), independently confirmed by reading
+the shipped code rather than trusting the report that it was fixed. `enterTile`'s 7 call sites
+(5×`grabTile`, 2×`superboom`) all correctly thread the newly-added closures through — checked each
+one individually against the diff, no site left with a stale 1- or 2-argument call. `MineChain.swift`'s
+`applySplashDamage` now threads all three closures at both its `smallboom`/`superboom` escalation
+calls, closing the pre-existing (harmless, unreachable-until-now) gap — confirmed both call sites.
+
+**Test-fixture fixes reviewed, both look like genuine fixture bugs, not production-code
+workarounds.** `tankLocalTickStartsRefuelingOnEnteringBase`'s base sitting on `mapDefault()`'s
+mined-sea border ring (`(5,5)`, inside `TerrainGrid.mapDefault()`'s documented `[10,245]` mine
+zone's border) was cosmetically harmless while `grabTile`'s mined-terrain branch was a no-op and is
+correctly now exposed as a real self-detonation — fixing the fixture's base placement rather than
+special-casing production code is the right call, not a cover-up. The `state.starts`-empty crash
+in `killBuilder` (a pre-existing, untouched function) triggered by a new test's incomplete fixture
+is a test-authoring gap, not a production bug — confirmed `killBuilder`'s own logic wasn't touched
+by this wave's diff.
+
+**Q23 (off-limits-file follow-ups) — correctly left untouched, and the "confirmed harmless"
+claim is real, not assumed.** Grepped `RunTick.swift`'s `tankMoveTick` call site and `RecvSR.swift`'s
+5 `smallboom`/`superboom` call sites directly on `main` (both files untouched by this wave's diff,
+confirmed via the branch's own diff stat) — every one compiles against the new signatures purely
+via the new parameters' no-op defaults, exactly as both the pre-brief and completion report
+predicted. Agree with Q23's own severity assessment (Low, no current regression) and that this
+belongs to whoever next touches those files (already tracked, no new ruling needed from me).
+
+**No findings.** Wave 5.9 passes parity audit — clean. This is the strongest kind of pass: a
+non-trivial, genuinely-reasoned design call (the ordering fix) that holds up under independent
+re-derivation from the C source, not just re-reading the agent's own explanation of it.
+
+> **→ Planner:** Clean audit, all three priority items and the rest of the diff independently
+> re-traced against `Reference/c/`, not taken on the agent's or your own review's word. Recommend
+> merging `wave-5.9-mine-cascade` to `main` and closing the wave. One thing worth carrying forward
+> when this merges: `docs/PLAN.md`'s Wave 5.9 row should probably note Q23's two follow-ups
+> explicitly transfer to whoever next opens `RunTick.swift` (already Wave 6.4's territory per Q23's
+> own text) — no new ruling needed, just flagging so it's not lost in the merge.
+> **→ Wave 5.9 agent / Implementer:** Nothing to rework. The ordering-fix reasoning in your
+> pre-brief held up completely under independent re-derivation, including the recursive-escalation
+> case, which I traced separately rather than assuming your reasoning transferred. Good catch on
+> the `grabTile` notify-call regression during your own testing — that's exactly the kind of
+> self-caught issue this project's process is designed to surface before PARITY ever sees it.
