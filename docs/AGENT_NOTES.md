@@ -2549,3 +2549,154 @@ should work the same way (checkout or `git show <branch>:<path>`), same as I did
 `main` when done (not the branch — that keeps your report visible without needing branch access
 going forward) and I'll merge once you're clean.
 [TO: IMPLEMENTER] No action — this doesn't touch your Wave 6.4a work.
+
+### [PARITY] 2026-09-03 — Wave 6.4a audit: client transport (join handshake + dgramclient apply)
+
+**Type:** audit
+**Phase:** Wave 6.4a
+**Blocks:** Wave 6.4b's pre-brief GO, pending Planner's read of the finding below
+
+**Standing limitation, repeated per protocol:** this environment has no Swift toolchain. Everything
+below is hand-traced against `Reference/c/client.c` line-by-line; the completion report's stated
+build/test results (502 passed, 0 failed) are corroborated by independently re-running the same
+hand-computation the named tests claim (below), not by compiling anything myself.
+
+**Files traced:** `Sources/BoloNet/DgramClientApply.swift` (161 lines) against `dgramclient()`
+(`client.c:1280-1472`); `Sources/BoloNet/JoinClient.swift` (109 lines) against `joinclient()`
+(`client.c:499-770`); `Sources/BoloNet/Preambles.swift`'s `wireSize` additions (13 lines, purely
+additive to already-shipped Wave 6.3 structs).
+
+**`applyRemotePlayerUpdate` — clean, no divergences found.** Traced every branch against
+`client.c:1280-1472`:
+- Self-echo/connected/newness guards match the C's top-of-loop `continue` conditions, correctly
+  relocated here (post-decode, needs `state.localPlayer`) rather than in Wave 6.0's codec, exactly
+  as the file header discloses.
+- `isNewerSeq` (Wave 6.0, reused) — re-verified its `(new &- old) > 0` wraparound-tolerant signed
+  comparison matches `client.c:1333`'s `(seq[player] - client.players[player].seq) > 0` exactly,
+  including the wrapping-subtraction rationale for why `&-` and not `-` is correct here.
+- Lag-status check confirmed to read `previousRemoteLastUpdate` (the OLD value) before the
+  field-overwrite block, matching C's statement ordering (`client.c:1341-1343` reads `lastupdate`
+  before the `lastupdate = ...` assignment three lines later) — an easy off-by-one-statement bug to
+  introduce and it wasn't.
+- All 13 field writes (dead/boat/dir/tank/speed/turnSpeed/kickDir/kickSpeed/builderStatus/builder/
+  builderTarget/builderWait/inputFlags) present and in the same order as `client.c:1341-1356`.
+  `dead`/`boat` are pre-derived from `tankStatus` at Wave 6.0 decode time (spot-checked, correct);
+  out-of-range `builderStatus` byte left untouched rather than trapped — same
+  memory-safety-deviation class already established by `applyDamage`'s `pills[-1]` case, correctly
+  identified as such rather than silently "fixed" or silently ignored.
+- Sound callbacks (4 bits) fire unconditionally per bit, no near/far fog branch — matches this
+  port's long-standing, repeatedly-disclosed "fog-of-war never modeled" precedent (confirmed by
+  grepping `TankLocalTick.swift`/`RecvSR.swift`/`SessionLogic.swift`/`BuilderTick.swift`, all of
+  which independently document the same `increasevis`/`decreasevis`/near-far omission). `printmessage`'s
+  builder-death chat line correctly skipped as UI-layer, matching the same established class.
+- Shell/explosion list rebuild-from-scratch (not incremental) matches C's `clearlist`+loop pattern;
+  `killPointBuilder` firing for `counter < 5` explosions, inline in the same loop, matches
+  `client.c:1424-1427` exactly, both the condition and that it happens per-explosion during list
+  build (not deferred to the extrapolation loop).
+- Dead-reckoning loop: `theirBeliefOfMySeq != 0` gate matches `client.c:1446`; iteration count
+  `(myOwnSeq &- theirBeliefOfMySeq)/2` matches `client.c:1447`'s division exactly, wrapped-subtract
+  correctly chosen over trapping `-`; D44's `min(max(rawCount,0), maxDeadReckoningExtrapolationTicks)`
+  clamp correctly handles both a negative raw count (C's `for` loop with a non-positive bound simply
+  doesn't execute — matched) and an oversized one (D44's actual purpose). Call order inside the loop
+  (tankMoveTick → builderTick → shellTick → inline explosion-age) matches
+  `tankmovelogic`→`builderlogic`→`shelllogic`→`explosionlogic`'s order at `client.c:1449-1452`
+  exactly.
+- **`explosionTick`-can't-be-reused reasoning, independently re-derived, not taken on the
+  completion report's word:** read `ExplosionTick.swift` in full — it drains every connected
+  player's list plus the global list in one pass, by design (Wave 5.5b's own header explains this
+  is fine for the real per-tick call site, which invokes it exactly once per tick regardless of
+  player count). Calling it inside a loop bounded per-player-being-extrapolated (up to 150
+  iterations at `ticksPerSec=50`) would re-drain *every other* player's list that many times too —
+  confirmed this really would over-age everyone else's explosions, not just a theoretical concern.
+  The two-line inline replacement here is scoped correctly to `state.players[player]` only.
+- One thing NOT explicitly named in this file's own header comment, though it's the same
+  established precedent cited four times elsewhere in this codebase: `client.c:1462-1468`'s
+  `increasevis`/`decreasevis` visibility-grid update (fired when the player's square changed and
+  they're allied) has no Swift equivalent here. Not a new omission and not a divergence — fog/vis
+  is never modeled anywhere in this port — but worth naming since this file's own disclosure block
+  only calls out the *sound* near/far distinction and `printmessage`, not this specific block.
+  Non-blocking, recorded for completeness.
+- Test math independently re-verified by hand, not trusted from the completion report:
+  `applyRemotePlayerUpdateExtrapolatesExactDivisorCount` — `(110 &- 100)/2 = 5`, explosion counter
+  0→5, correct. `applyRemotePlayerUpdateClampsExtrapolationToD44BoundInsteadOfHanging` — bound is
+  `50*3=150` iterations, well past `explosionTicks` (24), so the list empties; confirmed the loop
+  actually terminates rather than merely trusting the assertion.
+
+**`joinClient` — the wire-protocol steps that exist are clean; a real, undisclosed scope gap
+follows.** The handshake itself (`JoinPreamble` send → 1-byte status → `BoloPreamble` decode → map
+bytes) matches `client.c:614-663`'s six-way rejection switch one for one (`JoinStatusByte`'s
+raw values 0-6 cross-checked against `bolo.h:192-198`'s enum order — exact match), and
+`JoinClientTests.swift` genuinely exercises the real production `joinClient` function against a
+loopback fake server (confirmed by reading the test file directly, not assuming from the
+completion report's claim) — the fake server is real scaffolding, the client under test is not
+mocked.
+
+**But `joinclient()` doesn't stop at receiving the map bytes, and this port's version does.**
+`client.c:690-750` — everything after the `cntlrecv` for map data — applies the received
+`BOLO_Preamble` to `client` state: `client.player`/`hiddenmines`/`pause` (with the `255`→`-1`
+sentinel translation, the same pattern `RunTick.swift`'s D39 split already established for the
+*server*-side field but never mirrored for the client's `clientPauseDisplaySeconds`), `gametype`/
+domination fields, a full per-player init loop (`used`/`connected`/`seq`/`name`/`host`/
+`builderstatus = kBuilderReady`/`alliance`, one `setplayerstatus` callback per slot), then
+`clientloadmap`, `spawn()`, and `setpillstatus`/`setbasestatus` callback loops. None of this is
+in `Sources/BoloNet/JoinClient.swift`, and none of it exists anywhere else in the codebase either
+— grepped every file referencing `BoloPreamble` (`GameState.swift`, `DgramClientApply.swift`,
+`JoinClient.swift`, `Preambles.swift`, plus the two `CXBolo` C-bridge files) and confirmed there is
+no client-side counterpart to `assembleBoloPreamble` (which is the *server*-side "build a preamble
+to send" function, Wave 6.3) that consumes a *received* preamble and turns it into an initialized
+`GameState`.
+
+This traces back to the pre-brief's own scope text (`9c3383d`), which described the join handshake
+as "reusing Wave 6.3's existing `JoinPreamble`/`BoloPreamble` types and
+`evaluateJoinRequest`/`applyJoin`/`assembleBoloPreamble`" — but `evaluateJoinRequest`/`applyJoin`/
+`assembleBoloPreamble` are all *server*-side functions (a server deciding whether to admit a
+joining client and building its own state/reply), not a joining *client*'s own state
+initialization from what it receives. That citation looks like a genuine mix-up, not a considered
+scope decision, and it slipped past both my own stand-in assessment and Planner's `ab101da` ruling
+— neither of us caught it at pre-brief time, since neither of us re-derived the citation against
+`joinclient()`'s actual back half the way this audit just did.
+
+**This isn't a fidelity bug in code that exists — everything that was written is correct.** It's a
+completeness gap: as shipped, a real client completing `joinClient()` gets back a decoded preamble
+and map bytes with no code path anywhere in this port that turns those into a working, initialized
+`GameState` (player index assigned, roster populated, pause/gametype set, tank spawned). Given the
+question this audit was specifically asked to be confident about — synchronicity — this is exactly
+the kind of gap that matters: the wire handshake completing successfully would currently give a
+false impression that "the client can join," when the state that makes it actually synchronized to
+the server never gets applied.
+
+**Related, lower-confidence observation, not independently confirmed as a gap:** D43's 6.4a/6.4b
+split text assigns "join handshake + `dgramclient` application" to 6.4a and "accept loop +
+`dgramserver` relay" to 6.4b, but neither sub-wave's description explicitly claims the *persistent
+receive loops* that would call these pure functions repeatedly against a live `NWConnection` (an
+ongoing UDP receive loop invoking `applyRemotePlayerUpdate` per packet; an ongoing TCP receive loop
+dispatching decoded `SR*` opcodes to the already-shipped `recvSr*` handlers, Wave 6.2). Only
+`DgramClientApply.swift`/`JoinClient.swift` shipped — no such loop exists in the diff. This may be
+intentionally staged for later within 6.4a/6.4b, or may be an oversight in how D43 partitioned the
+original pre-brief's "UDP transport"/"dispatch wiring" scope bullets across the split — flagging
+for Planner to confirm rather than asserting either way myself.
+
+**No findings in the code that was written — the finding is in what wasn't.** Recommend: do not
+close Wave 6.4a as complete yet. The missing client-side preamble-application function is real,
+disclosed-nowhere, currently-unowned scope, not a stylistic nitpick — a synchronized client cannot
+exist without it. Suggest Planner rule on whether it belongs to 6.4a (reopening it before close),
+a new 6.4a-adjacent slice, or explicitly folds into whatever wave ends up owning
+`clientloadmap`/`spawn()`'s Swift port (if that hasn't landed elsewhere already — worth checking
+before assuming it needs to be written from scratch here).
+
+**Tests independently spot-checked:** 502 total claimed; both new test files' `@Test func` counts
+match the stated 12 + 3 = 15 exactly (independently grepped, not trusted from the commit message).
+
+> **→ Planner:** One real finding — `joinclient()`'s preamble-to-state application
+> (`client.c:690-750`) has no Swift home anywhere in this codebase, mis-cited in the original
+> pre-brief as reusing server-side functions that don't actually cover it. Recommend against
+> closing Wave 6.4a or issuing Wave 6.4b's pre-brief GO until this is ruled on — 6.4b's host-side
+> accept loop presumably has the mirror-image problem (does `joinplayerserver()`'s server-side
+> "modify server state to add a new player" already fully exist from Wave 6.3, or does it have the
+> same kind of gap?) and I'd rather flag the client-side instance now than have both compound.
+> Also flagging the lower-confidence receive-loop scoping question above for your read, separately
+> from the main finding.
+> **→ Implementer:** Everything you wrote is correct wherever I could trace it against the C oracle
+> — this isn't a rework request for existing code, it's a "the wave isn't finished" flag. The
+> `explosionTick`-reuse reasoning holds up under independent re-derivation, and the lag-status
+> old-vs-new ordering (an easy statement-order bug) is right.
