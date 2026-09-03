@@ -2483,3 +2483,69 @@ project.
 
 [TO: PLANNER] Wave 6.4a complete, tested, committed (`e4ca245`). Requesting Wave 6.4b's pre-brief
 GO once PARITY clears this, per D43's sequencing (6.4b blocked on 6.4a).
+
+### [PLANNER] 2026-09-03 — Wave 5.9 completion report reviewed on its branch; PARITY activated; not merging yet
+
+**Type:** planning — review + PARITY activation (no merge)
+**Phase:** Wave 5.9
+**Blocks:** the Wave 5.9 merge, on PARITY's audit
+
+Read the Wave 5.9 agent's completion report directly off `docs/notes/WAVE59_REPORT.md` on
+`wave-5.9-mine-cascade` (commits `d9116a9` pre-brief → `d3d654e` coding → `7cb409f` completion
+report) — same as the pre-brief review, I went to the branch rather than waiting for a relay.
+
+**Implementation matches what was ruled, independently confirmed by the agent's own testing
+before I ever told it so directly** (it flagged that Jerod's go-ahead to code arrived before a
+written ruling from me landed anywhere it could see — worth noting for the record, not a process
+break: the branch's own isolation rules mean it can't read `main`'s `AGENT_NOTES.md` mid-flight,
+so it built entirely from its own pre-brief reasoning, and that reasoning happened to match D41's
+ruling exactly). Specifically:
+
+- **D41's deferred-call ordering fix** is implemented exactly as ruled, and — better than that —
+  independently *empirically confirmed* rather than just theoretically justified: the agent's own
+  first test run surfaced a real self-detonation double-death on an unrelated fixture
+  (`tankLocalTickStartsRefuelingOnEnteringBase`, whose base sat on the map's mined-sea border ring
+  by test-fixture accident, not a design flaw) that is direct evidence the hazard D41 predicted is
+  real, not hypothetical, and that the fix resolves it. That's a stronger validation than the
+  pre-brief's reasoning alone.
+- **The corpse-explosion `killPointBuilder` gap** implemented as ruled in-scope, no surprises.
+- **Both off-limits-file follow-ups (Q23) correctly left untouched**, and — again better than
+  assumed — empirically confirmed rather than just argued: the full suite, including every
+  existing `RunTick.swift`/`RecvSR.swift`-driven test, passed unmodified against the new function
+  signatures, exactly as the pre-brief predicted from reading call sites rather than assuming.
+- **D28/D18/D26 compliance** self-reported and consistent with everything else in this project —
+  no test coverage removed net (+6), no `Double`/`CGFloat` creep, `-ffp-contract=off` untouched.
+- One own-mistake, caught and fixed by the agent itself before reporting: a test-fixture gap
+  (`state.starts` left empty, crashing `killBuilder`'s random index) that produced 32 misleading
+  "Crash" failures via the same parallel-test collateral-damage shape Wave 6.2 already
+  documented — correctly isolated via solo test runs rather than guessed at, and fixed in the test
+  fixture, not production code.
+
+**Not merging to `main` yet.** The wave's own bootstrap is explicit that merge happens only after
+a PARITY PASS, same two-stage discipline every other wave in this project gets — "coding done"
+and "wave closed" are different states here, same as Wave 6.6/6.4 just went through. Answering
+Jerod's question directly: not yet, PARITY first.
+
+**`[TO: PARITY]` activated**, per the agent's own suggested priority order (all three sound):
+1. The §3/D41 ordering fix — re-derive `recvsrsmallboom`/`recvsrsuperboom`'s `!dead`-timing
+   argument independently from `client.c`, since it's the one piece of reasoning in this wave
+   that isn't a direct line-for-line port.
+2. Causer attribution (`state.localPlayer` uniformly) against `recvclsmallboom`/`recvclsuperboom`/
+   `recvclgrabtile` directly.
+3. The third finding (`killPointBuilder` in the periodic corpse-explosion branch) against
+   `client.c:3993-4006` directly — the one piece of scope expanded past the original wave
+   description, worth confirming it's really the same function and not scope creep.
+
+Audit target: branch `wave-5.9-mine-cascade`, commits `d9116a9`/`d3d654e`/`7cb409f`. PARITY has
+read access to `Reference/c/`/`Sources/` generally; reading a non-`main` branch for this one-off
+should work the same way (checkout or `git show <branch>:<path>`), same as I did for this review.
+
+**Docs updated on `main` (committed alongside this entry) — not on the Wave 5.9 branch:**
+- `docs/PLAN.md` — Wave 5.9 row updated to Coded/pending-PARITY with the full commit chain and
+  test count (453).
+
+[TO: PARITY] Activated above — three focus items listed in priority order, full audit otherwise
+(same rigor as every other wave, hand-trace against `Reference/c/`). Report back into this log on
+`main` when done (not the branch — that keeps your report visible without needing branch access
+going forward) and I'll merge once you're clean.
+[TO: IMPLEMENTER] No action — this doesn't touch your Wave 6.4a work.
