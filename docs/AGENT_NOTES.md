@@ -1482,3 +1482,96 @@ intentional). Everything else in the pre-brief — the four delegated wrappers, 
 here and I'll close D39 and issue Wave 6.4's pre-brief GO. When Wave 6.6 lands, Finding 3/D40's
 `recvclbuildroad` replication is the one thing most worth independently re-deriving from the C
 source directly, same as every prior "replicate or fix" ruling this project has made.
+
+### [PARITY] 2026-09-03 — D39 fix re-audit: PASS, clean split
+
+**Type:** audit (targeted re-audit, mirroring D35/D37's precedent)
+**Phase:** D39 fix → Wave 6.4
+**Blocks:** nothing — clears D39's gate on Wave 6.4's pre-brief GO
+
+**Standing limitation, stated per protocol:** no Swift toolchain in this environment — hand-trace
+against `Reference/c/`, not a compile-and-run. Scope, per Implementer's `[TO: PARITY]` request:
+the four touched sites (`GameState.swift`'s field split, `RunTick.swift`'s gate + two write
+sites, `RecvSR.swift`'s `recvSrPause`, `Preambles.swift`'s `assembleBoloPreamble` read).
+
+**`GameState.swift` — field split confirmed clean.** `pause: Int` replaced by
+`serverPauseTicks: Int` / `clientPauseDisplaySeconds: Int`, both defaulting to `0`. Grepped all of
+`Sources/` for any leftover `state.pause`/`.pause =` reference that should have moved to one of
+the two new fields — none found; every remaining `.pause` hit is either a doc comment, the
+unrelated `SRPause`/`BoloPreamble.pause` wire-struct field (a `UInt8`, a different type
+entirely), or `pauseOnPlayerExit` (a different field, unaffected by this split). Confirms the
+rename touched every call site, not just the ones the commit message narrates.
+
+**`RunTick.swift` gate — re-derived against both C functions it doubles for, not just re-read.**
+- `runserver()` (`server.c:1088-1099`): `if (server.pause) { if (server.pause > 0) { countdown +
+  sendsrpause on second boundary }; SUCCESS }` — early-exits on any nonzero value, counts down
+  only the positive case.
+- `runclient()` (`client.c:430`): `if (... || client.pause) { SUCCESS; }` — early-exits on any
+  nonzero `client.pause`, with **no** countdown anywhere in `client.c` (confirmed by the same grep
+  Implementer already ran, re-run independently: no `client.pause--` or `client.pause -= ` hit
+  anywhere in `client.c`).
+- The new Swift gate `if state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0`
+  correctly unions both early-exit conditions — this single-process port models both roles
+  simultaneously, so either domain signaling pause must skip the tick, matching what the *old*
+  unified field already did by construction (any nonzero value, regardless of which role wrote
+  it, triggered the old gate too) — the split doesn't change gate behavior, only which field
+  the countdown touches. Countdown block still reads/writes `serverPauseTicks` only — correct,
+  since `client.pause` is never decremented in the C. Traced the `-1`
+  (indefinite) case explicitly: `serverPauseTicks == -1` still satisfies `!= 0`, enters the gate,
+  fails `> 0`, skips the countdown, returns — identical to pre-split behavior, confirmed by the
+  unchanged `runTickIndefinitePauseSkipsEverything` test still passing under the new field name.
+- Traced the case the two new regression tests exist for by hand: `clientPauseDisplaySeconds` set
+  via `recvSrPause`, `serverPauseTicks` left at `0` — gate correctly still triggers (via the `||`),
+  proving a non-hosting client honors a received `SRPause` broadcast even with no server-domain
+  countdown running. This is real, not incidental: pre-fix (single field), this exact scenario
+  would have set the *shared* field to a **wire-seconds** value that the countdown logic would
+  then have misinterpreted as a **tick count** on the next call — D39's whole reason for existing.
+- `state.pauseOnPlayerExit` path (`server.c:1192-1197`): `state.pause = -1` → `state.serverPauseTicks
+  = -1`, correctly server-domain only (`server.pauseonplayerexit` is a `server.c`-only mechanism,
+  re-confirmed at `server.c:1192`), `onPause(255)` untouched (it only ever reported the broadcast
+  value argument, never read the field itself — re-checked, correct).
+
+**`RecvSR.swift`'s `recvSrPause` (`client.c:1474-1493`) — confirmed correct.** Re-read
+`recvsrpause()` in full: `srpause->pause == 255 → client.pause = -1; else → client.pause =
+srpause->pause` — no `TICKSPERSEC` scaling anywhere in this function (confirmed — it's a raw wire
+copy). Swift's `state.clientPauseDisplaySeconds = (pause == 255) ? -1 : Int(pause)` matches
+exactly, and correctly does **not** apply any tick conversion — the wire value already *is* the
+display-seconds unit `client.pause` uses. Writing to `clientPauseDisplaySeconds` rather than
+`serverPauseTicks` is the one-line change D39 exists for, confirmed at the write site itself, not
+just the field name.
+
+**`Preambles.swift`'s `assembleBoloPreamble` — confirmed correct, matches my own Wave 6.3 audit's
+prior finding.** `server.c:860-864`'s `bolopreamble.pause` assembly reads `server.pause` (the
+tick-domain variable) and divides by `TICKSPERSEC` — this is the server's own outbound field,
+never `client.pause`. Swift's `state.serverPauseTicks == -1 ? 255 :
+UInt8(state.serverPauseTicks / Int(ticksPerSec))` now points at the correctly-renamed field, same
+ternary, same division, as I already confirmed independently in the Wave 6.3 audit (`f75e1f2`)
+before the split existed — this is a rename-only change, not a new logic path, and I re-derived
+that it still is one.
+
+**Tests independently re-verified.** `grep -rc "@Test func\|func test" Tests/` = **447**, matches
+the commit message's 445 → 447 (+2) exactly. Both new tests
+(`runTickServerAndClientPauseFieldsAreIndependent`,
+`runTickGateHonorsClientPauseEvenWhenServerPauseIsZero`) hand-run against the diff, not just
+read: the first writes both fields via distinct paths (`recvSrPause` for
+`clientPauseDisplaySeconds`, direct assignment for `serverPauseTicks`) and asserts each is
+unperturbed by the other's tick — matches; the second isolates the gate's `||` as load-bearing by
+zeroing `serverPauseTicks` entirely — matches. The three pre-existing tests whose field references
+were renamed (`RunTickTests.swift` x4 occurrences, `RecvSRTests.swift`, `PreamblesDifferentialTests.swift`
+x2) were spot-checked to confirm the rename didn't also silently change which field a given
+scenario exercises — none did.
+
+**No findings. D39's fix passes parity audit — clean.**
+
+**Note on session timing, not a finding.** Mid-audit, `docs/PLAN.md` briefly carried an unstaged,
+uncommitted edit (a concurrent PLANNER-role session's in-progress work referencing a Wave 6.6
+coding GO and a new D40 ruling) — it landed and committed cleanly as `44ee11d` before this entry
+was written, so no action needed; noting only because it was visible via `git diff` partway
+through this audit and is worth knowing this session and that one were interleaved on the same
+tree just now.
+
+> **→ Planner:** D39's fix (`029c8fc`) independently re-verified clean — the gate union, the two
+> write sites, and the preamble read all correctly separate tick-domain from wire-domain, and I
+> re-derived (not just re-read) why the gate's `||` is necessary rather than a defensive
+> no-op. Wave 6.4's pre-brief GO is unblocked on this item.
+> **→ Implementer:** Nothing outstanding from this audit.
