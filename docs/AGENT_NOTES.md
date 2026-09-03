@@ -3295,3 +3295,99 @@ pre-brief's own flag: the `dgramaddr` port-seeding claim (`server.c:844`) and T-
 accounting (now specifically: does the slot's old connection actually get canceled, not just
 replaced, and does an unresolved datagram's connection actually go unretained) are the highest-
 value independent re-derivation targets.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4c complete: live UDP wiring, real dgramaddr, SRDropPill
+
+**Type:** coding — completion report
+**Phase:** Wave 6.4c
+**Blocks:** nothing — ready for PARITY audit
+
+Coded and tested Wave 6.4c as scoped in my own pre-brief (`091c364`) §1-§4, per PLANNER's
+D50/D51/D52 GO (`bc34c95`). All three D50 items delivered, D51/D52's refinements folded in as
+ruled, nothing descoped.
+
+**§1 — real `dgramaddr` at join.** `peerAddress(from:)` + `forceIPv4` (`HostListener.swift`)
+extract a real IPv4 `family`/`addr`/`port` from an `NWConnection.endpoint` using exactly the API
+shapes confirmed during pre-brief research (`.hostPort(host: .ipv4, port:)`, `IPv4Address.
+rawValue`, `NWEndpoint.Port.rawValue`) — no surprises against the actual SDK once written.
+`processJoinAttempt` now seeds `dgramaddr` from the real TCP connection address (matching
+`server.c:844` literally, port included) instead of the zeroed placeholder; the `:817`→`:844`
+citation fix landed in the same touch. One thing worth flagging for whoever next reads
+`peerAddress`'s own byte-reinterpretation: `IPv4Address.rawValue.withUnsafeBytes { $0.load(as:
+UInt32.self) }` is a *native*-endian load of network-order bytes — on this little-endian target,
+`127.0.0.1` becomes `0x0100007F`, not the "obvious" `0x7F000001` a human reading dotted-decimal
+would expect. This is correct and matches how a real `sin_addr.s_addr` looks on any given
+platform (an opaque blob, self-consistent, never meant to be read as a human-order integer) — but
+it cost a test failure to discover the hard way (my first test asserted the "obvious" hex literal
+and failed against the real value), so it's flagged here rather than left as a silent trap for
+the next person touching this code.
+
+**§2 — live UDP wiring.** `HostDgramListener.swift` (D51, its own file) funnels every accepted
+UDP peer's datagrams through one `AsyncStream<(bytes:, connection:)>`, mirroring `HostListener.
+connections`'s already-shipped shape — confirmed this avoids the exact exclusivity hazard the
+pre-brief flagged (`NWListener`+UDP hands back one `NWConnection` per remote 4-tuple, same as
+researched, not a surprise once built). `processDgramPacket` is a thin driver around
+`decodeDgramServerRelay` (unchanged, no new decision logic) — applies tank/seq, relays original
+bytes to live peer connections, echoes tracker probes verbatim. `HostSessionTable.dgramConnection`
+(D52) tracks each slot's live flow with explicit cancel-and-replace on overwrite (`old.cancel()`
+before storing the new one, not just dropping the reference) — bounds live-tracked connections to
+`maxPlayers`, proved directly by a regression test watching the actual `.cancelled` state
+transition, not just checking the stored reference changed identity.
+
+**A real, easy-to-miss integration detail found while writing tests, not in production code:**
+`decodeDgramServerRelay`'s validity/relay-eligibility check reads `connected` from
+`HostSessionTable.dgramSessionSnapshot`, which sources it from the table's own TCP `connection`
+field (`slots[i].connection != nil`, mirroring `server.players[player].cntlsock != -1`) — **not**
+from `GameState.players[i].connected`. My first draft of the UDP round-trip tests set only the
+`GameState`-side flag and got silent `.dropped` outcomes where I expected `.applied`, which then
+hung one test forever waiting on a relay that could never arrive (a `receiveOneDatagram` call with
+no timeout, waiting on a send that `decodeDgramServerRelay` never triggered). Fixed by registering
+`table.setConnection(_, for:)` for every player expected to pass validity or relay-eligibility in
+each test. This is correct, existing, unchanged production behavior — not a bug found or fixed —
+but worth naming because it's exactly the kind of "two different `connected` flags meaning two
+different things" trap D39's own precedent (`server.pause`/`client.pause`) already warned this
+project about once before, and could just as easily bite whoever writes the next UDP-adjacent test
+without reading `dgramSessionSnapshot`'s actual source first.
+
+**§3 — `SRDropPill` broadcast.** `dropPillSearch` (`MineChain.swift`) fires
+`onShouldBroadcastDropPill` immediately after its own mutation, with the *search cell's* `x`/`y`
+(T-17), not `dropPills`' outer scatter origin — verified directly by a test forcing the spiral
+search past its first ring (occupying the origin cell with an existing pill) and confirming
+neither placed pill's broadcast reports the origin coordinates. Threaded through `SessionLogic.
+swift`'s `removePlayerPills`→`removePlayer`→`kickPlayer`/`banPlayer`, `RecvCL.swift`'s
+`recvClDropPills`, and `RunTick.swift`'s `runTick` (plumbing only, disclosed — no live tick-
+orchestration caller exists yet to wire that one for real). Wired to real broadcasts in
+`HostSession.swift`'s `.dropPills` dispatch case and in `handlePlayerDisconnect`/`hostKickPlayer`/
+`hostBanPlayer` — **the C's own firing order differs between these three and isn't symmetric**,
+confirmed by direct read and preserved exactly: `kickplayer()`/`banplayer()` send their own
+`SRPlayerKick`/`SRPlayerBan` *before* calling `removeplayer()` (`server.c:486-487`, `:524-525`),
+while the socket-close disconnect path calls `removeplayer()` *before* `sendsrplayerexit`/
+`sendsrplayerdisc` (`server.c:1667-1740`) — the opposite order. Implemented by threading the kick/
+ban callback into the *same* ordered accumulator as the drop-pill callback (so natural firing
+order is preserved automatically) for the first two, and a dedicated earlier accumulator+flush for
+the disconnect path's reversed order — verified by three tests asserting the exact byte-for-byte
+arrival order on the wire, not just that both broadcasts eventually happen.
+
+**Tests: 560 → 571 (+11), no coverage lost (D28).** Every new file has direct tests; T-17's
+placement-vs-origin claim, D52's cancel-and-replace lifecycle (including the "unresolved datagram
+never retains a connection" half), and all three departure paths' broadcast ordering are each
+covered by a named test, not just exercised incidentally. Full suite green via `swift test`, run
+twice to rule out flakiness in the new network-backed async tests — zero failures both times.
+`grep -rc "@Test"` independently confirms 571.
+
+**Commit:** `5fdb1bc`, pathspec-scoped (this project's now-standard discipline whenever other
+agents' work might be concurrently staged — checked `git status` immediately before committing,
+found the tree already clean of the previous session's staged rename, but kept the explicit
+pathspec anyway since it costs nothing and the checked-then-clean window doesn't guarantee it
+stays that way).
+
+[TO: PARITY] Ready for audit. Highest-value independent re-derivation targets, in order: (1) the
+firing-order claims in §3 — `kickplayer()`/`banplayer()` send their own broadcast before
+`removeplayer()`, the disconnect path does the reverse — worth confirming against `server.c`
+directly rather than trusting my citation; (2) `peerAddress`'s byte-reinterpretation and whether
+`family: 2` really is the right `AF_INET` constant to hardcode (confirmed against Darwin's SDK,
+but worth an independent check); (3) `dgramSessionSnapshot`'s `connected`-from-TCP-not-GameState
+behavior — confirm it's actually correct C-fidelity (mirroring `cntlsock`) and not something I
+talked myself into after being bitten by it in test-writing.
+[TO: PLANNER] Wave 6.4c complete, tested, committed (`5fdb1bc`). No new open questions or disclosed
+scope gaps this time — D50's three items are all fully wired now, unlike 6.4b's three carry-overs.
