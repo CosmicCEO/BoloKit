@@ -1656,3 +1656,92 @@ second session may start work on Wave 5.9 in a separate worktree soon; if you ev
 checkout, that's expected, not an intrusion into your work.
 [TO: PARITY] No action yet — nothing to audit until the Wave 5.9 agent produces a report in
 `docs/notes/WAVE59_REPORT.md`.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.6 complete: 18 `recvcl*` server TCP-receive handlers
+
+**Type:** coding
+**Phase:** Wave 6.6
+**Blocks:** nothing on my end — ready for PARITY audit, then Planner's Wave 6.4 pre-brief GO
+(already unblocked on D39, sequenced after this wave per D38)
+
+Commit `ebb8fe4`. Implemented against the pre-brief (`a5d518d`) as GO'd, with D40's ruling
+applied. Two corrections to the pre-brief's own claims surfaced during coding — both disclosed
+here, not silently absorbed.
+
+**Correction 1 — `recvClTouch` does not delegate to `touchTile`.** The pre-brief's Finding 1
+claimed `recvcltouch` was already ported as `ShellTick.swift`'s `touchTile` (Wave 5.3a). On actual
+read, `touchTile` is a shell-expiry helper (`shellTick`'s own trigger, a mined tile a shell's range
+ran out over) with a generic `onMineExplosion` passthrough — a different C concept sharing a
+similar-looking doc-comment citation, not the real `recvcltouch()` network handler, which calls
+`explosionat()` directly (`server.c:2256`). `recvClTouch` calls `explosionAt` directly instead,
+landing in the same bucket as the wave's other new mined-terrain trigger sites. **Net count: 10
+new `explosionAt` trigger sites, not 9** as the pre-brief said (`recvClTouch`, `recvClGrabTile`,
+`recvClGrabTrees`, `recvClBuildRoad`, `recvClBuildWall`, `recvClBuildBoat`, `recvClBuildPill`,
+`recvClRepairPill`, `recvClPlaceMine`, `recvClDamage`) — I miscounted during the pre-brief and am
+correcting it here rather than letting the number stand uncorrected.
+
+**Correction 2 — `explosionAt`/`superboomAt` (`MineChain.swift`, Wave 5.5a) have no broadcast-
+trigger callback of their own.** The real `explosionat()`/`superboomat()` call
+`sendsrsmallboom()`/`sendsrsuperboom()` *internally* (`server.c:4121-4249`) — this port's Wave
+5.5a versions never exposed that as a callback parameter. Found while wiring the first mined-
+terrain branch and confirmed by reading both C functions in full, not assumed. **Worked around
+locally rather than modifying the already-shipped, audited engine functions:** every one of the 10
+trigger sites above re-derives the same terrain-membership predicate `explosionAt` already uses
+internally (its own `detonated` local) to decide when to fire `onShouldBroadcastSmallBoom` itself.
+For the 8 sites where the input terrain is already known to be one of the 7 mined variants (the
+switch case that reached `explosionAt` at all), this predicate is trivially always-true — only
+`recvClDamage` and `recvClSmallBoom` needed the real re-derivation, since their input terrain isn't
+pre-filtered. Two confirmed asymmetries between the two engine functions, both surprising enough to
+be worth stating plainly: `explosionat()`'s broadcast always attributes to `playerNeutral`, never
+the real causer (`server.c:4160`); `superboomat()`'s uses the real causer and fires
+unconditionally, no terrain-membership gate at all (`server.c:4243`) — confirmed these are not
+symmetric, not assumed. Considered routing through `applyDamage`'s existing `onMineExplosion`
+callback for `recvClDamage`'s mined branch instead of intercepting before calling it, but a closure
+capturing `&state` to call `explosionAt(..., state: &state, ...)` from inside a closure passed to
+`applyDamage(..., state: &state, ...)` isn't expressible under Swift's exclusivity rules — two
+simultaneous exclusive accesses to the same `inout` value. Intercepting before the call avoids
+this entirely and is what's shipped.
+
+**D40 applied — `recvClBuildRoad`'s tautology replicated bug-for-bug, plus its second-order
+effect.** `clbuildroad->trees >= clbuildroad->trees` ported as literal `trees >= trees` — always
+true, matching the pre-brief's disclosure and Planner's ruling. Went one step further than "the
+check is skipped": since the success branch is the *only* reachable one, the leftover-trees ack
+(`trees - roadTrees`) can go negative when `trees < roadTrees` — passed through as a plain `Int`
+to `onShouldBroadcastBuilderAck`, not wire-truncated here (that's whatever eventually constructs
+the real `SRBuilderAck` from these arguments, a Wave 6.4-territory concern — matches the C's own
+`uint8_t` wraparound happening at the `sendsrbuilderack`→wire-struct boundary, not inside the
+handler itself). Named regression test (`recvClBuildRoadLeftoverTreesCanGoNegativeD40`) covers
+this explicitly, per D28/D40's own instruction, not just the "always succeeds" half.
+
+**Other findings worth a one-line note each, none blocking:**
+- `recvClRefuel` matches the already-shipped client mirror `recvSrRefuel`'s unclamped-subtract
+  arithmetic exactly (no defensive clamp added) — confirmed intentional precedent, not a new risk.
+- `recvClBuildBoat` has no tree-cost gate at all in the real C (unlike `recvClBuildWall`'s real
+  threshold) — replicated as an unconditional build, confirmed by direct read, not an inconsistency
+  on this port's part.
+- `recvClBuildPill`'s client-specified `pill` slot index has no C-side bounds check before writing
+  `server.pills[pill]` — guarded (no-op on out-of-range) rather than trapping, the same class of
+  memory-safety deviation `applyDamage`'s `pills[-1]` case already established.
+- `recvclsendmesg` skipped entirely (no `GameState` effect, per the pre-brief's Finding 4);
+  `recvClHitTank` kept as a minimal bounds-checked relay for parity with `recvSrHitTank`'s shape.
+
+**Tests (D28):** 447 → 487 (40 new, 0 removed, 0 failed). Named regressions beyond the D40 cases
+above: `recvClGrabTreesMinedForestIsHarvestedNotDetonated` (the terrain-list trap flagged in the
+pre-brief), `recvClDamageNonBoatOnUnmatchedTerrainFiresNoBroadcast` /
+`recvClDamageBoatOnGrassFiresBroadcastUnlikeNonBoat` (the boat/non-boat broadcast-predicate split),
+`recvClSmallBoomOnSeaFiresNoBroadcast` / `recvClSuperBoomAlwaysBroadcastsWithRealCauser` (the two
+engines' confirmed asymmetry), `recvClBuildPillOutOfRangeSlotIsIgnoredNotTrapped`,
+`recvClGrabTileMutuallyAlliedBaseHandsOffResourcesUntouched` /
+`recvClGrabTileHostileBaseIsZeroedOnTakeover` (the three-way base-capture branch).
+
+Build: succeeded. `RunAllTests`: 487 passed, 0 failed, 0 skipped.
+
+[TO: PARITY] Ready for audit. Beyond D40's replication (already flagged as the top item), the two
+corrections above are worth independent re-derivation: `recvClTouch`'s real behavior vs.
+`touchTile`'s, and the `explosionAt`/`superboomAt` broadcast-attribution asymmetry
+(`playerNeutral` vs. real causer, gated vs. unconditional).
+
+[TO: PLANNER] Wave 6.6 complete, tested, committed (`ebb8fe4`), two corrections to my own
+pre-brief disclosed above rather than left standing. Requesting Wave 6.4's pre-brief GO once
+PARITY clears this, per your note that D39's gate is already satisfied and only sequencing was
+holding it back.
