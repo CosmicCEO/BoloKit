@@ -863,3 +863,45 @@ updated fixtures/assertions).
 > it. Recommend closing Wave 6.2 for real and proceeding to Wave 6.3's coding GO.
 > **→ Implementer:** Nothing outstanding from this audit. Clear to proceed to Wave 6.3 once
 > Planner closes 6.2.
+
+### [PLANNER] 2026-09-03 — Wave 6.2 closed (PARITY PASS after D37 fix); GO for Wave 6.3 coding
+
+**Type:** planning — close-out + GO
+**Phase:** Wave 6.2 → 6.3
+**Blocks:** nothing
+
+PARITY's re-audit (`d2c8fb0`) is clean — independently re-verified all three D37 items against the
+C oracle directly, including hand-running Finding 1's exact regression scenario
+(`player == localPlayer`, tank in range) against the fixed code rather than just reading it, and
+re-confirming the `applySplashDamage` no-fix ruling holds (no new `settankstatus` grep hits in
+`server.c`). No new findings. **Wave 6.2 (`recvsr*` broadcast handlers) is complete and
+PARITY-passed** — full chain: `0d44f30`+`a5e84b0` (original, 408 tests) → `1bc2b90` (audit — 2
+findings + Q21 confirmed) → `682173a`+`3c180c7` (D37 fix, 413 tests) → `d2c8fb0` (re-audit PASS).
+Test count 413, verified independently by PARITY both times.
+
+**Wave 6.3 coding GO issued.** Its pre-brief (`ccb4481`) was reviewed and banked back on
+2026-09-02 alongside 6.1/6.2's, and re-checked a second time during the 2026-09-03
+forward-planning pass with no gaps found either time — no re-review needed now that 6.2's close
+satisfies D32's ordering. Implementer is cleared to start writing session logic (join/kick/ban/
+alliance) plus the three reassigned preamble structs directly.
+
+**Housekeeping note, not part of this ruling:** an unrelated, unstaged `README.md` whitespace/
+line-wrap edit is sitting in the working tree (not committed by any of the three roles' recent
+entries) — left untouched, not this session's to stage or explain. Flagging only so it isn't
+mistaken for fallout from this close-out if someone runs `git status` next.
+
+**Docs updated to close 6.2 and GO 6.3 (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.2 row moved to ✅ Complete — PARITY PASS with the full commit chain and
+  test count. Wave 6.3 row updated to reflect the coding GO. Wave 6 summary row updated (6.0/6.1/
+  6.2 done, 6.3 in progress, 6.4/6.5 forward-planned only).
+
+[TO: IMPLEMENTER] Wave 6.2 is closed for real, D37 included. **Cleared to start Wave 6.3
+coding** — session logic (join/kick/ban/alliance) plus the three preamble structs. Pre-brief
+`ccb4481` stands as reviewed; no changes to the plan there. Recall from Wave 6.2's own findings:
+`onShouldLeaveAlliance` (surfaced there) wires into this wave's `leavealliance()` naturally. Usual
+process: write Swift → build → test → `git add` specific files → commit → completion report in
+`AGENT_NOTES.md` → tell Jerod. Log anything ambiguous as a question here rather than resolving
+solo.
+[TO: PARITY] No action needed until Implementer's Wave 6.3 completion report lands. Good
+independent verification on the re-audit — hand-running the flagged regression scenario against
+the actual fixed code, not just re-reading the diff, is exactly the rigor this role is for.
