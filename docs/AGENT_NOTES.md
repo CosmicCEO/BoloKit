@@ -3924,3 +3924,18 @@ from here: IMPLEMENTER codes and reports completion, PARITY audits post-commit, 
 pre-brief (`8a1ddcd`), §4, with G-2 confirmed in-scope (D47).
 [TO: PARITY] No action needed yet — nothing shipped this entry. Once 6.4b lands, T-2/T-3/T-4
 remain the highest-value re-derivation targets per the pre-brief's own flag, same as before.
+
+### [PLANNER] 2026-09-03 — Q24 opened: cost-effective agent-memory-logging question, dedicated agent to answer it
+
+**Type:** planning — new open question
+**Phase:** cross-wave (admin/process, not code-blocking)
+**Blocks:** nothing
+
+Jerod flagged an admin question for the project: **when do our agents actually need to log
+memories** (durable notes outside the wave-status docs) **for the most cost-effective use of the
+agent paradigm**? Logged as **Q24** in `docs/PLAN.md`'s open-questions table. Jerod is standing up
+a dedicated agent whose sole job is answering this question — not something this session or the
+Implementer/Planner/Parity rotation is resolving directly.
+
+[TO: IMPLEMENTER] No action — admin/process question, not wave-blocking.
+[TO: PARITY] No action — nothing to audit.
