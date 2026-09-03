@@ -905,3 +905,114 @@ solo.
 [TO: PARITY] No action needed until Implementer's Wave 6.3 completion report lands. Good
 independent verification on the re-audit — hand-running the flagged regression scenario against
 the actual fixed code, not just re-reading the diff, is exactly the rigor this role is for.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.3 complete: session logic (join/kick/ban/alliance) + 3 preambles
+
+**Type:** coding
+**Phase:** Wave 6.3
+**Blocks:** nothing — 6.3 done pending PARITY audit; 6.4 (transport + join handshake, D31/D32/D36)
+is next
+
+Commit `388a8c1`. Implemented against pre-brief `ccb4481` (banked 2026-09-02, re-reviewed clean
+2026-09-03) — no scope surprises on the pre-brief's own claims, but two new findings surfaced
+during implementation, both disclosed rather than absorbed or fixed silently.
+
+**Preamble structs (`Sources/BoloNet/Preambles.swift`):** `JoinPreamble` (`bolo.h:448-452`),
+`BoloPreamble` (`bmap.h:18-39`, with its nested `PlayerEntry` roster row), `TrackerPreamble`
+(`tracker.h:35-38`) — the three reassigned from Wave 6.0's corrected row. Oracle ground truth
+added to `CXBolo` (`netops.c`'s new `preamble_layout_oracle()`, declared in `CXBolo.h`) rather than
+trusting `sizeof` alone — `BOLO_Preamble`'s nested per-player array and its `game.domination`
+union are real layout traps, both offset-checked explicitly. Caught two build issues while wiring
+this up, both fixed before committing: `netops.c` never included `bmap.h`/`tracker.h` (only
+`bolo.h`), and `CLUpdateLayoutOracle`'s existing precedent of *duplicating* the oracle struct
+definition locally in `netops.c` (that file never includes the public `CXBolo.h` header) had to be
+matched for the new struct too, not just declared once in the header.
+
+**`assembleBoloPreamble` (also `Preambles.swift`, `BoloNet`-side since it produces a `BoloNet`
+type from a `BoloKit` `GameState`):** ported from `joinplayerserver()`'s field-by-field preamble
+build (`server.c:846-873`). Two values the wire needs have no `GameState` analog to read, both
+resolved as caller-supplied parameters rather than new stored fields, mirroring `RunTick.swift`'s
+own Wave 6.1 precedent (`ticksSinceLastUpdate`) for the same reason: **`seq`** (Wave 6.0's
+deliberate exclusion, reaffirmed by `RunTick.swift`'s own disclosure — a real transport layer
+would own per-player sequence counters, not `GameState`) and **`mapLength`** (just the byte count
+of whatever `BMap.swift`'s Wave-4.1 encoder already produced, not re-derived here).
+
+**Session logic (`Sources/BoloKit/SessionLogic.swift`):** pure decision/mutation core of
+`joinplayerserver()`/`kickplayer()`/`banplayer()`/`removeplayer()` (`server.c`) and
+`requestalliance()`/`leavealliance()`/`recvclsetalliance()` (`client.c`/`server.c`) — every
+socket, buffer, and mutex operation those C functions also perform stays out of scope, Wave 6.4's
+concern (D31/D32).
+
+- `evaluateJoinRequest`/`applyJoin`: rejection order matches the C exactly (version → password →
+  `allowjoin` → ban list → slot search); slot search is rejoin-by-name-on-a-disconnected-slot >
+  first-never-used-slot > oldest-disconnected-slot eviction (`server.c:789-806`'s strict `<`
+  comparison keeps the lowest index on a tie — regression-tested explicitly, both the tie case and
+  the strict-winner case).
+- `kickPlayer`/`banPlayer`: `removeplayer()`'s pure core (onboard-pill bitmask → the already-shipped
+  `dropPills`, Wave 5.5a) plus `banPlayer`'s real `cntlsock != -1` guard — banning an
+  already-disconnected player is a silent no-op in the C, not an assertion precondition.
+  `kickPlayer` has no such guard, matching the C's own asymmetry (not added defensively, per this
+  port's established `GameState.localPlayer`-invariant precedent).
+- `requestAlliance`/`leaveAlliance`: **this is the real implementation Wave 6.2's `RecvSR.swift`
+  surfaced as `onShouldLeaveAlliance` (Finding 3) rather than duplicating** — the two are designed
+  to wire together at whatever call site owns both (Wave 6.4's dispatch glue), not inside
+  `RecvSR.swift` itself. `increasevis`/`decreasevis`/`refresh`/`client.printmessage` are skipped,
+  consistent with the project-wide precedent already established for these exact four calls
+  (`TankLocalTick.swift`/`BuilderTick.swift`/`RecvSR.swift`'s own file headers) — fog-of-war and
+  screen invalidation are pure rendering concerns, never modeled anywhere in this port.
+- `recvClSetAlliance`: the server's role really is a trivial accept-and-broadcast with **no**
+  consent-checking of its own — reconfirmed the pre-brief's read, not a bug.
+
+**New `GameState` fields:** `hiddenMines`/`allowJoin`/`passwordRequired`/`serverPassword`/
+`bannedPlayers`, following the precedent Wave 6.1 already set (`pauseOnPlayerExit` etc.) of server
+config living directly on `GameState` rather than as external parameters. **New `PlayerState`
+fields:** `name`/`host`/`address`. `host` mirrors `server.players[i].host` — grep-confirmed the C
+source declares this field but **never assigns it anywhere in `server.c`**, so it stays
+permanently empty here too, for the same reason (presumably resolved by Objective-C glue outside
+`Reference/c/`, not part of the oracle). `address` is a deliberately separate field from `host`,
+standing in for `addr.sin_addr` — the ban list's actual security-relevant match key, kept distinct
+so a future transport can't accidentally key bans off the spoofable display hostname instead.
+
+**Finding, flagged not fixed — Wave 6.3 scope gap, not mine to absorb.** `server.c` has ~19 more
+`recvcl*` handlers (`recvcldamage`, `recvclbuildroad`, `recvclbuildwall`, `recvclbuildboat`,
+`recvclbuildpill`, `recvclrepairpill`, `recvclplacemine`, `recvclsmallboom`, `recvclsuperboom`,
+`recvclrefuel`, `recvclhittank`, `recvclsendmesg`, `recvcldropboat`, `recvcldroppills`,
+`recvcldropmine`, `recvcltouch`, `recvclgrabtile`, `recvclgrabtrees` — the server's TCP receive
+side for every `CL*` opcode except `CLSetAlliance`) with no assigned wave anywhere in
+`docs/PLAN.md`'s table. Only `recvclsetalliance` was in 6.3's explicit scope (per the pre-brief and
+`docs/PLAN.md`'s Wave 6.3 row text), and that's the only one implemented here. This is the same
+shape of gap as D36 (`dgramclient()`'s post-decode logic) — surfacing for PLANNER to assign a
+wave, not silently absorbing ~19 more handlers into 6.3 or skipping the finding.
+
+**Question, not fixed — a genuine pre-existing unit mismatch spotted while reading `client.c` for
+this wave's alliance work, unrelated to anything 6.3 touches.** `server.pause` (ticks, decremented
+once per `runTick` call, Wave 6.1) and `client.pause` (raw wire seconds, written verbatim by
+`recvsrpause()`, never decremented anywhere in `client.c` — confirmed by grep, it's a pure
+truthy/falsy display gate on the real client) are two separate C variables with different units and
+different lifecycles. This port merged `client`/`server` into one `GameState.pause` field
+(deliberate unification, not a mistake) — but that means `RunTick.swift`'s tick-domain countdown
+(Wave 6.1) and `RecvSR.swift`'s `recvSrPause` decode (Wave 6.2, `state.pause = Int(pause)`, no
+tick-scaling) write to the *same* field in *different units*, a cross-role hazard in the same
+family as D27 even though it's cross-unit rather than cross-caller. Not fixing — pre-existing in
+already-PARITY-passed waves, and this wave's own `assembleBoloPreamble` reads `state.pause`
+correctly (ticks→seconds, matching `server.c:860-864` exactly) since it's assembling the *server*
+role's value. Flagging for PLANNER to rule on whether/how to reconcile, same as Q21's precedent.
+
+**Tests (D28):** 413 → 445 (32 new: 12 differential — preamble layout/round-trip/`assembleBoloPreamble`
+— plus 20 unit — join slot-selection incl. the tie-vs-strict-eviction case, kick/ban incl. the
+no-op guard, alliance mutual-consent incl. the one-sided-request no-callback case). 0 removed, 0
+failed.
+
+Build: succeeded. `RunAllTests`: 445 passed, 0 failed, 0 skipped.
+
+[TO: PARITY] Ready for audit. Two things worth independent re-derivation, same rigor as 6.0's
+FWIDTH finding: the `BOLO_Preamble` nested-struct/union offsets (I offset-checked them against the
+oracle, but a second read of `bmap.h:18-39` against my `preamble_layout_oracle()` wouldn't hurt),
+and the join slot-selection tie-breaking (`evictsOldestDisconnectedSlotOnATie` — I'm confident in
+the strict-`<` read of `server.c:789-806` but it's exactly the kind of off-by-one PARITY's
+brace/comparison-depth technique is built for).
+
+[TO: PLANNER] Two questions logged above, neither blocking 6.4: (1) the ~19 unassigned `recvcl*`
+handlers — same shape as D36, needs a wave; (2) the `server.pause`/`client.pause` unit-mismatch
+question — pre-existing, not urgent, but worth a ruling before whatever wave next touches
+`RunTick.swift`'s pause countdown or `RecvSR.swift`'s `recvSrPause`.
