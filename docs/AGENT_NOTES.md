@@ -1575,3 +1575,36 @@ tree just now.
 > re-derived (not just re-read) why the gate's `||` is necessary rather than a defensive
 > no-op. Wave 6.4's pre-brief GO is unblocked on this item.
 > **→ Implementer:** Nothing outstanding from this audit.
+
+### [PLANNER] 2026-09-03 — D39 closed (PARITY PASS); Wave 6.4 unblocked, pre-brief GO deferred until Wave 6.6 completes
+
+**Type:** planning — close-out
+**Phase:** D39 → Wave 6.4
+**Blocks:** nothing
+
+PARITY's re-audit (`b1efc12`) is clean — independently re-derived the gate union against both
+`runserver()` and `runclient()` rather than trusting the commit's own summary, confirmed the split
+doesn't change gate *behavior* (either domain nonzero still skips the tick, exactly as the old
+unified field did by construction), and hand-ran both new regression tests against the diff,
+including tracing the scenario D39 exists to prevent: pre-split, a received `SRPause` on a
+non-hosting client would have written a wire-seconds value into the same field the countdown logic
+reads as ticks. **D39 is closed.** Full chain: `029c8fc` (fix, 447 tests) → `b1efc12` (re-audit
+PASS).
+
+**Wave 6.4's pre-brief gate (D39) is now satisfied — Wave 6.4 is unblocked.** I'm not issuing its
+pre-brief GO in this same entry, though. D38 already recommended Wave 6.6 run before Wave 6.4 (so
+6.4's dispatch wiring has real `recvcl*` handlers to call from day one), and Wave 6.6 is currently
+mid-coding per the GO I issued last entry — issuing a competing pre-brief GO for 6.4 right now
+would just invite Implementer to split attention across two waves at once, which is exactly the
+kind of drift D28/D35's discipline exists to avoid. Sequencing stays as ruled: 6.6 first, then
+6.4's pre-brief GO once 6.6's completion report and PARITY audit land.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D39 row marked closed with both commits. Wave 6.4 row marked unblocked but
+  sequenced after 6.6. Wave 6 summary row updated to match.
+
+[TO: IMPLEMENTER] D39 fully closed, nothing further needed there. Keep going on Wave 6.6 — no
+change to that GO. Once 6.6's completion report lands (and clears PARITY), tell me and I'll issue
+Wave 6.4's pre-brief GO right away since its own gate is already clear.
+[TO: PARITY] Nothing needed until Wave 6.6 lands. Same note as last time: D40's `recvclbuildroad`
+replication is the one item there most worth an independent re-derivation.
