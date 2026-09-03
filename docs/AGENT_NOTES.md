@@ -408,3 +408,57 @@ No `Package.swift` changes. Build and full suite green before commit.
 > first draft being wrong here), and the `explosionAt`/`superboomAt`-avoidance design call. The
 > `heatPill` finding is also worth independently re-deriving from `server.c:2804-2846` vs.
 > `client.c:1540-1577` directly rather than trusting this report's reading of it.
+
+### [PLANNER] 2026-09-03 — Wave 6.2 reviewed, sent to PARITY; Q21 opened (heatPill field-mapping question)
+
+**Type:** planning — review + activation
+**Phase:** Wave 6.2
+**Blocks:** Wave 6.3 coding GO (until PARITY passes 6.2, per D32's order)
+
+Reviewed `0d44f30` (code) + `a5e84b0` (completion report) against the pre-brief (`ccb4481`) and
+`docs/PLAN.md`'s decisions.
+
+**Scope corrections: accepted, correctly disclosed rather than silently absorbed.** 30 functions
+shipped, not the pre-brief's estimated 33 — `sendmesg` was already flagged as out-of-`BoloKit` in
+the pre-brief, and `timelimit`/`basecontrol` turning out to be pure UI text formatting (no
+`GameState` mutation, since `runTick` from Wave 6.1 already derives the equivalent condition
+directly every tick) is a legitimate finding, not scope creep — matches the pattern of `client.c`
+bodies not always matching what a function name implies, same lesson as 6.3's `joinplayerserver()`
+split. Findings 2 and 3 (`onRequestGrabTile`/`onShouldLeaveAlliance` surfaced as callbacks instead
+of direct calls) are the same discipline PLANNER already ruled on for Wave 5.9 — a receiving
+client asking the server to act is not the same as the client acting locally, and inlining the
+target behavior here would duplicate logic that already has a correct home (6.3/6.4). Concur with
+not inlining `leavealliance()`'s real cascade after catching the first-draft shortcut — exactly
+the kind of self-check PARITY exists to also independently verify, not a substitute for it.
+
+**`explosionAt`/`superboomAt` avoidance design call: sound, no ruling needed.** The reasoning
+(authoritative-role scheduling vs. a receiving client's terminal reimplementation) is internally
+consistent with how Wave 6.0/6.1's role split was already established — not a new architectural
+question, just correctly applying the existing one.
+
+**Q21 opened for the `heatPill`/`Pill.counter` finding — not ruled yet.** This is a Wave-5.3a-era
+question about which field `heatPill` should reset, discovered incidentally, and it needs
+independent field-mapping confirmation against the C source before a fix-now-vs-track ruling makes
+sense — that confirmation is PARITY's job (hand-trace `server.c:2804-2846` vs. `client.c:1540-1577`
+directly), not something to guess at from this report's reading alone. Logged as **Q21** in
+`docs/PLAN.md` rather than pre-judging the answer. Wave 6.2 itself is not blocked by this — the
+report is correct that `recvSrDamage` doesn't call `heatPill` and is right regardless.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — new **Q21** in the open-questions table; Wave 6.2's row updated to the actual
+  30-function scope and code-complete status; Wave 6's summary row updated to match.
+
+[TO: PARITY] `0d44f30`+`a5e84b0` ready for audit. Priority order: (1) Finding 3 —
+`onShouldLeaveAlliance`'s bitmask and trigger condition against `client.c:2905-3028`'s "left"
+branch exactly, since Implementer caught their own first draft being wrong here and wants
+independent confirmation; (2) the `explosionAt`/`superboomAt`-avoidance design call — confirm no
+scheduling gap or double-schedule results from the terminal-reimplementation choice; (3) **Q21** —
+re-derive the `Pill.counter` vs. `Pill.coolCounter` mapping independently from
+`server.c:2804-2846`/`client.c:1540-1577` and report a verdict either way, even though it's a
+Wave-5.3a-era question, not this wave's own code; (4) the 30-vs-33 function count and the
+`sendmesg`/`timelimit`/`basecontrol` no-mutation claim — spot-check `client.c:3030-3086`/
+`3088-3135` directly rather than trusting the report's reading.
+[TO: IMPLEMENTER] Nothing blocking — proceed to Wave 6.3's pre-brief-to-coding-GO once PARITY
+passes 6.2, per D32's order. `onRequestGrabTile`/`onShouldLeaveAlliance` are noted for 6.3/6.4 to
+pick up; 6.3 already owns `leavealliance` so `onShouldLeaveAlliance` should wire there naturally
+per the pre-brief's existing scope.
