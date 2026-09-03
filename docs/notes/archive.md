@@ -146,3 +146,61 @@ this point forward.
 count delta across 6.0/6.1 was an addition or an explicit, reasoned replacement. Full
 uncompressed entries (process history, both pre-briefs in full, the D35 finding/fix/re-audit
 cycle) preserved in git history per D28.
+
+## Wave 6.2–6.3 (2026-09-02 – 2026-09-03)
+
+- **Wave 6.2** (`0d44f30`+`a5e84b0`, then D37 fix `682173a`+`3c180c7`, then re-audit `d2c8fb0`):
+  the 30 `recvsr*` client broadcast handlers (34 `SR*` opcodes minus `SRHANGUP`/unused and three —
+  `sendmesg`/`timelimit`/`basecontrol` — with no `GameState` mutation, confirmed by reading their
+  bodies rather than trusting their names). Central finding: this category is not "wire the
+  existing Wave 5 tick functions to incoming messages" — a receiving client applies an
+  already-decided value directly (no re-invocation of e.g. `growTrees`, which would pick a
+  different random winner locally and desync), so most handlers are new, terminal
+  reimplementations with no Wave-5 counterpart to call. Two callback surfaces (`onRequestGrabTile`,
+  `onShouldLeaveAlliance`) surfaced instead of inlining behavior that belongs to later waves — same
+  discipline as the Wave 5.9 mine-cascade ruling. **PARITY's audit found two real bugs (D37):**
+  `recvSrSuperBoom` applied local-tank splash damage unconditionally where the C nests that check
+  inside `player != client.player` (a genuine structural asymmetry vs. `recvSrSmallBoom`, which is
+  correctly unconditional — independently brace-traced both ways); and both smallboom/superboom
+  handlers were missing the `onTankStatusChanged` UI hook `client.c` fires unconditionally. Also
+  confirmed **Q21**: `heatPill` (Wave 5.3a) was resetting `Pill.counter` (fire-cadence tally)
+  instead of `Pill.coolCounter` (cooldown tally) — a real, if narrow, pre-existing fidelity bug,
+  independently re-derived by PARITY from four separate C call sites. All three fixed, tests
+  413→413+5 (net 408→413), re-audit clean including hand-running the exact previously-uncovered
+  regression scenario. `MineChain.swift`'s pre-existing, structurally similar
+  `applySplashDamage` gap was explicitly ruled *not* a bug (its authoritative C role has no
+  `settankstatus` analog at all, grep-confirmed) — recorded so the two omissions aren't confused.
+  **Q22 opened** (not resolved) alongside this wave: whether the port needs a standalone dedicated
+  headless server binary vs. in-process hosting only — research on xbolo/WinBolo/LinBolo/PyBolo
+  logged in `docs/notes/HOSTMODELS.md`, deferred to Jerod as a product-scope call. ✅
+- **Wave 6.3** (`388a8c1`, PARITY PASS at `f75e1f2`): server session logic (join/kick/ban/alliance)
+  plus the three preamble structs (`JoinPreamble`/`BoloPreamble`/`TrackerPreamble`) reassigned from
+  Wave 6.0's corrected row. `evaluateJoinRequest`/`applyJoin` port `joinplayerserver()`'s rejection
+  order and slot-selection (rejoin-by-name > first-never-used > oldest-disconnected-eviction,
+  strict-`<` tie-breaking toward the lower index) exactly; `kickPlayer`/`banPlayer` reuse Wave
+  5.5a's `dropPills` for the onboard-pill drop and preserve the C's real asymmetry (`banPlayer` has
+  a `cntlsock != -1` no-op guard, `kickPlayer` doesn't); `requestAlliance`/`leaveAlliance` are the
+  real implementations Wave 6.2's `onShouldLeaveAlliance` callback was designed to wire into, not
+  duplicate. PARITY independently re-derived every preamble struct offset (including the packed
+  `BOLO_Preamble` per-player-entry layout) and reasoned through the one item flagged for extra
+  scrutiny (`evictsOldestDisconnectedSlotOnATie`'s tie-breaking, corroborated by both stdlib
+  semantics and the passing test) rather than trusting the completion report. No findings. Tests
+  413→445 (+32). **Surfaced two items PLANNER ruled on at close (not fixed within 6.3 itself):**
+  **D38** — ~19 more `recvcl*` server TCP-receive handlers (every `CL*` opcode except
+  `CLSetAlliance`) had no assigned wave; same shape as D36 — assigned to new **Wave 6.6**,
+  recommended (not mandated) to run before Wave 6.4 so 6.4's dispatch wiring has a complete
+  handler table from day one. **D39** — a real, port-introduced hazard (not a C bug to replicate):
+  unifying `client`/`server` into one `GameState` merged two genuinely separate C variables,
+  `server.pause` (ticks, decremented by `runTick`) and `client.pause` (wire seconds, written
+  verbatim by `recvsrpause()`, never decremented), onto one `GameState.pause` field written in two
+  different units by Wave 6.1 and Wave 6.2. Ruled a real fix required before Wave 6.4's pre-brief
+  GO (same precedent as D35) — split into two fields, fixed and re-audited clean at
+  `029c8fc`/`b1efc12`. ✅
+
+**Cross-cutting:** D28's coverage discipline held (test count only ever grew: 408→413→445 across
+this span). The three-role loop pattern (Planner GO → Implementer pre-plan/code and self-report
+gaps → Parity adversarial audit → Planner incorporates and issues next instructions) held
+consistently through every fix/re-audit cycle in this span (D37, D38/D39) — later confirmed by
+Jerod as the project's standing planning/execution loop, recorded in `docs/notes/AFTERACTION.md`.
+Full uncompressed entries (both pre-briefs, the D37 fix/re-audit cycle, the full PARITY audits)
+preserved in git history per D28.
