@@ -45,18 +45,6 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(pillNotified == [0])  // rejoin about the local player refreshes allied pills
 }
 
-@Test func recvSrPlayerExitDiscKickBanAllDisconnect() {
-    for handler in [recvSrPlayerExit, recvSrPlayerDisc, recvSrPlayerKick, recvSrPlayerBan] {
-        var state = makeState(players: [connectedPlayer()])
-        var notified: Int?
-        handler(1, &state, { notified = $0 })
-        _ = notified
-    }
-}
-
-// Typed wrapper so the four functions above share one signature for the loop test.
-private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) -> Void
-
 @Test func recvSrPlayerExitSetsDisconnected() {
     var state = makeState(players: [connectedPlayer()])
     var notified: Int?
@@ -65,10 +53,28 @@ private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) ->
     #expect(notified == 0)
 }
 
+@Test func recvSrPlayerDiscSetsDisconnected() {
+    var state = makeState(players: [connectedPlayer()])
+    var notified: Int?
+    recvSrPlayerDisc(player: 0, state: &state, onPlayerStatusChanged: { notified = $0 })
+    #expect(!state.players[0].connected)
+    #expect(notified == 0)
+}
+
+@Test func recvSrPlayerKickSetsDisconnected() {
+    var state = makeState(players: [connectedPlayer()])
+    var notified: Int?
+    recvSrPlayerKick(player: 0, state: &state, onPlayerStatusChanged: { notified = $0 })
+    #expect(!state.players[0].connected)
+    #expect(notified == 0)
+}
+
 @Test func recvSrPlayerBanSetsDisconnected() {
     var state = makeState(players: [connectedPlayer()])
-    recvSrPlayerBan(player: 0, state: &state)
+    var notified: Int?
+    recvSrPlayerBan(player: 0, state: &state, onPlayerStatusChanged: { notified = $0 })
     #expect(!state.players[0].connected)
+    #expect(notified == 0)
 }
 
 // MARK: - Terrain broadcasts
@@ -92,7 +98,7 @@ private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) ->
     var state = makeState(players: players)
     state.bases = [Base(x: 10, y: 10, armour: UInt8(minBaseArmour), owner: 1, shells: 5, mines: 5)]
     state.pills = [
-        Pill(x: 10, y: 10, armour: 20, owner: 0, speed: 20, counter: 0),  // allied, in range
+        Pill(x: 12, y: 10, armour: 20, owner: 0, speed: 20, counter: 0),  // allied, in range
         Pill(x: 200, y: 200, armour: 20, owner: 0, speed: 20, counter: 0),  // allied, out of range
     ]
     var baseNotified: Int?
@@ -352,7 +358,8 @@ private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) ->
 // MARK: - Explosions
 
 @Test func recvSrSmallBoomTurnsTerrainToCraterUnlessSeaOrMinedSea() {
-    var state = makeState(players: [connectedPlayer()], localPlayer: 5)
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.players[0].tank = Vec2f(x: 200.5, y: 200.5)  // far from the blast, no damage cross-talk
     state.terrain[20, 20] = .grass0
     recvSrSmallBoom(player: 0, x: 20, y: 20, state: &state)
     #expect(state.terrain[20, 20] == .crater)
@@ -363,9 +370,10 @@ private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) ->
 }
 
 @Test func recvSrSmallBoomCreatesExplosionOnlyWhenNotCausedByLocalPlayer() {
-    var state = makeState(players: [connectedPlayer()], localPlayer: 3)
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.players[0].tank = Vec2f(x: 200.5, y: 200.5)  // far from the blast, no damage cross-talk
     state.terrain[20, 20] = .grass0
-    recvSrSmallBoom(player: 3, x: 20, y: 20, state: &state)
+    recvSrSmallBoom(player: 0, x: 20, y: 20, state: &state)
     #expect(state.explosions.isEmpty)
 
     recvSrSmallBoom(player: 1, x: 20, y: 20, state: &state)
@@ -394,7 +402,8 @@ private typealias PlayerStatusHandler = (Int, inout GameState, (Int) -> Void) ->
 }
 
 @Test func recvSrSuperBoomTurnsAllFourTilesToCraterExceptSea() {
-    var state = makeState(players: [connectedPlayer()], localPlayer: 5)
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.players[0].tank = Vec2f(x: 200.5, y: 200.5)  // far from the blast, no damage cross-talk
     state.terrain[20, 20] = .grass0
     state.terrain[21, 20] = .sea
     state.terrain[20, 21] = .grass1
