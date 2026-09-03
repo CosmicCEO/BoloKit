@@ -1340,3 +1340,65 @@ just asserted) and step 7's new disclosure comment (Finding 2 — confirm it say
 wanted disclosed). Commits: `1e0cbe6` (fix), `91c4a8d` (report). If clean, PASS and tell Implementer
 6.1 is closed for real — Wave 6.2's coding GO follows immediately, no separate PLANNER round trip
 needed given where session credits stand; if not clean, route back through PLANNER as usual.
+
+### [PARITY] 2026-09-03 — Wave 6.1 D35 re-audit: PASS, both findings closed
+
+**Type:** audit (fast re-audit, scoped to D35's two spots per Planner's activation)
+**Phase:** Wave 6.1 → 6.2
+**Blocks:** nothing — clears 6.1 for real close-out and Wave 6.2's coding GO
+
+Independent re-audit of `1e0cbe6` (fix) against my own prior findings (`c1cddee`), per Planner's
+activation: verify `pauseOnPlayerExit`'s wiring against `server.c:1192-1197` directly (including
+the `255` sentinel, not assumed), and confirm Finding 2's disclosure comment says what I wanted.
+
+**Finding 1 fix — confirmed correct, independently re-traced.** `RunTick.swift`'s disconnect loop
+now sets `state.pause = -1` and calls `onPause(255)` inside the same per-player stale-check branch
+as `dropPills`/`connected = false`/`onPlayerDisconnected`, guarded by the new
+`state.pauseOnPlayerExit` — matching `server.c:1192-1197`'s nesting (inside the lagged-disconnect
+`if`, at the same level as `removeplayer()`/`sendsrplayerdisc()`, not inside `removeplayer()`
+itself). **The `255` sentinel claim: re-derived from a third, independent site, not just the two
+already cited.** Confirmed `server.c:861-865` (`joinplayerserver()`'s preamble encoding:
+`server.pause == -1` → `bolopreamble.pause = 255`) as Planner's entry stated, and went further —
+`server.c:373-377`'s `pauseserver()` (the explicit admin-pause function) does the *exact* same
+two-statement pattern (`server.pause = -1; sendsrpause(255);`) as the lagged-disconnect site. Three
+independent call sites (admin pause, join-preamble encode, lagged-disconnect) all agree on `255` as
+the wire's indefinite-pause value — about as corroborated as a single constant gets in this
+codebase. Also checked `sendsrpause()`'s own assertions (`server.c:3467-3468`,
+`assert(pause >= 0); assert(pause < 256);`) — `255` is in-range, not a boundary case being
+mishandled. No double-fire risk across ticks: `state.pause` is `0` (not yet `-1`) when the
+disconnect loop runs this tick, so step 1's pause gate (which already ran earlier this same tick)
+doesn't also fire; next tick, step 1 sees `pause == -1`, takes the outer early-return, but the
+inner `if pause > 0` guard correctly skips re-emitting `onPause` — matches C's own
+`if (server.pause) { if (server.pause > 0) {...} SUCCESS }` structure exactly, so the freeze is
+silent on every tick after the one that triggered it, same as the oracle.
+
+**Finding 2 fix — confirmed, says what was asked for.** The new step 7 comment names the exact
+line (`client.c:451`), states which half of the C gate is and isn't covered, gives the actual
+reason (`seq` excluded from `BoloKit` per Wave 6.0's design call; `seq != 0` is a
+network-bootstrapping concept — "never received a real update yet" — with no analog when
+`GameState` is itself authoritative rather than a broadcast-fed mirror), and explicitly cross-
+references the sibling `timelimitreached`/`basecontrolreached` disclosure it's matching the style
+of. This is exactly the content I'd have wanted written down — no behavior to check, just
+confirming the explanation holds up, and it does.
+
+**Scope discipline confirmed:** diff is exactly `GameState.swift` (+9/-1), `RunTick.swift`
+(+23), `Tests/BoloKitTests/RunTickTests.swift` (+27) — no drive-by changes, `Package.swift`
+untouched. Both new tests
+(`runTickPauseOnPlayerExitPausesIndefinitelyOnDisconnect`/
+`runTickPauseOnPlayerExitDefaultFalseLeavesPauseUntouched`) assert exactly the scenario each
+finding described — flag-on fires `pause == -1`/`onPause(255)`, flag-off (the default) leaves
+`pause` at `0`, a direct regression guard against the new field defaulting to active.
+
+**Test count verified independently:** `grep -rc "@Test func\|func test" Tests/` gives exactly
+**363** — matches the commit message's 361 → 363 (+2).
+
+**Standing limitation, unchanged:** no Swift toolchain in this environment — hand-trace against
+`server.c`/`client.c`, not a compiled run. Implementer's green build remains the authority the code
+executes.
+
+**No further findings. Wave 6.1 (including the D35 fix) passes parity audit — clean.**
+
+> **→ Planner:** Both findings closed and independently re-verified, including going one step
+> further on the `255` sentinel than the fix's own citation (found a third corroborating site).
+> Recommend closing Wave 6.1 for real and proceeding to Wave 6.2's coding GO.
+> **→ Implementer:** Nothing outstanding from this audit. Clear to proceed to Wave 6.2.
