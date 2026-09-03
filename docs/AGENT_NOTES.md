@@ -1424,3 +1424,61 @@ shape with Finding 2 above).
 > **→ Parity:** No action needed yet — no code shipped this entry. Once 6.6 lands, whichever way
 > Finding 3 gets ruled is the one thing most worth independently re-deriving from the C source
 > directly, same rigor as every prior "replicate or fix" call this project has made.
+
+### [PLANNER] 2026-09-03 — Wave 6.6 pre-brief reviewed, coding GO'd (D40 rules Finding 3); D39 fix noted, awaiting PARITY
+
+**Type:** planning — review + coding GO + one ruling
+**Phase:** Wave 6.6 (coding); D39 (awaiting re-audit)
+**Blocks:** nothing for Wave 6.6; D39 still needs PARITY's re-audit before I issue Wave 6.4's
+pre-brief GO
+
+**D39 fix acknowledged, not yet closing it.** Implementer's `029c8fc` report is exactly what I
+asked for — the split is real (`serverPauseTicks`/`clientPauseDisplaySeconds`, not a bare rename),
+and the report correctly caught that the old unified gate was doing double duty as both
+`runserver()`'s tri-state early-return and `runclient()`'s truthy early-exit, so the fix added the
+`||` condition rather than silently dropping client-domain pause handling — that's exactly the
+kind of "don't just rename, verify the behavior the shared field was accidentally also providing"
+check this class of fix needs. I'm not closing D39 or issuing Wave 6.4's pre-brief GO yet — Jerod
+says PARITY is already checking this fix, so I'll wait for that re-audit to land before treating
+it as done, same as D35/D37's pattern (fix reported ≠ fix verified).
+
+**Wave 6.6 pre-brief (`a5d518d`) reviewed against `docs/PLAN.md`'s decisions and IMPLEMENTER's
+non-negotiable rules — clean, no scope creep, coding GO issued.** Notes on what I checked:
+
+- Findings 1/2/4 are disclosures, not decisions I need to make — they change the *shape* of the
+  work (delegate to existing engine functions rather than re-port them; wire real trigger sites
+  independent of Wave 5.9; skip a function with no state effect) but don't touch any D-log item or
+  architectural rule, so no ruling needed there. Agreed with all three as read.
+- Finding 3 (`recvclbuildroad`'s `trees >= trees` tautology) is the one real question, and it's
+  squarely **D24 territory** — I checked D24's original text before ruling rather than treating
+  this as a fresh question. **D40: replicate bug-for-bug.** This is a deterministic, well-defined
+  comparison, not undefined behavior (the distinction Implementer itself drew correctly against
+  `applyDamage`'s `pills[-1]` case, which *is* UB and rightly wasn't replicated literally), and
+  it's not a Swift memory-safety concern — both of D24's stated conditions for "no countervailing
+  reason to deviate" hold here exactly as they did for the dead-tank terrain-enum mismatch and
+  `growtrees`' guard. The fact that this one is more *visible* (free road-building, not just an
+  internal counter) argues for fidelity, not against it — silently correcting it would make this
+  port's economy diverge from the oracle it's supposed to match. Named regression test required
+  (D28), same as D24's own pattern.
+
+**Wave 6.6 coding GO issued**, covering the full pre-brief scope: `Sources/BoloKit/RecvCL.swift`
+(new file, ~18 functions per Finding 4's `recvclsendmesg` exclusion),
+`Tests/BoloKitTests/RecvCLTests.swift`, with D40's ruling applied to `recvclbuildroad`. No new
+`GameState` fields expected, matches the pre-brief's own claim — flag it here if that turns out
+wrong once you're actually in the code.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D39's row annotated with the fix commit and PARITY-pending status. Wave 6
+  summary row updated. Wave 6.6 row updated to Coding GO'd with pre-brief findings summarized.
+  D40 added to the decisions table.
+
+[TO: IMPLEMENTER] Cleared to start Wave 6.6 coding per the pre-brief as written, with D40's ruling
+on `recvclbuildroad` (replicate the tautology bug-for-bug, named test documenting it's
+intentional). Everything else in the pre-brief — the four delegated wrappers, the nine
+`explosionAt`/`superboomAt` trigger sites, skipping `recvclsendmesg`, the minimal
+`recvClHitTank` — proceed exactly as proposed, no changes. Usual process: build → test →
+`git add` specific files → commit → completion report here → tell Jerod.
+[TO: PARITY] No new ask from me this entry — continue your D39 re-audit. Once that lands, report
+here and I'll close D39 and issue Wave 6.4's pre-brief GO. When Wave 6.6 lands, Finding 3/D40's
+`recvclbuildroad` replication is the one thing most worth independently re-deriving from the C
+source directly, same as every prior "replicate or fix" ruling this project has made.
