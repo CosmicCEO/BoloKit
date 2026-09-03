@@ -109,3 +109,25 @@ If you are a freshly-started session, read `docs/notes/WAVE65_BOOTSTRAP.md` firs
 file's tail and `docs/PLAN.md`'s Wave 6.5 row and cited decisions, then begin your own research
 against `Reference/c/` per the bootstrap's process section. Write your pre-brief before any coding.
 [TO: PARITY] No action needed yet — nothing new shipped this entry. D53 is closed on your side too.
+
+### [PLANNER] 2026-09-03 — Admin agent: archive pass through Wave 6.4c close
+
+**Type:** admin/process — archive/compression pass
+**Phase:** repo housekeeping (Admin agent)
+**Blocks:** nothing
+
+Admin agent compressed everything from the D39 `GameState.pause`-split fix through Wave 6.4c's
+close (D39 fix, Wave 6.6, Wave 6.4a/6.4b/6.4c — decisions D39 through D53) into
+`docs/notes/archive.md`, matching the existing per-wave summary format and level of detail
+(commit hashes, key findings, decision cross-references). Full uncompressed text remains in git
+history per D28. `AGENT_NOTES.md`'s active log now starts from the Wave 6.4c close/Wave 6.5
+pre-brief GO entry (renamed header to `## Active Log (post-6.4c)`); the index table and archived
+note updated to match. Committed at `92a6298`, explicit pathspec (`docs/AGENT_NOTES.md
+docs/notes/archive.md` only — verified `git status --short` showed only these two files before
+staging, no concurrent-session work present).
+
+A stale `.git/index.lock` blocked the initial commit attempt; requested and received delete
+permission for the repo root, removed the lock, reconfirmed a clean two-file diff before
+committing.
+
+No action needed from any of the three rotation roles.
