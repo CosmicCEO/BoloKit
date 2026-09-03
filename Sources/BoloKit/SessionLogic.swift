@@ -119,12 +119,18 @@ public func applyJoin(player: Int, name: String, address: String, rejoin: Bool, 
 /// only state-affecting work is computing which onboard pills `player`
 /// owns and scattering them via the already-shipped `dropPills`
 /// (`MineChain.swift`, Wave 5.5a).
-private func removePlayerPills(player: Int, state: inout GameState) {
+private func removePlayerPills(
+    player: Int, state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     var pills: UInt16 = 0
     for i in state.pills.indices where Int(state.pills[i].owner) == player && state.pills[i].armour == pillOnboard {
         pills |= 1 << i
     }
-    dropPills(player: player, x: state.players[player].tank.x, y: state.players[player].tank.y, pills: pills, state: &state)
+    dropPills(
+        player: player, x: state.players[player].tank.x, y: state.players[player].tank.y, pills: pills, state: &state,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    )
 }
 
 /// Ported from `removeplayer()`'s `GameState`-affecting core
@@ -139,9 +145,12 @@ private func removePlayerPills(player: Int, state: inout GameState) {
 /// directly — not only via `kickplayer()`/`banplayer()`, which both call
 /// it as their own tail (`server.c:487`, `:525`, confirmed) and so are
 /// rewritten below to call this instead of duplicating its body.
-public func removePlayer(player: Int, state: inout GameState) {
+public func removePlayer(
+    player: Int, state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     state.players[player].connected = false
-    removePlayerPills(player: player, state: &state)
+    removePlayerPills(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
 }
 
 /// Ported from `kickplayer()` (`server.c:475-501`). Unlike `banPlayer`
@@ -150,9 +159,13 @@ public func removePlayer(player: Int, state: inout GameState) {
 /// (`removeplayer()`'s own `assert`), matching this port's established
 /// precedent of not adding defensive guards C itself doesn't have (see
 /// `GameState.localPlayer`'s invariant, same rule).
-public func kickPlayer(player: Int, state: inout GameState, onShouldBroadcastPlayerKick: (Int) -> Void = { _ in }) {
+public func kickPlayer(
+    player: Int, state: inout GameState,
+    onShouldBroadcastPlayerKick: (Int) -> Void = { _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     onShouldBroadcastPlayerKick(player)
-    removePlayer(player: player, state: &state)
+    removePlayer(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
 }
 
 /// Ported from `banplayer()` (`server.c:503-535`). The `cntlsock != -1`
@@ -160,11 +173,15 @@ public func kickPlayer(player: Int, state: inout GameState, onShouldBroadcastPla
 /// player is a silent no-op in the C, not an assertion precondition) —
 /// replicated faithfully, not dropped as redundant with `kickPlayer`'s
 /// lack of one.
-public func banPlayer(player: Int, state: inout GameState, onShouldBroadcastPlayerBan: (Int) -> Void = { _ in }) {
+public func banPlayer(
+    player: Int, state: inout GameState,
+    onShouldBroadcastPlayerBan: (Int) -> Void = { _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     guard state.players[player].connected else { return }
     state.bannedPlayers.append(BannedPlayer(name: state.players[player].name, address: state.players[player].address))
     onShouldBroadcastPlayerBan(player)
-    removePlayer(player: player, state: &state)
+    removePlayer(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
 }
 
 // MARK: - Alliance

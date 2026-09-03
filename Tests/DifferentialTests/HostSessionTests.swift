@@ -446,6 +446,100 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(SRPlayerBan.decode(bytes) == SRPlayerBan(player: 0))
 }
 
+// MARK: - SRDropPill broadcast on departure (Wave 6.4c, §3)
+
+@Test func handlePlayerDisconnectBroadcastsDropPillBeforeExitBroadcast() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+    state.pills = [Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0)]
+
+    await handlePlayerDisconnect(player: 0, reason: .normal, state: &state, table: table)
+
+    #expect(state.pills[0].armour != pillOnboard)  // dropped
+    // `removeplayer()` (and so its own `sendsrdroppill`) runs BEFORE
+    // `sendsrplayerexit` (server.c:1667-1740) -- drop-pill broadcast
+    // arrives first on the wire.
+    let dropBytes = try await receiveExactly(links[1].clientEnd, SRDropPill.wireSize)
+    let dropped = SRDropPill.decode(dropBytes)
+    #expect(dropped?.pill == 0)
+    #expect(dropped?.x == 50 && dropped?.y == 50)
+    let exitBytes = try await receiveExactly(links[1].clientEnd, SRPlayerExit.wireSize)
+    #expect(SRPlayerExit.decode(exitBytes) == SRPlayerExit(player: 0))
+}
+
+@Test func hostKickPlayerBroadcastsDropPillAfterKickBroadcast() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+    state.pills = [Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0)]
+
+    await hostKickPlayer(player: 0, state: &state, table: table)
+
+    #expect(state.pills[0].armour != pillOnboard)
+    // `kickplayer()`'s `sendsrplayerkick` fires BEFORE `removeplayer()`
+    // (server.c:486-487) -- opposite order from the disconnect path.
+    let kickBytes = try await receiveExactly(links[1].clientEnd, SRPlayerKick.wireSize)
+    #expect(SRPlayerKick.decode(kickBytes) == SRPlayerKick(player: 0))
+    let dropBytes = try await receiveExactly(links[1].clientEnd, SRDropPill.wireSize)
+    #expect(SRDropPill.decode(dropBytes)?.pill == 0)
+}
+
+@Test func hostBanPlayerBroadcastsDropPillAfterBanBroadcast() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+    state.pills = [Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0)]
+
+    await hostBanPlayer(player: 0, state: &state, table: table)
+
+    #expect(state.pills[0].armour != pillOnboard)
+    let banBytes = try await receiveExactly(links[1].clientEnd, SRPlayerBan.wireSize)
+    #expect(SRPlayerBan.decode(banBytes) == SRPlayerBan(player: 0))
+    let dropBytes = try await receiveExactly(links[1].clientEnd, SRDropPill.wireSize)
+    #expect(SRDropPill.decode(dropBytes)?.pill == 0)
+}
+
+/// T-17: the broadcast must use the pill's *placement* coordinates (the
+/// spiral search's own current cell), not `dropPills`' original scatter
+/// origin -- only observable once the search expands past the first ring,
+/// which requires at least 2 pills to drop onto a mostly-occupied first
+/// cell.
+@Test func dispatchDropPillsBroadcastsSRDropPillPerPlacedPillAtSearchCellNotOrigin() async throws {
+    let (table, links) = try await makeTableWithPlayers(1)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 1)
+    // Occupy the origin cell with an existing (non-onboard) pill so the
+    // spiral search must expand outward for the second drop.
+    state.pills = [
+        Pill(x: 50, y: 50, armour: 5, owner: 1, speed: 10, counter: 0),
+        Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0),
+        Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0),
+    ]
+
+    try await sendBytes(links[0].clientEnd, CLDropPills(x: 50.5, y: 50.5, pills: 0b110).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+
+    #expect(state.pills[1].armour != pillOnboard)
+    #expect(state.pills[2].armour != pillOnboard)
+
+    let first = SRDropPill.decode(try await receiveExactly(links[0].clientEnd, SRDropPill.wireSize))
+    let second = SRDropPill.decode(try await receiveExactly(links[0].clientEnd, SRDropPill.wireSize))
+    #expect(first?.pill == 1)
+    #expect(second?.pill == 2)
+    // Neither placement lands on the origin (50, 50) -- pill 0 already
+    // occupies it -- proving the broadcast used the actual search cell.
+    #expect(!(first?.x == 50 && first?.y == 50))
+    #expect(!(second?.x == 50 && second?.y == 50))
+}
+
 @Test func hostBanPlayerOnAlreadyDisconnectedSlotIsANoOp() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }

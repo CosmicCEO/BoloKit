@@ -54,15 +54,19 @@ public func recvClDropBoat(x: Int, y: Int, state: inout GameState, onShouldBroad
 /// Wave 5.5a): every requested pill bit must actually be an onboard pill
 /// owned by `player`, and the drop point must be strictly inside the map
 /// (`0 < x/y < 256`), or the whole request is silently dropped. No
-/// broadcast of any kind fires from this function itself — matches the
-/// C exactly (`droppills()`/`dr()` handle their own `sendsrdroppill` per
-/// pill, already the case in the shipped `dropPillSearch`).
-public func recvClDropPills(player: Int, x: Float, y: Float, pills: UInt16, state: inout GameState) {
+/// broadcast fires from *this* function itself — matches the C exactly
+/// (`droppills()`/`dr()` fire their own `sendsrdroppill` per pill,
+/// surfaced here only as a passthrough to `onShouldBroadcastDropPill`,
+/// Wave 6.4c).
+public func recvClDropPills(
+    player: Int, x: Float, y: Float, pills: UInt16, state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     for i in state.pills.indices where (pills & (1 << i)) != 0 {
         guard Int(state.pills[i].owner) == player, state.pills[i].armour == pillOnboard else { return }
     }
     guard x > 0.0, x < 256.0, y > 0.0, y < 256.0 else { return }
-    dropPills(player: player, x: x, y: y, pills: pills, state: &state)
+    dropPills(player: player, x: x, y: y, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
 }
 
 /// Ported from `recvcldropmine()` (`server.c:2164-2235`) — a direct

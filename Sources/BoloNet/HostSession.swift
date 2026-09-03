@@ -21,17 +21,15 @@ import BoloKit
 // `sendtoone(player)` was read directly from `server.c` and is cited
 // per-case below, not assumed from the shape of the callback.
 //
-// **Real gap found and disclosed, not silently absorbed or fixed here:**
-// `dropPills` (`MineChain.swift`, Wave 5.5a) has no broadcast callback of
-// its own -- the real `droppills()`/`dr()` call `sendsrdroppill(pill)`
-// once per pill actually dropped (`server.c`), which has no Swift port
-// anywhere in this codebase yet (grep-confirmed: no `onShouldBroadcastDropPill`
-// exists). `recvClDropPills` below is dispatched faithfully to the
-// already-shipped function, but no `SRDropPill` broadcast fires as a
-// result -- a real, pre-existing completeness gap in Wave 5.5a's own
-// scope, exposed but not created by this wave's wiring, and well outside
-// "host-side transport"'s own scope to fix. Flagged for PLANNER/PARITY,
-// not fixed here.
+// **Wave 6.4c (D50):** `dropPills` (`MineChain.swift`, Wave 5.5a) now has
+// an `onShouldBroadcastDropPill` callback (`dropPillSearch`'s own
+// post-mutation fire, mirroring `dr()`'s `sendsrdroppill(i)` call exactly
+// -- `server.c:1965-1976`), wired here (`.dropPills` below) and in
+// `handlePlayerDisconnect`/`hostKickPlayer`/`hostBanPlayer`. `RunTick.
+// swift`'s own `dropPills` call site (the stale-player-disconnect path)
+// still has no live wiring to a `HostSessionTable` -- disclosed there,
+// not here, since no top-level tick-orchestration driver exists yet to
+// own that connection.
 //
 // **Six `RecvCL.swift` (Wave 6.6) callback signatures were extended, not
 // just wired, while writing this dispatcher** -- `onShouldBroadcastBuild`,
@@ -109,6 +107,19 @@ public actor HostSessionTable {
     public struct Slot: Sendable {
         public var connection: NWConnection?
         public var dgramAddress: DgramServerPeerAddress
+        /// The live UDP flow (`NWConnection`) this slot's real datagrams
+        /// have most recently arrived on -- Wave 6.4c, §2. Distinct from
+        /// `dgramAddress` (a value snapshot for the pure decision
+        /// function, `DgramServerRelay.swift`) and from `connection` (the
+        /// TCP control socket): relaying needs an actual live object to
+        /// send *through*, since Network.framework's UDP model requires an
+        /// established inbound flow before sending outbound through a
+        /// matching `NWConnection` -- there is no "send anywhere via one
+        /// shared socket" primitive the way raw `sendto()` on the C's
+        /// single `dgramsock` provides. D52: bounded to at most
+        /// `maxPlayers` live connections at any time by `setDgramConnection`'s
+        /// explicit cancel-and-replace below, not an arbitrary cap.
+        public var dgramConnection: NWConnection?
         /// Mirrors `server.players[i].seq`. T-1: reset to 0 only at
         /// disconnect (`disconnect(_:)` below) -- the join-time reset is
         /// commented out in the real `joinplayerserver()`, so there is no
@@ -119,10 +130,12 @@ public actor HostSessionTable {
         public init(
             connection: NWConnection? = nil,
             dgramAddress: DgramServerPeerAddress = DgramServerPeerAddress(family: 0, addr: 0, port: 0),
+            dgramConnection: NWConnection? = nil,
             seq: Int32 = 0, lastUpdate: UInt64 = 0
         ) {
             self.connection = connection
             self.dgramAddress = dgramAddress
+            self.dgramConnection = dgramConnection
             self.seq = seq
             self.lastUpdate = lastUpdate
         }
@@ -139,6 +152,18 @@ public actor HostSessionTable {
     public func isConnected(_ player: Int) -> Bool { slots[player].connection != nil }
     public func dgramAddress(for player: Int) -> DgramServerPeerAddress { slots[player].dgramAddress }
     public func setDgramAddress(_ address: DgramServerPeerAddress, for player: Int) { slots[player].dgramAddress = address }
+    public func dgramConnection(for player: Int) -> NWConnection? { slots[player].dgramConnection }
+    /// D52: explicitly cancels the slot's previous UDP flow before storing
+    /// the new one, rather than merely dropping the reference -- keeps
+    /// live-tracked UDP connections bounded to at most `maxPlayers` at any
+    /// time (T-15's real invariant), and ensures a stale flow (e.g. after
+    /// a player rebinds their UDP source port) doesn't linger unreaped.
+    public func setDgramConnection(_ connection: NWConnection?, for player: Int) {
+        if let old = slots[player].dgramConnection, old !== connection {
+            old.cancel()
+        }
+        slots[player].dgramConnection = connection
+    }
     public func seq(for player: Int) -> Int32 { slots[player].seq }
     public func setSeq(_ seq: Int32, for player: Int) { slots[player].seq = seq }
     public func lastUpdate(for player: Int) -> UInt64 { slots[player].lastUpdate }
@@ -161,6 +186,7 @@ public actor HostSessionTable {
     /// `seq`, back to its never-joined default.
     public func disconnect(_ player: Int) {
         slots[player].connection?.cancel()
+        slots[player].dgramConnection?.cancel()
         slots[player] = Slot()
     }
 
@@ -234,7 +260,18 @@ public enum HostDisconnectReason: Sendable {
 public func handlePlayerDisconnect(
     player: Int, reason: HostDisconnectReason, state: inout GameState, table: HostSessionTable
 ) async {
-    removePlayer(player: player, state: &state)
+    // C ordering (server.c:1667-1740): `removeplayer()` -- and so its own
+    // `sendsrdroppill` calls -- runs BEFORE `sendsrplayerexit`/`sendsrplayerdisc`,
+    // the opposite order from `kickplayer()`/`banplayer()` below. `sendtoall`
+    // (confirmed by direct read), not `sendtoallex` -- reaches the
+    // disconnecting player's own (already best-effort/`EPIPE`-tolerant) slot too.
+    var dropPillBroadcasts: [[UInt8]] = []
+    removePlayer(player: player, state: &state, onShouldBroadcastDropPill: { pill, x, y in
+        dropPillBroadcasts.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
+    })
+    for bytes in dropPillBroadcasts {
+        await table.sendToAll(bytes)
+    }
 
     let bytes: [UInt8]
     switch reason {
@@ -254,8 +291,20 @@ public func handlePlayerDisconnect(
 /// uses `sendtoall` (confirmed by direct read), unlike the exit/disc/ban
 /// broadcasts, which all exclude the departing player.
 public func hostKickPlayer(player: Int, state: inout GameState, table: HostSessionTable) async {
-    kickPlayer(player: player, state: &state)
-    await table.sendToAll(SRPlayerKick(player: UInt8(player)).encode())
+    // C ordering (server.c:486-487): `sendsrplayerkick` fires BEFORE
+    // `removeplayer()` -- the opposite order from the disconnect path
+    // above. Collecting both callbacks into one ordered array (rather
+    // than a hardcoded `SRPlayerKick` send after the call returns)
+    // preserves that firing order automatically.
+    var broadcasts: [[UInt8]] = []
+    kickPlayer(
+        player: player, state: &state,
+        onShouldBroadcastPlayerKick: { p in broadcasts.append(SRPlayerKick(player: UInt8(p)).encode()) },
+        onShouldBroadcastDropPill: { pill, x, y in broadcasts.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()) }
+    )
+    for bytes in broadcasts {
+        await table.sendToAll(bytes)
+    }
     await table.disconnect(player)
 }
 
@@ -264,10 +313,22 @@ public func hostKickPlayer(player: Int, state: inout GameState, table: HostSessi
 /// already replicates it via `connected`), so the broadcast+disconnect
 /// below only fire when that guard actually let the ban proceed.
 public func hostBanPlayer(player: Int, state: inout GameState, table: HostSessionTable) async {
+    // C ordering (server.c:524-525): `sendsrplayerban` fires BEFORE
+    // `removeplayer()`, same shape as `hostKickPlayer` above.
+    var broadcasts: [[UInt8]] = []
     var didBan = false
-    banPlayer(player: player, state: &state, onShouldBroadcastPlayerBan: { _ in didBan = true })
+    banPlayer(
+        player: player, state: &state,
+        onShouldBroadcastPlayerBan: { p in
+            didBan = true
+            broadcasts.append(SRPlayerBan(player: UInt8(p)).encode())
+        },
+        onShouldBroadcastDropPill: { pill, x, y in broadcasts.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()) }
+    )
     guard didBan else { return }
-    await table.sendToAll(SRPlayerBan(player: UInt8(player)).encode())
+    for bytes in broadcasts {
+        await table.sendToAll(bytes)
+    }
     await table.disconnect(player)
 }
 
@@ -377,8 +438,12 @@ public func receiveAndDispatchOneHostMessage(
     case .dropPills:
         let bytes = try await rest(CLDropPills.wireSize)
         guard let msg = CLDropPills.decode(bytes) else { throw HostSessionError.malformedMessage }
-        // No broadcast -- see file header's disclosed `sendsrdroppill` gap.
-        recvClDropPills(player: player, x: msg.x, y: msg.y, pills: msg.pills, state: &state)
+        recvClDropPills(
+            player: player, x: msg.x, y: msg.y, pills: msg.pills, state: &state,
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
+        )
 
     case .dropMine:
         let bytes = try await rest(CLDropMine.wireSize)

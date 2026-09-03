@@ -100,7 +100,10 @@ public func clearTerrain(x: Int, y: Int, state: GameState) -> Bool {
 /// Ported from `dr()` (server.c:1965). Sets `speed = maxTicksPerShot` on
 /// claim — see the file header for why this follows the client's
 /// `recvsrdroppill()`, not the server's own `dr()`, which never touches it.
-public func dropPillSearch(x: Int, y: Int, i: Int, pills: UInt16, state: inout GameState) -> Int {
+public func dropPillSearch(
+    x: Int, y: Int, i: Int, pills: UInt16, state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) -> Int {
     var i = i
     guard clearTerrain(x: x, y: y, state: state), findPill(x: x, y: y, pills: state.pills) == nil else {
         return i
@@ -111,6 +114,14 @@ public func dropPillSearch(x: Int, y: Int, i: Int, pills: UInt16, state: inout G
             state.pills[i].x = UInt8(x)
             state.pills[i].y = UInt8(y)
             state.pills[i].speed = UInt8(maxTicksPerShot)
+            // `sendsrdroppill(i)` reads `server.pills[i].x/.y` itself,
+            // AFTER the assignments above (server.c:3567-3569) -- fired
+            // here with the just-claimed pill index and *this cell's*
+            // x/y, not `dropPills`' outer scatter-origin x/y (the two
+            // differ once the spiral search has expanded past the first
+            // ring; `dr()`'s own read is always the search cell, matching
+            // this function's own `x`/`y` params, not its caller's).
+            onShouldBroadcastDropPill(i, x, y)
             i += 1
             break
         }
@@ -124,7 +135,10 @@ public func dropPillSearch(x: Int, y: Int, i: Int, pills: UInt16, state: inout G
 /// ring edge closest to the origin point. Ported from `droppills()`
 /// (server.c:1984). `player` is unused in the source beyond an assertion
 /// bound and is kept here only for signature fidelity.
-public func dropPills(player: Int, x: Float, y: Float, pills: UInt16, state: inout GameState) {
+public func dropPills(
+    player: Int, x: Float, y: Float, pills: UInt16, state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+) {
     var x = x
     var y = y
 
@@ -151,7 +165,7 @@ public func dropPills(player: Int, x: Float, y: Float, pills: UInt16, state: ino
     var minY = Int(y)
     var maxY = minY + 1
 
-    var i = dropPillSearch(x: minX, y: minY, i: 0, pills: pills, state: &state)
+    var i = dropPillSearch(x: minX, y: minY, i: 0, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
 
     while i < state.pills.count {
         let lx = x - Float(minX)
@@ -163,13 +177,13 @@ public func dropPills(player: Int, x: Float, y: Float, pills: UInt16, state: ino
             minX -= 1
             var j = 0
             while minY + j < maxY {
-                i = dropPillSearch(x: minX, y: minY + j, i: i, pills: pills, state: &state)
+                i = dropPillSearch(x: minX, y: minY + j, i: i, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 j += 1
             }
         } else if hx <= lx && hx <= ly && hx <= hy {
             var j = 0
             while minY + j < maxY {
-                i = dropPillSearch(x: maxX, y: minY + j, i: i, pills: pills, state: &state)
+                i = dropPillSearch(x: maxX, y: minY + j, i: i, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 j += 1
             }
             maxX += 1
@@ -177,13 +191,13 @@ public func dropPills(player: Int, x: Float, y: Float, pills: UInt16, state: ino
             minY -= 1
             var j = 0
             while minX + j < maxX {
-                i = dropPillSearch(x: minX + j, y: minY, i: i, pills: pills, state: &state)
+                i = dropPillSearch(x: minX + j, y: minY, i: i, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 j += 1
             }
         } else {
             var j = 0
             while minX + j < maxX {
-                i = dropPillSearch(x: minX + j, y: maxY, i: i, pills: pills, state: &state)
+                i = dropPillSearch(x: minX + j, y: maxY, i: i, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 j += 1
             }
             maxY += 1

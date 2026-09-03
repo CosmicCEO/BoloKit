@@ -59,7 +59,12 @@ public func runTick(
     onExplosion: (Vec2f) -> Void = { _ in },
     onSuperboom: () -> Void = {},
     onSmallboom: () -> Void = {},
-    onSpawn: () -> Void = {}
+    onSpawn: () -> Void = {},
+    // Wave 6.4c plumbing only -- no live caller wires `runTick` to a
+    // `HostSessionTable` anywhere in this codebase yet (no top-level tick
+    // orchestration driver exists), so this stays a no-op default like
+    // its siblings above until that driver exists to wire it for real.
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -171,7 +176,7 @@ public func runTick(
             pills |= 1 << i
         }
         let tank = state.players[player].tank
-        dropPills(player: player, x: tank.x, y: tank.y, pills: pills, state: &state)
+        dropPills(player: player, x: tank.x, y: tank.y, pills: pills, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         state.players[player].connected = false
         onPlayerDisconnected(player)
 

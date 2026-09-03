@@ -194,6 +194,35 @@ private func makeState() -> GameState {
     #expect(statusByte == [JoinStatusByte.badVersion.rawValue])
 }
 
+// MARK: - peerAddress (Wave 6.4c, §1)
+
+/// `127.0.0.1`'s raw bytes, reinterpreted as a `UInt32` the exact same way
+/// `peerAddress(from:)` does (`IPv4Address.rawValue.withUnsafeBytes {
+/// $0.load(as: UInt32.self) }`) -- deliberately not a hardcoded hex
+/// literal, since that load is a *native*-endian reinterpretation of
+/// network-order bytes (the same thing a real `sin_addr.s_addr` value
+/// looks like on any given platform: consistent with itself, "backwards"
+/// from dotted-decimal notation on a little-endian machine). What matters
+/// is that both sides of every comparison derive the value the same way,
+/// not that it matches a human-readable hex constant.
+private let loopbackIPv4AsUInt32: UInt32 = {
+    let bytes: [UInt8] = [127, 0, 0, 1]
+    return bytes.withUnsafeBytes { $0.load(as: UInt32.self) }
+}()
+
+@Test func peerAddressExtractsRealLoopbackIPv4AddressAndPort() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel(); link.clientEnd.cancel() }
+
+    guard let extracted = peerAddress(from: link.serverEnd) else {
+        Issue.record("expected a real IPv4 address from a loopback connection")
+        return
+    }
+    #expect(extracted.family == 2)  // AF_INET
+    #expect(extracted.addr == loopbackIPv4AsUInt32)
+    #expect(extracted.port != 0)  // some real ephemeral client port
+}
+
 @Test func processJoinAttemptAcceptsNewPlayerAndSendsFullHandshake() async throws {
     let link = try await makeConnectedPair()
     defer { link.listener.cancel(); link.clientEnd.cancel() }
@@ -209,6 +238,12 @@ private func makeState() -> GameState {
     #expect(state.players[0].connected)
     #expect(state.players[0].name == "Alice")
     #expect(await table.isConnected(0))
+
+    // Wave 6.4c, §1: `dgramaddr` is now seeded from the real TCP
+    // connection address (server.c:844), not a zeroed placeholder.
+    let seededDgramAddress = await table.dgramAddress(for: 0)
+    #expect(seededDgramAddress.family == 2)
+    #expect(seededDgramAddress.addr == loopbackIPv4AsUInt32)
 
     let status = try await receiveExactly(link.clientEnd, 1)
     #expect(status == [JoinStatusByte.sendingPreamble.rawValue])

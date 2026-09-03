@@ -24,27 +24,21 @@ import BoloKit
 // so two concurrent join attempts genuinely run one at a time, front to
 // back, not just between their own await points.
 //
-// **Scope reduction, disclosed, not silently dropped:** this file
-// implements the TCP accept loop and join handshake in full (`HostListener`
-// class + `processJoinAttempt`), but does NOT wire a live `NWListener
-// (using: .udp)` receive loop to `decodeDgramServerRelay`
-// (`DgramServerRelay.swift`) -- that pure decision function is complete
-// and independently oracle-tested (`DgramServerRelayTests.swift`), but no
-// file in this wave drives it against a real socket. Flagged for
-// PLANNER/PARITY as unfinished, not claimed as done.
+// **Wave 6.4c (D50/D51):** the live `NWListener(using: .udp)` receive loop
+// driving `DgramServerRelay.swift`'s decision core against real datagrams
+// now lives in its own file, `HostDgramListener.swift` (D51 -- matches
+// this file's own one-listener-per-file precedent), not here.
 //
-// **`dgramaddr` at join time is a simplification, disclosed:** the real
-// `joinplayerserver()` seeds `server.players[player].dgramaddr` from the
-// joining TCP connection's own address (`server.c:817`), with the port
-// corrected on the first real UDP packet (T-3's port-refresh mechanism).
-// Deriving the numeric `sin_addr`/`sin_family` equivalents from an
-// `NWConnection`'s endpoint without the not-yet-written UDP listener to
-// exercise them is speculative, so this port seeds a zeroed
-// `DgramServerPeerAddress` instead and leaves the real capture to
-// whichever future wave wires the UDP side -- T-3's own port-mismatch
-// refresh already tolerates an initially-wrong (here, zero) address/port,
-// since a real first packet's family/addr can never match a zeroed
-// sentinel `used`/`connected` gate anyway until that UDP wiring exists.
+// **`dgramaddr` at join time (Wave 6.4c, D50):** `joinplayerserver()`
+// seeds `server.players[player].dgramaddr` from the joining TCP
+// connection's own address (`server.c:844` -- corrected here from an
+// earlier `:817` citation typo), with the port corrected on the first
+// real UDP packet (T-3's port-refresh mechanism, `HostDgramListener.
+// swift`). `peerAddress(from:)` below does the same extraction from an
+// `NWConnection`'s `.endpoint`, used both here (seeding, with the TCP
+// connection's own -- usually UDP-wrong -- port, matching the C exactly)
+// and by `HostDgramListener.swift` (extracting the real sender address
+// off each accepted UDP flow).
 
 /// A real async mutex -- NOT just "make it an actor method," which
 /// (per this file's header) would let two joins interleave at their own
@@ -141,6 +135,42 @@ private func remoteAddressDescription(_ connection: NWConnection) -> String {
     "\(connection.endpoint)"
 }
 
+/// Extracts `connection`'s remote peer as a `DgramServerPeerAddress` --
+/// `family` is `2` (`AF_INET` on Darwin's `sockaddr_in.sin_family`,
+/// confirmed against the SDK, not assumed) for every IPv4 peer; `nil` for
+/// anything else. Confirmed by direct API research, not assumed: an
+/// already-accepted connection's `.endpoint` is always a concrete
+/// `.hostPort(host:, port:)` with a resolved `.ipv4`/`.ipv6` host -- never
+/// `.name(...)`, which only occurs on endpoints constructed from a
+/// hostname string, never on an inbound accept. `IPv4Address.rawValue` is
+/// the 4 raw address bytes already in network order (no `ntohl` needed);
+/// `NWEndpoint.Port.rawValue` is the port as `UInt16` directly. Shared by
+/// `processJoinAttempt` below (seeding `dgramaddr` at join, port included
+/// even though it's the TCP connection's own -- usually UDP-wrong -- port,
+/// matching `server.c:844` literally) and `HostDgramListener.swift`
+/// (extracting each accepted UDP flow's real sender address).
+public func peerAddress(from connection: NWConnection) -> DgramServerPeerAddress? {
+    guard case .hostPort(let host, let port) = connection.endpoint,
+          case .ipv4(let ip4) = host
+    else {
+        return nil
+    }
+    let addr = ip4.rawValue.withUnsafeBytes { $0.load(as: UInt32.self) }
+    return DgramServerPeerAddress(family: 2, addr: addr, port: port.rawValue)
+}
+
+/// `parameters.requiredLocalEndpoint` forces IPv4 -- confirmed by direct
+/// API research, not assumed: with default parameters, an IPv4 peer can
+/// arrive as an IPv6 IPv4-mapped address, which `peerAddress(from:)`
+/// above would then reject (`.ipv6`, not `.ipv4`). Matches the C's own
+/// AF_INET-only design (`sockaddr_in` throughout `server.c`, no IPv6
+/// anywhere) rather than leaving it to default dual-stack behavior.
+/// Shared by `HostListener` (TCP) and `HostDgramListener.swift` (UDP) so
+/// both listeners agree on the same restriction.
+public func forceIPv4(_ parameters: NWParameters, port: NWEndpoint.Port) {
+    parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port: port)
+}
+
 /// One full join handshake for one already-accepted `connection`, run
 /// under `serializer`'s exclusion (T-11/D49). Ported from
 /// `joinplayerserver()` end to end (`server.c:714-905`): decode
@@ -198,7 +228,12 @@ private func runJoinHandshake(
 
         applyJoin(player: player, name: joinPreamble.name, address: address, rejoin: rejoin, state: &state)
         await table.setConnection(connection, for: player)
-        await table.setDgramAddress(DgramServerPeerAddress(family: 0, addr: 0, port: 0), for: player)
+        // server.c:844's literal seed -- the TCP connection's own address,
+        // port included (usually UDP-wrong; T-3 corrects it on the first
+        // real UDP packet, `HostDgramListener.swift`). A non-IPv4 peer
+        // (shouldn't occur once both listeners force IPv4, but `peerAddress`
+        // is `Optional` regardless) falls back to the zeroed sentinel.
+        await table.setDgramAddress(peerAddress(from: connection) ?? DgramServerPeerAddress(family: 0, addr: 0, port: 0), for: player)
 
         let seq = await table.allSeqsAsUInt32()
         let mapBytes = encodeBMap(state)
@@ -256,7 +291,9 @@ public final class HostListener: @unchecked Sendable {
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
-        listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+        let boundPort = NWEndpoint.Port(rawValue: port)!
+        forceIPv4(parameters, port: boundPort)
+        listener = try NWListener(using: parameters, on: boundPort)
         var continuationBox: AsyncStream<NWConnection>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }
         let connectionContinuation = continuationBox!
