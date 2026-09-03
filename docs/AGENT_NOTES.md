@@ -2220,3 +2220,86 @@ flags two small `RunTick.swift`/`RecvSR.swift` follow-ups that may be relevant o
 `RunTick.swift`'s territory for 6.4 — not required now, just worth knowing they exist.
 [TO: PARITY] No action yet — nothing to audit until Wave 5.9's completion report lands (on its own
 branch) or Wave 6.4's pre-brief lands (on `main`).
+
+### [PARITY — stand-in assessment for Planner, one-off per Jerod] 2026-09-03 — Wave 6.4 pre-brief: recommendations on Implementer's four open questions
+
+**Type:** planning assessment (not a ruling — authored by PARITY, not Planner; Jerod asked for this
+one-off because Planner is currently occupied on the Wave 5.9 track, see `f28ee65`)
+**Phase:** Wave 6.4 pre-brief
+**Blocks:** nothing on its own — recommendations for Planner (or Jerod directly) to ratify, not a
+coding GO
+
+**Role note, for the log.** This entry is written by the PARITY session at Jerod's explicit
+one-off request. It carries no D-ruling authority, does not edit `docs/PLAN.md` (Planner-exclusive
+per this project's role split), and does not issue Wave 6.4's coding GO. Everything below is a
+recommendation for Planner to formalize, correct, or override when free — not a closed decision.
+
+**Q1 (`Buf.swift`/D31 tension) — concur with Implementer's proposed resolution.** D31 is the
+later, deliberate, transport-specific ruling, with an explicit stated rationale (raw
+POSIX/`select`/pthread glue isn't differentially testable, no countervailing reason to port it
+bug-for-bug) that squarely covers `Buf.swift`'s POSIX socket half (`sendbuf`/`recvbuf`/
+`cntlsend`/`cntlrecv`). The Wave 6.4 `PLAN.md` row's "builds on Buf.swift's existing
+sendbuf/recvbuf/cntlsend/cntlrecv" phrasing predates the wave being scoped against `joinclient()`'s
+actual shape and reads as imprecise shorthand, not a considered carve-out from D31 — nothing in
+D31's own text exempts the join handshake. Recommend: reuse only `Buf.swift`'s socket-agnostic
+byte-queue half (`initbuf`/`writebuf`/`readbuf`/`freebuf`/`resizebuf`); write new async/await code
+against `NWConnection`/`NWListener` for actual I/O, feeding that same byte queue. Leave the
+already-shipped POSIX-socket half of `Buf.swift` in place rather than deleting it — it's already
+ported/tested Wave 1 code, unused isn't the same as harmful — just don't build 6.4 on it. Planner
+should correct the Wave 6.4 `PLAN.md` row's wording when formalizing this so the contradiction
+doesn't resurface for a future reader.
+
+**Q2 (`dgramserver()`'s pure logic — same shape as D36) — yes, in scope for Wave 6.4; treat as
+filling an omission in D36, not a new cross-wave reassignment.** D36's stated criteria (pure
+decision/mutation core, differentially testable, no transport dependency) apply to
+`dgramserver()`'s dedup/relay/tank-apply logic exactly as they did to `dgramclient()`'s — the two
+are the symmetric client/server halves of the same UDP path, and Wave 6.4 is specifically the wave
+standing up that transport. Unlike D36/D38 (which reassigned scope across already-closed or
+differently-scoped waves), this is a same-wave omission caught before any code exists — lower
+stakes, nothing to reopen. Recommend folding it into Wave 6.4's scope as Implementer proposed,
+with a one-line Planner-authored addendum to D36 (not a new D-number) noting the citation should
+have included `dgramserver()`.
+
+**Q3 (dead-reckoning bound, proposed `Int(ticksPerSec) * 3`) — concur, reasonable and consistent
+with D36's own framing.** D36 already classified this as a `writeRun`-class Swift-side safety
+deviation (a bound needed for safety, not an oracle-fidelity question), so the exact constant is
+an engineering judgment call, not something needing derivation from `client.c`. Three seconds is a
+defensible middle ground — long enough to smooth an ordinary UDP burst-loss gap without visible
+correction-snapping, short enough to bound worst-case per-packet CPU against a lagged or
+adversarial peer. One suggestion, not a blocker: name it as a constant (e.g.
+`maxDeadReckoningExtrapolationTicks`) with a comment citing this rationale, so a future reader
+doesn't mistake `* 3` for a literal port of something in `client.c`.
+
+**Q4 (tracker-echo split: `dgramserver()` here, `registerserver()` in 6.5) — concur, matches D32's
+existing wave boundaries.** `registerserver()`'s occurrence is inherently tracker-specific
+(talking to a server that doesn't exist until 6.5); `dgramserver()`'s is general-purpose UDP
+receive, squarely 6.4's territory. No new ruling needed — confirming Implementer's own read is
+correct.
+
+**Architecture question (host-vs-client simultaneity, tied to Q22) — flagging my read, but this is
+the one item here that's genuinely Jerod's call, not a technical scope question decidable by
+precedent.** Every other item above was resolvable by applying an existing ruling or the C
+oracle's own behavior, the same way D24/D31/D36/D38/D40 were each decided. This one differs in
+kind: it's a product-scope decision about what Wave 6.4's *first* deliverable needs to
+demonstrate, and Q22's own text already says this exact question is only resolvable once transport
+exists — Wave 6.4 was always going to force this call, not avoid it. My technical observation,
+offered for what it's worth: a narrower first cut (client-only, testable against a manually-run
+reference session, per Implementer's own suggestion) is the lower-risk sequencing — it proves the
+`NWConnection`/join-handshake plumbing against a known-good peer before adding the
+accept-loop/host-relay half on top, and doesn't foreclose adding host support within the same wave
+once the client half is solid. Whether Jerod wants both halves in one coding GO or split further
+is his call, not mine to make in Planner's place.
+
+**Bottom line for Implementer, on my own recommendation only — not a coding GO.** Q1/Q2/Q3/Q4 above
+are all resolvable now if Jerod is comfortable treating this assessment as sufficient; Planner
+should still formalize (D36 addendum, `PLAN.md` row correction) when free. The host-vs-client
+scope question is the one item I'd wait on Jerod for before starting the accept-loop/host half — a
+client-only first slice per Implementer's own proposed narrower cut looks safe to start on
+regardless of how that's answered.
+
+> **→ Jerod / Planner:** Recommendations above on all four technical questions; the host-vs-client
+> architecture question is flagged as specifically yours. I have not issued a coding GO — that
+> remains Planner's action. Let me know if you want this treated as sufficient to unblock
+> Implementer or if you'd rather wait for Planner to weigh in directly.
+> **→ Implementer:** No coding GO from this entry. If Jerod confirms the above is sufficient,
+> expect the actual GO from him or Planner, not from this entry.
