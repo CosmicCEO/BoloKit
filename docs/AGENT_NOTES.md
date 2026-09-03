@@ -3334,3 +3334,131 @@ written to this log; needs its own session.
 > — next session's first job once you give the GO.
 > **→ Parity:** Same three items above if/when activated — the `Data`/Foundation deviation and the
 > classic-API choice are the two most likely to warrant a second opinion.
+
+### [PARITY] 2026-09-03 — Wave 6.4a extension audit (D45): one real finding — `baseControlThreshold` never applied
+
+**Type:** audit
+**Phase:** Wave 6.4a extension
+**Blocks:** Wave 6.4a's close, and therefore Wave 6.4b's pre-brief GO, until the finding below is
+fixed
+
+**Standing limitation, repeated per protocol:** no Swift toolchain in this environment. Hand-traced
+`8296346` against `Reference/c/client.c:690-750`, `Reference/c/bmap_client.c`, and
+`Reference/c/bmap.h` directly. Test claims (521 total, +19) corroborated by independently grepping
+every test file on `main` for `@Test func`/`func test` (521, exact match).
+
+**`decodeBMap` (`BMap.swift`) — thoroughly traced against `clientloadmap()`
+(`bmap_client.c:19-129`), clean.** Every struct's field order and byte width
+(`BMAP_Preamble`=12, `BMAP_PillInfo`=5, `BMAP_BaseInfo`=6, `BMAP_StartInfo`=3, all
+`__attribute__((__packed__))`) cross-checked directly against `bmap.h`'s struct declarations, not
+just this file's own restated comments — all exact matches, including field order within each
+struct (e.g. pill bytes really are x,y,owner,armour,speed in that order on both sides). Constants
+(`CURRENT_MAP_VERSION`=1, `MAXPILLS`/`MAXBASES`/`MAX_STARTS`=16, ident `"BMAPBOLO"`) verified
+against `bolo.h:26,29-31,38` directly. The run-stream loop's bounds checks and sentinel handling
+(`datalen==4 && y==0xff && startx==0xff && endx==0xff`, exact-consumption check) match
+`bmap_client.c:100-129` statement-for-statement. Correctly skips `clientloadmap()`'s second half
+(`seentiles`/`images`/`mapimage` fog-cache computation, lines 131-182) — confirmed by reading that
+half directly: it really is 100% fog/rendering-cache state, matching this port's long-established
+"fog never modeled" precedent (independently re-confirmed, not assumed from the file's own claim).
+
+**One minor, non-blocking ordering observation.** C's `clientloadmap()` wipes `client.terrain` to
+default *unconditionally, before* validating the preamble's ident/version/counts — so a malformed
+buffer that fails those early checks still leaves the terrain wiped in the real C. `decodeBMap`
+validates first and mutates `state` only on a path that will fully succeed up to that point,
+leaving `state` completely untouched on an early-validation failure. Functionally near-invisible
+(any real caller treats a `false` return as "join failed, discard `state`," not as
+"partially-applied state worth inspecting"), and arguably a defensible Swift-safety preference
+(no mutation on hard failure) — but it is a real, literal divergence from the C's own sequencing,
+so recording it rather than silently agreeing it doesn't matter. Once past the early guards, the
+run-stream loop's failure behavior does correctly match C's in-place partial-mutation semantics
+(pills/bases/starts and any terrain written before a corrupt run stay applied) — this observation
+is specifically about the *early* validation-failure path only.
+
+**`applyBoloPreamble` (`JoinClientApply.swift`) — the function that closes PARITY's original
+finding — has a real, undisclosed, untested gap of its own.** Traced every field write against
+`client.c:690-750` line-by-line:
+- `localPlayer`, `hiddenMines`, `clientPauseDisplaySeconds` (255→-1 sentinel, correctly targeting
+  D39's client-domain field) — all correct, matching `client.c:704-712` exactly.
+- `dominationType`'s 0/1/2 switch is the correct literal inverse of `assembleBoloPreamble`'s own
+  mapping, and correctly matches that `bolopreamble.gametype` itself needs no `GameState` field —
+  confirmed by checking `assembleBoloPreamble` (`Preambles.swift`) never writes a `gameType` byte
+  either, relying on `BoloPreamble.init`'s `gameType: UInt8 = 0` default — an already-established
+  Wave 6.3 precedent, not something newly assumed here.
+- Per-player init loop (`used`/`connected`/`name`/`host`/`alliance`/`builderStatus = .ready`)
+  matches `client.c:714-724` field-for-field, correctly omitting `seq` per Wave 6.0's own
+  already-established standing exclusion (not a new omission).
+- **`client.game.domination.basecontrol = bolopreamble.game.domination.basecontrol`
+  (`client.c:713`) has no counterpart anywhere in `applyBoloPreamble`.** `state.baseControlThreshold`
+  is never written from `preamble.baseControl`. Confirmed this is a real, load-bearing field, not
+  a leftover/unused one: `GameState.swift:61-63`'s own doc comment says plainly "`0` with any bases
+  configured means an instant win the moment they're all held — matches the C literally, not a
+  guarded default," and `RunTick.swift:128` uses it directly to compute the domination win-condition
+  threshold (`Int(ticksPerSec) * state.baseControlThreshold`) that drives the base-control warning
+  countdown and eventual win trigger (`RunTick.swift:110-138`). `assembleBoloPreamble` (server side,
+  Wave 6.3, already-shipped) correctly *reads* this same field to build the outgoing preamble
+  (`Preambles.swift:256`) — so the write path exists on the server's send side and is missing only
+  on the client's receive-and-apply side. A joining client's `state.baseControlThreshold` stays at
+  `GameState`'s own default (`0`) regardless of what the server actually configured.
+- **Concrete consequence, traced through `RunTick.swift`'s own logic, not just asserted:** with
+  `threshold = 0`, `state.baseControlCounter` (which increments *before* the threshold comparison,
+  `RunTick.swift:125`) can never again equal `0` once base-control play begins, and every
+  `seconds`-before check (`threshold - seconds*ticksPerSec`, all negative) can never match either —
+  domination base-control victory would never fire correctly for a client that joined this way, for
+  as long as `state.baseControlThreshold` stays unset. I have not independently re-traced whether
+  `RunTick.swift`'s base-control block runs unconditionally for every instance (host and
+  joined-client alike, given this port's established single-process client+server merge) or is
+  itself gated to a host-only role elsewhere — flagging that specific uncertainty rather than
+  overstating it — but either way, the field is silently wrong the moment anything reads it, which
+  is enough to call this a real bug on its own.
+- **Not caught by this wave's own tests.** `JoinClientApplyTests.swift`'s first test constructs its
+  `BoloPreamble` with `baseControl: 60` specifically, but never asserts `state.baseControlThreshold`
+  anywhere in any of the four new tests — the gap slipped past both the implementation and its own
+  test coverage, a D28 miss as well as a fidelity one.
+
+**`ServerMessages.swift`'s 34 `wireSize` additions — spot-checked, not exhaustively re-verified.**
+Confirmed `SRPlayerJoin` (1+1+16+32=50), `SRDamage` (1+1+1+1+1=5), `SRSetAlliance` (1+1+2=4), and
+`SRSendMesg`'s deliberate fixed-only sizing (3, correctly excluding its NUL-terminated tail) by
+hand against each struct's own field list. Did not re-derive all 34 independently given the volume
+and that `NetCodecDifferentialTests.swift` (pre-existing) already asserts each struct's oracle
+byte size elsewhere per the completion report's own claim — the ones checked were exact.
+
+**`TCPSession.swift`'s dispatch switch — structurally sound.** The `switch opcode` has no `default`
+case, so the Swift compiler itself enforces exhaustiveness over all 34 `ServerOpcode` cases —
+strong structural evidence nothing was silently skipped, not just a claim to trust. Spot-checked
+several dispatch calls' parameter lists against their already-shipped `recvSr*` signatures
+(`recvSrPause`, `recvSrSmallBoom`/`recvSrSuperBoom`'s four callbacks, `recvSrSetAlliance`'s four)
+— all correct. `sendMesg`/`timeLimit`/`baseControl` correctly routed to plain callbacks rather than
+a `recvSr*` call, consistent with Wave 6.2's own already-established finding that these three carry
+no `GameState` mutation. `UDPSession.swift` reviewed at a lighter level — its single-datagram
+`receiveAndApply` is a reasonable building block (a "drain all pending" loop, if wanted, is a
+caller concern, which is a defensible scope boundary, not a defect).
+
+**The classic-`NWConnection`-API-vs-`withNetworkConnection` deviation, and the new
+`import Foundation`, are both reasonable engineering calls, correctly disclosed rather than
+snuck in — no objection.** A persistent, freely-held session object genuinely doesn't fit a
+closure-scoped connection lifetime; this is a real API-shape constraint, not a fidelity-adjacent
+concern at all (D31/D42's boundary is about *not* reimplementing POSIX/select glue, and this
+isn't that).
+
+**Verdict: not a clean pass.** One real, concrete, currently-uncaught bug — recommend fixing before
+Wave 6.4a closes, not tracking as follow-up debt (same standard this project already applies to
+Wave 5.9's corpse-explosion gap and this very wave's own original D45 finding). Fix is small: add
+`state.baseControlThreshold = Int(preamble.baseControl)` to `applyBoloPreamble`, plus a named
+regression test (D28) asserting it — the existing `applyBoloPreambleInitializesLocalPlayerAndSpawns`
+test already constructs a preamble with a non-default `baseControl: 60`, so extending that one
+assertion may be enough rather than writing a new test from scratch.
+
+> **→ Planner:** One real finding, concretely traced and not caught by this wave's own tests —
+> `applyBoloPreamble` never writes `state.baseControlThreshold`, `RunTick.swift` depends on it for
+> domination win-condition timing. Recommend a same-shape ruling to D45's own precedent: this is
+> scope the wave already claimed ("apply the preamble") going unfinished, fix now rather than defer.
+> Everything else in the diff — `decodeBMap` traced in full, `TCPSession`'s dispatch table
+> (compiler-enforced exhaustive), spot-checked `wireSize` values, the classic-API design choice —
+> is clean. One minor non-blocking note recorded above (terrain-wipe-before-vs-after-validation
+> ordering) for the log, not a blocker.
+> **→ Implementer:** Everything else you built this session is solid, including catching the
+> `serversavemap`/`decodeBMap` gap yourself before I ever got here — that's exactly the kind of
+> self-auditing this project's process rewards. The `baseControlThreshold` miss is an easy one-line
+> fix; flagging that your own new test already had the right preamble value on hand (`baseControl:
+> 60`) and just didn't assert on it, in case that's useful signal for what to double-check on
+> future preamble-shaped ports.
