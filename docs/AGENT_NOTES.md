@@ -1162,3 +1162,85 @@ and the session-logic port.
 > **-> Implementer:** Nothing outstanding from this audit. The tie-break implementation
 > (`evictsOldestDisconnectedSlotOnATie`) is correct as written — flagging above is documentation
 > of the verification, not a request for a change.
+
+### [PLANNER] 2026-09-03 — Wave 6.3 closed (PARITY PASS, no findings); D38/D39 rulings; Wave 6.6 pre-brief GO
+
+**Type:** planning — close-out + two rulings + new pre-brief GO
+**Phase:** Wave 6.3 → 6.4/6.6
+**Blocks:** Wave 6.4's pre-brief GO (on D39's fix); Wave 6.6 is unblocked now
+
+PARITY's Wave 6.3 audit (`f75e1f2`) is clean — full scope covered (three preamble structs +
+`assembleBoloPreamble` + session logic), every offset and ordering claim independently re-derived
+rather than trusted from the completion report, including explicit extra scrutiny on
+`evictsOldestDisconnectedSlotOnATie` (reasoned from the stdlib's documented algorithm and
+cross-checked against the passing test, both lines of evidence recorded since no Swift toolchain
+is available here to confirm directly). **Wave 6.3 is complete and PARITY-passed.** Full chain:
+`388a8c1` (session logic + 3 preambles, 445 tests) → `f75e1f2` (audit, clean). No findings — two
+secondary notes only, both ruled on below.
+
+**D38 — the ~19 unassigned `recvcl*` handlers get their own wave, not folded into 6.3 or 6.4.**
+Same gap shape as D36: server's TCP receive side for every `CL*` opcode except `CLSetAlliance`
+(shipped in 6.3) has no assigned wave anywhere in the table. Assigning to **new Wave 6.6**.
+Reasoning on sequencing: this is pure decision/mutation-core work, identical in shape to Wave
+6.2/6.3 (no transport dependency — split cleanly from the receive mechanism the same way 6.3 split
+`joinplayerserver()`), and Wave 6.4 hasn't started coding yet, so there's no in-flight scope to
+disturb by inserting new work ahead of it in the schedule (unlike D36's situation, where 6.2 was
+already mid-flight and folding into it risked drift). Recommending Implementer tackle **Wave 6.6
+before Wave 6.4** — 6.4's job is to wire real dispatch for incoming `CL*` opcodes, and right now
+only `recvClSetAlliance` exists to dispatch to; doing 6.6 first means 6.4 wires a complete
+dispatch table instead of a partial one. This is a recommendation, not a hard gate — same latitude
+Wave 5.9 got — so if Jerod wants 6.4 first (e.g. to get the transport layer stood up sooner and
+treat 6.6 as trailing debt), that's his call to make, not a deviation from process.
+
+**Wave 6.6 pre-brief GO issued.** No open Q/D-log item gates it. Implementer: please write your
+own pre-brief directly into this log per the usual two-stage pattern, covering the ~19 handlers
+listed in `docs/PLAN.md`'s new Wave 6.6 row. Expect this to read a lot like 6.2's pre-brief in
+shape (a batch of "apply the given wire value(s) to `GameState`" functions) — flag anything that
+turns out to need real side-channel state (sockets, timers) the way 6.3 flagged `seq`/`mapLength`
+as caller-supplied parameters, rather than inventing new `GameState` fields to route around it.
+
+**D39 — `server.pause`/`client.pause` unit mismatch: real fix required before Wave 6.4's pre-brief
+GO, not deferred.** This is not a C-oracle bug to replicate bug-for-bug (D24 doesn't apply here —
+the C never had this hazard; it's created by this port's own choice to unify `server`/`client`
+into one `GameState`). The C has two genuinely separate variables: `server.pause` (ticks,
+decremented once per `runTick`, Wave 6.1) and `client.pause` (raw wire seconds, written verbatim
+by `recvsrpause()`, never decremented in `client.c` — confirmed by Implementer's grep). Right now
+`RunTick.swift`'s tick-domain countdown and `RecvSR.swift`'s `recvSrPause` decode both write
+`GameState.pause` in different units. This becomes a live bug the moment one process holds both
+roles at once — exactly the in-process-host shape Q22 is already tracking, and Wave 6.4 is where
+real transport (and eventually real dual-role hosting) starts landing, so it needs to be closed
+before that wave's own pre-brief, same precedent as D35 (fix findings before the next wave opens).
+
+**Fix, for Implementer to plan and execute directly:** split `GameState.pause` into two fields
+mirroring the C's own two variables — suggested names `serverPauseTicks` (tick-domain, what
+`RunTick.swift` decrements) and `clientPauseDisplaySeconds` (wire-domain, what `RecvSR.swift`'s
+`recvSrPause` writes verbatim) — pick better names if you find the C's own naming suggests
+something clearer once you're in the code. Update both write sites plus `assembleBoloPreamble`'s
+read (PARITY already confirmed it correctly reads the server/tick-domain role — just needs to
+point at the renamed field, not a behavior change). Named regression test required (D28) asserting
+the two fields are independently addressable — e.g. writing one via `recvSrPause` doesn't perturb
+the other's tick countdown, and vice versa. This touches two already-PARITY-passed waves (6.1,
+6.2); that's expected and fine, same as D35/D37's precedent for reaching back into prior waves
+when a cross-role hazard surfaces later — flag the touched call sites clearly in your completion
+report so PARITY knows exactly what to re-check.
+
+**Docs updated to close 6.3, rule D38/D39, and open 6.6 (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.3 row moved to ✅ Complete — PARITY PASS with commit chain and test
+  count (445). Wave 6 summary row updated. New Wave 6.6 row added. D38 and D39 added to the
+  decisions table.
+
+[TO: IMPLEMENTER] Two things, in this order:
+1. **D39 fix first** — split `GameState.pause` per the plan above, add the regression test, build,
+   test, commit, and report here. This must land and get a clean report before Wave 6.4's
+   pre-brief GO.
+2. **Then write Wave 6.6's pre-brief** (pre-brief GO already issued above — no need to wait on
+   anything else to start that write-up) covering the ~19 `recvcl*` handlers in `docs/PLAN.md`'s
+   new row. Recommended, not mandated, to sequence 6.6's actual coding before Wave 6.4 — see D38's
+   reasoning above; say in your pre-brief if you'd rather do 6.4 first and why.
+Log anything ambiguous as a question here rather than resolving solo, as always.
+
+[TO: PARITY] Nothing to audit yet — wait for Implementer's D39 fix completion report (small,
+targeted, should be quick to re-audit given how contained it is) and, separately, whatever lands
+from Wave 6.6. Good work catching that the pause hazard was still live rather than treating
+Implementer's own note as already resolved — that confirmation is exactly why this got a real fix
+ruling instead of another deferred note.
