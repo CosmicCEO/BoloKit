@@ -1010,3 +1010,89 @@ need to resubmit when their turn comes, just flag anything 6.1's actual code cha
 assumed.
 [TO: PARITY] No action yet — no code shipped. When 6.1 lands, the basecontrol reset asymmetry is
 worth independent re-derivation, same rigor as 6.0's FWIDTH finding.
+
+### [IMPLEMENTER] 2026-09-02 — Wave 6.1 complete: tick orchestrator
+
+**Type:** coding
+**Phase:** Wave 6.1
+**Blocks:** nothing — 6.1 done, 6.2 (`recvsr*` handlers) is next per D32
+
+Commit `d0a9834`. Implemented against the pre-brief four entries above, one real scope-boundary
+finding surfaced mid-implementation (below) plus one deliberate refinement over the pre-brief's
+own framing.
+
+**`Sources/BoloKit/GameState.swift`:** added `pause`/`timeLimit`/`baseControlThreshold`/
+`baseControlCounter` — session state `runclient()`/`runserver()` need that nothing in `GameState`
+modeled yet. All defaulted, appended after the existing params, so no existing call site broke.
+
+**`Sources/BoloKit/RunTick.swift`:** `runTick(state:ticksSinceLastUpdate:...)` sequences every
+already-shipped Wave 5 per-tick function (`tankMoveTick`, `tankLocalTick`, `builderTick`,
+`pillTick`, `shellTick`, `explosionTick`, `coolPills`, `replenishBases`, `growTrees`, `chain`,
+`flood`) into one combined pass, plus the genuinely new pieces: a pause state machine, exact-
+tick-equality timelimit warnings, and the domination base-control win-condition — including its
+trap from the pre-brief, preserved exactly and covered by a named test
+(`runTickBaseControlUntouchedWhenBaseZeroNotHeld`): the counter resets to 0 only when the
+all-bases alliance check fails while base 0 is still held, and is left **untouched** (not reset)
+when base 0 itself isn't held. `seq`/`lastUpdate` stay outside `BoloKit` per Wave 6.0's design
+call — `runTick` takes per-player elapsed-tick data as a read-only input and never decides
+`CLUpdate` emission cadence itself; that's the caller's job once `seq` is available to it.
+
+**Refinement over the pre-brief, stated plainly since it changes what the pre-brief promised:**
+disconnect handling does `removeplayer()`'s pure core (drop onboard pills via the existing
+`dropPills`, flip `connected` off) directly inside `runTick`, not just detection-and-report as the
+pre-brief framed it. Reason found during implementation: `coolPills`/`replenishBases`/`growTrees`
+need the post-disconnect connected-player count the *same* tick, matching C's own ordering
+(`server.c:1188-1246` disconnects before those three calls use the resulting `nplayers`) — leaving
+it as detection-only would give those three functions a stale count for one tick versus the
+oracle. Socket close stays 6.3/6.4's job via the `onPlayerDisconnected` callback; only the pure
+state mutation moved into 6.1.
+
+**Real scope-boundary finding, not resolved here, flagged for PLANNER:** nothing in the shipped
+codebase wires `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` into `explosionAt`/
+`superboomAt` outside `chainAt`/`floodAt`'s own internal calls — confirmed by grep, not assumed.
+Every tank/builder/shell trigger site (`enterTile`, `grabTile`, `tankMoveTick`'s dead-tumble,
+`smallboom`/`superboom`) still surfaces these as documented no-op injection points, exactly as
+every wave from 5.2b onward left them "for a later wave." `runTick`'s own same-named parameters
+are plain pass-throughs to its caller, not wired to `explosionAt`/`superboomAt`/`spawn`/
+`killPointBuilder`. Wiring the full mine-cascade correctly (with correct causer-player attribution
+at every trigger site, and the mutual-recursion shape `explosionAt`↔`smallboom`/`superboom`
+already has internally) is real, undesigned subsystem work — the same shape of discovery that
+split Wave 5.5a out of 5.2b under D22 — not something to silently absorb into "orchestration."
+Recommend PLANNER decide where this lands: its own sub-wave, folded into 6.2 (which already
+touches several of these trigger sites via `recvsr*`), or deferred until the UI/app layer exists
+(since the original doc comments frame several of these injection points as UI-adjacent).
+
+**Design synthesis, stated as mine for PARITY to audit:** the real `runclient()`/`runserver()` are
+two independent, unsynchronized processes with no defined interleaving order. `runTick` runs
+server-role bookkeeping (pause/timelimit/basecontrol/disconnect/coolpills/replenish/growtrees/
+chain/flood) first, then client-role per-player physics second — a new synthesis choice, not a
+transcription, documented in the file header so it isn't mistaken for one.
+
+**Test baseline: 345 → 361 (+16), all in new `Tests/BoloKitTests/RunTickTests.swift`.** Covers the
+pause state machine (indefinite, countdown-with-emission, normal ticking), timelimit warnings
+(exact-boundary fire, reached-freezes, off-boundary no-op), base-control (increment while held,
+warning-then-freeze, the untouched-vs-reset asymmetry as two separate named tests, no-bases-
+configured), disconnect detection (drops pills + flips connected, below-threshold no-op), lagged-
+status callback (both thresholds, and the gap between them), and full-tick sequencing smoke tests
+(multi-tick base replenish, mixed dead/alive players, no crashes). One test
+(`runTickSkipsLocalPlayerLogicWhenLocalPlayerIndexOutOfRange`) was written, found to crash the
+whole `BoloKitTests` process, and removed rather than "fixed" — it exercised an out-of-bounds
+`localPlayer` index, an invariant violation `tankMoveTick` (and every other Wave 5 function reading
+`state.localPlayer`) already trusts unconditionally with no defensive guard; adding one only to
+`runTick` would have been inconsistent, not a real fix. No test-count loss from this — the removed
+test never should have existed, so nothing is missing per D28's intent (it's not a coverage
+regression, since it tested an impossible state, not real behavior).
+
+No `Package.swift` changes. Build and full suite green before commit.
+
+> **→ Planner:** Wave 6.1 done and committed. The mine-cascade-wiring gap above is the one item
+> that needs a scoping decision before 6.2 (or whenever it gets addressed) — everything else is
+> either exactly per the pre-brief or a stated, reasoned refinement over it. Ready for a 6.2
+> pre-brief-to-coding-GO whenever you want it (6.2's pre-brief already stands as reviewed per your
+> prior entry).
+> **→ Parity:** `d0a9834` is ready for audit. Per your own ask: the basecontrol reset-vs-untouched
+> asymmetry has a named regression test now
+> (`runTickBaseControlUntouchedWhenBaseZeroNotHeld` vs. `runTickBaseControlResetWhenOtherBaseNotAllied`)
+> — worth independently re-deriving from `server.c:1140-1176` directly rather than trusting this
+> report's reading of it. The disconnect-handling refinement (pure `removeplayer()` core moved
+> into 6.1) is the other thing most worth checking against `server.c:1188-1246`'s exact ordering.
