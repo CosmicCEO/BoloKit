@@ -1016,3 +1016,149 @@ brace/comparison-depth technique is built for).
 handlers — same shape as D36, needs a wave; (2) the `server.pause`/`client.pause` unit-mismatch
 question — pre-existing, not urgent, but worth a ruling before whatever wave next touches
 `RunTick.swift`'s pause countdown or `RecvSR.swift`'s `recvSrPause`.
+
+### [PARITY] 2026-09-03 — Wave 6.3 audit: PASS, no findings
+
+**Type:** audit (full audit of Wave 6.3's scope — preamble structs + session logic)
+**Phase:** Wave 6.3 → 6.4
+**Blocks:** nothing — clears the way for Planner's Wave 6.4 pre-brief/GO
+
+**Standing limitation, stated per protocol:** no Swift toolchain in this environment — this is a
+line-for-line hand-trace against `Reference/c/`, not a compile-and-run. One item below
+(`evictsOldestDisconnectedSlotOnATie`) is exactly the kind of check that would ideally be settled
+by executing Swift directly; I don't have that tool, so I reasoned it from the stdlib's documented
+algorithm and cross-checked against the fact that Implementer's own test of this exact scenario
+passed (445/445) — noted explicitly below, not glossed over.
+
+**Preamble struct layouts (`Sources/BoloNet/Preambles.swift`, oracle in `netops.c`) — CONFIRMED
+correct.** Independently re-derived every offset in `preamble_layout_oracle()`'s test
+(`PreamblesDifferentialTests.testPreambleLayoutMatchesOracle`) by hand from the actual struct
+definitions, not by trusting the test's own numbers:
+- `JOIN_Preamble` (`bolo.h:448-453`): `ident[8]` + `version`(1) -> `name` at offset 9
+  (`MAXNAME`=16, confirmed `bolo.h:57`) -> `pass` at offset 25 (`MAXPASS`=32, confirmed `bolo.h:58`).
+  Matches.
+- `BOLO_Preamble` (`bmap.h:18-40`): both layout traps checked. The `game.domination` union
+  (`bmap.h:26-31`) is itself `__attribute__((__packed__))` and its only member is a packed
+  `{type, basecontrol}` pair, and the outer struct is packed too, so the union contributes exactly
+  2 bytes with no hidden padding — offsets 13/14 for `dominationType`/`baseControl` check out.
+  Per-player entry (`bmap.h:33-38`): `used`(1)+`connected`(1)+`seq`(4, offset 2)+`name[16]`(offset
+  6)+`host[32]`(offset 22)+`alliance`(2, offset 54) = 56 bytes/entry — matches
+  `sizeofBoloPlayerEntry`. `offBoloMapLen` = 15 + 16x56 = 911, `sizeofBoloPreamble` = 915 — both
+  reproduced by hand, not just re-read from the test.
+- `TRACKER_Preamble` (`tracker.h:35-38`): correctly noted as **not** `__attribute__((__packed__))`
+  in the C, but since both fields are `uint8_t` no natural-alignment padding is possible anyway —
+  size 9 is right either way. (This is a different struct from Wave 6.5's flagged
+  `TrackerHost`/`TrackerHostList` packing trap — those really do need explicit padding
+  reproduction; this one doesn't, and the code doesn't claim otherwise.)
+- Field *order* in `BoloPreamble`'s encode/decode (`Preambles.swift:120-166`) matches the C
+  struct's declaration order exactly: version, player, hiddenmines, pause, gametype,
+  domination.type, domination.basecontrol, players[], maplen. Per-player field order (used,
+  connected, seq, name, host, alliance) matches `bmap.h:33-38` too.
+- Ident/version constants independently grep-checked: `NET_GAME_IDENT` = `"XBOLOGAM"`
+  (`bolo.h:37`), `NET_GAME_VERSION` = `1` (`bolo.h:27`), `TRACKERIDENT` = `"XBOLOTRK"`,
+  `TRACKERVERSION` = `0` (`tracker.h:9-10`) — all match `Preambles.swift`'s constants.
+
+**`assembleBoloPreamble` (`Preambles.swift:213-236`) vs. `joinplayerserver()`'s field assembly
+(`server.c:846-873`) — CONFIRMED correct**, including the two things worth independently
+re-deriving:
+- Pause: C does `if (server.pause == -1) bolopreamble.pause = 255; else bolopreamble.pause =
+  server.pause/TICKSPERSEC;` — Swift's `state.pause == -1 ? 255 : UInt8(state.pause /
+  Int(ticksPerSec))` matches exactly, ternary for ternary. This is also the answer to
+  Implementer's flagged `server.pause`/`client.pause` unit-mismatch question, as far as *this*
+  wave's own correctness goes: `assembleBoloPreamble` is assembling the server's tick-domain value
+  and correctly divides by `TICKSPERSEC`, so it isn't affected by the cross-role hazard it
+  flagged — confirmed independently, not just taking the completion report's word for it.
+- `gameType` defaults to `0` (`kDominationGameType`, `bolo.h:325`, grep-confirmed) via
+  `BoloPreamble.init`'s default parameter, never overridden by `assembleBoloPreamble` — correct
+  per the project's existing, prior-audited stance that no other top-level game type was ever
+  finished.
+- `dominationType` enum mapping (`.open`->0, `.tournament`->1, `.strict`->2) independently checked
+  against `bolo.h:334-338`'s `kOpenGame`/`kTournamentGame`/`kStrictGame` enum — matches.
+- `PlayerEntry.host` claim re-derived independently, not trusted from the commit message: grepped
+  all of `client.c`/`server.c` for `.host` — every `server.players[i].host` occurrence is a *read*
+  (`server.c:880`, `:3359`, `:3378`); the only *write* to any `.host` field anywhere is
+  `client.players[i].host` (a different struct, `client.c:253`/`733`/`1970`). `server.c` never
+  assigns `server.players[i].host` at all. Confirms the claim exactly: this port's `host` field
+  staying permanently empty faithfully reproduces a dead field in the oracle, not a gap.
+
+**Session logic (`Sources/BoloKit/SessionLogic.swift`) — CONFIRMED correct against
+`server.c`/`client.c`, function by function:**
+
+- `evaluateJoinRequest` (`server.c:714-806`): rejection order (version -> password -> `allowjoin`
+  -> ban list -> slot search) matches exactly. Ban-list check re-read against `server.c:772-777`'s
+  `strncmp(...MAXNAME) == 0 && sin_addr match` — Swift's full-string `name`/`address` equality is
+  equivalent in practice since both fields are already wire-truncated to `MAXNAME` before reaching
+  this function (not a divergence, just noting the reasoning).
+- Slot search order re-traced against `server.c:772-806` line by line: rejoin (first `used &&
+  !connected && name==` match) -> fresh (`first !used && !connected`) -> oldest-disconnected
+  eviction. Confirmed the implicit invariant the eviction branch relies on: by the time
+  `evaluateJoinRequest` reaches `let disconnected = players.indices.filter { !players[$0].connected
+  }`, every filtered index is guaranteed `used == true` — not because the filter checks it, but
+  because if any `!used && !connected` slot existed it would have already matched the fresh-slot
+  branch above and returned. Same guarantee the C relies on implicitly (its eviction loop also has
+  no explicit `used` check). Correct.
+- **`evictsOldestDisconnectedSlotOnATie` — the one item flagged for extra scrutiny.**
+  `server.c:789-806`'s nested loop keeps the *first-found* champion unless a later candidate's age
+  is *strictly greater* (`if (age < server.ticks - server.players[p].lastupdate)`) — so a tie
+  keeps the lower index. Swift ports this as
+  `disconnected.max(by: { ticksSinceLastUpdate[$0] < ticksSinceLastUpdate[$1] })`. Swift's
+  documented `max(by:)` algorithm only replaces the running result when the *current* result
+  compares strictly less than the *new* candidate (`areInIncreasingOrder(result, e)`); on an exact
+  tie that predicate is false in both directions, so the earlier-encountered element is retained —
+  the same "first found, only displaced by strictly-greater" shape as the C's own loop. I can't run
+  the compiler here to confirm this directly, but it's corroborated by the passing test itself:
+  `SessionLogicTests.swift`'s `evictsOldestDisconnectedSlotOnATie` constructs a genuine tie
+  (indices 0 and 2 both at age 100, index 1 excluded as connected) and asserts `player: 0` — since
+  Implementer's build reported this test passing (445/445, 0 failed), that's direct empirical
+  evidence the real compiled behavior matches the C's tie-breaking, not just my algorithmic
+  reasoning about the stdlib. Recording both the reasoning and the corroborating evidence rather
+  than asserting confidence from either alone.
+- `applyJoin` (`server.c:808-836`, state-affecting lines): rejoin correctly skips the
+  alliance-reset/name-set (`server.c:826-828` only runs in the "not a rejoin" branch, matching
+  `if !rejoin { ... }`); `used`/`connected`/`address` set unconditionally in both paths, matching
+  the C's unconditional "initialize player" block after the if/else. Correct.
+- `kickPlayer`/`banPlayer`/`removePlayerPills` (`server.c:475-535`, `585-599`): re-traced the
+  *exact sub-step order* in `banPlayer`, since it's easy to get this one subtly wrong — C does
+  `addlist` (ban-list insert) **then** `sendsrplayerban` (broadcast) **then** `removeplayer`
+  (disconnect + pill drop); Swift's `banPlayer` does `bannedPlayers.append` ->
+  `onShouldBroadcastPlayerBan` -> `connected = false` -> `removePlayerPills`, same order. The
+  `cntlsock != -1` guard (`banPlayer` has one, `kickPlayer` doesn't) matches the C's own asymmetry
+  exactly (`server.c:503-535` vs. `:475-501`, re-read both). `removePlayerPills`'s onboard-pill
+  bitmask (`owner == player && armour == pillOnboard`) matches `removeplayer()`'s loop
+  (`server.c:590-594`) exactly, including iterating the actual `pills` array rather than a fixed
+  `MAXPLAYERS`/16 bound, matching `server.c`'s own `server.npills` bound (pre-existing project
+  convention, not new here).
+- `requestAlliance`/`leaveAlliance` (`client.c:6314-6389+`): xor-then-mutate ordering matches
+  (`xor` computed from the pre-mutation alliance value in both C and Swift, `alliance` mutated
+  after). Callback-firing conditions re-traced line by line against both functions: the
+  `onPlayerStatusChanged`/`onBaseStatusChanged`/`onPillStatusChanged` calls in the C fire
+  *unconditionally* within their respective `if owner == i` blocks — the fog-of-war
+  `increasevis`/`decreasevis`/`refresh` calls are separately gated (on pill armour state) but the
+  status callbacks themselves are not, and Swift's `for j in ... where owner == i {
+  onXStatusChanged(j) }` correctly does not add a gate the C doesn't have. `leaveAlliance`'s lack
+  of an "else" branch (only acts when `alliance[i] & (1 << localPlayer) != 0`, silently does
+  nothing otherwise — `client.c:6403` has no companion `else`, unlike `requestalliance`'s
+  "requested" message branch) is correctly reproduced by Swift's `guard ... else { continue }`
+  with no else-branch side effect.
+- `recvClSetAlliance` (`server.c:3123-3137`): assign-then-broadcast order matches
+  (`server.players[player].alliance = ...` then `sendsrsetalliance(...)`).
+
+**No findings. Wave 6.3 passes parity audit — clean**, across both the newly-added preamble codec
+and the session-logic port.
+
+**Two secondary notes, not findings, addressed to Planner:**
+1. Implementer's flagged `server.pause`/`client.pause` unit-mismatch question (pre-existing,
+   cross-role, not introduced by 6.3) — confirmed above that `assembleBoloPreamble` itself reads
+   `state.pause` correctly (server/tick-domain role), so 6.3 isn't contributing a new instance of
+   the hazard. The underlying question (should `RunTick`'s tick-domain countdown and
+   `RecvSR.swift`'s wire-domain write share one `GameState.pause` field) still needs your ruling,
+   independent of this audit passing.
+2. The ~19 unassigned `recvcl*` handlers — same shape as D36, still needs a wave assignment;
+   nothing for PARITY to check until one lands.
+
+> **-> Planner:** Wave 6.3 clean. Recommend closing it and proceeding to Wave 6.4's pre-brief
+> (transport + `dgramclient()` post-decode per D36), per Implementer's own completion report.
+> Two secondary items above are yours to rule on, not blocking.
+> **-> Implementer:** Nothing outstanding from this audit. The tie-break implementation
+> (`evictsOldestDisconnectedSlotOnATie`) is correct as written — flagging above is documentation
+> of the verification, not a request for a change.
