@@ -2814,3 +2814,150 @@ states. If anything looks wrong, treat `3e197ec`'s two files as a starting point
 from, not a checkpoint to trust blindly.
 [TO: PARITY] No action needed until Implementer's next completion report — flagging so this isn't
 mistaken for an Implementer-authored commit if you're auditing commit provenance.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4b complete: host-side transport
+
+**Type:** coding — completion report
+**Phase:** Wave 6.4b
+**Blocks:** nothing — ready for PARITY audit
+
+**Housekeeping incident acknowledged first, per PLANNER's flag above:** diffed my working tree
+against `3e197ec`'s swept-in `DgramServerRelay.swift`/`DgramServerRelayTests.swift` before doing
+anything else. `DgramServerRelay.swift` is byte-identical — no divergence. `DgramServerRelayTests.
+swift`'s diff against `3e197ec` is exactly my own subsequent edits (the `Vec2f`→`BoloKit.Vec2f`
+disambiguation fix, an unused-`withUnsafeBufferPointer`-result fix, and the fuzz test's `Bool.
+random()` boost to actually exercise the `.applied` branch at a reasonable rate) — a clean
+continuation, not a broken merge. `3e197ec`'s two files needed no fixing-forward; confirmed safe
+to build on directly.
+
+Coded and tested Wave 6.4b as scoped in my own pre-brief (`8a1ddcd`) §4, per PLANNER's D47/D48/D49
+GO (`4277f94`). Full delivery — nothing descoped from what was GO'd:
+
+**G-1 — `encodeBMap`** (`BMap.swift`): `serversavemap()`'s inverse. Promoted from
+`BMapDecodeTests.swift`'s private `encodeFullBMap` test helper (D28: that coverage moved into
+`encodeBMap`'s own round-trip tests, didn't vanish) rather than reimplemented. Verified against
+`decodeBMap` round-trip and directly against the sentinel-inclusive size claim from the pre-brief.
+
+**G-2 — the `sendsr*` fan-out**, confirmed in-scope by D47: `HostSessionTable`'s `sendToAll`/
+`sendToAllExcept`/`sendToMask` (`HostSession.swift`), each cited against the specific C function's
+own `sendtoall`/`sendtoallex`/`sendtoone` choice (re-verified by direct read for every one of the
+~30 broadcasts wired, not assumed from callback shape).
+
+**G-3 — `wireSize` on all 20 `CL*` structs** (`ClientMessages.swift`): mirrors the 6.4a `SR*`
+precedent. Independently reconfirmed correct by an already-existing oracle test
+(`testAllClOpcodeStructSizesMatchOracle`, `NetCodecDifferentialTests.swift`) that compares against
+`sizeof_cl_oracle` and had been passing all along on hardcoded expected values — my `wireSize`
+constants match those exactly.
+
+**G-4 — public `removePlayer`** (`SessionLogic.swift`): `kickPlayer`/`banPlayer` refactored to call
+it instead of duplicating its body — behavior-preserving (their existing tests pass unchanged),
+not just additive.
+
+**`DgramServerRelay.swift`** — `dgramserver()`'s pure per-packet decision core (T-2 through T-8),
+plus `dgramserver_relay_oracle` (`Sources/CXBolo/netops.c`+`CXBolo.h`) with the same "fixed C array
+can't be a struct member" fix netops.c's own header already documents for `CLUpdate.hdr.seq` —
+`relayTo`/`relayCount` are separate out-parameters, not a `struct` field. Fuzz-differential test
+covers trackerEcho/malformed/dropped/applied across randomized player tables and addresses,
+boosted to hit the `.applied` branch at a real rate rather than by rare coincidence.
+
+**`HostSession.swift`** — `HostSessionTable` (the five fields §1 of the pre-brief identified
+`GameState` deliberately lacks: `connection`, `dgramAddress`, `seq`, `lastUpdate`, plus the byte
+queue precedent isn't needed since `NWConnection.receive` already accumulates); `handlePlayerDisconnect`/
+`hostKickPlayer`/`hostBanPlayer` for T-12/T-13; `receiveAndDispatchOneHostMessage` dispatching all
+20 `CL*` opcodes (19 to Wave 6.6's `recvCl*` handlers, `CLSendMesg` to a direct masked relay
+matching `sendsrsendmesg`'s own inlined loop, `CLHangUp` consumed with no `recvCl*` call per
+`RecvCL.swift`'s own header).
+
+**Real gap found and fixed, not just wired — six Wave 6.6 (`RecvCL.swift`) callback signatures
+extended:** `onShouldBroadcastBuild`/`Damage`/`CapturePill`/`CaptureBase`/`BuildPill`/`RepairPill`
+didn't carry enough data to build their `SR*` struct. The real `sendsrbuild()`/`sendsrdamage()`/
+etc. each read one more field (`terrain`/`owner`/`armour`/`x`/`y`) directly off the `server` global
+at send time (`server.c:3232`, `:3190`, `:3528`, `:3604`, `:3547-3549`, `:3491`) — a caller-side
+closure in `HostSession.swift` can't do the same read, because it would need to read `state` while
+`state: &state` is still formally exclusive-locked by the very call passing the closure in
+(`RecvCL.swift`'s own header already names this exact constraint for `applyDamage`). Fixed by
+having each `recvCl*` function read the extra field itself, always immediately after its own
+mutation (matching the C's own post-mutation read order), and pass it as a new trailing parameter.
+Same shape as every other "later wave finds a real gap in already-shipped, PARITY-passed code,
+fix it now" ruling this project has made (D35/D37/D39/D45/D46) — six existing tests
+(`RecvCLTests.swift`) needed their call sites updated to match; all pass, all now assert on the
+new fields rather than just accepting wider closures.
+
+**`HostListener.swift`** — `JoinAcceptSerializer`, a real async mutex (**not** just an actor
+method — actor methods are reentrant across their own `await` points, and a join handshake is full
+of them; a naive "make it an actor method" would let two joins interleave at suspension points
+instead of genuinely serializing, defeating T-11). `processJoinAttempt` ports `joinplayerserver()`
+end to end: decode `JoinPreamble` → `evaluateJoinRequest` → reject (status byte, close) or accept
+(`applyJoin` → register in `HostSessionTable` → `assembleBoloPreamble`+`encodeBMap` → write
+preamble+map → broadcast `SRPlayerJoin`/`SRPlayerRejoin` to everyone including the joiner itself,
+T-9's ordering). `HostListener` itself exposes accepted connections via `AsyncStream<NWConnection>`
+rather than self-driving a `Task` per connection — see the design note below.
+
+**Design finding during coding, resolved without reopening D49:** the pre-brief's original sketch
+(`HostListener` spawning one `Task` per accepted connection, each independently calling
+`processJoinAttempt(..., state: &state, ...)`) is unsound under Swift's exclusivity law —
+`state: inout GameState` is this whole project's established convention (every `BoloKit`/`BoloNet`
+function that touches simulation state takes it this way), and two concurrent Tasks each holding
+`&state` for the full async duration of their own call is an exclusivity violation regardless of
+any mutex layered on top; the mutex only serializes access to *itself*, not to a separately-shared
+`inout` binding. Fixed by having `HostListener` expose accepted connections through an
+`AsyncStream` that a single caller-owned consumer loop drains one at a time (`for await connection
+in listener.connections { await processJoinAttempt(connection:, serializer:, state: &state,
+table:) }`) — sequential by construction, which is what actually gives T-11 its guarantee here.
+`JoinAcceptSerializer` remains real and independently useful (proved directly,
+`joinAcceptSerializerNeverAllowsOverlappingCriticalSections`) for a caller with a different
+state-sharing strategy; D49's own ruling (an actor-serialized accept queue) is satisfied by the
+combination, not superseded.
+
+**D49's regression test:** run sequentially rather than via `async let`, for the same exclusivity
+reason — two `async let`s sharing one `&state` binding is exactly the same violation described
+above, not something D49's text asked for literally. `twoSequentialJoinAttemptsResolveToDistinctSlots`
+proves the real property D49 cares about (distinct, deterministic slot allocation) through the
+actual `processJoinAttempt` pathway; `joinAcceptSerializerNeverAllowsOverlappingCriticalSections`
+separately proves the mutex primitive itself never lets two critical sections overlap, using 20
+genuinely concurrent tasks and a shared counter that must never exceed 1.
+
+**Real gaps found, disclosed, deliberately NOT fixed here (both flagged in-file, not silently
+absorbed or silently dropped):**
+- `dropPills` (`MineChain.swift`, Wave 5.5a) has no broadcast callback of its own — the real
+  `droppills()`/`dr()` call `sendsrdroppill(pill)` once per pill actually dropped; no Swift port of
+  that broadcast exists anywhere in this codebase (grep-confirmed). `recvClDropPills` dispatches
+  faithfully to the already-shipped function; no `SRDropPill` fires as a result. Pre-existing Wave
+  5.5a completeness gap, exposed but not created by this wave's wiring — well outside "host-side
+  transport"'s own scope to fix.
+- The live UDP `NWListener(using: .udp)` receive loop driving `decodeDgramServerRelay` against a
+  real socket is not wired. `DgramServerRelay.swift`'s pure decision function is complete and
+  independently oracle-tested; no file in this wave drives it against a live datagram socket. Not
+  named as a required file in D47's coding GO (`HostListener.swift`/`HostSession.swift`/
+  `DgramServerRelay.swift` were), so treating this as a legitimate scope boundary rather than an
+  oversight — but flagging explicitly rather than letting "Wave 6.4b done" imply "the UDP relay is
+  live," which it isn't yet.
+- `dgramaddr` is seeded as a zeroed `DgramServerPeerAddress` at join time rather than derived from
+  the joining TCP connection's real address (`server.c:817`) — deriving the numeric `sin_addr`/
+  `sin_family` equivalents from an `NWConnection` endpoint has no consumer to validate against until
+  the UDP listener above exists, so building it now would be speculative. T-3's own port-refresh
+  mechanism already tolerates this: a real first packet's family/addr can never match a zeroed
+  `used`/`connected` gate anyway until that UDP wiring lands.
+
+**Tests: 521 → 560 (+39), no coverage lost (D28).** Every new file has direct tests; six
+signature-extended `RecvCL.swift` callbacks have updated, still-passing tests asserting the new
+fields. Full suite green via `swift test`, zero failures across both targets (`BoloKitTests`: 441
+tests / 6 suites; `DifferentialTests`: 119 tests / 9 suites), `grep -rc "@Test"` independently
+confirms the 560 total.
+
+**Commit:** `b26ee69`, pathspec-scoped deliberately (given the incident above, `git commit --
+<explicit files>` rather than a bare `git commit`, to avoid touching PLANNER's still-staged
+`docs/WAVE59_BOOTSTRAP.md` rename).
+
+[TO: PARITY] Ready for audit. Given this wave's shape, the highest-value independent re-derivations
+are likely: (1) every `sendtoall`/`sendtoallex`/`sendtoone` citation in `HostSession.swift`'s
+per-opcode dispatch, since a wrong one would silently misroute a broadcast in a way no test here
+would catch unless it specifically checked the recipient SET, not just the bytes; (2) the six
+extended `RecvCL.swift` callback signatures — confirm each new field really is read AFTER the
+function's own mutation, matching the C's post-mutation read order, not coincidentally correct;
+(3) the `HostListener` exclusivity fix (`AsyncStream` drain vs. per-connection `Task`) — confirm
+the reasoning holds and isn't a rationalization for something simpler I should have done instead.
+[TO: PLANNER] Wave 6.4b complete, tested, committed (`b26ee69`). Three disclosed scope items above
+(the `dropPills` broadcast gap, the unwired UDP listener, the zeroed `dgramaddr` at join) are real
+and need a ruling on whether any become tracked follow-up waves (D38/D45-style) or stay noted.
+Requesting your review before PARITY activation.
