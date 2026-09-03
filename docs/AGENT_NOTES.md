@@ -673,3 +673,77 @@ functions those waves are already porting (`kickplayer`/`banplayer`/`lockserver`
 etc.) and the eventual `BoloHost`-style companion target (if Jerod wants it) would be a thin
 consumer of exactly what those waves build.
 [TO: PARITY] No action needed — this is a product-scope question, not a parity question.
+
+### [PLANNER] 2026-09-03 — Wave 6.2 PARITY findings ruling: fix all three before Wave 6.3 GO (D37)
+
+**Type:** planning — ruling + handoff
+**Phase:** Wave 6.2 → 6.3
+**Blocks:** Wave 6.3 coding GO
+
+Ruling on PARITY's Wave 6.2 audit (`1bc2b90`), same precedent as D35: all three findings get
+fixed before Wave 6.3 opens, not deferred or tracked separately. Logged as **D37** in
+`docs/PLAN.md`.
+
+**Finding 1 (real bug — fix required).** `recvSrSuperBoom` applies local-tank splash damage
+unconditionally; the C oracle (`client.c:2737-2851`, brace-depth-verified by PARITY) nests the
+entire tank-damage-check-and-cascade block inside `player != client.player`, so a broadcast
+superboom attributed to the local player is meant to skip local-tank damage entirely (it was
+already applied optimistically when the local player triggered it, Wave 5.2b's precedent).
+Concur with PARITY's fix: gate `RecvSR.swift`'s damage-check block the same way. Concur explicitly
+that `recvSrSmallBoom`'s *lack* of that gate is correct and must not change — PARITY independently
+brace-traced `recvsrsmallboom()` too and confirmed its damage check is a genuine sibling `if`, not
+nested. This is not the same shape as superboom, and the pre-brief/report's "same cascade shape"
+framing is exactly what caused the miss.
+
+**Finding 2 (missing UI hook — fix required, narrowly).** `recvSrSmallBoom`/`recvSrSuperBoom`
+don't fire `onTankStatusChanged` on local-tank damage, unlike `client.c`'s unconditional
+`settankstatus()` and unlike `RecvSR.swift`'s own `recvSrHitTank`/`recvSrMineAck`, which already
+model this hook correctly. Fix both sites. **Ruling on the pre-existing Wave 5.5a
+`applySplashDamage` gap PARITY flagged alongside this: no fix.** PARITY's own trace found
+`server.c`'s `explosionat()`/`superboomat()` have no `settankstatus` analog at all (grep-confirmed,
+every hit lives in `client.c`) — so `applySplashDamage`'s omission correctly mirrors the
+authoritative role it ports, not a gap the way the two `RecvSR.swift` sites are. Recording this
+explicitly rather than leaving it silently ambiguous, per PARITY's request for "a single ruling
+covering both" — the ruling is: fix the client-role sites only, the server-role site is correct
+as-is.
+
+**Q21 (heatPill/Pill.counter — fix required).** Confirmed bug, independently re-derived by PARITY
+from four sites (not just the two the original report cited). One-line fix: `ShellTick.swift:73`'s
+`state.pills[index].counter = 0` → `state.pills[index].coolCounter = 0`. Real effect, not a
+technicality — pill damage was spuriously resetting the in-progress fire-cadence tally while
+failing to reset the cooldown-degradation tally `coolPills` (Wave 5.7) expects to own exclusively.
+Pre-existing since Wave 5.3a; Wave 6.2's own `recvSrDamage` doesn't call `heatPill` and stays
+correct regardless. Removed from `docs/PLAN.md`'s open-questions table (resolved into D37) rather
+than left open now that it's confirmed and ruled.
+
+**Session note, same as D35's:** bundling ruling and handoff in one pass given where session
+credits stand — Implementer should treat this as both the ruling and the GO to plan and execute
+directly, no separate pre-brief-review cycle needed unless the plan surfaces something that
+changes scope, in which case log it here as a question per the usual rule.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — new **D37** in the decisions log; Q21 removed from open questions (resolved);
+  Wave 6.2's row updated to reflect the audit outcome and the fix-before-6.3 ruling.
+
+[TO: IMPLEMENTER] Read PARITY's Wave 6.2 audit in full (`1bc2b90`, the "### [PARITY] 2026-09-03 —
+Wave 6.2 audit" entry) before starting — both bugs are already hand-traced against the C source
+there, don't re-derive them. Then plan and execute fixes for all three:
+- **Finding 1:** gate `RecvSR.swift`'s `recvSrSuperBoom` damage-check block behind
+  `player != UInt8(state.localPlayer)`, matching `client.c:2737-2851`'s nesting exactly.
+  `recvSrSmallBoom` is already correct — do not add a gate there.
+- **Finding 2:** add `onTankStatusChanged` firing to `recvSrSmallBoom`/`recvSrSuperBoom` when
+  local-tank damage is applied, matching `recvSrHitTank`/`recvSrMineAck`'s existing pattern. Do
+  **not** touch `MineChain.swift`'s `applySplashDamage` — its omission is ruled correct above.
+- **Q21:** `ShellTick.swift:73`, `.counter = 0` → `.coolCounter = 0`.
+- Named regression tests for all three per D28, including the specific case PARITY flagged as
+  silently uncovered: `recvSrSuperBoom(player: state.localPlayer, ...)` with a tank in range,
+  asserting damage is skipped.
+- Note before/after test count in your completion report per D28.
+- Once committed, tag `[TO: PARITY]` for a fast re-audit of just these three spots (mirroring how
+  D35's re-audit was scoped), then `[TO: PLANNER]` to close 6.2 and GO Wave 6.3.
+
+[TO: PARITY] No action needed until Implementer's fix lands — flagging here so the thread is
+visible when you pick this back up. Nice independent catch on Finding 1/2 beyond the four items
+this session asked you to prioritize — the brace-depth trace on both `recvsrsmallboom`/
+`recvsrsuperboom` (not just the one that turned out broken) is exactly the rigor that keeps a
+"same shape as X" framing from becoming an unverified assumption.
