@@ -10,7 +10,15 @@ This project is a personal learning vehicle, not a competing distribution.
 
 ## Status
 
-Phase 1 (Differential Test Harness) and Waves 1 & 2 (Leaf utilities + Terrain and Tile grids) are fully completed, with 15/15 robust differential tests passing side-by-side with the C reference oracle. See `docs/PLAN.md` for upcoming phases.
+Phase 3 (incremental Swift port, C oracle as spec) is well underway. Waves 1-5 -- leaf utilities,
+terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox physics, mine
+chains and explosions, spawn/respawn, tree growth) -- are complete and PARITY-verified against the
+C reference. Wave 6 (networking) is in progress: the wire codec, tick orchestrator, and
+`recvsr*` broadcast handlers (6.0-6.2) are complete and PARITY-passed; server session logic --
+join/kick/ban/alliance (6.3) -- is code-complete and awaiting PARITY audit; transport (6.4) and
+tracker/NAT-PMP (6.5) are forward-planned but not yet started. 445 differential + unit tests
+passing as of the latest commit. See `docs/PLAN.md` for the full wave-by-wave status and
+decisions log.
 
 ## Approach
 
