@@ -3092,3 +3092,154 @@ whenever you're ready to pick it up next (before Wave 6.5, per the sequencing ab
 own pre-brief first per the standard two-stage process.
 [TO: PARITY] No action needed yet — nothing new shipped this entry. Thanks for the fast turnaround
 on the post-commit audit.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.4c pre-brief: live UDP wiring, real `dgramaddr`, `SRDropPill`
+
+**Type:** planning only — pre-brief, no Swift written this entry
+**Phase:** Wave 6.4c
+**Blocks:** coding start, pending PLANNER's GO
+
+Baseline: 560 tests (`@Test` grep-confirmed, 441 `BoloKitTests` / 119 `DifferentialTests`), working
+tree clean at `1a31658` except a PLANNER-staged, unrelated doc rename
+(`docs/WAVE59_BOOTSTRAP.md`→`docs/notes/WAVE59_BOOTSTRAP.md`) this wave doesn't touch.
+
+D50's scope (`docs/AGENT_NOTES.md:3079-3084`): (1) wire `NWListener(using: .udp)` driving
+`DgramServerRelay.swift`'s existing decision core against real datagrams; (2) derive `dgramaddr`
+from the joining TCP connection's real address at join instead of a zeroed placeholder, also
+fixing the `server.c:817`→`:844` citation typo PARITY flagged; (3) add `onShouldBroadcastDropPill`
+to `MineChain.swift`'s `droppills()`/`dr()` and wire `SRDropPill` in `HostSession.swift`.
+
+**§1 — Item 2 first: real `dgramaddr` is item 1's prerequisite.** `decodeDgramServerRelay`'s
+validity check compares an incoming packet's sender address against `players[player].dgramAddress`
+— seeded at zero, no real packet can ever match, so wiring the UDP listener before this lands
+would be wireable but functionally dead. Confirmed via direct API research (Apple's `nw_listener_t`/
+`NWConnection`/`NWEndpoint` headers, not assumed from training data — see full citations in the
+plan doc this entry summarizes): `NWConnection.endpoint` on an accepted connection is always a
+concrete `.hostPort(host: .ipv4(IPv4Address), port:)` — never `.name(...)`, which only occurs on
+endpoints constructed from a hostname string, never on an inbound accept. `IPv4Address.rawValue`
+gives the 4 raw address bytes (already network order, no `ntohl` needed); `NWEndpoint.Port.rawValue`
+gives the port as `UInt16` directly. **Real trap, confirmed not assumed:** with default parameters
+an IPv4 peer can arrive as an IPv6 IPv4-mapped address — both the existing TCP listener and the new
+UDP listener need `parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port:)` set
+explicitly, matching the C's own AF_INET-only design (`sockaddr_in` throughout `server.c`, no IPv6
+anywhere), not left to default dual-stack behavior.
+
+Fix: a shared `peerAddress(from: NWConnection) -> DgramServerPeerAddress?` helper (family=2/AF_INET,
+addr/port from the endpoint as above, `nil` on anything non-IPv4 — fails closed to a zeroed
+sentinel at the one call site that needs a non-optional value, matching this port's established
+"fail closed, don't trap" convention). `HostListener.swift`'s `processJoinAttempt` accept branch
+swaps its zeroed `table.setDgramAddress(...)` call for this helper's result — matches
+`server.c:844`'s literal `server.players[player].dgramaddr = server.joiningplayer.addr;` **exactly,
+port included** (verified this is the C's real, intended behavior, not a port mix-up of my own:
+the seeded port is the TCP connection's ephemeral port, almost never the client's actual UDP port,
+and T-3's port-refresh-on-mismatch mechanism exists *because* the C only learns the correct UDP
+port once that client's first real UDP packet arrives — seeding wrong-then-correcting is the
+design, not a bug to route around by leaving the port at 0 instead).
+
+**§2 — Item 1: live UDP listener.** Confirmed by direct API research, not assumed:
+`NWListener(using: .udp, on:)` + `newConnectionHandler` hands back **one `NWConnection` per
+distinct remote 4-tuple** (Apple's own header: "accepted connections will represent new local and
+remote address and port tuples") — a real mechanism difference from the C's single `recvfrom()`-on-
+one-socket loop, permitted under D31/D42's "rebuild the mechanism, preserve the decision logic"
+latitude, same as every other transport substitution this project has made. This reintroduces the
+*exact* concurrency hazard `HostListener.swift` already hit and fixed once: N independent per-peer
+receive loops cannot each touch `state: inout GameState` concurrently (Swift's exclusivity law
+forbids two overlapping `inout` accesses regardless of any mutex on top). Fix: apply the identical,
+already-shipped, PARITY-confirmed pattern — a new `HostDgramListener` funnels every accepted peer's
+datagrams into one shared `AsyncStream<(bytes: [UInt8], connection: NWConnection)>`
+(`packets`), drained by a single sequential consumer calling a new `processDgramPacket(bytes:from:
+state:table:)` (mirroring `processJoinAttempt`'s role as "the tested, substantive unit"). Binds to
+the *same port* `HostListener` resolved, matching `initserver()`'s own `getsockname()`-then-bind-UDP
+ordering (`server.c:256-274`, already cited as T-10 in the 6.4b pre-brief).
+
+`processDgramPacket` is a thin driver around `decodeDgramServerRelay` (already complete,
+independently oracle-tested — no new decision logic here): `.trackerEcho` → verbatim reply over the
+same connection (T-4); `.malformed`/`.dropped` → no-op; `.applied` → apply `tank` to
+`state.players[player].tank` (T-2: only tank x/y), advance `table`'s seq, refresh `dgramAddress`'s
+port on mismatch (T-3), and relay the original bytes to each `relayTo` player's own registered live
+UDP connection.
+
+**New `HostSessionTable` field required, disclosed up front:** `dgramConnection: NWConnection?` per
+slot, distinct from `dgramAddress` (a value snapshot for the pure decision function) and `connection`
+(the TCP control socket) — relaying needs an actual live object to send *through*, and
+Network.framework's UDP model requires an established inbound flow before sending outbound through
+a matching `NWConnection` (no "send anywhere via one shared socket" primitive the way raw
+`sendto()` on the C's single `dgramsock` provides). A relay target with no live flow yet is silently
+skipped — verified this matches the C's own practical limitation (a `sendto()` to a
+not-yet-port-corrected `dgramaddr` also goes nowhere useful until that player's own first packet
+arrives), not a new gap this port introduces.
+
+**Trap T-15 (new):** UDP "connections" never close on their own — an unreaped `HostDgramListener`
+accumulates one `NWConnection` per remote 4-tuple forever (a player rebinding their UDP source port
+creates a brand-new flow, not a reused one). No C-side equivalent to port faithfully (the C's
+single-socket model has no analogous problem) — flagging as a known, disclosed resource-growth
+issue, not solving it this wave; open question for PLANNER below on whether it needs a bound now
+(D44 precedent) or can stay disclosed-and-unbounded.
+
+**§3 — Item 3: `SRDropPill` broadcast.** Confirmed by direct read (`server.c:1965-1976`): `dr()`
+(the per-cell placement helper) sets `armour`/`x`/`y` for pill `i`, **then immediately calls
+`sendsrdroppill(i)`**, which itself reads `server.pills[pill].x`/`.y` back off the just-mutated
+state (`server.c:3567-3569`) and broadcasts via **`sendtoall`** — confirmed, not assumed, same
+citation discipline as the six Wave 6.4b signature extensions. `droppills()`'s spiral search can
+call `dr()` many times per invocation; each successful placement fires its own `SRDropPill`, so one
+kill/kick/ban scattering several onboard pills produces several broadcasts.
+
+Only **three** real call sites of `dropPills(...)` itself (grep-confirmed — `onDropPills`, the
+different, already-shipped generic pill-scatter callback threaded through a dozen files, is
+untouched by this item): `SessionLogic.swift:127` (`removePlayerPills`, reached via `removePlayer`
+→ `kickPlayer`/`banPlayer`, all four already called directly by `HostSession.swift`); `RecvCL.
+swift:65` (`recvClDropPills`, the `CLDropPills` opcode handler, already dispatched by
+`HostSession.swift`'s `.dropPills` case — currently the one case explicitly commented "No
+broadcast — see file header's disclosed `sendsrdroppill` gap"); `RunTick.swift:174` (`runTick`'s
+stale-player-disconnect path — **no live caller wires `runTick` to `HostSessionTable` anywhere in
+this codebase yet**, so this call site gets the same new parameter added and defaulted to a no-op,
+exactly like its sibling `onDropPills`/`onMineExplosion` params there, not wired to a real
+broadcast this wave since there's nothing yet to wire it to — disclosed explicitly so "Wave 6.4c
+done" doesn't imply that path broadcasts for real).
+
+Fix: `MineChain.swift`'s `dropPillSearch` (the actual placement point) gains
+`onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }` (pill, x, y — plain `Int`
+throughout, matching `onShouldBroadcastDropMine`'s existing convention rather than wire-narrowed
+`UInt8`), fired immediately after every field `sendsrdroppill` reads is already mutated (matching
+the C's own post-mutation read order, same discipline as the six 6.4b extensions). `dropPills`
+threads the same parameter to each of its 4 internal `dropPillSearch` calls. `SessionLogic.swift`'s
+`removePlayerPills`→`removePlayer`→`kickPlayer`/`banPlayer` and `RecvCL.swift`'s `recvClDropPills`
+and `RunTick.swift`'s `runTick` all gain the same parameter, pure plumbing. `HostSession.swift`
+wires the real broadcast in two places: the `.dropPills` dispatch case (via the existing `pending`-
+accumulator pattern every other multi-field broadcast there already uses) and
+`handlePlayerDisconnect`/`hostKickPlayer`/`hostBanPlayer` (a small local accumulator collecting
+zero-or-more `SRDropPill` broadcasts alongside the existing `SRPlayerExit`/`Disc`/`Kick`/`Ban`
+sends, not replacing them).
+
+**Trap T-17 (new):** the broadcast must use the pill's *placement* `(x, y)` — the search
+coordinates `dropPillSearch`'s own loop is currently probing — not `dropPills`'s original scatter
+origin (they differ once the spiral has expanded past the first ring). Confirmed by direct read:
+`sendsrdroppill`'s `server.pills[pill].x/.y` read is exactly what `dr()` just wrote two lines above,
+i.e. the *search* cell. `dropPillSearch`'s own `x`/`y` parameters are already the per-cell search
+coordinates (`state.pills[i].x = UInt8(x)` uses the function's own `x`, confirmed) — passing those
+into the new callback, not `dropPills`'s outer `x`/`y`, is the correct and easy-to-get-backwards
+choice.
+
+**§4 — Test plan (D28):** (1) a real-address extraction test via the existing loopback TCP harness
+(`HostListenerTests.swift`), plus extending the existing full-handshake test to assert
+`table.dgramAddress(for:)` is no longer the zeroed sentinel after a real join; (2) a loopback UDP
+round-trip test (mirroring `UDPSessionTests.swift`'s harness, reversed) covering tank-apply, seq
+advance, relay-reaches-a-second-registered-peer, tracker-echo verbatim reply, stale-seq not
+refreshing anything, and relay-to-a-never-heard-from-player being silently skipped; (3) extending
+`HostSessionTests.swift`'s existing kick/ban/disconnect tests to assert an `SRDropPill` broadcast
+when the departing player owns onboard pills (currently only pill-armour is asserted), plus a new
+multi-pill `.dropPills` dispatch test proving T-17's placement-coordinate claim with ≥2 pills
+forcing the spiral past its first ring. Full suite green afterward, `@Test` grep reconfirms the new
+total against 560 + additions, no regression (D28).
+
+> **→ Planner:** Two open questions before I start coding: (1) whether `HostDgramListener` should
+> live in its own file (`HostDgramListener.swift`, matching `HostListener.swift`'s one-listener-
+> per-file precedent) or inside `HostSession.swift` alongside `HostSessionTable` — no strong
+> preference, leaning toward its own file; (2) whether T-15's unbounded UDP-flow growth needs a
+> bound this wave (D44 precedent: a disclosed Swift-side safety deviation, not a fidelity fix) or
+> can stay disclosed-and-unbounded until a real long-running session motivates one. Everything
+> else above is ready to code as described once you GO it.
+> **→ Parity:** No action needed yet — nothing shipped this entry. Once 6.4c lands, the UDP
+> listener's per-peer-connection accounting (T-15) and the `dgramaddr` port-seeding claim in §1
+> (verified against `server.c:844`, not the previously-cited `:817`) are the two most likely spots
+> for an independent re-derivation to catch something this pre-brief got wrong.
