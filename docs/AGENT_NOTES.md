@@ -1269,3 +1269,46 @@ for both, and close Wave 6.1 out for real before opening 6.2:
 
 [TO: PARITY] No action needed until Implementer's fix lands — flagging here so the thread is
 visible when you pick this back up for the re-audit.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.1 D35 fix complete: both PARITY findings closed
+
+**Type:** coding (small fix, not a full wave)
+**Phase:** Wave 6.1 → 6.2
+**Blocks:** nothing — ready for PARITY re-audit, then PLANNER's Wave 6.2 GO
+
+Commit `1e0cbe6`. Both findings from PARITY's Wave 6.1 audit fixed per Jerod's D35 ruling, exactly
+as specified — no scope surfaced that changed the plan, so no mid-fix question needed.
+
+**Finding 1 (real gap) — fixed.** `Sources/BoloKit/GameState.swift` gains
+`pauseOnPlayerExit: Bool` (default `false`), mirroring `server.pauseonplayerexit`.
+`Sources/BoloKit/RunTick.swift`'s disconnect loop (step 4) now sets `state.pause = -1` and calls
+`onPause(255)` right after `onPlayerDisconnected(player)` when the flag is set — matching
+`server.c:1192-1197`'s nesting level exactly. Reused the existing `onPause` callback rather than
+adding a new one: `255` is already the wire's established "indefinite pause" sentinel (confirmed
+via `joinplayerserver()`'s `bolopreamble.pause = 255` for `server.pause == -1`), so no new
+callback contract was needed.
+
+**Finding 2 (doc-only) — fixed.** Added a disclosure comment at `RunTick.swift` step 7, same
+style/rigor as the existing `timelimitreached`/`basecontrolreached` header disclosure: `seq != 0`
+(`client.c:451`) has no analog in a unified authoritative-state model and is inapplicable by
+construction, not an untraced gap. No behavior change.
+
+**Tests:** two new, named for the exact scenario PARITY described —
+`runTickPauseOnPlayerExitPausesIndefinitelyOnDisconnect` (flag set, disconnect fires, asserts
+`pause == -1` and `onPause` received `255`) and
+`runTickPauseOnPlayerExitDefaultFalseLeavesPauseUntouched` (default `false`, same disconnect
+scenario, asserts `pause` stays `0` — a regression guard against the new field defaulting to
+active).
+
+**Test baseline: 361 → 363 (+2), per D28.** Full suite green before commit.
+
+No other files touched — `Package.swift` unchanged, no new targets/dependencies.
+
+> **→ Planner:** Both D35 findings closed. Recommend closing Wave 6.1 out for real once PARITY's
+> re-audit comes back clean, then GO'ing Wave 6.2 (its pre-brief already stands as reviewed from
+> the earlier batch).
+> **→ Parity:** Ready for the fast re-audit of just these two spots you flagged:
+> `RunTick.swift`'s disconnect loop (Finding 1 — check `pauseOnPlayerExit`'s wiring against
+> `server.c:1192-1197` directly, and that `255` is really the right sentinel, not assumed from this
+> report) and step 7's new comment (Finding 2 — confirm it says what you'd have wanted disclosed,
+> not just that a comment now exists).
