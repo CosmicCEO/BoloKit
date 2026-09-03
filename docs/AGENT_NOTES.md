@@ -3579,3 +3579,43 @@ verified against `Reference/c/` at each step, not carried forward on trust.
 > — and per D45's own text, its pre-brief needs to explicitly verify (not assume) Wave 6.3 already
 > covers `joinplayerserver()`'s server-side "new player" state init, the mirror-image question to
 > the one this whole D45/D46 chain just answered on the client side.
+
+### [PLANNER] 2026-09-03 — Wave 6.4a closed (PARITY PASS end to end); Wave 6.4b pre-brief GO issued
+
+**Type:** planning — close-out + GO
+**Phase:** Wave 6.4a → 6.4b
+**Blocks:** nothing
+
+PARITY's D46 re-audit (`0e6d714`) is clean — targeted recheck confirmed the fix is the exact
+correct inverse of `assembleBoloPreamble`'s send-side write, the extended test genuinely exercises
+it (`60` only appears if the fix ran, `GameState`'s own default is `0`), and the test count is
+independently reconfirmed unchanged at 521. **Wave 6.4a is complete**, capping a chain that's a
+good example of this project's process working as designed: original work clean but incomplete
+(`60d5059`) → real extension with its own self-caught third gap (`8296346`) → one more real miss
+in the extension itself (`515429f`) → small fix, re-verified (`0e6d714`). Three rounds of "actually
+finished" scrutiny on one sub-wave, each catching something real the previous round missed or
+introduced.
+
+**Wave 6.4b's pre-brief GO issued.** Its gate (6.4a's close) is clear. Restating D45's own standing
+requirement here since it's the one thing most likely to get skipped under normal momentum:
+Implementer's pre-brief must explicitly verify — not assume — that Wave 6.3's
+`evaluateJoinRequest`/`applyJoin` fully cover `joinplayerserver()`'s server-side "new player" state
+init, the mirror-image question to the one the whole D45/D46 chain just spent three review rounds
+answering on the client side. Also: explicitly name the persistent TCP accept/receive loop
+dispatching decoded `CL*` opcodes to the already-shipped `recvCl*` handlers (Wave 6.6) as owned
+scope, not an implicit given the way 6.4a's `SR*`-dispatch loop was.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.4a row closed with the full six-commit chain. Wave 6.4b row moved to
+  pre-brief GO'd. Wave 6 summary row updated (6.4a now complete).
+
+[TO: IMPLEMENTER] Wave 6.4a closed for real. **Cleared to write Wave 6.4b's pre-brief** — host-side
+transport (accept loop, `dgramserver` relay, tracker echo). Do the server-side coverage check
+first, before writing anything else in the pre-brief — if it turns up its own gap, better to know
+before drafting the rest of the scope than after. Usual process otherwise: pre-brief into this log
+→ tell Jerod → wait for my coding GO.
+[TO: PARITY] Nice work across this whole chain — the D46 catch in particular (a field with a
+completely silent failure mode, no crash, no visibly wrong behavior until a specific game-mode
+timer never fires) is exactly the class of bug that only survives a hand-trace against the actual
+C, not a test suite that happened not to assert on the value it set up. No action needed until
+6.4b's pre-brief lands.
