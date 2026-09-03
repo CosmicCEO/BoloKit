@@ -233,6 +233,15 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     #expect(state.terrain[5, 5] == .river)
 }
 
+// Wave 5.9: grabTile's mined-terrain case now really detonates via
+// explosionAt, not just a no-op onMineExplosion callback.
+@Test func grabTileMinedLandDetonatesTerrainAndSchedulesChain() {
+    var state = makeState(player: connectedPlayer())
+    state.terrain[50, 50] = .minedGrass
+    grabTile(at: Pointi(x: 50, y: 50), state: &state)
+    #expect(state.terrain[50, 50] == .crater)
+}
+
 // MARK: - drown / smallboom / superboom
 
 @Test func drownKillsAliveTankAndDropsOnboardPills() {
@@ -279,6 +288,35 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     var terrainHit: Pointi?
     superboom(state: &state, onSuperboomTerrain: { terrainHit = $0 })
     #expect(terrainHit == Pointi(x: 4, y: 4))
+}
+
+// Wave 5.9: smallboom now really detonates its own tile via explosionAt
+// (deferred until after `dead` is set — see MineChain.swift's file header
+// and docs/notes/WAVE59_REPORT.md §3), and must NOT apply a second,
+// spurious splash-damage hit to the causer's own (already-dead) tank.
+@Test func smallboomDetonatesOwnTileAndDoesNotDoubleDamageSelf() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(armour: 60))
+    state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+    state.terrain[50, 50] = .minedGrass
+    smallboom(state: &state)
+    #expect(state.terrain[50, 50] == .crater)
+    #expect(state.local.armour == 60)
+}
+
+// Wave 5.9: same as above for superboom's 2x2 detonation.
+@Test func superboomDetonatesTerrainAndDoesNotDoubleDamageSelf() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(armour: 60))
+    state.players[0].tank = Vec2f(x: 50.6, y: 50.6)  // frac >= 0.5, origin stays (50, 50)
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+    superboom(state: &state)
+    #expect(state.terrain[50, 50] == .crater)
+    #expect(state.terrain[51, 50] == .crater)
+    #expect(state.terrain[50, 51] == .crater)
+    #expect(state.terrain[51, 51] == .crater)
+    #expect(state.local.armour == 60)
 }
 
 // MARK: - killBuilder / killSquareBuilder / killPointBuilder
@@ -389,6 +427,12 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     var player = connectedPlayer()
     player.tank = Vec2f(x: 5.5, y: 5.5)
     var state = makeState(player: player)
+    // Wave 5.9: (5,5) is outside the mine zone [10,245], so mapDefault()'s
+    // border ring makes it mined-sea by default — grabTile's mine-detonation
+    // branch is now wired for real, so an unrealistic base-on-mined-terrain
+    // fixture would spuriously kill a zero-resource tank here. Set it to
+    // ordinary land, matching how a base would actually be surrounded.
+    state.terrain[5, 5] = .grass0
     state.bases = [Base(x: 5, y: 5, armour: 50, owner: 0, shells: 50, mines: 50)]
     tankLocalTick(old: Pointi(x: 4, y: 5), state: &state)
     #expect(state.local.refueling)

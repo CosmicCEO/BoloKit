@@ -305,17 +305,24 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
     state.local.armour = 5  // will go negative from 10 damage
     state.local.mines = 33  // > 32
     state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
     state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
 
     explosionAt(player: playerNeutral, x: 50, y: 50, state: &state)
 
     #expect(state.local.armour == 0)
     #expect(state.players[0].dead)
-    // superboom's 2x2 terrain mutation happened at the TANK's square via
-    // onSuperboomTerrain, which defaults to a no-op here — but the local
-    // player must be dead and deaths incremented, matching superboom()'s
-    // own unconditional kill.
     #expect(state.local.deaths == 1)
+    // Wave 5.9: superboom() now really detonates its 2x2 area via
+    // superboomAt (applySplashDamage threads onMineExplosion/
+    // onSuperboomTerrain through to it now — see §6 of the pre-brief),
+    // so the escalation's terrain effect is no longer a no-op.
+    #expect(state.terrain[50, 50] == .crater)
+    #expect(state.terrain[51, 50] == .crater)
+    #expect(state.terrain[50, 51] == .crater)
+    #expect(state.terrain[51, 51] == .crater)
 }
 
 @Test func explosionAtSplashLethalWithFewerMinesEscalatesToSmallboom() {

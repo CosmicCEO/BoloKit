@@ -330,9 +330,15 @@ private func applySplashDamage(
     if state.local.armour < 0 {
         state.local.armour = 0
         if state.local.mines > 32 {
-            superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+            superboom(
+                state: &state,
+                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+            )
         } else if state.local.mines > 0 || state.local.shells > 0 {
-            smallboom(state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+            smallboom(
+                state: &state,
+                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            )
         } else {
             killTank(state: &state, onDropPills: onDropPills)
         }

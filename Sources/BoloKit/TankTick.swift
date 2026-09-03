@@ -77,18 +77,24 @@ public func tankCollision(owner: Int, state: GameState) -> (Pointi) -> Bool {
 /// scope boundary, not an oversight; see the Wave 5.2a report in
 /// AGENT_NOTES for the full rationale.
 ///
-/// `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn` are injection
-/// points for effects that belong to sub-systems not yet ported
-/// (builder-kill-by-explosion, mine-chain area damage, respawn selection)
-/// — they default to no-ops so this function is fully testable in
-/// isolation now, and get wired to real implementations in later waves.
+/// `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn` remain pure notify
+/// hooks, fired alongside the real effects below (Wave 5.9): the periodic
+/// corpse explosion now also kills a builder in range
+/// (`killpointbuilder(explosion->point)`, client.c:4002), and the
+/// `explodeTicks` boundary now also calls the real `superboom()`/
+/// `smallboom()` (client.c:4008-4013's direct calls, no callback
+/// indirection in the oracle at all here). `onMineExplosion`/
+/// `onSuperboomTerrain`/`onDropPills` thread through to those calls.
 public func tankMoveTick(
     player: Int,
     state: inout GameState,
     onExplosion: (Vec2f) -> Void = { _ in },
     onSuperboom: () -> Void = {},
     onSmallboom: () -> Void = {},
-    onSpawn: () -> Void = {}
+    onSpawn: () -> Void = {},
+    onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
+    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 ) {
     guard state.players[player].connected else { return }
 
@@ -121,13 +127,24 @@ public func tankMoveTick(
                 if terrainValue != 16 && terrainValue != 17 {
                     state.players[player].explosions.append(Explosion(point: point, counter: 0))
                     onExplosion(point)
+                    killPointBuilder(at: point, state: &state, onDropPills: onDropPills)
                 }
             }
         } else if state.local.respawnCounter == explodeTicks {
             if state.local.mines >= 32 {
                 onSuperboom()
+                superboom(
+                    state: &state,
+                    onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                    onDropPills: onDropPills
+                )
             } else if state.local.mines > 0 || state.local.shells > 0 {
                 onSmallboom()
+                smallboom(
+                    state: &state,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onDropPills: onDropPills
+                )
             }
             // else: neither boom fires, matching C exactly.
         } else if state.local.respawnCounter >= respawnTicks {

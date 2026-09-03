@@ -178,6 +178,27 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     _ = player
 }
 
+// Wave 5.9: the explodeTicks boundary now also calls the real superboom(),
+// which detonates the 2x2 tile area under the tank via superboomAt.
+@Test func tankMoveTickDeadTumbleSuperboomDetonatesTerrain() {
+    var player = connectedPlayer(dead: true)
+    player.tank = Vec2f(x: 50.6, y: 50.6)  // frac >= 0.5, origin stays (50, 50)
+    var state = makeAliveState(player: player)
+    state.local.respawnCounter = explodeTicks - 1
+    state.local.mines = 32
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+
+    tankMoveTick(player: 0, state: &state)
+
+    #expect(state.terrain[50, 50] == .crater)
+    #expect(state.terrain[51, 50] == .crater)
+    #expect(state.terrain[50, 51] == .crater)
+    #expect(state.terrain[51, 51] == .crater)
+}
+
 @Test func tankMoveTickExplodeTicksBoundarySmallboom() {
     var player = connectedPlayer(dead: true)
     var state = makeAliveState(player: player)
@@ -190,6 +211,39 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     #expect(smallboomFired)
     #expect(!superboomFired)
     _ = player
+}
+
+// Wave 5.9: same as above for the real smallboom()/explosionAt path.
+@Test func tankMoveTickDeadTumbleSmallboomDetonatesTerrain() {
+    var player = connectedPlayer(dead: true)
+    player.tank = Vec2f(x: 50.5, y: 50.5)
+    var state = makeAliveState(player: player)
+    state.local.respawnCounter = explodeTicks - 1
+    state.local.mines = 0
+    state.local.shells = 1
+    state.terrain[50, 50] = .minedGrass
+
+    tankMoveTick(player: 0, state: &state)
+
+    #expect(state.terrain[50, 50] == .crater)
+}
+
+// Wave 5.9: the periodic corpse-explosion sub-branch (every 5 ticks) now
+// also kills a builder in range, matching client.c:4002's direct
+// killpointbuilder(explosion->point) call.
+@Test func tankMoveTickDeadTumbleExplosionKillsPointBuilder() {
+    var player = connectedPlayer(dead: true)
+    player.tank = Vec2f(x: 128, y: 128)
+    player.kickSpeed = 0
+    player.builderStatus = .work
+    player.builder = Vec2f(x: 128, y: 128)
+    var state = makeAliveState(player: player)
+    state.starts = [Start(x: 10, y: 20, dir: 0)]
+    state.local.respawnCounter = 4  // next tick makes it 5, triggers the every-5-ticks check
+
+    tankMoveTick(player: 0, state: &state)
+
+    #expect(state.players[0].builderStatus == .parachute)
 }
 
 @Test func tankMoveTickExplodeTicksBoundaryNeitherBoomFires() {
