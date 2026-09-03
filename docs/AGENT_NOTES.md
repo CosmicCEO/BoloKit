@@ -1436,3 +1436,71 @@ question here rather than resolving solo, same as always.
 [TO: PARITY] No action needed until Implementer's Wave 6.2 completion report lands. Good catch
 corroborating the `255` sentinel with a third independent site rather than resting on the two
 already cited for the D35 re-audit — keep applying that rigor to 6.2 onward.
+
+### [PLANNER] 2026-09-03 — Forward-planning pass: 6.3 re-reviewed clean; 6.4 scope gap found (dgramclient), 6.5 traps flagged early
+
+**Type:** planning — forward review (no GO issued, no in-flight wave touched)
+**Phase:** pre-6.4/6.5
+**Blocks:** nothing blocking Wave 6.2 (still in progress, untouched by this entry); informs
+whoever writes Wave 6.4's pre-brief
+
+At Jerod's request: get ahead of the normal cadence and review Wave 6.3's already-banked
+pre-brief more deeply, plus think through 6.4/6.5 sequencing and open design questions before
+IMPLEMENTER gets there. Wave 6.2 itself is not reviewed here — still awaiting IMPLEMENTER's
+completion report.
+
+**Wave 6.3 re-review: nothing new, stands as already banked.** Re-read the full pre-brief
+(`ccb4481`) line by line against `docs/PLAN.md`'s decisions log. The `joinplayerserver()`
+pure/impure split, the `kickplayer`/`banplayer`/`removeplayer` split (`droppills` reuse + ban-list
+insertion as the pure core, socket close deferred to 6.4), and the alliance mutual-consent
+asymmetry (server trusts, client negotiates — a design asymmetry worth preserving, not a bug to
+fix, so no D24-style ruling needed) all hold up under a second pass. No gaps found beyond the
+preamble-struct reassignment already resolved on 2026-09-02. No change to 6.3's status.
+
+**Wave 6.4 scope gap found: `dgramclient()`'s post-decode logic has no assigned sub-wave.** Wave
+6.0's own pre-brief explicitly carved this out of the codec ("stopping before list mutation,
+sound playback, vis updates, and the dead-reckoning loop — those belong to 6.1/6.2, not 6.0").
+But neither wave that actually landed claims it: **Wave 6.1** shipped as `runclient()`/
+`runserver()`'s own tick state machines (pause/timelimit/basecontrol/disconnect) — nothing about
+applying another player's incoming `CLUpdate`. **Wave 6.2** is explicitly scoped to the ~33 TCP
+`recvsr*` handlers only, a different wire channel from UDP `CLUpdate`. So the actual application
+of a *received* `CLUpdate` — other players' shell/explosion list mutation, the sound-flag hooks,
+fog-of-war vis updates, and DEEPDIVE1's dead-reckoning re-simulation loop (`client.c:1446-1454`,
+already flagged there as needing a Swift-side bound regardless of the C oracle's own unbounded
+behavior — a `writeRun`-class safety deviation, not a fidelity fix) — is currently unhomed.
+
+Ruling as **D36**: assign this to **Wave 6.4**, on the same split pattern already used for
+`joinplayerserver()` in 6.3 — 6.4's pre-brief should separate the pure part (decode-to-state
+application, dead-reckoning math; differentially testable against 6.0's existing
+`clupdate_decode_oracle`) from the actual UDP-receive mechanism (Network.framework plumbing),
+rather than treating "transport" as one undifferentiated block. Deliberately not folding this into
+6.2, even though the "apply a given value" shape matches 6.2's stated design philosophy for
+`recvsr*` — 6.2 already has a coding GO in flight, and changing its scope mid-wave risks exactly
+the silent scope drift D28/D35 exist to prevent.
+
+**Wave 6.5 traps flagged early, for whoever writes that pre-brief:**
+- DEEPDIVE1 documents `TrackerHost`/`TrackerHostList` (`tracker.h:36-56`) as **not**
+  `__attribute__((__packed__))`, unlike every other wire struct in the codebase so far
+  (`sizeof(TrackerHost) == 60` includes a pad byte before `timelimit`; `sizeof(TrackerHostList) ==
+  64`). Every 6.0-era struct assumed packed-with-no-padding; this one is the exception and its
+  Swift layout needs to reproduce the same padding deliberately, not by accident of Swift's own
+  default struct layout rules.
+- The tracker reachability echo (`tracker.c:230-232`, `server.c:639-650`/`1467-1479`): a zeroed
+  `CLUpdate` header with `player = 255` must be echoed verbatim by the **server's** UDP receive
+  path. This is server-side transport code, so it belongs in **6.4**, even though it only matters
+  once 6.5's tracker client exists — flagging now so 6.4's pre-brief doesn't drop the
+  `player == 255` sentinel case as unreachable dead code.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — new **D36** in the decisions log; Wave 6.4's row updated to include the
+  `dgramclient()` scope and the tracker-echo note; Wave 6.5's row updated to flag the
+  `TrackerHost`/`TrackerHostList` packing trap for its own eventual pre-brief.
+
+[TO: IMPLEMENTER] Nothing actionable for Wave 6.2, currently in flight — this doesn't change its
+scope. When you get to Wave 6.4's pre-brief: read D36 above first, split `dgramclient()`'s pure
+application logic from the receive mechanism the same way 6.3 split `joinplayerserver()`, and
+don't drop the `player == 255` tracker-echo case as dead code just because 6.5 hasn't landed yet.
+When you get to Wave 6.5: the `TrackerHost`/`TrackerHostList` packing note above is the one thing
+most likely to get silently mis-ported if approached the same way as every other (packed) wire
+struct.
+[TO: PARITY] No action needed — no code shipped this entry, nothing to audit yet.
