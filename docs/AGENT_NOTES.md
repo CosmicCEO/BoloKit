@@ -3770,3 +3770,78 @@ its output to the C decode oracle directly.
 > **→ Parity:** No action needed yet — nothing shipped this entry. Once 6.4b lands, T-2/T-3/T-4's
 > is the area most worth independently re-deriving, given how easy it would be to accidentally
 > reuse 6.4a's `applyRemotePlayerUpdate` machinery here (T-2's whole point is that you must not).
+
+### [PARITY] 2026-09-03 — Wave 6.4b pre-brief assessment (ad hoc, pre-code)
+
+**Type:** planning-stage assessment only — no commit to audit yet (nothing shipped in `8a1ddcd`),
+requested directly by Jerod per the same one-off-role precedent as the 6.4a-pre-brief assist
+(`plan-status.md`'s "One-off role note"). Recommendations only, no `PLAN.md` ruling — that stays
+Planner's call.
+
+**Standing limitation applies as always:** no Swift toolchain in this environment; every check
+below is a direct hand-read of `Reference/c/` (and, where cited, the existing Swift), not a build.
+
+**Method:** re-derived every `file:line` citation in the pre-brief (`8a1ddcd`) against
+`Reference/c/` and `Sources/` directly, rather than trusting the summary — same discipline as any
+post-commit audit, applied one stage earlier than usual because a wrong premise here would cost a
+full coding pass, same rationale as D45's own mandated check.
+
+**Verdict: the pre-brief holds up. Every substantive claim checked is accurate.** Two trivial
+citation-line drifts found, no correctness problems:
+
+- T-11's citation (`server.c:825-828`) points at `joinplayerserver()`'s "server is full" block, not
+  the `select()`-loop gating code it describes. The actual `FD_SET(server.listensock, readfds)`
+  guarded by `joiningplayer.cntlsock == -1` is at `server.c:954-957`. The claim itself (single
+  pending joiner, joins serialized) is correct there — verified independently — just mis-cited.
+- T-13's citation (`server.c:1069`) is one line low; `case kHangupClientMessage:` is at `:1068`.
+  Immaterial.
+
+**Spot-verified independently (not just re-reading the cited line — cross-checked against a
+second source where one existed):**
+
+- Section 1's field-by-field claim: `server.h:100-116`'s player struct has exactly the fields
+  described (`used`/`cntlsock`/`addr`/`dgramaddr`/`name`/`host`/`seq`/`lastupdate`/`alliance`/
+  `tank`/`recvbuf`/`sendbuf` — no `dead`/`dir`/`speed`/builder/shells), confirmed directly.
+- G-1's "5 bytes/npill, 6/base, 3/start" claim: confirmed against `bmap.h:52-74`'s three
+  `__attribute__((packed))` structs directly (5/6/3 bytes each) — not just against the pre-brief's
+  own Swift test-helper encoding, which would have been circular.
+- G-1's sentinel-inclusion claim: `bmap.c:83`'s `run->datalen = 4` (last-run sentinel) does execute
+  before `bmap_server.c:365`'s `len += run.datalen; if (r == 1) SUCCESS` exit check — confirmed,
+  the size arithmetic in `serverloadmapsize()` really does include the trailing sentinel.
+- T-1/T-9 ordering: `server.c:842`'s `seq = 0` line for the join path is genuinely commented out
+  (only `removeplayer()`, `server.c:594`, resets it); the "initialize player" block sets
+  `cntlsock`/`addr`/`dgramaddr` before the roster loop that reads `cntlsock != -1` into
+  `connected` — both confirmed in one continuous read of `server.c:836-880`.
+- T-2/T-3/T-7/T-8 (`dgramserver()`): read the whole function (`server.c:623-696`) in one pass
+  rather than the four separate cited ranges — confirms the family+addr (not port) validity check,
+  the port-refresh-only-on-mismatch line, that seq-store/lastupdate/tank-apply/port-update/relay
+  all sit inside one `isNewerSeq` gate, and that the relay predicate really is `i != player &&
+  cntlsock != -1` with no `used` check. All as described.
+- T-4: `registerserver()`'s tracker echo (`server.c` ~1471) does `bzero(&clupdate,...)` then
+  `player = 255` before replying; `dgramserver()`'s echo (`server.c` ~641) sends the received
+  buffer back verbatim with no zeroing. Two genuinely different mechanisms — the pre-brief's
+  correction to D36's text is right.
+- T-14: independently grepped every `.host` write in `server.c` (not just the cited lines) —
+  every hit is a *read* of `server.players[i].host` (into `bolopreamble`/`SRPlayerJoin`/
+  `SRPlayerRejoin`), never an assignment to it. `GameObjects.swift:216-220`'s own comment already
+  states this same conclusion independently, which is corroboration, not the same check twice.
+- T-15: `kServerTimeLimitReachedJOIN` — zero occurrences anywhere in `server.c` by grep; the only
+  site in the whole reference tree is `client.c:645`'s read. Confirmed dead on the send side.
+- G-1/G-2/G-3/G-4 "doesn't exist yet" claims: grepped `Sources/` for `encodeBMap`, `sendToAll`,
+  and `removePlayer(` — zero hits on all three, and `ClientMessages.swift` has zero `wireSize`
+  occurrences against `ServerMessages.swift`'s 34. None of the four gaps are secretly already
+  covered elsewhere (the exact failure mode D45 exists to catch, checked in the direction 6.4a
+  got bitten by).
+- Baseline test count: 521 `@Test` declarations grep-confirmed across `Tests/BoloKitTests/` +
+  `Tests/DifferentialTests/`, matching the pre-brief's stated baseline exactly.
+
+**No disagreement with any of the pre-brief's technical claims, its trap list, or its scope
+proposal.** The three open questions it poses are legitimately Planner's calls (G-2 placement,
+the T-4 correction's downstream effect on D36's text, T-11's serialization choice) — nothing to
+add there beyond confirming the factual basis under all three is sound.
+
+**Not a substitute for the normal post-commit audit.** Once 6.4b code actually lands, T-2/T-3/T-4
+remain the highest-value re-derivation targets per the pre-brief's own flag — that's the starting
+point once `[TO: PARITY]` comes through in the usual sequence.
+
+[TO: PLANNER] [TO: IMPLEMENTER]
