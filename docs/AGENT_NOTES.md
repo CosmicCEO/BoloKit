@@ -1220,3 +1220,52 @@ authority that the code executes; this audit is the authority that it's correct 
 > correct, just undocumented) — a one-line disclosure closes it, no design change needed.
 > **→ Implementer:** See Finding 1/2 above for the specific gaps; both are narrow, scoped fixes,
 > not a rework of `RunTick.swift`'s structure.
+
+### [PLANNER] 2026-09-03 — Jerod's ruling on Wave 6.1 PARITY findings: fix both before 6.2 GO
+
+**Type:** planning — ruling + handoff
+**Phase:** Wave 6.1 → 6.2
+**Blocks:** Wave 6.2 coding GO
+
+Jerod's ruling on PARITY's two Wave 6.1 findings above (`c1cddee`): both get fixed before Wave 6.2
+opens, not deferred the way Wave 5.9 deferred the mine-cascade gap. Logged as **D35** in
+`docs/PLAN.md`. Reasoning: unlike Wave 5.9 (independent engine work, confirmed decoupled from
+6.2+), Finding 1 sits inside the exact function this wave claims to have fully ported, and
+Finding 2 is a one-line disclosure — both are small enough to close before 6.2 starts rather than
+carry forward as tracked debt.
+
+**Session note:** we're low on usage credits right now, so this entry does the ruling and the
+hand-off to Implementer in one pass rather than the usual GO-then-pre-brief-review round trip.
+Implementer should treat this as both the ruling and the GO to plan and execute Finding 1/2's fix
+directly — no separate pre-brief-review cycle needed unless the plan surfaces something that
+changes scope, in which case log it here as a question rather than resolving solo per the usual
+rule.
+
+**Docs updated to reflect this (committed alongside this entry):**
+- `docs/PLAN.md` — new **D35** in the decisions log (right after D34); Wave 6.1's status row
+  updated to reflect the audit outcome and the fix-before-6.2 ruling; Wave 6's summary row
+  updated to match.
+
+[TO: IMPLEMENTER] Read PARITY's Wave 6.1 audit above in full (`c1cddee`, the
+"### [PARITY] 2026-09-03 — Wave 6.1 audit: 2 findings" entry) before starting — both findings are
+already hand-traced against the C source there, don't re-derive them. Then plan and execute a fix
+for both, and close Wave 6.1 out for real before opening 6.2:
+
+- **Finding 1 (real gap):** `server.c:1192-1197`'s `pauseonplayerexit` → `server.pause = -1` side
+  effect on a lagged-player disconnect has no `GameState` field and no `RunTick.swift` wiring.
+  PARITY's recommendation: add a `pauseOnPlayerExit: Bool` field alongside the `pause`/`timeLimit`/
+  `baseControlThreshold`/`baseControlCounter` session-state fields this wave already added, and
+  wire the mutation into the disconnect path. Small, matches this wave's existing pattern — your
+  call on the exact shape, but it should land as a real fix this time, not a deferred/flagged gap
+  (no independent-of-6.x rationale exists here the way it did for Wave 5.9's mine cascade).
+- **Finding 2 (doc-only):** `client.c:451`'s `seq != 0` half of the move-tank gate has no analog
+  in the unified `GameState` model and wasn't disclosed. One line in `RunTick.swift`'s file header
+  or step 7's comment, same style as the existing `timelimitreached`/`basecontrolreached`
+  disclosure, closes this — no design change.
+- Per D28, note the before/after test count in your completion report even though this is a small
+  fix, not a full wave.
+- Once both land and you've committed, tag `[TO: PARITY]` for a fast re-audit of just these two
+  spots, then `[TO: PLANNER]` to close 6.1 and GO Wave 6.2.
+
+[TO: PARITY] No action needed until Implementer's fix lands — flagging here so the thread is
+visible when you pick this back up for the re-audit.
