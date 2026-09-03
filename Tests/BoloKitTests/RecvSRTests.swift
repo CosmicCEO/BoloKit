@@ -574,11 +574,11 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func recvSrPauseTranslatesSentinel255ToIndefiniteAndOthersLiterally() {
     var state = makeState(players: [])
     recvSrPause(pause: 255, state: &state)
-    #expect(state.pause == -1)
+    #expect(state.clientPauseDisplaySeconds == -1)
 
     recvSrPause(pause: 10, state: &state)
-    #expect(state.pause == 10)
+    #expect(state.clientPauseDisplaySeconds == 10)
 
     recvSrPause(pause: 0, state: &state)
-    #expect(state.pause == 0)
+    #expect(state.clientPauseDisplaySeconds == 0)
 }

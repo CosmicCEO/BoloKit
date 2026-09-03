@@ -24,28 +24,58 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 
 @Test func runTickIndefinitePauseSkipsEverything() {
     var state = makeState(players: [connectedPlayer()])
-    state.pause = -1
+    state.serverPauseTicks = -1
     let ticksBefore = state.ticks
     runTick(state: &state, ticksSinceLastUpdate: [0])
     #expect(state.ticks == ticksBefore)
-    #expect(state.pause == -1)
+    #expect(state.serverPauseTicks == -1)
 }
 
 @Test func runTickPositivePauseCountsDownAndEmitsOnSecondBoundary() {
     var state = makeState(players: [connectedPlayer()])
-    state.pause = Int(ticksPerSec) * 2  // 2 seconds
+    state.serverPauseTicks = Int(ticksPerSec) * 2  // 2 seconds
 
     // 49 silent decrements: 100 -> 51 (ticksPerSec == 50).
     for _ in 0..<(Int(ticksPerSec) - 1) {
         runTick(state: &state, ticksSinceLastUpdate: [0])
     }
-    #expect(state.pause == Int(ticksPerSec) + 1)
+    #expect(state.serverPauseTicks == Int(ticksPerSec) + 1)
 
     // One more: 51 -> 50, a second boundary, fires with 1 second remaining.
     var emitted: [Int] = []
     runTick(state: &state, ticksSinceLastUpdate: [0], onPause: { emitted.append($0) })
-    #expect(state.pause == Int(ticksPerSec))
+    #expect(state.serverPauseTicks == Int(ticksPerSec))
     #expect(emitted == [1])
+}
+
+/// D39: the two pause fields must be genuinely independent storage — a
+/// wire-domain `recvSrPause` decode must not perturb the server-domain
+/// tick countdown, and vice versa. Before the split these shared one
+/// field and this scenario would have silently corrupted one write with
+/// the other's units.
+@Test func runTickServerAndClientPauseFieldsAreIndependent() {
+    var state = makeState(players: [connectedPlayer()])
+    recvSrPause(pause: 10, state: &state)  // wire broadcast: 10 seconds, client-domain
+    state.serverPauseTicks = Int(ticksPerSec) * 2  // server's own 2-second countdown, tick-domain
+
+    runTick(state: &state, ticksSinceLastUpdate: [0])
+
+    // The server-domain countdown ticked down by exactly one tick; the
+    // client-domain value written by recvSrPause is untouched by it.
+    #expect(state.serverPauseTicks == Int(ticksPerSec) * 2 - 1)
+    #expect(state.clientPauseDisplaySeconds == 10)
+}
+
+/// D39: `runTick`'s pause gate must honor a client-domain pause signal
+/// even when the server-domain field is at rest (`0`) — otherwise a
+/// non-hosting client that received an `SRPause` broadcast would never
+/// actually skip its tick.
+@Test func runTickGateHonorsClientPauseEvenWhenServerPauseIsZero() {
+    var state = makeState(players: [connectedPlayer()])
+    recvSrPause(pause: 5, state: &state)
+    let ticksBefore = state.ticks
+    runTick(state: &state, ticksSinceLastUpdate: [0])
+    #expect(state.ticks == ticksBefore)  // gate honored the client-domain signal alone
 }
 
 @Test func runTickUnpausedTicksNormally() {
@@ -215,7 +245,7 @@ private func alliedPlayers(count: Int) -> [PlayerState] {
         onPause: { pauseEvents.append($0) }
     )
 
-    #expect(state.pause == -1)
+    #expect(state.serverPauseTicks == -1)
     #expect(pauseEvents == [255])
 }
 
@@ -225,7 +255,7 @@ private func alliedPlayers(count: Int) -> [PlayerState] {
 
     runTick(state: &state, ticksSinceLastUpdate: [9 * UInt64(ticksPerSec)])
 
-    #expect(state.pause == 0)
+    #expect(state.serverPauseTicks == 0)
 }
 
 // MARK: - Lagged-status callback

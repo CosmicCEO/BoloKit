@@ -61,14 +61,18 @@ public func runTick(
     onSmallboom: () -> Void = {},
     onSpawn: () -> Void = {}
 ) {
-    // 1. Pause gate. Mirrors `server.pause`'s tri-state handling
-    // (server.c:1088-1099) and doubles as `runclient()`'s `client.pause`
-    // early-exit (client.c:430) — a paused unified tick does nothing else.
-    if state.pause != 0 {
-        if state.pause > 0 {
-            state.pause -= 1
-            if state.pause % Int(ticksPerSec) == 0 {
-                onPause(state.pause / Int(ticksPerSec))
+    // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
+    // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
+    // `client.pause` (client.c:430) — wire-domain, never counted down
+    // here either, but still gates the tick the same way runclient()'s
+    // own early-exit does. D39: split from a single unified `pause`
+    // field, which let this countdown and RecvSR.swift's `recvSrPause`
+    // decode silently clobber each other's units.
+    if state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0 {
+        if state.serverPauseTicks > 0 {
+            state.serverPauseTicks -= 1
+            if state.serverPauseTicks % Int(ticksPerSec) == 0 {
+                onPause(state.serverPauseTicks / Int(ticksPerSec))
             }
         }
         return
@@ -178,7 +182,7 @@ public func runTick(
         // `server.pause == -1`), so this reuses `onPause` rather than
         // adding a new callback.
         if state.pauseOnPlayerExit {
-            state.pause = -1
+            state.serverPauseTicks = -1
             onPause(255)
         }
     }

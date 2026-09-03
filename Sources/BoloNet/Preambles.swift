@@ -216,7 +216,11 @@ public let trackerVersion: UInt8 = 0
 /// fixture) is treated as the missing slots being never-used, matching
 /// what an empty `PlayerState()` already means.
 public func assembleBoloPreamble(player: Int, state: GameState, seq: [UInt32], mapLength: UInt32) -> BoloPreamble {
-    let pause: UInt8 = state.pause == -1 ? 255 : UInt8(state.pause / Int(ticksPerSec))
+    // `server.pause` is the tick-domain field this wire byte derives from
+    // (server.c:860-864) -- `serverPauseTicks` after D39's split, not
+    // `clientPauseDisplaySeconds` (the wire-domain field that value would
+    // already be expressed in, with no TICKSPERSEC division to redo).
+    let pause: UInt8 = state.serverPauseTicks == -1 ? 255 : UInt8(state.serverPauseTicks / Int(ticksPerSec))
 
     let dominationType: UInt8
     switch state.dominationType {

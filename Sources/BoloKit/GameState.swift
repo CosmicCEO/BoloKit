@@ -33,8 +33,21 @@ public struct GameState: Sendable {
     /// `0` = running; positive = counting down by one tick per call to
     /// `runTick`, emitting a pause-status event on each second boundary;
     /// `-1` = paused indefinitely, no countdown. Mirrors `server.pause`
-    /// (Wave 6.1).
-    public var pause: Int
+    /// (Wave 6.1). **Split from a single unified `pause` field by D39** —
+    /// see `clientPauseDisplaySeconds` for the other half of that split
+    /// and why they can't share storage.
+    public var serverPauseTicks: Int
+    /// Wire-domain pause value, written verbatim by `recvSrPause` (seconds,
+    /// or `-1` for the wire's 255 sentinel). Mirrors `client.pause`
+    /// (`client.c`) — unlike `serverPauseTicks`, this is **never counted
+    /// down**: the real `client.c` never decrements `client.pause` either,
+    /// it's purely a received display/gate value. Still participates in
+    /// `runTick`'s pause gate (mirrors `client.c:430`'s truthy check).
+    /// **D39:** until this split, `RunTick.swift`'s tick-domain countdown
+    /// and `RecvSR.swift`'s `recvSrPause` decode wrote the same field in
+    /// different units — a real hazard, not a C-oracle bug, introduced by
+    /// this port's own client/server unification.
+    public var clientPauseDisplaySeconds: Int
     /// Game time limit in seconds; `0` = no limit. Mirrors `server.timelimit`.
     /// `runTick` derives every timing decision from `ticks` vs. this value
     /// directly — there is no separate "reached" flag, unlike the real
@@ -87,7 +100,8 @@ public struct GameState: Sendable {
         chains: [[Pointi]] = Array(repeating: [], count: chainTicks + 1),
         floods: [[Pointi]] = Array(repeating: [], count: floodTicks + 1),
         dominationType: DominationType = .open,
-        pause: Int = 0,
+        serverPauseTicks: Int = 0,
+        clientPauseDisplaySeconds: Int = 0,
         timeLimit: Int = 0,
         baseControlThreshold: Int = 0,
         baseControlCounter: Int = 0,
@@ -111,7 +125,8 @@ public struct GameState: Sendable {
         self.chains = chains
         self.floods = floods
         self.dominationType = dominationType
-        self.pause = pause
+        self.serverPauseTicks = serverPauseTicks
+        self.clientPauseDisplaySeconds = clientPauseDisplaySeconds
         self.timeLimit = timeLimit
         self.baseControlThreshold = baseControlThreshold
         self.baseControlCounter = baseControlCounter

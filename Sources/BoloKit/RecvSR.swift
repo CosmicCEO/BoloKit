@@ -632,7 +632,11 @@ public func recvSrSetAlliance(
 
 /// Ported from `recvsrpause()` (`client.c:1474-1493`). `255` is the
 /// wire's established indefinite-pause sentinel (confirmed for `runTick`
-/// in Wave 6.1's D35 fix, from three independent C call sites).
+/// in Wave 6.1's D35 fix, from three independent C call sites). Writes
+/// `clientPauseDisplaySeconds`, not `serverPauseTicks` — this mirrors
+/// `client.pause` (wire-domain seconds, never counted down), a distinct
+/// C variable from `server.pause` (tick-domain) that this port used to
+/// conflate into one field before D39 split them.
 public func recvSrPause(pause: UInt8, state: inout GameState) {
-    state.pause = (pause == 255) ? -1 : Int(pause)
+    state.clientPauseDisplaySeconds = (pause == 255) ? -1 : Int(pause)
 }

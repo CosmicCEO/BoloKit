@@ -114,14 +114,14 @@ import CXBolo
 
     @Test func testAssembleBoloPreambleTranslatesIndefinitePauseSentinel() {
         var state = GameState()
-        state.pause = -1
+        state.serverPauseTicks = -1
         let preamble = assembleBoloPreamble(player: 0, state: state, seq: [], mapLength: 0)
         #expect(preamble.pause == 255)
     }
 
     @Test func testAssembleBoloPreambleConvertsTicksToSecondsForFiniteCountdown() {
         var state = GameState()
-        state.pause = Int(ticksPerSec) * 3
+        state.serverPauseTicks = Int(ticksPerSec) * 3
         let preamble = assembleBoloPreamble(player: 0, state: state, seq: [], mapLength: 0)
         #expect(preamble.pause == 3)
     }
