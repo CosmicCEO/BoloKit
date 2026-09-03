@@ -2303,3 +2303,64 @@ regardless of how that's answered.
 > Implementer or if you'd rather wait for Planner to weigh in directly.
 > **→ Implementer:** No coding GO from this entry. If Jerod confirms the above is sufficient,
 > expect the actual GO from him or Planner, not from this entry.
+
+### [PLANNER] 2026-09-03 — Wave 6.4 pre-brief reviewed: D42/D43/D44 rule its three questions, split into 6.4a/6.4b
+
+**Type:** planning — review + three rulings + wave split, coding GO for 6.4a
+**Phase:** Wave 6.4 → 6.4a/6.4b
+**Blocks:** Wave 6.4b on 6.4a completing
+
+This is the first Wave 6 pre-brief that's genuinely different in kind from 6.0-6.3/6.6 — real
+Network.framework design, not just porting pure decision logic — and it reads that way: three real
+open questions instead of the usual one, all correctly surfaced rather than guessed at.
+
+**D42 — the `Buf.swift`/D31 tension is real, and IMPLEMENTER's proposed resolution is exactly
+right.** Good catch reading `docs/PLAN.md`'s Wave 6.4 row literally (it names `sendbuf`/`recvbuf`/
+`cntlsend`/`cntlrecv` as reusable) instead of assuming I meant something looser — that phrasing was
+imprecise shorthand for "reuse the byte-queue plumbing" and, read literally, contradicts D31's own
+explicit exclusion of transliterated POSIX/select glue. Confirmed: `Buf.swift`'s pure half stays,
+its socket half doesn't get used, new code goes against `NWConnection`/`NWListener`. Corrected the
+row's wording.
+
+**D43 — `dgramserver()` is in scope (same shape as D36, just not named), and the host-vs-client
+question resolves to "build both, but not in the same pass."** On scope: `dgramserver()`'s
+dedup/relay/apply logic is real, substantial, oracle-testable-once-an-export-exists work, same
+category D36 already assigned `dgramclient()` to — no reason to treat the server side differently
+just because D36's text happened not to name it. On the harder question (does this instance need
+to act as host and joining-client simultaneously, tied to the still-open Q22): **both roles are
+needed regardless of how Q22 eventually gets ruled** — even the narrowest possible product (a
+single app hosting in-process) needs a working accept loop and a working join handshake in the
+same binary, so this doesn't have to wait on Jerod's dedicated-binary-vs-in-process-only call. What
+it doesn't need is both roles built in one coding pass: same reasoning as D23's Wave 5.3 split
+(too much real, separable work bundled under one name), so **Wave 6.4 splits into 6.4a (client:
+join handshake + `dgramclient` application, sequenced first since its pure logic is already
+oracle-testable against Wave 6.0's `clupdate_decode_oracle`) and 6.4b (host: accept loop +
+`dgramserver` relay + its tracker echo, blocked on 6.4a).** Not deciding Q22 itself — flagging for
+Jerod that this is worth his eyes given it's adjacent to that still-open call, even though nothing
+here actually depends on how it's ruled.
+
+**D44 — the proposed dead-reckoning bound (`Int(ticksPerSec) * 3`) is approved as stated.** D36
+already established that this loop needs *a* bound as a `writeRun`-class safety deviation, not a
+fidelity question; this just confirms the specific value is reasonable (smooths ordinary UDP
+burst-loss, bounds worst-case CPU) rather than something to second-guess.
+
+**Wave 6.4a coding GO issued** — client-side transport per the pre-brief's scope breakdown, with
+D42's `Buf.swift` resolution and D44's bound applied. Wave 6.4b stays blocked until 6.4a lands and
+is reviewed. Confirmed `registerserver()`'s separate tracker-echo occurrence stays deferred to
+Wave 6.5 as proposed — no change there.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D42/D43/D44 added to the decisions table. Wave 6.4's single row replaced with
+  6.4a (pre-brief GO'd)/6.4b (blocked on 6.4a) per the D23 sub-wave-lettering precedent. Wave 6
+  summary row updated.
+
+[TO: IMPLEMENTER] Three rulings above unblock coding. **Cleared to start Wave 6.4a** (client-side
+transport + `dgramclient` application + the bounded dead-reckoning loop) per your own pre-brief's
+scope breakdown, D42's `Buf.swift` resolution, and D44's `Int(ticksPerSec) * 3` bound. Wave 6.4b
+(host-side) waits until 6.4a is reviewed and closed — write its own pre-brief when you get there,
+same two-stage process. Test plan as you proposed: differential tests for the client-side pure
+function against Wave 6.0's oracle, Swift-only tests for the actual `NWConnection` plumbing (first
+non-differential tests in this project, per D31's own reasoning — stating that plainly in your
+completion report, not silently applying a different bar, is exactly right).
+[TO: PARITY] No action yet — nothing to audit until Wave 6.4a lands, or Wave 5.9's report arrives
+on its own branch.
