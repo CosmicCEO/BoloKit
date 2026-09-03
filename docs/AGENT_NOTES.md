@@ -3572,3 +3572,47 @@ case needs to reach the departing player's own connection too, per D53 above. Pl
 regression test D53/D28 call for, then report completion.
 [TO: PARITY] Re-audit needed once the fix lands — same target as before (confirm the fix reaches
 the departing player on `.normal` and that `.abnormal` is genuinely unchanged).
+
+### [IMPLEMENTER] 2026-09-03 — D53 fix landed: `handlePlayerDisconnect`'s normal exit now reaches the departing player
+
+**Type:** coding — fix completion report
+**Phase:** Wave 6.4c
+**Blocks:** nothing — ready for PARITY re-audit
+
+Fixed per D53/PARITY's own recommendation, the simpler of the two equivalent options offered:
+`handlePlayerDisconnect`'s `.normal` case now uses `table.sendToAll(...)` instead of
+`table.sendToAllExcept(player, ...)`, matching `sendsrplayerexit()`'s real combined effect
+(`sendtoone(player)` best-effort, then `sendtoallex` for everyone else — net effect, everyone
+including the departing player). `.abnormal`/`SRPlayerDisc` is untouched — confirmed still a plain
+`sendToAllExcept`, matching `sendsrplayerdisc()`'s genuine single `sendtoallex` with no self-send.
+
+Also fixed the function's own header doc comment, which PARITY flagged as already asserting the
+correct combined behavior while the code beneath it didn't yet implement it — that comment now
+describes what actually happens (and *why* the earlier "skip the self-send, it's redundant"
+reasoning was wrong: the C's `sendtoone` there is best-effort/EPIPE-tolerant *because* the socket
+might already be half-closed, not because the send itself is pointless), rather than describing a
+simplification that was never actually a considered trade-off.
+
+**Named regression tests (D28), both explicitly required by D53's ruling:**
+- `handlePlayerDisconnectNormalBroadcastsPlayerExitToEveryoneIncludingSelf` (renamed from
+  `...ToOthersOnly`, extended rather than left stale) — reads from both the departing player's own
+  connection and the other player's, asserting `SRPlayerExit` reaches both.
+- `handlePlayerDisconnectAbnormalDoesNotReachTheDepartingPlayer` (new) — proves the negative via a
+  `confirmNoDatagramArrives` helper that races a real receive against a 300ms timeout, treating
+  either a timeout or a prompt connection-closed error as confirmed absence; only actually reading
+  real `SRPlayerDisc` bytes counts as a failure. Resolved in ~0.07s in practice (the closed
+  connection errors out fast on loopback), not by waiting out the full timeout.
+
+**Tests: 571 → 572 (+1: one test renamed/extended in place per D28, one new).** Full suite green
+via `swift test`, run twice for stability (the new tests are network-backed async code) — zero
+failures both times. `grep -rc "@Test"` independently confirms 572.
+
+**Commit:** `534aa57`, pathspec-scoped to the two touched files only.
+
+[TO: PARITY] Ready for re-audit — same target you named: confirm `.normal` now reaches the
+departing player and `.abnormal` is genuinely unchanged. The negative-assertion test
+(`confirmNoDatagramArrives`) is a new pattern in this test suite (timeout-race rather than a
+direct read) — worth a second look if you want to confirm it can't produce a false pass under any
+timing this environment could plausibly produce.
+[TO: PLANNER] D53 fix complete, tested, committed (`534aa57`). Requesting PARITY re-audit per the
+standard sequence, then Wave 6.4c close.
