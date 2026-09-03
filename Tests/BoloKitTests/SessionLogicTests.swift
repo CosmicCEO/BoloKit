@@ -166,6 +166,28 @@ private let netGameVersionForTest: UInt8 = 1
     }
 }
 
+// MARK: - removePlayer
+
+@Suite struct RemovePlayerTests {
+
+    /// The direct `removeplayer()` call site (Wave 6.4b's socket-close
+    /// disconnect path) has no broadcast callback of its own -- the
+    /// caller sends `sendsrplayerexit`/`sendsrplayerdisc` separately
+    /// depending on how the connection ended (T-13), so this function's
+    /// whole contract is just the two `GameState` effects.
+    @Test func disconnectsAndDropsOnboardPills() {
+        var state = GameState(players: [usedPlayer(name: "A", connected: true)])
+        state.terrain[50, 50] = .grass0
+        state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
+        state.pills = [Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 10, counter: 0)]
+
+        removePlayer(player: 0, state: &state)
+
+        #expect(!state.players[0].connected)
+        #expect(state.pills[0].armour != pillOnboard)
+    }
+}
+
 // MARK: - kickPlayer / banPlayer
 
 @Suite struct KickBanPlayerTests {

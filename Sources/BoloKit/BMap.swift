@@ -521,3 +521,52 @@ public func decodeBMap(_ bytes: [UInt8], into state: inout GameState) -> Bool {
 
     return true
 }
+
+// MARK: - Full-file encode (Wave 6.4b, G-1)
+//
+// Ported from `serversavemap()` (`Reference/c/bmap_server.c:259-346`) --
+// `decodeBMap`'s inverse, needed by `joinplayerserver()`'s Swift
+// counterpart (`server.c:885`) to produce the map-byte payload that
+// follows `BoloPreamble` on the wire. Promoted from
+// `BMapDecodeTests.swift`'s private `encodeFullBMap` test helper, which
+// already implemented this exact byte layout to build `decodeBMap`
+// fixtures (D28: that helper's coverage moves here, it doesn't vanish).
+//
+// Unlike `serversavemap()`, this never allocates or sizes a buffer up
+// front (`serverloadmapsize()`'s own separate pass, `bmap_server.c:
+// 348-374`) -- Swift's `Array` grows as needed, so there's no equivalent
+// step to port.
+
+/// Encodes `state.pills`/`bases`/`starts`/`terrain` into a full BMAP-format
+/// byte blob -- the inverse of `decodeBMap`. Always succeeds (there is no
+/// C failure mode on the encode side to replicate; `serversavemap()`'s own
+/// `LOGFAIL`s are all allocation-failure or `readrun()`-internal, neither
+/// of which apply to a Swift array builder).
+public func encodeBMap(_ state: GameState) -> [UInt8] {
+    var bytes: [UInt8] = Array("BMAPBOLO".utf8)
+    bytes.append(1)  // CURRENT_MAP_VERSION (bolo.h:26)
+    bytes.append(UInt8(state.pills.count))
+    bytes.append(UInt8(state.bases.count))
+    bytes.append(UInt8(state.starts.count))
+
+    for p in state.pills {
+        bytes += [p.x, p.y, p.owner, p.armour, p.speed]
+    }
+    for b in state.bases {
+        bytes += [b.x, b.y, b.owner, b.armour, b.shells, b.mines]
+    }
+    for s in state.starts {
+        bytes += [s.x, s.y, s.dir]
+    }
+
+    var y = 0
+    var x = 0
+    while true {
+        let (run, data, isLast) = readRun(grid: state.terrain, y: &y, x: &x)
+        bytes += [run.datalen, run.y, run.startx, run.endx]
+        if isLast { break }
+        bytes += data
+    }
+
+    return bytes
+}

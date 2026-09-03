@@ -127,6 +127,23 @@ private func removePlayerPills(player: Int, state: inout GameState) {
     dropPills(player: player, x: state.players[player].tank.x, y: state.players[player].tank.y, pills: pills, state: &state)
 }
 
+/// Ported from `removeplayer()`'s `GameState`-affecting core
+/// (`server.c:584-608`) — closing the socket and draining the byte-queue
+/// buffers (`closesock`/`readbuf`) is Wave 6.4b's transport concern
+/// (`HostSessionTable`), along with the `seq = 0` reset (`server.c:594`),
+/// which has no `GameState` home (Wave 6.0's own design call — this port
+/// never stores per-player network sequence bookkeeping there, same as
+/// `evaluateJoinRequest`'s `ticksSinceLastUpdate` parameter). Public
+/// because `servermainthread`'s socket-close disconnect path
+/// (`server.c:1667-1740`, four call sites) calls `removeplayer()`
+/// directly — not only via `kickplayer()`/`banplayer()`, which both call
+/// it as their own tail (`server.c:487`, `:525`, confirmed) and so are
+/// rewritten below to call this instead of duplicating its body.
+public func removePlayer(player: Int, state: inout GameState) {
+    state.players[player].connected = false
+    removePlayerPills(player: player, state: &state)
+}
+
 /// Ported from `kickplayer()` (`server.c:475-501`). Unlike `banPlayer`
 /// below, the real C has no `cntlsock != -1` guard here — calling this on
 /// an already-disconnected player is the caller's contract to avoid
@@ -135,8 +152,7 @@ private func removePlayerPills(player: Int, state: inout GameState) {
 /// `GameState.localPlayer`'s invariant, same rule).
 public func kickPlayer(player: Int, state: inout GameState, onShouldBroadcastPlayerKick: (Int) -> Void = { _ in }) {
     onShouldBroadcastPlayerKick(player)
-    state.players[player].connected = false
-    removePlayerPills(player: player, state: &state)
+    removePlayer(player: player, state: &state)
 }
 
 /// Ported from `banplayer()` (`server.c:503-535`). The `cntlsock != -1`
@@ -148,8 +164,7 @@ public func banPlayer(player: Int, state: inout GameState, onShouldBroadcastPlay
     guard state.players[player].connected else { return }
     state.bannedPlayers.append(BannedPlayer(name: state.players[player].name, address: state.players[player].address))
     onShouldBroadcastPlayerBan(player)
-    state.players[player].connected = false
-    removePlayerPills(player: player, state: &state)
+    removePlayer(player: player, state: &state)
 }
 
 // MARK: - Alliance

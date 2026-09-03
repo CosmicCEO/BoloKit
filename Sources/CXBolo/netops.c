@@ -470,3 +470,121 @@ struct PreambleLayoutOracle preamble_layout_oracle(void) {
 
   return L;
 }
+
+/* Permanent verbatim extract of dgramserver()'s pure per-packet decision
+   core (Reference/c/server.c:614-696), for Wave 6.4b oracle testing.
+   Excludes the recvfrom()/sendto() socket calls and the outer for(;;)
+   drain loop -- those are HostListener's transport mechanism, this is
+   only what happens to one already-received datagram plus the server's
+   already-known per-player session state.
+
+   `sin_family` is `uint8_t` on Darwin's `struct sockaddr_in` (not the
+   POSIX-generic `sa_family_t` some platforms widen to 16 bits) -- matched
+   here as `uint8_t` rather than assumed, so this stays a faithful
+   decomposition of the real comparison rather than a guess at its width. */
+struct DgramServerPlayerState {
+  int used;
+  int connected;       /* cntlsock != -1 */
+  uint8_t dgramFamily;
+  uint32_t dgramAddr;  /* sin_addr.s_addr, network byte order */
+  uint16_t dgramPort;  /* sin_port, network byte order */
+  uint32_t seq;
+};
+
+struct DgramServerRelayResult {
+  int isTrackerEcho;    /* server.c:637-645 -- r == sizeof(hdr) && player == 255 */
+  int isMalformed;      /* server.c:648-654's sanity check failed */
+  int player;           /* clupdate.hdr.player; only meaningful past the malformed check */
+  int isValidPlayer;    /* server.c:663-667's used/cntlsock/family/addr check */
+  int isNewerSeq;       /* server.c:668's (int32_t)(seq - stored) > 0 */
+  uint32_t decodedSeq;  /* ntohl(clupdate.hdr.seq[player]), server.c:661 */
+  int portChanged;      /* server.c:674-676 */
+  uint16_t newPort;
+  uint32_t tankXRaw;    /* ntohl(clupdate.hdr.tankx) -- still the raw float bit pattern */
+  uint32_t tankYRaw;
+  /* relayTo/relayCount deliberately NOT members here -- a fixed-size C
+     array as a struct member imports into Swift as an unsubscriptable
+     N-tuple, the exact same problem this file's own top-of-file comment
+     already documents for CLUpdate.hdr.seq. Written through the separate
+     `outRelayTo`/`outRelayCount` pointers below instead. */
+};
+
+/* `outRelayTo` must point at a caller-allocated buffer of at least
+   MAXPLAYERS ints (server.c:678-684's `i != player && cntlsock != -1`
+   loop, written as a dense list of the indices that pass, not a
+   MAXPLAYERS-length bitmap). */
+int dgramserver_relay_oracle(
+  const uint8_t *bytes, size_t len,
+  uint8_t addrFamily, uint32_t addrAddr, uint16_t addrPort,
+  const struct DgramServerPlayerState *players, /* MAXPLAYERS entries */
+  struct DgramServerRelayResult *out,
+  int *outRelayTo, int *outRelayCount
+) {
+  const struct CLUpdate *clupdate = (const void *)bytes;
+  int player;
+  uint32_t seq;
+  int i;
+
+  memset(out, 0, sizeof(*out));
+  *outRelayCount = 0;
+
+  /* test packet from tracker (server.c:637-645) -- checked before the
+     sanity check, matching the C's if/else-if ordering exactly. Safe to
+     dereference clupdate->hdr.player only once len == sizeof(hdr) is
+     confirmed by the left operand's short-circuit. */
+  if (len == sizeof(clupdate->hdr) && clupdate->hdr.player == 255) {
+    out->isTrackerEcho = 1;
+    return 1;
+  }
+
+  /* sanity check the size (server.c:648-654) -- the `||` chain's own
+     short-circuiting is load-bearing here too: nshells/nexplosions/player
+     are never read from `bytes` unless len >= sizeof(hdr) already held. */
+  if (
+      len < sizeof(clupdate->hdr) ||
+      len != sizeof(clupdate->hdr) + clupdate->hdr.nshells*sizeof(struct CLUpdateShell) + clupdate->hdr.nexplosions*sizeof(struct CLUpdateExplosion) ||
+      clupdate->hdr.player >= MAXPLAYERS
+    ) {
+    out->isMalformed = 1;
+    return 1;
+  }
+
+  player = clupdate->hdr.player;
+  out->player = player;
+
+  /* network to host byte order (server.c:661) */
+  seq = ntohl(clupdate->hdr.seq[player]);
+  out->decodedSeq = seq;
+
+  /* verify this is a valid player (server.c:663-667) */
+  if (
+      players[player].used &&
+      players[player].connected &&
+      players[player].dgramFamily == addrFamily &&
+      players[player].dgramAddr == addrAddr
+    ) {
+    out->isValidPlayer = 1;
+
+    /* make sure this is not an old update (server.c:668) */
+    if ((int32_t)(seq - players[player].seq) > 0) {
+      out->isNewerSeq = 1;
+      out->tankXRaw = ntohl(clupdate->hdr.tankx);
+      out->tankYRaw = ntohl(clupdate->hdr.tanky);
+
+      if (players[player].dgramPort != addrPort) {
+        out->portChanged = 1;
+        out->newPort = addrPort;
+      }
+
+      /* send update to all other players (server.c:678-684) */
+      for (i = 0; i < MAXPLAYERS; i++) {
+        if (i != player && players[i].connected) {
+          outRelayTo[*outRelayCount] = i;
+          (*outRelayCount)++;
+        }
+      }
+    }
+  }
+
+  return 1;
+}

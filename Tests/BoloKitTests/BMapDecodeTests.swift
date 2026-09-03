@@ -5,34 +5,14 @@ import BoloKit
 // Swift port discovered missing while tracing what the client-side
 // preamble-apply function needs.
 
+/// Was a from-scratch byte-layout implementation; now a thin wrapper over
+/// the production `encodeBMap` (Wave 6.4b, G-1) -- promoted there once a
+/// real caller (`joinplayerserver()`'s Swift counterpart) needed the exact
+/// same logic. Kept as a wrapper, not deleted, so every test below stays
+/// unchanged (D28: this coverage moved into `encodeBMap`'s own round-trip
+/// tests, it didn't vanish).
 private func encodeFullBMap(pills: [Pill], bases: [Base], starts: [Start], grid: TerrainGrid) -> [UInt8] {
-    var bytes: [UInt8] = Array("BMAPBOLO".utf8)
-    bytes.append(1)  // CURRENT_MAP_VERSION
-    bytes.append(UInt8(pills.count))
-    bytes.append(UInt8(bases.count))
-    bytes.append(UInt8(starts.count))
-    for p in pills {
-        bytes += [p.x, p.y, p.owner, p.armour, p.speed]
-    }
-    for b in bases {
-        bytes += [b.x, b.y, b.owner, b.armour, b.shells, b.mines]
-    }
-    for s in starts {
-        bytes += [s.x, s.y, s.dir]
-    }
-
-    var y = 0
-    var x = 0
-    while true {
-        let (run, data, isLast) = readRun(grid: grid, y: &y, x: &x)
-        if isLast {
-            bytes += [run.datalen, run.y, run.startx, run.endx]
-            break
-        }
-        bytes += [run.datalen, run.y, run.startx, run.endx]
-        bytes += data
-    }
-    return bytes
+    encodeBMap(GameState(terrain: grid, pills: pills, bases: bases, starts: starts))
 }
 
 @Test func decodeBMapRoundTripsPillsBasesStartsAndTerrain() {
@@ -91,4 +71,54 @@ private func encodeFullBMap(pills: [Pill], bases: [Base], starts: [Start], grid:
     let bytes = encodeFullBMap(pills: [], bases: [], starts: [], grid: .mapDefault())
     var state = GameState()
     #expect(!decodeBMap(Array(bytes.prefix(bytes.count - 1)), into: &state))
+}
+
+// MARK: - encodeBMap (Wave 6.4b, G-1)
+
+@Test func encodeBMapProducesTheDecodableHeaderAndCounts() {
+    let pills = [Pill(x: 20, y: 20, armour: 10, owner: 1, speed: 40, counter: 5)]
+    let bases = [Base(x: 30, y: 30, armour: 50, owner: 0, shells: 10, mines: 10)]
+    let starts = [Start(x: 40, y: 40, dir: 3)]
+    let state = GameState(pills: pills, bases: bases, starts: starts)
+
+    let bytes = encodeBMap(state)
+
+    #expect(Array(bytes.prefix(8)) == Array("BMAPBOLO".utf8))
+    #expect(bytes[8] == 1)  // CURRENT_MAP_VERSION
+    #expect(bytes[9] == 1 && bytes[10] == 1 && bytes[11] == 1)  // npills/nbases/nstarts
+}
+
+/// Round-trips a non-trivial terrain grid through `encodeBMap` ->
+/// `decodeBMap` and back through the underlying RLE codec directly --
+/// stronger than only checking `decodeBMap` accepts the bytes, since a
+/// codec that agreed with itself on a bug wouldn't be caught by that
+/// alone.
+@Test func encodeBMapRoundTripsThroughDecodeBMap() {
+    var grid = TerrainGrid.mapDefault()
+    grid[10, 10] = .wall
+    grid[10, 11] = .wall
+    grid[200, 5] = .forest
+    let state = GameState(terrain: grid, pills: [Pill(x: 1, y: 1, armour: 5, owner: 0, speed: 50, counter: 0)])
+
+    let bytes = encodeBMap(state)
+    var decoded = GameState()
+    #expect(decodeBMap(bytes, into: &decoded))
+
+    #expect(decoded.terrain[10, 10] == .wall)
+    #expect(decoded.terrain[10, 11] == .wall)
+    #expect(decoded.terrain[200, 5] == .forest)
+    #expect(decoded.pills.count == 1)
+    #expect(decoded.pills[0].x == 1 && decoded.pills[0].armour == 5)
+}
+
+/// G-1's size-accounting claim, verified directly rather than just relying
+/// on `decodeBMap` accepting the bytes: the sentinel run's 4 header bytes
+/// are actually present at the very end of the byte stream for an
+/// entirely-default map (`serverloadmapsize()`'s `len += run.datalen`
+/// executes before its `r == 1` exit check, `bmap_server.c:365-368`).
+@Test func encodeBMapEmptyMapEndsExactlyWithTheSentinelRun() {
+    let bytes = encodeBMap(GameState())
+    let preambleSize = 12  // ident(8) + version(1) + npills/nbases/nstarts(3)
+    #expect(bytes.count == preambleSize + 4)  // no pills/bases/starts, just the sentinel run
+    #expect(Array(bytes.suffix(4)) == [4, 0xff, 0xff, 0xff])
 }

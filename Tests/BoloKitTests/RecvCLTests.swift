@@ -115,22 +115,26 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
 @Test func recvClGrabTileCapturesOnboardsAndAcksPill() {
     var state = makeState()
     state.pills = [Pill(x: 50, y: 50, armour: 3, owner: playerNeutral, speed: 20, counter: 0)]
-    var acked: Int?
-    recvClGrabTile(player: 2, x: 50, y: 50, state: &state, onShouldBroadcastCapturePill: { acked = $0 })
+    var acked: (Int, UInt8)?
+    recvClGrabTile(player: 2, x: 50, y: 50, state: &state, onShouldBroadcastCapturePill: { acked = ($0, $1) })
     #expect(state.pills[0].owner == 2)
     #expect(state.pills[0].armour == pillOnboard)
     #expect(state.pills[0].speed == UInt8(maxTicksPerShot))
-    #expect(acked == 0)
+    #expect(acked?.0 == 0)
+    #expect(acked?.1 == 2)
 }
 
 @Test func recvClGrabTileNeutralBaseIsCapturedWithFullResources() {
     var state = makeState()
     state.bases = [Base(x: 50, y: 50, armour: 0, owner: playerNeutral, shells: 0, mines: 0)]
-    recvClGrabTile(player: 2, x: 50, y: 50, state: &state)
+    var acked: (Int, UInt8)?
+    recvClGrabTile(player: 2, x: 50, y: 50, state: &state, onShouldBroadcastCaptureBase: { acked = ($0, $1) })
     #expect(state.bases[0].owner == 2)
     #expect(state.bases[0].armour == UInt8(maxBaseArmour))
     #expect(state.bases[0].shells == UInt8(maxBaseShells))
     #expect(state.bases[0].mines == UInt8(maxBaseMines))
+    #expect(acked?.0 == 0)
+    #expect(acked?.1 == 2)
 }
 
 @Test func recvClGrabTileMutuallyAlliedBaseHandsOffResourcesUntouched() {
@@ -207,10 +211,10 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
 @Test func recvClBuildRoadAlwaysSucceedsRegardlessOfTreeCountD40() {
     var state = makeState()
     state.terrain[50, 50] = .grass0
-    var built = false
-    recvClBuildRoad(player: 0, x: 50, y: 50, trees: 0, state: &state, onShouldBroadcastBuild: { _, _ in built = true })
+    var built: UInt8?
+    recvClBuildRoad(player: 0, x: 50, y: 50, trees: 0, state: &state, onShouldBroadcastBuild: { _, _, t in built = t })
     #expect(state.terrain[50, 50] == .road)
-    #expect(built)
+    #expect(built == UInt8(Terrain.road.rawValue))
 }
 
 /// D40's second-order effect: the leftover-trees ack can go negative when
@@ -237,39 +241,42 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
     var state = makeState()
     state.terrain[50, 50] = .grass0
     var built = false
-    recvClBuildWall(player: 0, x: 50, y: 50, trees: wallTrees - 1, state: &state, onShouldBroadcastBuild: { _, _ in built = true })
+    recvClBuildWall(player: 0, x: 50, y: 50, trees: wallTrees - 1, state: &state, onShouldBroadcastBuild: { _, _, _ in built = true })
     #expect(state.terrain[50, 50] == .grass0)  // insufficient trees: real gate, unlike buildroad
     #expect(!built)
 
-    recvClBuildWall(player: 0, x: 50, y: 50, trees: wallTrees, state: &state, onShouldBroadcastBuild: { _, _ in built = true })
+    var terrainByte: UInt8?
+    recvClBuildWall(player: 0, x: 50, y: 50, trees: wallTrees, state: &state, onShouldBroadcastBuild: { _, _, t in terrainByte = t })
     #expect(state.terrain[50, 50] == .wall)
-    #expect(built)
+    #expect(terrainByte == UInt8(Terrain.wall.rawValue))
 }
 
 @Test func recvClBuildBoatHasNoThresholdGateAtAll() {
     var state = makeState()
     state.terrain[50, 50] = .river
-    var built = false
-    recvClBuildBoat(player: 0, x: 50, y: 50, trees: 0, state: &state, onShouldBroadcastBuild: { _, _ in built = true })
+    var built: UInt8?
+    recvClBuildBoat(player: 0, x: 50, y: 50, trees: 0, state: &state, onShouldBroadcastBuild: { _, _, t in built = t })
     #expect(state.terrain[50, 50] == .boat)
-    #expect(built)
+    #expect(built == UInt8(Terrain.boat.rawValue))
 }
 
 @Test func recvClBuildPillPlacesIntoGivenSlotAndCapsArmour() {
     var state = makeState()
     state.terrain[50, 50] = .grass0
     state.pills = [Pill(x: 0, y: 0, armour: 0, owner: playerNeutral, speed: 0, counter: 0)]
-    var built: Int?
+    var built: (Int, Int, Int, UInt8)?
     var leftover: Int?
     recvClBuildPill(
         player: 1, x: 50, y: 50, trees: 10, pill: 0, state: &state,
-        onShouldBroadcastBuildPill: { built = $0 },
+        onShouldBroadcastBuildPill: { built = ($0, $1, $2, $3) },
         onShouldBroadcastBuilderAck: { _, _, t, _ in leftover = t }
     )
     #expect(state.pills[0].x == 50 && state.pills[0].y == 50)
     #expect(state.pills[0].owner == 1)
     #expect(state.pills[0].armour == UInt8(maxPillArmour))  // 10*4=40, capped at 15
-    #expect(built == 0)
+    #expect(built?.0 == 0)
+    #expect(built?.1 == 50 && built?.2 == 50)
+    #expect(built?.3 == UInt8(maxPillArmour))
     #expect(leftover == (10 * pillTrees - maxPillArmour) / pillTrees)
 }
 
@@ -295,9 +302,16 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
     state.terrain[50, 50] = .grass0
     state.pills = [Pill(x: 50, y: 50, armour: 10, owner: 0, speed: 10, counter: 0)]
     var leftover: Int?
-    recvClRepairPill(player: 0, x: 50, y: 50, trees: 3, state: &state, onShouldBroadcastBuilderAck: { _, _, t, _ in leftover = t })
+    var repaired: (Int, UInt8)?
+    recvClRepairPill(
+        player: 0, x: 50, y: 50, trees: 3, state: &state,
+        onShouldBroadcastRepairPill: { repaired = ($0, $1) },
+        onShouldBroadcastBuilderAck: { _, _, t, _ in leftover = t }
+    )
     #expect(state.pills[0].armour == UInt8(maxPillArmour))  // 10 + 3*4=22, capped at 15
     #expect(leftover == (10 + 3 * pillTrees - maxPillArmour) / pillTrees)
+    #expect(repaired?.0 == 0)
+    #expect(repaired?.1 == UInt8(maxPillArmour))
 }
 
 @Test func recvClPlaceMineCostsNoTreesAndAlwaysAcksZero() {
@@ -324,17 +338,18 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
     var state = makeState()
     state.terrain[50, 50] = .grass0
     state.pills = [Pill(x: 50, y: 50, armour: 3, owner: playerNeutral, speed: 20, counter: 0)]
-    var broadcast: (Int, Int, Int)?
-    recvClDamage(player: 0, x: 50, y: 50, boat: false, state: &state, onShouldBroadcastDamage: { p, x, y in broadcast = (p, x, y) })
+    var broadcast: (Int, Int, Int, UInt8)?
+    recvClDamage(player: 0, x: 50, y: 50, boat: false, state: &state, onShouldBroadcastDamage: { p, x, y, t in broadcast = (p, x, y, t) })
     #expect(state.pills[0].armour == 2)
     #expect(broadcast != nil)
+    #expect(broadcast?.3 == UInt8(Terrain.grass0.rawValue))
 }
 
 @Test func recvClDamageNonBoatOnUnmatchedTerrainFiresNoBroadcast() {
     var state = makeState()
     state.terrain[50, 50] = .grass0  // grass has no non-boat progression case
     var fired = false
-    recvClDamage(player: 0, x: 50, y: 50, boat: false, state: &state, onShouldBroadcastDamage: { _, _, _ in fired = true })
+    recvClDamage(player: 0, x: 50, y: 50, boat: false, state: &state, onShouldBroadcastDamage: { _, _, _, _ in fired = true })
     #expect(state.terrain[50, 50] == .grass0)
     #expect(!fired)
 }
@@ -342,10 +357,10 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
 @Test func recvClDamageBoatOnGrassFiresBroadcastUnlikeNonBoat() {
     var state = makeState()
     state.terrain[50, 50] = .grass0
-    var fired = false
-    recvClDamage(player: 0, x: 50, y: 50, boat: true, state: &state, onShouldBroadcastDamage: { _, _, _ in fired = true })
+    var terrainByte: UInt8?
+    recvClDamage(player: 0, x: 50, y: 50, boat: true, state: &state, onShouldBroadcastDamage: { _, _, _, t in terrainByte = t })
     #expect(state.terrain[50, 50] == .swamp3)
-    #expect(fired)
+    #expect(terrainByte == UInt8(Terrain.swamp3.rawValue))  // read AFTER applyDamage's mutation
 }
 
 @Test func recvClDamageMinedTerrainDetonatesWithNeutralAttributionNotDamage() {
@@ -355,7 +370,7 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
     var smallBoomFired = false
     recvClDamage(
         player: 2, x: 50, y: 50, boat: false, state: &state,
-        onShouldBroadcastDamage: { _, _, _ in damageFired = true },
+        onShouldBroadcastDamage: { _, _, _, _ in damageFired = true },
         onShouldBroadcastSmallBoom: { _, _, _ in smallBoomFired = true }
     )
     #expect(state.terrain[50, 50] == .crater)

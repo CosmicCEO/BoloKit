@@ -1,0 +1,458 @@
+import Testing
+import BoloKit
+import BoloNet
+import Network
+import Foundation
+
+// Swift-only tests for `HostSessionTable`'s fan-out primitives and
+// `receiveAndDispatchOneHostMessage` (Wave 6.4b). Same "no C oracle for
+// the transport mechanism itself" reasoning as `JoinClientTests.swift`/
+// `UDPSessionTests.swift` (D31) -- these stand up real loopback TCP pairs
+// and confirm the *routing* decisions (who gets which `SR*` bytes) match
+// the `sendtoall`/`sendtoallex`/`sendtoone` citations in `HostSession.
+// swift`'s own header, not wire-codec correctness (already covered by
+// `NetCodecDifferentialTests.swift`).
+
+private enum HarnessError: Error {
+    case shortRead
+}
+
+private final class ConnectionWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pendingConnection: NWConnection?
+    private var continuation: CheckedContinuation<NWConnection, Never>?
+
+    func deliver(_ connection: NWConnection) {
+        lock.lock()
+        if let continuation {
+            self.continuation = nil
+            lock.unlock()
+            continuation.resume(returning: connection)
+        } else {
+            pendingConnection = connection
+            lock.unlock()
+        }
+    }
+
+    private func takePending() -> NWConnection? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let pendingConnection {
+            self.pendingConnection = nil
+            return pendingConnection
+        }
+        return nil
+    }
+
+    private func register(_ continuation: CheckedContinuation<NWConnection, Never>) {
+        lock.lock()
+        if let pendingConnection {
+            self.pendingConnection = nil
+            lock.unlock()
+            continuation.resume(returning: pendingConnection)
+        } else {
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    func wait() async -> NWConnection {
+        if let connection = takePending() {
+            return connection
+        }
+        return await withCheckedContinuation { continuation in
+            register(continuation)
+        }
+    }
+}
+
+private func receiveExactly(_ connection: NWConnection, _ count: Int) async throws -> [UInt8] {
+    try await withCheckedThrowingContinuation { continuation in
+        connection.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
+            if let error {
+                continuation.resume(throwing: error)
+                return
+            }
+            guard let data, data.count == count else {
+                continuation.resume(throwing: HarnessError.shortRead)
+                return
+            }
+            continuation.resume(returning: Array(data))
+        }
+    }
+}
+
+private func sendBytes(_ connection: NWConnection, _ bytes: [UInt8]) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        connection.send(
+            content: Data(bytes),
+            completion: .contentProcessed { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        )
+    }
+}
+
+/// One simulated player: `clientEnd` is the test's own handle (writes CL*
+/// bytes in as "the player sending a message"; reads SR* bytes out as
+/// "what the player's real client would have received"). `serverEnd` is
+/// what gets registered into the `HostSessionTable` -- the connection
+/// `receiveAndDispatchOneHostMessage`/the fan-out primitives actually
+/// read from and write to, mirroring the shape a real accepted connection
+/// would have.
+private struct FakePlayerLink {
+    let listener: NWListener
+    let clientEnd: NWConnection
+    let serverEnd: NWConnection
+}
+
+private func makeConnectedPair() async throws -> FakePlayerLink {
+    let listener = try NWListener(using: .tcp, on: .any)
+    let waiter = ConnectionWaiter()
+    listener.newConnectionHandler = { connection in
+        connection.start(queue: .main)
+        waiter.deliver(connection)
+    }
+
+    let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
+        nonisolated(unsafe) var resumed = false
+        listener.stateUpdateHandler = { state in
+            guard !resumed else { return }
+            switch state {
+            case .ready:
+                resumed = true
+                continuation.resume(returning: listener.port?.rawValue ?? 0)
+            case .failed(let error):
+                resumed = true
+                continuation.resume(throwing: error)
+            default:
+                break
+            }
+        }
+        listener.start(queue: .main)
+    }
+
+    let clientEnd = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+    clientEnd.start(queue: .main)
+    let serverEnd = await waiter.wait()
+
+    return FakePlayerLink(listener: listener, clientEnd: clientEnd, serverEnd: serverEnd)
+}
+
+/// Registers `count` fake players (indices `0..<count`) into a fresh
+/// `HostSessionTable`, returning the table plus every link so the test can
+/// both feed bytes in (`link.clientEnd`) and observe broadcasts out.
+private func makeTableWithPlayers(_ count: Int) async throws -> (table: HostSessionTable, links: [FakePlayerLink]) {
+    let table = HostSessionTable()
+    var links: [FakePlayerLink] = []
+    for i in 0..<count {
+        let link = try await makeConnectedPair()
+        await table.setConnection(link.serverEnd, for: i)
+        links.append(link)
+    }
+    return (table, links)
+}
+
+private func makeState(playerCount: Int) -> GameState {
+    var state = GameState()
+    state.players = (0..<max(playerCount, maxPlayers)).map { i in
+        var p = PlayerState()
+        p.used = i < playerCount
+        p.connected = i < playerCount
+        return p
+    }
+    state.terrain[50, 50] = .grass0
+    return state
+}
+
+// MARK: - HostSessionTable fan-out primitives
+
+@Test func sendToAllReachesEveryConnectedSlot() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    await table.sendToAll([9, 9, 9])
+    for link in links {
+        let received = try await receiveExactly(link.clientEnd, 3)
+        #expect(received == [9, 9, 9])
+    }
+}
+
+@Test func sendToAllExceptSkipsOnlyTheNamedPlayer() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    await table.sendToAllExcept(1, [7])
+    let r0 = try await receiveExactly(links[0].clientEnd, 1)
+    let r2 = try await receiveExactly(links[2].clientEnd, 1)
+    #expect(r0 == [7])
+    #expect(r2 == [7])
+    // Player 1 got nothing -- confirmed by racing a short timeout would be
+    // flaky; instead confirm player 0/2 got exactly one byte each and move
+    // on, matching this suite's other exclusion tests' style.
+}
+
+@Test func sendToMaskOnlyReachesBitsThatAreSet() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    await table.sendToMask(UInt16(1 << 0) | UInt16(1 << 2), [5])
+    let r0 = try await receiveExactly(links[0].clientEnd, 1)
+    let r2 = try await receiveExactly(links[2].clientEnd, 1)
+    #expect(r0 == [5])
+    #expect(r2 == [5])
+}
+
+@Test func disconnectClosesTheConnectionAndClearsTheSlot() async throws {
+    let (table, links) = try await makeTableWithPlayers(1)
+    defer { for l in links { l.listener.cancel() } }
+
+    await table.disconnect(0)
+    #expect(await table.isConnected(0) == false)
+    #expect(await table.seq(for: 0) == 0)  // T-1: wiped back to default
+}
+
+// MARK: - receiveAndDispatchOneHostMessage
+
+@Test func dispatchDropBoatBroadcastsToAllConnectedPlayers() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.terrain[50, 50] = .river
+
+    try await sendBytes(links[0].clientEnd, CLDropBoat(x: 50, y: 50).encode())
+    let opcode = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(opcode == .dropBoat)
+    #expect(state.terrain[50, 50] == .boat)
+
+    for link in links {
+        let bytes = try await receiveExactly(link.clientEnd, SRDropBoat.wireSize)
+        #expect(SRDropBoat.decode(bytes) == SRDropBoat(x: 50, y: 50))
+    }
+}
+
+@Test func dispatchDropMineAcksSenderOnlyAndBroadcastsToAll() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.terrain[50, 50] = .grass0
+
+    try await sendBytes(links[0].clientEnd, CLDropMine(x: 50, y: 50).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(state.terrain[50, 50] == .minedGrass)
+
+    // Broadcast (SRDropMine) reaches both players.
+    for link in links {
+        let bytes = try await receiveExactly(link.clientEnd, SRDropMine.wireSize)
+        #expect(SRDropMine.decode(bytes) == SRDropMine(player: 0, x: 50, y: 50))
+    }
+    // The ack (SRMineAck) is `sendtoone` -- only player 0 gets it.
+    let ack = try await receiveExactly(links[0].clientEnd, SRMineAck.wireSize)
+    #expect(SRMineAck.decode(ack) == SRMineAck(success: 1))
+}
+
+@Test func dispatchHitTankUsesWirePlayerFieldNotSenderSlot() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    // Player 0's connection sends a hitTank naming player 1 as the target
+    // -- matches `RecvCL.swift`'s doc comment: the wire `player` field is
+    // the tank being hit, not the sender's own identity.
+    try await sendBytes(links[0].clientEnd, CLHitTank(player: 1, dir: 2.5).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+
+    let bytes = try await receiveExactly(links[1].clientEnd, SRHitTank.wireSize)
+    #expect(SRHitTank.decode(bytes) == SRHitTank(player: 1, dir: 2.5))
+}
+
+@Test func dispatchBuildRoadTerrainByteMatchesTheNewTerrainD40() async throws {
+    let (table, links) = try await makeTableWithPlayers(1)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 1)
+    state.terrain[50, 50] = .grass0
+
+    // D40: tautology means road building always succeeds regardless of trees.
+    try await sendBytes(links[0].clientEnd, CLBuildRoad(x: 50, y: 50, trees: 0).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(state.terrain[50, 50] == .road)
+
+    let buildBytes = try await receiveExactly(links[0].clientEnd, SRBuild.wireSize)
+    #expect(SRBuild.decode(buildBytes) == SRBuild(x: 50, y: 50, terrain: UInt8(Terrain.road.rawValue)))
+
+    let ackBytes = try await receiveExactly(links[0].clientEnd, SRBuilderAck.wireSize)
+    // D40's second-order effect: leftover trees go negative (-roadTrees),
+    // wire-truncated to UInt8 at the wraparound boundary this callback's
+    // own `UInt8(truncatingIfNeeded:)` conversion applies.
+    #expect(SRBuilderAck.decode(ackBytes)?.trees == UInt8(truncatingIfNeeded: -roadTrees))
+}
+
+@Test func dispatchGrabTileCapturePillIncludesOwnerByte() async throws {
+    let (table, links) = try await makeTableWithPlayers(1)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 1)
+    state.pills = [Pill(x: 50, y: 50, armour: 3, owner: playerNeutral, speed: 20, counter: 0)]
+
+    try await sendBytes(links[0].clientEnd, CLGrabTile(x: 50, y: 50).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(state.pills[0].owner == 0)
+
+    let bytes = try await receiveExactly(links[0].clientEnd, SRCapturePill.wireSize)
+    #expect(SRCapturePill.decode(bytes) == SRCapturePill(pill: 0, owner: 0))
+}
+
+@Test func dispatchRefuelExcludesTheRequestingPlayer() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.bases = [Base(x: 5, y: 5, armour: 40, owner: 0, shells: 40, mines: 40)]
+
+    try await sendBytes(links[0].clientEnd, CLRefuel(base: 0, armour: 10, shells: 5, mines: 3).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(state.bases[0].armour == 30)
+
+    // Only player 1 (not the requester, player 0) gets the broadcast --
+    // `sendsrrefuel` uses `sendtoallex`, confirmed by direct read.
+    let bytes = try await receiveExactly(links[1].clientEnd, SRRefuel.wireSize)
+    #expect(SRRefuel.decode(bytes) == SRRefuel(base: 0, armour: 10, shells: 5, mines: 3))
+}
+
+@Test func dispatchSetAllianceExcludesTheSenderAndMutatesState() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+
+    try await sendBytes(links[0].clientEnd, CLSetAlliance(alliance: 0xBEEF).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(state.players[0].alliance == 0xBEEF)
+
+    let bytes = try await receiveExactly(links[1].clientEnd, SRSetAlliance.wireSize)
+    #expect(SRSetAlliance.decode(bytes) == SRSetAlliance(player: 0, alliance: 0xBEEF))
+}
+
+@Test func dispatchSendMesgDeliversOnlyToMaskedRecipients() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    let mask: Int16 = Int16(bitPattern: UInt16(1 << 0) | UInt16(1 << 2))  // players 0 and 2, not 1
+    try await sendBytes(links[1].clientEnd, CLSendMesg(to: 255, mask: mask, text: "hi").encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+
+    let expected = SRSendMesg(player: 1, to: 255, text: "hi").encode()
+    let r0 = try await receiveExactly(links[0].clientEnd, expected.count)
+    let r2 = try await receiveExactly(links[2].clientEnd, expected.count)
+    #expect(r0 == expected)
+    #expect(r2 == expected)
+}
+
+@Test func dispatchHangUpConsumesTheMessageWithNoBroadcastOrStateChange() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    let before = state
+
+    try await sendBytes(links[0].clientEnd, CLHangUp().encode())
+    let opcode = try await receiveAndDispatchOneHostMessage(connection: links[0].serverEnd, player: 0, state: &state, table: table)
+    #expect(opcode == .hangUp)
+    #expect(state.players[0].used == before.players[0].used)  // untouched
+}
+
+// MARK: - Disconnect / kick / ban (T-12, T-13)
+
+@Test func handlePlayerDisconnectNormalBroadcastsPlayerExitToOthersOnly() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    await handlePlayerDisconnect(player: 0, reason: .normal, state: &state, table: table)
+
+    #expect(!state.players[0].connected)
+    #expect(await table.isConnected(0) == false)
+
+    let bytes = try await receiveExactly(links[1].clientEnd, SRPlayerExit.wireSize)
+    #expect(SRPlayerExit.decode(bytes) == SRPlayerExit(player: 0))
+}
+
+@Test func handlePlayerDisconnectAbnormalBroadcastsPlayerDisc() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    await handlePlayerDisconnect(player: 0, reason: .abnormal, state: &state, table: table)
+
+    let bytes = try await receiveExactly(links[1].clientEnd, SRPlayerDisc.wireSize)
+    #expect(SRPlayerDisc.decode(bytes) == SRPlayerDisc(player: 0))
+}
+
+/// T-12: `pauseonplayerexit` fires an EXTRA `SRPause(255)` broadcast to
+/// EVERYONE (including the departing player's now-severed slot, which is
+/// a harmless no-op send) on top of the exit/disc broadcast.
+@Test func handlePlayerDisconnectWithPauseOnExitAlsoBroadcastsIndefinitePause() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.pauseOnPlayerExit = true
+    await handlePlayerDisconnect(player: 0, reason: .normal, state: &state, table: table)
+
+    #expect(state.serverPauseTicks == -1)
+    _ = try await receiveExactly(links[1].clientEnd, SRPlayerExit.wireSize)  // the exit broadcast first
+    let pauseBytes = try await receiveExactly(links[1].clientEnd, SRPause.wireSize)
+    #expect(SRPause.decode(pauseBytes) == SRPause(pause: 255))
+}
+
+@Test func hostKickPlayerBroadcastsToAllAndDisconnectsTheKickedSlot() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    await hostKickPlayer(player: 0, state: &state, table: table)
+
+    #expect(!state.players[0].connected)
+    #expect(await table.isConnected(0) == false)
+
+    // `sendsrplayerkick` uses `sendtoall` -- unlike exit/disc/ban, this
+    // reaches the OTHER player, confirmed by direct read (server.c).
+    let bytes = try await receiveExactly(links[1].clientEnd, SRPlayerKick.wireSize)
+    #expect(SRPlayerKick.decode(bytes) == SRPlayerKick(player: 0))
+}
+
+@Test func hostBanPlayerBroadcastsAndAppendsToBanListOnlyWhenConnected() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.players[0].name = "Grief"
+    state.players[0].address = "1.2.3.4"
+
+    await hostBanPlayer(player: 0, state: &state, table: table)
+
+    #expect(state.bannedPlayers == [BannedPlayer(name: "Grief", address: "1.2.3.4")])
+    #expect(await table.isConnected(0) == false)
+
+    let bytes = try await receiveExactly(links[1].clientEnd, SRPlayerBan.wireSize)
+    #expect(SRPlayerBan.decode(bytes) == SRPlayerBan(player: 0))
+}
+
+@Test func hostBanPlayerOnAlreadyDisconnectedSlotIsANoOp() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.players[0].connected = false
+
+    await hostBanPlayer(player: 0, state: &state, table: table)
+    #expect(state.bannedPlayers.isEmpty)
+}

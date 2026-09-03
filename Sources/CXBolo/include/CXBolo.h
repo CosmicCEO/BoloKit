@@ -246,4 +246,43 @@ struct PreambleLayoutOracle {
 
 struct PreambleLayoutOracle preamble_layout_oracle(void);
 
+// Wave 6.4b: dgramserver()'s pure per-packet decision core -- see
+// netops.c's dgramserver_relay_oracle() for the full server.c:614-696
+// citation trail this decomposes.
+struct DgramServerPlayerState {
+  int used;
+  int connected;
+  uint8_t dgramFamily;
+  uint32_t dgramAddr;
+  uint16_t dgramPort;
+  uint32_t seq;
+};
+
+struct DgramServerRelayResult {
+  int isTrackerEcho;
+  int isMalformed;
+  int player;
+  int isValidPlayer;
+  int isNewerSeq;
+  uint32_t decodedSeq;
+  int portChanged;
+  uint16_t newPort;
+  uint32_t tankXRaw;
+  uint32_t tankYRaw;
+  /* relayTo/relayCount are NOT members here -- see netops.c's own
+     comment; a fixed-size C array as a struct member imports into Swift
+     as an unsubscriptable N-tuple. Written through the separate
+     `outRelayTo`/`outRelayCount` pointers below instead. */
+};
+
+// `outRelayTo` must point at a caller-allocated buffer of at least
+// MAXPLAYERS ints.
+int dgramserver_relay_oracle(
+  const uint8_t *bytes, size_t len,
+  uint8_t addrFamily, uint32_t addrAddr, uint16_t addrPort,
+  const struct DgramServerPlayerState *players,
+  struct DgramServerRelayResult *out,
+  int *outRelayTo, int *outRelayCount
+);
+
 #endif /* CXBOLO_H */

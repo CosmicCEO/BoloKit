@@ -27,10 +27,10 @@ private func fullTable(_ overrides: [Int: DgramServerPlayerSessionState]) -> [Dg
     return table
 }
 
-private func sampleHeader(player: UInt8, seq: [Int32], tank: Vec2f = Vec2f(x: 12, y: 34)) -> CLUpdateHeader {
+private func sampleHeader(player: UInt8, seq: [Int32], tank: BoloKit.Vec2f = BoloKit.Vec2f(x: 12, y: 34)) -> CLUpdateHeader {
     CLUpdateHeader(
         player: player, seq: seq, dead: false, boat: false, dir: 0, tank: tank, speed: 0, turnSpeed: 0,
-        kickDir: 0, kickSpeed: 0, builderStatus: 0, builder: Vec2f(x: 0, y: 0),
+        kickDir: 0, kickSpeed: 0, builderStatus: 0, builder: BoloKit.Vec2f(x: 0, y: 0),
         builderTargetX: 0, builderTargetY: 0, builderWait: 0, inputFlags: 0,
         tankShotSound: false, pillShotSound: false, sinkSound: false, builderDeathSound: false
     )
@@ -122,7 +122,7 @@ private let matchingAddress = DgramServerPeerAddress(family: 1, addr: 100, port:
 @Test func appliedUpdateCarriesOnlyTankPositionAndRelaysToConnectedNonSenders() {
     var seq = [Int32](repeating: 0, count: maxPlayers)
     seq[1] = 7
-    let header = sampleHeader(player: 1, seq: seq, tank: Vec2f(x: 42, y: 99))
+    let header = sampleHeader(player: 1, seq: seq, tank: BoloKit.Vec2f(x: 42, y: 99))
     let bytes = CLUpdate(header: header, shells: [], explosions: []).encode()
 
     let players = fullTable([
@@ -136,7 +136,7 @@ private let matchingAddress = DgramServerPeerAddress(family: 1, addr: 100, port:
         return
     }
     #expect(player == 1)
-    #expect(tank == Vec2f(x: 42, y: 99))
+    #expect(tank == BoloKit.Vec2f(x: 42, y: 99))
     #expect(newSeq == 7)
     #expect(relayTo == [0])
 }
@@ -189,7 +189,7 @@ private func oracleDecide(
     var relayToBuf = [Int32](repeating: -1, count: maxPlayers)
     var relayCount: Int32 = 0
 
-    bytes.withUnsafeBufferPointer { bytesPtr in
+    _ = bytes.withUnsafeBufferPointer { bytesPtr in
         cPlayers.withUnsafeBufferPointer { playersPtr in
             relayToBuf.withUnsafeMutableBufferPointer { relayPtr in
                 CXBolo.dgramserver_relay_oracle(
@@ -206,7 +206,7 @@ private func oracleDecide(
 
 @Test func decodeDgramServerRelayMatchesOracleFuzzed() {
     for _ in 0..<300 {
-        let players = (0..<maxPlayers).map { _ in randomPlayerState() }
+        var players = (0..<maxPlayers).map { _ in randomPlayerState() }
         let address = DgramServerPeerAddress(
             family: UInt8.random(in: 0...2), addr: UInt32.random(in: 90...110), port: UInt16.random(in: 4990...5010)
         )
@@ -215,11 +215,22 @@ private func oracleDecide(
         switch Int.random(in: 0...3) {
         case 0:
             // Well-formed CLUpdate for a random (possibly invalid) player.
-            var seq = (0..<maxPlayers).map { _ in Int32.random(in: -3...3) }
+            // Half the time, align that player's stored session state with
+            // `address` (family+addr) so the "valid player" branch -- and,
+            // depending on the random seq, the "applied" branch past it --
+            // actually gets exercised at a reasonable rate, not just as a
+            // rare coincidence of two independent random draws.
+            let seq = (0..<maxPlayers).map { _ in Int32.random(in: -3...3) }
             let player = UInt8.random(in: 0..<UInt8(maxPlayers))
+            if Bool.random() {
+                players[Int(player)] = DgramServerPlayerSessionState(
+                    used: true, connected: true,
+                    dgramAddress: DgramServerPeerAddress(family: address.family, addr: address.addr, port: UInt16.random(in: 4990...5010)),
+                    seq: Int32.random(in: -3...3)
+                )
+            }
             let header = sampleHeader(player: player, seq: seq)
             bytes = CLUpdate(header: header, shells: [], explosions: []).encode()
-            seq.removeAll()  // silence unused-mutation warning path; seq already captured by header
         case 1:
             // Tracker-echo shape.
             var b = [UInt8](repeating: UInt8.random(in: 0...255), count: CLUpdateHeader.wireSize)

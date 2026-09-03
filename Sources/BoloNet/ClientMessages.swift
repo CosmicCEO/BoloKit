@@ -43,6 +43,7 @@ private func decodeOpcode(_ r: inout WireReader, expect: ClientOpcode) -> Bool {
 
 public struct CLHangUp: Sendable, Hashable {
     public init() {}
+    public static let wireSize = 1
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.hangUp.rawValue); return w.bytes
     }
@@ -63,6 +64,10 @@ public struct CLSendMesg: Sendable, Hashable {
     public init(to: UInt8, mask: Int16, text: String) {
         self.to = to; self.mask = mask; self.text = text
     }
+    /// The fixed portion only (opcode+to+mask) -- `text` is a
+    /// NUL-terminated tail with no length prefix, same convention as
+    /// `SRSendMesg.wireSize`.
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ClientOpcode.sendMesg.rawValue)
@@ -83,6 +88,7 @@ public struct CLDropBoat: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.dropBoat.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -102,6 +108,7 @@ public struct CLDropPills: Sendable, Hashable {
     public var y: Float
     public var pills: UInt16
     public init(x: Float, y: Float, pills: UInt16) { self.x = x; self.y = y; self.pills = pills }
+    public static let wireSize = 11
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ClientOpcode.dropPills.rawValue)
@@ -122,6 +129,7 @@ public struct CLDropMine: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.dropMine.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -137,6 +145,7 @@ public struct CLTouch: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.touch.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -152,6 +161,7 @@ public struct CLGrabTile: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.grabTile.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -167,6 +177,7 @@ public struct CLGrabTrees: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.grabTrees.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -183,6 +194,7 @@ public struct CLBuildRoad: Sendable, Hashable {
     public var y: UInt8
     public var trees: UInt8
     public init(x: UInt8, y: UInt8, trees: UInt8) { self.x = x; self.y = y; self.trees = trees }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.buildRoad.rawValue); w.putU8(x); w.putU8(y); w.putU8(trees); return w.bytes
     }
@@ -199,6 +211,7 @@ public struct CLBuildWall: Sendable, Hashable {
     public var y: UInt8
     public var trees: UInt8
     public init(x: UInt8, y: UInt8, trees: UInt8) { self.x = x; self.y = y; self.trees = trees }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.buildWall.rawValue); w.putU8(x); w.putU8(y); w.putU8(trees); return w.bytes
     }
@@ -215,6 +228,7 @@ public struct CLBuildBoat: Sendable, Hashable {
     public var y: UInt8
     public var trees: UInt8
     public init(x: UInt8, y: UInt8, trees: UInt8) { self.x = x; self.y = y; self.trees = trees }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.buildBoat.rawValue); w.putU8(x); w.putU8(y); w.putU8(trees); return w.bytes
     }
@@ -234,6 +248,7 @@ public struct CLBuildPill: Sendable, Hashable {
     public init(x: UInt8, y: UInt8, trees: UInt8, pill: UInt8) {
         self.x = x; self.y = y; self.trees = trees; self.pill = pill
     }
+    public static let wireSize = 5
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ClientOpcode.buildPill.rawValue); w.putU8(x); w.putU8(y); w.putU8(trees); w.putU8(pill)
@@ -252,6 +267,7 @@ public struct CLRepairPill: Sendable, Hashable {
     public var y: UInt8
     public var trees: UInt8
     public init(x: UInt8, y: UInt8, trees: UInt8) { self.x = x; self.y = y; self.trees = trees }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.repairPill.rawValue); w.putU8(x); w.putU8(y); w.putU8(trees); return w.bytes
     }
@@ -268,6 +284,7 @@ public struct CLPlaceMine: Sendable, Hashable {
     public var y: UInt8
     public var mines: UInt8
     public init(x: UInt8, y: UInt8, mines: UInt8) { self.x = x; self.y = y; self.mines = mines }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.placeMine.rawValue); w.putU8(x); w.putU8(y); w.putU8(mines); return w.bytes
     }
@@ -284,6 +301,7 @@ public struct CLDamage: Sendable, Hashable {
     public var y: UInt8
     public var boat: UInt8
     public init(x: UInt8, y: UInt8, boat: UInt8) { self.x = x; self.y = y; self.boat = boat }
+    public static let wireSize = 4
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.damage.rawValue); w.putU8(x); w.putU8(y); w.putU8(boat); return w.bytes
     }
@@ -299,6 +317,7 @@ public struct CLSmallBoom: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.smallBoom.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -314,6 +333,7 @@ public struct CLSuperBoom: Sendable, Hashable {
     public var x: UInt8
     public var y: UInt8
     public init(x: UInt8, y: UInt8) { self.x = x; self.y = y }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.superBoom.rawValue); w.putU8(x); w.putU8(y); return w.bytes
     }
@@ -333,6 +353,7 @@ public struct CLRefuel: Sendable, Hashable {
     public init(base: UInt8, armour: UInt8, shells: UInt8, mines: UInt8) {
         self.base = base; self.armour = armour; self.shells = shells; self.mines = mines
     }
+    public static let wireSize = 5
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ClientOpcode.refuel.rawValue); w.putU8(base); w.putU8(armour); w.putU8(shells); w.putU8(mines)
@@ -355,6 +376,7 @@ public struct CLHitTank: Sendable, Hashable {
     public var player: UInt8
     public var dir: Float
     public init(player: UInt8, dir: Float) { self.player = player; self.dir = dir }
+    public static let wireSize = 6
     public func encode() -> [UInt8] {
         var w = WireWriter()
         w.putU8(ClientOpcode.hitTank.rawValue); w.putU8(player); w.putRawFloat(dir)
@@ -371,6 +393,7 @@ public struct CLHitTank: Sendable, Hashable {
 public struct CLSetAlliance: Sendable, Hashable {
     public var alliance: UInt16
     public init(alliance: UInt16) { self.alliance = alliance }
+    public static let wireSize = 3
     public func encode() -> [UInt8] {
         var w = WireWriter(); w.putU8(ClientOpcode.setAlliance.rawValue); w.putU16(alliance); return w.bytes
     }

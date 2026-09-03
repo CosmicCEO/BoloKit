@@ -129,8 +129,8 @@ public func recvClTouch(
 /// damage heating).
 public func recvClGrabTile(
     player: Int, x: Int, y: Int, state: inout GameState,
-    onShouldBroadcastCapturePill: (Int) -> Void = { _ in },
-    onShouldBroadcastCaptureBase: (Int) -> Void = { _ in },
+    onShouldBroadcastCapturePill: (Int, UInt8) -> Void = { _, _ in },
+    onShouldBroadcastCaptureBase: (Int, UInt8) -> Void = { _, _ in },
     onShouldBroadcastGrabBoat: (Int, Int, Int) -> Void = { _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -141,7 +141,10 @@ public func recvClGrabTile(
         state.pills[pill].owner = UInt8(player)
         state.pills[pill].armour = pillOnboard
         state.pills[pill].speed = UInt8(maxTicksPerShot)
-        onShouldBroadcastCapturePill(pill)
+        // `sendsrcapturepill()` reads `server.pills[pill].owner` itself,
+        // AFTER the assignment above (server.c:3528) -- passed here for
+        // the same exclusivity reason `onShouldBroadcastBuild` documents.
+        onShouldBroadcastCapturePill(pill, state.pills[pill].owner)
     }
 
     if let base = findBase(x: x, y: y, bases: state.bases) {
@@ -158,7 +161,9 @@ public func recvClGrabTile(
             state.bases[base].shells = 0
             state.bases[base].mines = 0
         }
-        onShouldBroadcastCaptureBase(base)
+        // `sendsrcapturebase()` reads `server.bases[base].owner` itself
+        // (server.c:3604), same reason as `onShouldBroadcastCapturePill`.
+        onShouldBroadcastCaptureBase(base, state.bases[base].owner)
     }
 
     guard let terrain = state.terrain[x, y] else { return }
@@ -233,7 +238,7 @@ public func recvClGrabTrees(
 /// arguments inherits the C's own `uint8_t` wraparound when it narrows.
 public func recvClBuildRoad(
     player: Int, x: Int, y: Int, trees: Int, state: inout GameState,
-    onShouldBroadcastBuild: (Int, Int) -> Void = { _, _ in },
+    onShouldBroadcastBuild: (Int, Int, UInt8) -> Void = { _, _, _ in },
     onShouldBroadcastBuilderAck: (Int, Int, Int, Int) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -249,7 +254,14 @@ public func recvClBuildRoad(
         .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
         if trees >= trees {
             state.terrain[x, y] = .road
-            onShouldBroadcastBuild(x, y)
+            // `sendsrbuild()` reads `server.terrain[y][x]` itself, AFTER
+            // the mutation above (server.c:3232) -- passed here as the
+            // raw wire byte (`Terrain.road.rawValue`) rather than
+            // re-derived from a closure reading `state` mid-call, which
+            // Swift's exclusivity rules don't allow across this same
+            // `state: &state` formal access (same class of constraint
+            // this file's own header already documents for `applyDamage`).
+            onShouldBroadcastBuild(x, y, UInt8(Terrain.road.rawValue))
             onShouldBroadcastBuilderAck(player, 0, trees - roadTrees, Int(noPill))
         } else {
             onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -272,7 +284,7 @@ public func recvClBuildRoad(
 /// despite looking similar).
 public func recvClBuildWall(
     player: Int, x: Int, y: Int, trees: Int, state: inout GameState,
-    onShouldBroadcastBuild: (Int, Int) -> Void = { _, _ in },
+    onShouldBroadcastBuild: (Int, Int, UInt8) -> Void = { _, _, _ in },
     onShouldBroadcastBuilderAck: (Int, Int, Int, Int) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -289,7 +301,7 @@ public func recvClBuildWall(
         .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
         if trees >= wallTrees {
             state.terrain[x, y] = .wall
-            onShouldBroadcastBuild(x, y)
+            onShouldBroadcastBuild(x, y, UInt8(Terrain.wall.rawValue))
             onShouldBroadcastBuilderAck(player, 0, trees - wallTrees, Int(noPill))
         } else {
             onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -314,7 +326,7 @@ public func recvClBuildWall(
 /// river always succeeds.
 public func recvClBuildBoat(
     player: Int, x: Int, y: Int, trees: Int, state: inout GameState,
-    onShouldBroadcastBuild: (Int, Int) -> Void = { _, _ in },
+    onShouldBroadcastBuild: (Int, Int, UInt8) -> Void = { _, _, _ in },
     onShouldBroadcastBuilderAck: (Int, Int, Int, Int) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -328,7 +340,7 @@ public func recvClBuildBoat(
     switch terrain {
     case .river:
         state.terrain[x, y] = .boat
-        onShouldBroadcastBuild(x, y)
+        onShouldBroadcastBuild(x, y, UInt8(Terrain.boat.rawValue))
         onShouldBroadcastBuilderAck(player, 0, trees - boatTrees, Int(noPill))
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
@@ -350,7 +362,7 @@ public func recvClBuildBoat(
 /// `applyDamage`'s `pills[-1]` case.
 public func recvClBuildPill(
     player: Int, x: Int, y: Int, trees: Int, pill: Int, state: inout GameState,
-    onShouldBroadcastBuildPill: (Int) -> Void = { _ in },
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
     onShouldBroadcastBuilderAck: (Int, Int, Int, Int) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -382,7 +394,13 @@ public func recvClBuildPill(
             leftoverTrees = 0
         }
         state.pills[pill].armour = UInt8(armour)
-        onShouldBroadcastBuildPill(pill)
+        // `sendsrbuildpill()` reads `server.pills[pill].x/y/armour`
+        // itself (server.c:3547-3549), same exclusivity-driven reason as
+        // `onShouldBroadcastCapturePill` above -- `x`/`y` are passed from
+        // this function's own already-known params rather than re-read
+        // from `state.pills[pill]`, since they're the same values by
+        // construction (`:373-374` set them from these exact params).
+        onShouldBroadcastBuildPill(pill, x, y, state.pills[pill].armour)
         onShouldBroadcastBuilderAck(player, 0, leftoverTrees, Int(noPill))
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
@@ -401,7 +419,7 @@ public func recvClBuildPill(
 /// guard is needed the way `recvClBuildPill` needs one.
 public func recvClRepairPill(
     player: Int, x: Int, y: Int, trees: Int, state: inout GameState,
-    onShouldBroadcastRepairPill: (Int) -> Void = { _ in },
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in },
     onShouldBroadcastBuilderAck: (Int, Int, Int, Int) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
@@ -429,7 +447,9 @@ public func recvClRepairPill(
             leftoverTrees = 0
         }
         state.pills[pill].armour = UInt8(armour)
-        onShouldBroadcastRepairPill(pill)
+        // `sendsrrepairpill()` reads `server.pills[pill].armour` itself
+        // (server.c:3491), same exclusivity-driven reason as above.
+        onShouldBroadcastRepairPill(pill, state.pills[pill].armour)
         onShouldBroadcastBuilderAck(player, 0, leftoverTrees, Int(noPill))
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
@@ -506,7 +526,7 @@ public func recvClPlaceMine(
 /// modifying that already-shipped, audited function.
 public func recvClDamage(
     player: Int, x: Int, y: Int, boat: Bool, state: inout GameState,
-    onShouldBroadcastDamage: (Int, Int, Int) -> Void = { _, _, _ in },
+    onShouldBroadcastDamage: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
@@ -516,7 +536,12 @@ public func recvClDamage(
 
     if findPill(x: x, y: y, pills: state.pills) != nil || findBase(x: x, y: y, bases: state.bases) != nil {
         applyDamage(at: point, boat: boat, state: &state, onMineExplosion: onMineExplosion)
-        onShouldBroadcastDamage(player, x, y)
+        // `sendsrdamage()` reads `server.terrain[y][x]` itself
+        // (server.c:3190), same exclusivity-driven reason as
+        // `onShouldBroadcastBuild` -- the pill/base branch doesn't mutate
+        // terrain, so this is just whatever it already was, matching the
+        // C's own unconditional read.
+        onShouldBroadcastDamage(player, x, y, UInt8((state.terrain[x, y] ?? .sea).rawValue))
         return
     }
 
@@ -555,7 +580,7 @@ public func recvClDamage(
 
     applyDamage(at: point, boat: boat, state: &state, onMineExplosion: onMineExplosion)
     if firesDamageBroadcast {
-        onShouldBroadcastDamage(player, x, y)
+        onShouldBroadcastDamage(player, x, y, UInt8((state.terrain[x, y] ?? .sea).rawValue))
     }
 }
 
