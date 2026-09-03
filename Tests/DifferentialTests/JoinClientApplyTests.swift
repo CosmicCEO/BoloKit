@@ -51,6 +51,7 @@ private func encodedMap(with starts: [Start]) -> [UInt8] {
     #expect(state.hiddenMines)
     #expect(state.clientPauseDisplaySeconds == -1)  // 255 sentinel
     #expect(state.dominationType == .tournament)
+    #expect(state.baseControlThreshold == 60)  // D46
     #expect(state.players.count == maxPlayers)
     #expect(state.players[0].used)
     #expect(state.players[0].name == "Player0")

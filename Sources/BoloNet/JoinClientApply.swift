@@ -33,6 +33,12 @@ public func applyBoloPreamble(
 ) -> Bool {
     state.localPlayer = Int(preamble.player)
     state.hiddenMines = preamble.hiddenMines != 0
+    // `client.c:713`'s `client.game.domination.basecontrol = ...` -- D46
+    // fix. Inverse of `assembleBoloPreamble`'s `UInt8(state.
+    // baseControlThreshold)` (`Preambles.swift:256`), which already reads
+    // this field correctly on the send side; this was the missing mirror
+    // on the receive side.
+    state.baseControlThreshold = Int(preamble.baseControl)
 
     // Wire-domain, mirrors `client.pause` -- the same 255->-1 sentinel
     // translation `RecvSR.swift`'s `recvSrPause` already established for
