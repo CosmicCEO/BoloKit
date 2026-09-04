@@ -1250,3 +1250,80 @@ channel" pattern working as intended, twice in one session now.
 confirmed committed (`9897428`) — no outstanding action from that thread.
 [TO: IMPLEMENTER] No action — D70 confirmed closed by PARITY too. Proceed with 7.1 pre-brief per
 Planner's sequencing.
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.1 pre-brief: Xcode app target, no Swift written yet
+
+**Type:** pre-brief only, per `CLAUDE.md`'s "pre-brief before coding" rule
+**Phase:** Wave 7.1 (Xcode app target), pre-code
+**Blocks:** Wave 7.1 coding start — needs PLANNER's review of the two flagged items below, same
+two-stage gate as every prior sub-wave
+
+Picking up Wave 7.1 per PLANNER's sequencing (`d6f71ae`): "7.1 is the one with no dependency in
+either direction; 7.2 needs an actual window to render into." Read `docs/PLAN.md`'s Wave 7.1 row
+and `CLAUDE.md`'s 7.1 bullet directly before scoping — both are one-paragraph scope statements
+("create the actual macOS app target/bundle... minimal window, placeholder app icon, entitlements
+skeleton"), nothing more specific exists to cross-reference.
+
+**Verified directly before proposing an approach, not assumed:**
+- `Package.swift`: `platforms: [.macOS(.v26)]`; targets are `BoloKit`, `CXBolo`, `BoloNet`,
+  `BoloGlyphsCore`, `BoloGlyphs` (executable), `BoloKitTests`, `DifferentialTests`. No app target.
+- `XcodeListTargets` → zero targets right now. `XcodeListSchemes` → one synthesized scheme
+  (`BoloKit`, the SPM package itself), no app scheme. Confirms the "none exists yet" claim as
+  literally true in this session, not stale doc text.
+- `XcodeListTemplates` → `com.apple.dt.unit.cocoaApplication` exists: a native macOS "App"
+  template (SwiftUI lifecycle), category Application, platform macosx. This is the tool-supported
+  path for "the actual macOS app shell wrapping the SPM package" — `XcodeNewTarget` can instantiate
+  it and add the local package as a dependency directly, rather than hand-rolling a `.xcodeproj` or
+  stretching a bare SPM executable to carry a real Info.plist/entitlements/icon the way
+  `AddInfoPlist`/`AddEntitlement` expect to operate on an actual Xcode target.
+- No `.entitlements` file exists anywhere in the repo outside `Reference/c`, and `Reference/c`
+  itself never had one either (pre-sandbox-era app, checked its `Info.plist` directly — no
+  entitlement-related keys) — no fidelity target to size the entitlements skeleton against.
+- `Sources/BoloGlyphs`'s generated `Tiles.png`/`Sprites.png` are confirmed **not** committed (Wave
+  7.0's own completion report says so explicitly) — 7.1 has to decide how the app actually gets
+  them, not just declare a window.
+
+**Proposed approach:**
+1. **New Xcode target, `BoloApp`**, via `XcodeNewTarget` with the `com.apple.dt.unit.cocoaApplication`
+   template. Add `BoloKit` as a local package dependency now; `BoloNet` once 7.3 needs it.
+   `BoloGlyphsCore`/`BoloGlyphs` stay build-time-only tools (see item 4), not linked into the app.
+2. **Minimal window, literally minimal:** one SwiftUI `WindowGroup`, a placeholder `Text` body —
+   7.2 replaces it. No menus/prefs/HUD, per D60's v1 scope.
+3. **Entitlements skeleton, sized to v1, not to the eventual multiplayer app:** an empty/default
+   entitlements file with **no network client entitlement yet** — D60/7.3 explicitly exclude all
+   networking from this slice, so provisioning for it now would be scope no sub-wave has asked for.
+   `AddInfoPlist`/`AddEntitlement` to attach both files, not hand-written XML.
+4. **Placeholder icon — generated, not copied.** `Reference/c`'s `XBolo.icns` is Stuart Cheshire's
+   original copyrighted art per the licensing note already governing Wave 7.0 — off-limits as a
+   *source* even for a placeholder, same restriction as the sprite/tile sheets. Proposing a trivial
+   procedurally-drawn glyph, reusing `BoloGlyphsCore`'s existing pixel primitives scaled up, as the
+   placeholder `AppIcon` — not a blank icon and not anything traced from the reference.
+
+**Two items flagged for PLANNER's review before I touch `XcodeNewTarget` or any other mutating
+tool — not asking permission for the parts D60 already GO'd me on, same convention as Wave 7.0's
+flagged deviations:**
+- **Sheet delivery.** Proposing a Run Script build phase on `BoloApp` that invokes `BoloGlyphs`
+  directly to regenerate `Tiles.png`/`Sprites.png` into the app target's resources at build time,
+  rather than committing generated PNGs to git. Consistent with D64 ("regenerable build product, no
+  fidelity obligation") and avoids a second, hand-synced copy of build output sitting in version
+  control. This is a build-process choice `PLAN.md`'s one-line row doesn't settle either way.
+- **Target name/dependency set.** `BoloApp` depending on `BoloKit` now and `BoloNet` later (not
+  now) — flagging the specific name and staged-dependency choice in case PLANNER or a later wave
+  expects something else.
+
+**Verification plan once coding starts:**
+- `XcodeListTargets`/`XcodeListSchemes` should show `BoloApp` after `XcodeNewTarget` + dependency
+  wiring; `BuildProject` should produce a runnable `.app`.
+- Launch and confirm one window opens — the "minimal window" bar, met before 7.2 exists to fill it.
+- `swift build`/`swift test` from the command line must still succeed unmodified at 608 tests — the
+  app target is additive, must not perturb the existing SPM package graph or D28's baseline.
+- Confirm via direct read that no `Reference/c` icon/asset bytes were copied into the new target's
+  asset catalog.
+
+No Swift/Xcode-project changes made this entry — pre-brief only.
+
+> **→ Planner:** two items above need your read before I start: the sheet-delivery build-script
+> approach, and the `BoloApp` name/staged-dependency choice. Everything else in D60's 7.1 scope
+> (native Cocoa App target via `XcodeNewTarget`, minimal window, generated-not-copied icon,
+> v1-sized empty entitlements) is proceeding as briefed unless you say otherwise.
+> **→ Parity:** nothing to audit yet — no Xcode project mutation or Swift change made this entry.
