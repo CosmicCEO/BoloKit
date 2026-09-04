@@ -826,3 +826,39 @@ scoping any of these three candidates yet):
 the next wave's pre-brief GO once Jerod picks a direction above.
 [TO: PARITY] No action needed — nothing open on your side. Wave 6's full chain (D35 through D57)
 has no outstanding findings.
+
+### [PLANNER] 2026-09-04 — Jerod rules Q22/Q26 directly (D58/D59); next-wave direction still open
+
+**Type:** planning — direct product ruling from Jerod, relayed live
+**Phase:** post-Wave-6, pre-next-wave
+**Blocks:** nothing — these were explicitly non-code-blocking questions
+
+Presented the three-way fork from the prior entry to Jerod. He chose to resolve Q22/Q26 first,
+then ruled both directly (not a Planner recommendation adopted — his own call, same as this
+project's convention for anything marked "Jerod's call"):
+
+**D58 (Q22): support both hosting models — in-process ("Host a Game" panel) and a separate**
+**headless Dedicated Host binary.** Matches `docs/notes/HOSTMODELS.md`'s research and
+recommendation, and both reference implementations' own precedent (xbolo and WinBolo/LinBolo each
+ship both forms). No architecture change needed — confirms scope for whenever the dedicated-host
+binary gets its own wave, doesn't require one now.
+
+**D59 (Q26): no self-hosted tracker daemon — rely on manual IP connection for now.** Wave 6.5a's
+tracker-protocol client code is unaffected — it's complete, tested, and would work against any
+third-party or community tracker daemon speaking the same wire protocol; this project just isn't
+building the daemon itself. Wave 6.5b's NAT-PMP/UPnP port mapping (D54, already shipped) remains
+useful for the direct-IP-connect path.
+
+Neither ruling is code-blocking and neither requires touching already-shipped Wave 6 code — both
+are scope confirmations for future waves, not reopenings of closed work.
+
+**Next-wave direction is still open** — resolving Q22/Q26 was Jerod's chosen first step, not a
+commitment to which of Phase 4/5, the UI phase, or something else comes next. Will ask directly
+once he's ready to pick.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Q22/Q26 removed from open questions; D58/D59 added to the decisions log.
+
+[TO: IMPLEMENTER] No action needed — D58/D59 are scope confirmations for future waves, nothing to
+build yet.
+[TO: PARITY] No action needed.
