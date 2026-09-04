@@ -368,3 +368,103 @@ introduce once client/server timing collapses into one synchronous process) recu
 Wave 6.4b's **D49** ruling on join serialization. Full uncompressed entries (all three sub-waves'
 pre-briefs, completion reports, and PARITY audits, including the ad hoc pre-code PARITY assessments
 Jerod requested for 6.4 and 6.4b) preserved in git history per D28.
+
+
+## Wave 6.5 (2026-09-03 – 2026-09-04)
+
+Wave 6.5 split into **6.5a** (tracker protocol — register/heartbeat/browse, oracle-testable) and
+**6.5b** (NAT-PMP/UPnP mapping — no C oracle possible) per **D55**, same grounds as D23/D43 (two
+units of work with different verification stories). **D54** approved
+`DNSServiceNATPortMappingCreate` (`import dnssd`) as the NAT-traversal mechanism — a system API in
+`libSystem`, covering the same NAT-PMP/UPnP union `TCMPortMapper` did, satisfying `README.md`'s
+GPLv3-avoidance commitment. **D56** ruled the pre-brief's two adjacent `TrackerHost` findings get
+opposite treatment: the heartbeat's missing `htonl()` on `timelimit` (`server.c:1577`) is
+deterministic — D24/D40 bug-for-bug replication applies — while the struct's un-`bzero`'d pad/tail
+bytes are genuine UB — the D40 `pills[-1]`-class exception (zero-fill, disclosed Swift-safety
+deviation) applies instead. Jerod directed both sub-waves run simultaneously rather than
+sequenced (exercising D55's "or concurrent" clause); they landed cleanly against disjoint file
+lists without incident. Q26 opened (not ruled): whether this port ships the tracker *daemon*
+binary (`tracker.c`) at all — adjacent to Q22, deferred to Jerod as a product-scope call once the
+app/distribution phase starts.
+
+- **Wave 6.5b** (`a250c57`, build-fix `cdff28d`, PARITY PASS): `PortMapping.swift` wraps
+  `DNSServiceNATPortMappingCreate` (D54) as an `AsyncStream`, same pattern as D49/D52's two prior
+  listeners, boxing the stream continuation through `Unmanaged`/`UnsafeMutableRawPointer` since
+  `dnssd`'s callback is a C function pointer that can't capture Swift state directly — a new
+  mechanism shape for this codebase. `decodePortMappingReply` factored out as pure decision logic
+  per the D31/D36/D42 split, independently PARITY-verified (`kDNSServiceErr_NoError`/
+  `kDNSServiceErr_DoubleNAT` the only accepted codes, `UInt16(bigEndian:)` swap hand-checked).
+  `doubleNAT` modeled as a successful update with a flag, matching the API's own
+  state-change-callback shape. Live NAT round-trip correctly disclosed as D55's non-goal, not
+  silently skipped — 5 tests, all but one against the pure decision function (`cancel()`
+  idempotency legitimately touches the live `mDNSResponder` daemon). Two mechanical build errors
+  (`decodePortMappingReply` wrongly `internal`; `PortMappingUpdate` missing a public memberwise
+  init; `dns_sd.h`'s untyped `Int` error constants needing explicit casts) found and fixed
+  separately (`cdff28d`) once 6.5a unblocked the shared build — zero behavioral change. No PARITY
+  findings. Tests 572→577 (+5). ✅
+- **Wave 6.5a** (`a23d49d`, PARITY audit `c9e37ef` — one real finding, D57 fix `6cbec85`+
+  `f7b0528`, re-audit `7f1a9ee` PASS): tracker protocol. `Tracker.swift` — `TrackerHost`/
+  `TrackerHostList` wire structs (`tracker.h:41-56`, 60/64 bytes, offset-51 pad byte confirmed by
+  a new `tracker_layout_oracle()`), zero-filling the pad byte and `strncpy`-boundary bytes on
+  encode per D56/T-3. `TrackerRegistration.swift` — `TrackerSession` (persistent `NWConnection`,
+  same shape as `TCPSession`/`UDPSession`) plus `registerWithTracker(...)`, porting
+  `registerserver()`'s nine-step handshake (`server.c:1259-1509`) and the previously-undocumented
+  60-second `sendtrackerupdate()` heartbeat (`server.c:1569-1588`, `TRACKERUPDATESECONDS`).
+  `TrackerBrowser.swift` — `listTrackerGames(...)`, porting `listtracker()` (`bolo.c:346-450`) via
+  the `withNetworkConnection` one-shot pattern. **D56's bug-pairing landed and independently
+  re-derived at the source by PARITY:** `encode()` correctly `htonl`'s `timeLimit`
+  (`server.c:1383`); `encodeAsHeartbeat()` reproduces the missing-`htonl` bug bit-for-bit
+  (`server.c:1577`), with a named test asserting the two encodings differ *only* there. T-8's
+  reuse of `HostDgramListener`'s existing UDP echo (Wave 6.4b/6.4c) in place of
+  `registerserver()`'s own inline echo was traced byte-for-byte against both C functions and the
+  tracker daemon's own trigger check (`tracker.c:225-267`) and confirmed content-identical by
+  construction — a sound mechanism substitution, not a completeness gap; disclosed as an
+  orchestration dependency this wave doesn't own. Browse path decode (`bolo.c:438,446-447`)
+  confirmed exact, including that the heartbeat's byte-order bug correctly propagates to a
+  listing client with no special-casing. T-4 (tri-state `registerserver()` return) disclosed as a
+  mechanism substitution (Swift `Task` cancellation covers the "closed by main thread" case
+  cooperatively) rather than a third enum case; T-10 (heartbeat cadence/back-pressure) disclosed
+  as scoped out, deferred to whichever future wave owns a tracker scheduling loop, same boundary
+  as `UDPSession.sendLocalUpdate`. **D57 — real finding, fix required before close:**
+  `trackerHost()` built `timeLimit: UInt32(state.timeLimit)`, which **traps** on a negative
+  `GameState.timeLimit` (an already-anticipated state per `RunTick.swift`'s own `> 0` guard,
+  mirroring `server.c:1102`), where the C's implicit `int`→`uint32_t` conversion inside `htonl()`
+  never crashes — a crash-safety divergence, not a wire-format bug, and new to this codebase (no
+  other site shares the pattern). Latent (no caller yet constructs a negative `timeLimit`), but
+  ruled fixed now, not deferred, per the D45/D53 precedent. Fixed at `6cbec85`:
+  `UInt32(truncatingIfNeeded: state.timeLimit)`, matching C's actual bit-pattern-reinterpret
+  behavior exactly (hand-verified: `-300` → `0xFFFF_FED4`, both via two's-complement math and via
+  the regression test). Re-audit (`7f1a9ee`) confirmed the fix's semantic correctness (not just
+  trap-avoidance), scope minimality (2 files touched), and no regression for any previously-passing
+  non-negative input. Tests 572→591 (6.5a's own 19) →596 (+6.5b's 5, full suite) →**597** (+1, D57
+  regression test). ✅
+
+**Wave 6.5 (6.5a+6.5b combined) is closed** — both halves PARITY PASS, no open findings on either
+side. 572→597 tests across the wave, no coverage lost (D28).
+
+### Wave 6 close-out
+
+**Wave 6 (networking, 6.0–6.6 in full) is closed.** Every sub-wave from the wire codec through the
+tracker/NAT client is PARITY PASS with no open findings: 6.0 (codec) → 6.1 (tick orchestrator) →
+6.2 (broadcast handlers) → 6.3 (session logic + preambles) → 6.4a/6.4b/6.4c (transport, join
+handshake, live UDP wiring) → 6.5a/6.5b (tracker protocol + NAT-PMP) → 6.6 (server receive
+handlers). **Nine real PARITY findings across the whole wave — D35, D37, D39, D45, D46, D48's
+correction, D50, D53, D57 — were each fixed and independently re-confirmed before their sub-wave
+closed; none left open or silently accepted.** This is the largest single phase of the project
+closed to date. No next wave is currently GO'd: `docs/PLAN.md`'s Phase 4/5 (fidelity measurement
+and gap-closing) has never been started, the UI/app phase (D38) has never been scoped, and Q22
+(dedicated host binary vs. in-process) and Q26 (tracker daemon binary) both remain open, gated on
+whichever of those directions Jerod picks next — a genuine product-scope fork, not a call PLANNER
+can make from `docs/PLAN.md` alone.
+
+**Cross-cutting:** D28's coverage discipline held throughout this span (572→577→596→597, every
+delta an addition or a disclosed, reasoned replacement). The simultaneous-sub-wave-execution
+pattern (Jerod's direct sequencing call, exercising D55's "or concurrent" clause) ran cleanly
+against genuinely disjoint file lists without a shared-log-commit collision, though the intended
+Wave 5.9 worktree-isolation mechanism wasn't actually used (both sessions worked one checkout) —
+noted for future parallel waves, not a problem this time. The fix→re-audit precedent established
+across Wave 6 (D35/D37/D39/D45/D46/D50/D53) recurred once more cleanly with D57's own
+fix→re-audit cycle, including PARITY explicitly re-verifying the regression test's own arithmetic
+by hand rather than trusting the commit message. Full uncompressed entries (both pre-briefs, the
+6.5a/6.5b fold-in and simultaneous-execution directive, the full PARITY audit and D57 fix/re-audit
+cycle, and Wave 6's formal close-out ruling) preserved in git history per D28.
