@@ -1626,3 +1626,98 @@ counts, not against a reference project, so a second opinion on the encoding is 
 Run Script's behaviour under `ENABLE_USER_SCRIPT_SANDBOXING = YES`; and whether the icon really is
 free of `Reference/c` bytes (I checked by md5 across all its image files — re-run it). Test count
 608 → 612, no removals.
+
+### [PLANNER] 2026-09-04 — Wave 7.1 completion report reviewed: deviations accepted (D74), two required follow-ups (D75/D76), bundle ID to Jerod (Q27), PARITY activated
+
+**Type:** review + rulings + PARITY activation
+**Phase:** Wave 7.1 (Xcode app target) — coded and committed (`426c6a4`), **not closed**
+**Blocks:** Wave 7.1's close, pending the D75/D76 follow-ups plus a PARITY PASS. Wave 7.2's pre-brief
+is unblocked and GO'd below — it doesn't wait on either.
+
+Reviewed Implementer's 7.1 completion report against `docs/PLAN.md`'s decisions, D72/D73's coding-GO
+text, and the two standing Xcode-instability cautions. **The report is the standard I want on this
+kind of wave:** every deviation from the GO'd text was surfaced with its reason rather than
+smoothed over, the entitlements and licensing claims were verified on the *built product*
+(`codesign -d --entitlements -`, md5 across every image file in `Reference/c`) rather than by
+inspection, and the one moment that looked like the crash damage I'd warned about — zero schemes,
+"No active scheme is selected" — was investigated and diagnosed rather than worked around. Two
+substantive follow-ups below, neither a defect in what shipped.
+
+**D74 — all four flagged deviations accepted as delivered, no rework.** `XcodeNewProject` instead of
+D73's named `XcodeNewTarget` is mechanical (same template identifier, same product name; you cannot
+add an app target to an SPM-synthesized workspace, and the pre-brief's own "no `.xcodeproj` exists
+yet" already implied one had to be created) — **D73's row is corrected, not the work.** The
+`Package.swift` `products:` addition was a hard prerequisite nobody had spotted, and holding
+`BoloNet` out of it is D73's intent, not an oversight — recorded in D74 explicitly so a future
+session doesn't "fix" its absence. Entitlements as template-synthesized build settings with no
+`.entitlements` file: accepted, and I do **not** want the literal file — the pre-brief asked for a
+state, the state is verified on the signed product, and an empty file next to authoritative build
+settings is a decoy. Milestone B's `ENABLE_OUTGOING_NETWORK_CONNECTIONS` flip is recorded in D74 so
+it isn't rediscovered. The two hand-edited `.pbxproj` sections were the only available path (no MCP
+tool exists for package references or script phases; the warning is scoped to what those tools *can*
+do), and the `plutil`-plus-object-count verification is adequate for my GO — the encoding second
+opinion is PARITY's, and I've asked for it. Project location at `Bolo 2026/` ratified as-is.
+
+**D75 — `MACOSX_DEPLOYMENT_TARGET` must come down from the template's 27.0 to 26.0.** This is the one
+place the report's "left at the template default rather than silently aligned" instinct was right to
+flag and the answer is to change it: D16 ruled macOS 26+ as the project's floor, and a template
+default quietly making the shipped app 27-only while every package target advertises 26 is drift, not
+compatibility. Nothing in a `WindowGroup`-over-`BoloKit` slice should need 27. If something does,
+stop and report — that's a D16 amendment and Jerod's call, not a build setting.
+
+**D76 — commit a shared `.xcscheme`.** Overriding Implementer's (generally correct) "didn't add
+unrequested files" restraint: the file is requested now. An autocreated scheme is per-user derived
+state, and this sub-wave already demonstrated how fragile that is. Bundled with D75 deliberately so
+7.1 gets audited **once, in final state**, rather than audited and re-audited across two mechanical
+changes.
+
+**Q27 — bundle identifier is Jerod's, not mine.** `com.cosmicceo.Bolo-2026` stands provisionally and
+blocks nothing. I'm not ruling it because it's product identity, not engineering: cheap today,
+expensive after Milestone D's signing/notarization, and under App Sandbox it's also the on-disk
+container name, so a later change orphans saved state. My recommendation is to keep it unless Jerod
+wants a personal or vanity domain for distribution.
+
+**Not treated as open items** (Implementer's report answered these, recording so they aren't re-asked):
+608 → 612 tests with the +4 named and D28-compliant; sheets confirmed absent from `git status`; icon
+PNGs committed *by necessity* (`actool` needs them pre-build) as a disclosed, reasoned difference
+from D72's not-committed sheets, not an inconsistency; clean-build-from-deleted-DerivedData is also
+the real proof D72's build-order dependency works.
+
+[TO: IMPLEMENTER] Two mechanical changes, one commit, then one pre-brief — in this order:
+1. **D75:** `MACOSX_DEPLOYMENT_TARGET = 26.0` on `Bolo 2026` via `UpdateTargetBuildSetting` (tool, not
+   hand-edit — this one is tool-supported). Clean build after. If anything actually requires 27, stop
+   and report instead of reverting.
+2. **D76:** commit `Bolo 2026.xcodeproj/xcshareddata/xcschemes/Bolo 2026.xcscheme`. Confirm
+   `XcodeListSchemes` still shows exactly one scheme, no duplicate arising from the shared/autocreated
+   pair — that specific duplication is the failure mode worth checking here.
+3. Re-confirm the 612-test baseline unchanged and `.pbxproj` still `plutil`-clean after both, then
+   commit with your report appended. Keep it to these two items — everything else in 7.1 is accepted.
+4. **Then write Wave 7.2's pre-brief** (rendering) in the same session if the above lands clean. Its
+   coding GO will not issue until 7.1 has a PARITY PASS, but there's no reason for the pre-brief to
+   wait on the audit. Per the Wave 7.2 row: the SwiftUI `Canvas`/`TimelineView` vs. AppKit
+   `NSView`/`CALayer`-via-`NSViewRepresentable` choice is yours to prototype and propose — I'll review
+   it against D41's tick-timing discipline, and I want the *measured* basis for the choice, not a
+   preference. Bind to D66 (top-left row-0 origin), D65 (no fog/`seentiles` — every tile visible,
+   index straight from `mapimage()`), D64's `-1` "no image" sentinel, and D70's now-closed
+   `dir2vec` heading convention (no translation layer).
+
+[TO: PARITY] **Wave 7.1 activated for post-commit audit — but audit the state *after* Implementer's
+D75/D76 fix commit lands, not `426c6a4` alone.** That's deliberate: two mechanical changes are in
+flight and I'd rather you audit once, in final state. If Director relays you before that commit
+exists, audit `426c6a4` and treat the deployment target and shared scheme as known-in-flight rather
+than findings. Priorities, per my standing Xcode-crash caution — the project state itself, not just
+Swift behaviour:
+- The two hand-written `.pbxproj` sections (`XCLocalSwiftPackageReference`,
+  `XCSwiftPackageProductDependency` ×2, `PBXTargetDependency`, `PBXShellScriptBuildPhase`).
+  Implementer verified *structure* (`plutil -lint`, object counts) but explicitly **not** against a
+  reference project — a second opinion on the encoding is the single highest-value thing you can do
+  on this wave, and Implementer asked for it directly.
+- The Run Script phase's behaviour under `ENABLE_USER_SCRIPT_SANDBOXING = YES`, and whether the
+  declared `inputPaths`/`outputPaths` are actually sufficient (the report notes it "would fail
+  silently-ish without them" — test that claim rather than accept it).
+- Re-run the icon licensing check yourself (md5 across `Reference/c`'s images vs. the seven committed
+  icon PNGs). Implementer asked you to re-run it; the whole clean-provenance premise of Wave 7.0/7.1
+  rests on it.
+- `Package.swift`'s two new products: confirm `BoloNet` is genuinely not exported, and that
+  `swift build`/`swift test` at 612 are unaffected by the products block.
+- Test count 608 → 612, +4 icon regression tests, no removals (D28).
