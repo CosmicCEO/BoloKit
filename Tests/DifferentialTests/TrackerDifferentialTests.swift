@@ -199,6 +199,21 @@ private func fixedBytes(_ s: String, count: Int) -> [UInt8] {
         let host = trackerHost(hostPlayerName: "Host", mapName: "Arena", port: 5000, state: state)
         #expect(!host.paused)
     }
+
+    /// D57 -- `UInt32(state.timeLimit)` traps on a negative `Int`, where
+    /// the C's own implicit `int`->`uint32_t` conversion inside `htonl()`
+    /// never would (`GameState.timeLimit` has no non-negative invariant
+    /// enforced anywhere). `trackerHost` uses `truncatingIfNeeded`
+    /// instead -- this asserts the actual truncated two's-complement bit
+    /// pattern for a genuinely negative input, not merely that no trap
+    /// occurs, and not a large-but-positive value that happens not to
+    /// trap either way.
+    @Test func testTrackerHostTruncatesNegativeTimeLimitInsteadOfTrapping() {
+        var state = GameState()
+        state.timeLimit = -300
+        let host = trackerHost(hostPlayerName: "Host", mapName: "Arena", port: 5000, state: state)
+        #expect(host.timeLimit == 0xFFFF_FED4)  // 32-bit two's complement of -300
+    }
 }
 
 // MARK: - Loopback fake-tracker-daemon harness (Swift-only, no C oracle -- D31)

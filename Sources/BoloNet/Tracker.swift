@@ -224,11 +224,22 @@ public struct TrackerHostList: Sendable, Hashable {
 /// separately-tracked config struct. `gameType` is always
 /// `kDominationGameType` (0), same disclosed convention as
 /// `BoloPreamble.gameType`'s own doc comment.
+///
+/// **D57:** `timeLimit` uses `truncatingIfNeeded`, not a plain `UInt32(...)`
+/// conversion -- `GameState.timeLimit` has no non-negative invariant
+/// enforced anywhere (`RunTick.swift`'s own tick logic already tolerates
+/// a negative value the same way the C's `if (server.timelimit > 0)`
+/// does), and `UInt32(_:)` traps on a negative `Int` where the C's
+/// implicit `int`->`uint32_t` conversion inside `htonl()` never would --
+/// same fix pattern this project already applies elsewhere for exactly
+/// this shape of bug (the `Int16` `truncatingIfNeeded` convention,
+/// `CLAUDE.md`). See `TrackerDifferentialTests.swift`'s named regression
+/// test for the negative-`timeLimit` case this guards.
 public func trackerHost(hostPlayerName: String, mapName: String, port: UInt16, state: GameState) -> TrackerHost {
     TrackerHost(
         playerName: hostPlayerName, mapName: mapName, port: port,
         gameType: 0,
-        timeLimit: UInt32(state.timeLimit),
+        timeLimit: UInt32(truncatingIfNeeded: state.timeLimit),
         passwordRequired: state.passwordRequired,
         nPlayers: UInt8(state.players.filter(\.connected).count),
         allowJoin: state.allowJoin,
