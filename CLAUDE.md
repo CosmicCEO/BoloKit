@@ -1,79 +1,82 @@
 # BoloKit — IMPLEMENTER Bootstrap
 
-> **Read this first at the start of every session.** This file is IMPLEMENTER's role instructions
-> ONLY — it deliberately does not restate current wave status, decisions, or non-negotiable-rule
-> explanations, because duplicating that dynamic content here is exactly what made this file go
-> stale in the past. For **current wave status**, read `docs/PLAN.md`'s wave table. For **what
-> just happened**, read the last several entries in `docs/AGENT_NOTES.md`. For the **full text**
-> of every decision referenced below by ID, read `docs/PLAN.md`'s decisions log. Run
-> `git log --oneline -5` and `git status` before doing anything, regardless of what any doc says —
-> this file, `PLAN.md`, and `AGENT_NOTES.md` can all lag reality between updates.
->
-> This is one of three role bootstraps — `docs/PARITY.md` and `docs/PLANNER.md` cover the other
-> two. Reading them isn't required, but it's useful context for writing a pre-brief or completion
-> report that PLANNER/PARITY can act on without asking follow-up questions.
-
----
+> **Read this first, then `git log --oneline -5 && git status`, before anything else.** This file
+> can lag reality. For full wave status/decisions text: `docs/PLAN.md`. For the latest events:
+> the tail of `docs/AGENT_NOTES.md`. Other bootstraps: `docs/PARITY.md`, `docs/PLANNER.md`.
 
 ## Your role
 
-You write Swift, own `DifferentialTests`, and commit to `main`. You do NOT modify `docs/PLAN.md`
-or issue wave assignments — that's PLANNER's job. You DO append every completion report,
-pre-brief, and scope question to `docs/AGENT_NOTES.md` (format: see that file's own header) and
-commit it yourself — see AGENT_NOTES.md's "Commit discipline" note, it applies to you the same as
-the other two roles.
+Write Swift, own `DifferentialTests`, commit to `main`. You do NOT edit `docs/PLAN.md` or assign
+waves — that's PLANNER's. You DO own detailed code-level planning for your own waves: read the
+relevant source yourself, write your own pre-brief into `docs/AGENT_NOTES.md` before coding,
+same rigor PARITY audits you on. Never declare a wave "done" or change architecture unilaterally
+— wait for PLANNER's GO. Log ambiguous calls as a question for PLANNER rather than resolving solo.
 
-**Since the 2026-09-02 reorg, you own detailed code-level planning for your own waves** —
-wave-specific trap lists, C-source pre-briefs, implementation-approach calls. PLANNER no longer
-pre-authors these for you. Read the relevant C source yourself and write your own pre-brief
-directly into `docs/AGENT_NOTES.md` before starting a wave's code, same rigor PARITY's audits
-hold you to. You do NOT choose the next wave, declare a wave "done," or change architecture
-unilaterally — wait for PLANNER's GO. Log ambiguous decisions there as a question for PLANNER
-rather than resolving solo.
+## Git workflow (non-negotiable)
 
-## Coding conventions (Implementer-specific — not tracked in `docs/PLAN.md`'s decisions log)
-
-- **No `import Foundation`** anywhere in `BoloKit` sources.
-- **`import Darwin` is fine** for `sqrtf`, `floorf`, `arc4random_uniform`, and similar C-library
-  primitives.
-- **Copy float literals from the C source exactly** — `0.70711219`, never `Float(sqrt(2)/2)`.
-  Bit-for-bit transcription, not a recomputed equivalent.
-
-## Decisions that govern almost everything you write (full text: `docs/PLAN.md`'s decisions log)
-
-This is an index to jog your memory, not a substitute for reading the actual entries:
-
-- **D18** — Float everywhere for position/physics/trig; never `Double`/`CGFloat`.
-- **D24** — replicate a documented C bug bug-for-bug; never silently "fix" one mid-port.
-- **D25 / D33** — Wave 6: WinBolo's architecture may inform you, its code may never be read while
-  writing a function. The wire format comes from the C oracle, full stop.
-- **D26** — `CXBolo`'s `-ffp-contract=off` build flag. Don't touch it.
-- **D27** — shared per-tick state (N per-client C replicas merged into one field) is a single
-  per-tick election, never a per-caller loop — a later evaluation can silently overwrite an
-  earlier one's result within the same tick.
-- **D28** — no test or doc coverage shrinks without an explicit, stated replacement; every
-  completion report states the before/after test count.
-- **D29** — use `kPif`, not `Float.pi`, for `dir * (π/8)`-style conversions.
-
-Already-committed physics constants (`tankRadius`, `shellVelocity`, `maxShells`, etc.) are in
-`Physics.swift` and tabulated with their C macro names in `docs/PLAN.md`'s "Wave 5.0 — Physics
-constants reference" section — read one of those, not a third copy here.
-
-## Git workflow
-
-1. Write Swift → build → test.
-2. `git add <specific files>` — never `git add -A`.
+1. Write → build → test.
+2. `git add <specific files>` — never `-A`.
 3. `git commit -m "Wave X.Y: <description>"`.
-4. Append your completion report to `docs/AGENT_NOTES.md` and commit that too.
-5. Tell Jerod — he relays to PLANNER/PARITY and pushes to GitHub (your sandbox cannot authenticate
-   to `github.com/CosmicCEO/BoloKit` and does not push; that's expected, not a bug).
+4. Append your completion report / pre-brief to `docs/AGENT_NOTES.md`, commit that too — even a
+   planning-only session with no Swift written. A report that lives only in chat doesn't exist to
+   PLANNER or PARITY.
+5. Tell Jerod — he relays and pushes (your sandbox can't authenticate to GitHub; expected).
 
-A planning-only session (a pre-brief, a scope survey, no Swift written) still does steps 4–5 —
-see AGENT_NOTES.md's "Commit discipline" note. Don't skip the append-and-commit step just because
-steps 1–3 don't apply; a pre-brief that lives only in chat is invisible to PLANNER and PARITY both.
+PARITY activation (`[TO: PARITY]`) is PLANNER's call, not yours.
 
-## PARITY activation
+## Coding conventions
 
-PARITY runs post-commit only. You may note in your own completion report that a commit is ready
-for audit, but the formal `[TO: PARITY]` activation is PLANNER's call, not yours — don't tag it
-yourself.
+- No `import Foundation` in `BoloKit` sources; `import Darwin` is fine for C-library primitives.
+- Copy float literals from C exactly (`0.70711219`, never `Float(sqrt(2)/2)`).
+- D18: Float everywhere for position/physics/trig, never `Double`/`CGFloat`.
+- D28: no test/doc coverage shrinks without a stated replacement; report before/after test counts.
+- Physics constants: `Physics.swift`, tabulated against C macro names in `PLAN.md`'s Wave 5.0
+  section — don't re-derive.
+
+---
+
+## Current scope: Wave 7 — UI / app phase, v1 vertical-slice cut (D60)
+
+**You're picking this up fresh.** Wave 6 (all of networking, 6.0–6.6) is closed and PARITY-PASS.
+Jerod ruled the post-Wave-6 fork: build the UI next, but scoped to a single-process, single-player
+playable slice first — not the full multiplayer/HUD/polish scope. Read `docs/PLAN.md`'s Wave 7 row
+and D60 for the authoritative text; this is a working summary.
+
+**Coding-GO'd now — sub-waves 7.0 through 7.3, in dependency order:**
+
+- **7.0 — Asset pipeline.** `Sources/BoloGlyphs` is currently a one-line stub. `Reference/c/images.h`
+  defines 297 `#define ...IMAGE` indices (roughly `0x00`–`0x91`), fitting one 256-cell (16×16) sheet
+  — matches the old Phase 2 assumption. Generate sprite/tile sheets from **permissive sources only**
+  (OFL fonts, synthesized sounds) — see licensing note below. Do not touch or reference the original
+  art/sound bytes.
+- **7.1 — Xcode app target.** No `.xcodeproj` exists; the project is SPM-only (`Package.swift`:
+  BoloKit, CXBolo, BoloNet, BoloGlyphs, BoloKitTests, DifferentialTests). This wave creates the
+  actual macOS app shell wrapping the SPM package. Blocks 7.2 and 7.3.
+- **7.2 — Game rendering.** The draw loop replicating `GSBoloView.m`'s role (600 lines): terrain +
+  tanks from a live `GameState`. **SwiftUI Canvas/TimelineView vs. AppKit `NSView`/`CALayer` via
+  `NSViewRepresentable` is your call to prototype and propose in your pre-brief** — not something
+  requiring Jerod's ruling up front. PLANNER reviews whichever approach you propose against D41's
+  tick-timing discipline before the coding GO on this sub-wave stands.
+- **7.3 — Input + tick loop.** Single-process only, no networking wiring in this slice.
+
+**Pre-built hooks already in place from Wave 6** (don't rebuild these): `TCPSession.swift` and
+`HostSession.swift` already expose `onPlayerStatusChanged`, `onPillStatusChanged`,
+`onBaseStatusChanged`, `onTankStatusChanged`, `onMineExplosion`, `onSuperboomTerrain`,
+`onDropPills`, and others — these are the exact hook points `GSXBoloController.m`'s C callbacks
+(`setplayerstatus`, `setpillstatus`, `settankstatus`, etc.) map onto.
+
+**NOT GO'd — do not start without a fresh GO from PLANNER:** Milestone B (multiplayer UI —
+host/join panels, join-progress), Milestone C (full HUD, preferences, chat, sound), Milestone D
+(polish/ship, including Q18's git-history rewrite to purge original asset bytes before any public
+push — destructive, must be raised explicitly before ever executing).
+
+### Licensing — read this before touching `Reference/c`
+
+`Reference/c` (xbolo, the C oracle this whole project ports from) is **MIT-licensed** (see
+`Reference/c/LICENSE`; D1/D13). You may read, port, and directly transcribe/adapt its `.m`/`.h`
+source — including the UI layer (`GSXBoloController.m`, 4,037 lines; `GSBoloView.m`, 600 lines) —
+same as every Phase 3 engine wave has done. **D25/D33's clean-room restriction applies only to
+WinBolo (GPL v2), not to Reference/c.** The actual constraint for Wave 7 is different: the
+**art/sound assets** bundled in xbolo (referenced via `images.h`) are Stuart Cheshire's original
+copyrighted material — never copy those bytes; 7.0 must regenerate everything from permissive
+sources instead.

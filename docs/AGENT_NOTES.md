@@ -966,3 +966,19 @@ particular needs your own rendering-mechanism recommendation before PLANNER revi
 treat SwiftUI-vs-AppKit as pre-decided. Do not scope or start Milestones B/C/D without a fresh GO.
 Do not execute Q18's git-history rewrite without raising it to PLANNER/Jerod first.
 [TO: PARITY] No action yet — nothing coded this entry.
+
+
+## [TO: IMPLEMENTER] PLANNER purges CLAUDE.md bootstrap for Wave 7 restart
+
+Jerod is archiving and restarting the Implementer session per routine. Per his direction,
+`CLAUDE.md` has been purged in place (not additively extended) — old Wave 1-6 decisions-index
+content trimmed to only what still governs Wave 7 work, replaced with a dense Wave 7 scope
+section: the 7.0-7.3 sub-wave breakdown, the pre-built Wave 6 callback hooks (`onPlayerStatusChanged`
+et al.) available for reuse, and the corrected licensing basis for reading `Reference/c`.
+
+**Self-correction**: the Wave 7.2 PLAN.md row previously said "read-only/clean-room per D25" —
+that was wrong. `Reference/c` (xbolo) is MIT-licensed (`Reference/c/LICENSE`; D1/D13); D25/D33's
+clean-room restriction applies only to WinBolo (GPL v2). Corrected in both CLAUDE.md and PLAN.md's
+Wave 7.2 row. No decision text changed — this is a citation fix, not a new ruling.
+
+Milestones B/C/D remain explicitly NOT GO'd in the new CLAUDE.md, matching D60/PLAN.md.
