@@ -92,6 +92,86 @@ public func terrainToTile(_ terrain: Int32) -> Int32 {
     return terrainToTile(t).rawValue
 }
 
+// MARK: - Display Tile (Wave 7.2)
+
+/// Converts a map cell to its canonical display tile, overlaying live pills/bases on top of
+/// the underlying terrain. Ported from `tilefor()` (Reference/c/client.c:6106-6141) — the
+/// non-fog variant. `fogtilefor()`'s `hiddenmines`/`seentiles` branch is out of scope for v1
+/// (D65: every tile fully visible). Pills take priority over bases, which take priority over
+/// terrain, matching the C's literal scan order exactly (both linear scans, not spatial
+/// lookups — same as the oracle, not a performance regression this port introduced).
+public func tileFor(
+    x: Int32, y: Int32, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    localPlayer: Int, players: [PlayerState]
+) -> Tile {
+    for pill in pills where pill.armour != pillOnboard && Int32(pill.x) == x && Int32(pill.y) == y {
+        if pill.owner != playerNeutral && testAlliance(Int(pill.owner), localPlayer, players: players) {
+            return Tile(rawValue: Tile.friendlyPill00.rawValue + Int32(pill.armour))!
+        } else {
+            return Tile(rawValue: Tile.hostilePill00.rawValue + Int32(pill.armour))!
+        }
+    }
+    for base in bases where Int32(base.x) == x && Int32(base.y) == y {
+        if base.owner == playerNeutral {
+            return .neutralBase
+        } else if testAlliance(Int(base.owner), localPlayer, players: players) {
+            return .friendlyBase
+        } else {
+            return .hostileBase
+        }
+    }
+    let index = Int(y) * 256 + Int(x)
+    return terrainToTile(Terrain(rawValue: terrain.storage[index])!)
+}
+
+/// Builds the full 256x256 display `TileGrid` for a `GameState` snapshot — pills and bases
+/// overlaid on terrain, ready for `mapimage()` to autotile. Same overlay semantics as
+/// `tileFor` (pills beat bases beat terrain, first match wins within each), but precomputes
+/// pill/base position lookups instead of calling `tileFor` per cell: a naive per-cell scan is
+/// O(256×256×(pillCount+baseCount)), measured at ~120ms/call in a debug build with just 28
+/// overlays — far over a 50Hz tick's 20ms budget. This is O(256×256 + pillCount+baseCount)
+/// instead, intended to be computed once per rendered snapshot (e.g. once per tick).
+public func displayTileGrid(for state: GameState) -> TileGrid {
+    var pillOverlay: [Int: Tile] = [:]
+    for pill in state.pills where pill.armour != pillOnboard {
+        let key = Int(pill.y) * 256 + Int(pill.x)
+        guard pillOverlay[key] == nil else { continue }  // first match wins, matching tilefor()
+        let friendly = pill.owner != playerNeutral
+            && testAlliance(Int(pill.owner), state.localPlayer, players: state.players)
+        let base = friendly ? Tile.friendlyPill00 : Tile.hostilePill00
+        pillOverlay[key] = Tile(rawValue: base.rawValue + Int32(pill.armour))!
+    }
+
+    var baseOverlay: [Int: Tile] = [:]
+    for base in state.bases {
+        let key = Int(base.y) * 256 + Int(base.x)
+        guard baseOverlay[key] == nil else { continue }  // first match wins, matching tilefor()
+        if base.owner == playerNeutral {
+            baseOverlay[key] = .neutralBase
+        } else if testAlliance(Int(base.owner), state.localPlayer, players: state.players) {
+            baseOverlay[key] = .friendlyBase
+        } else {
+            baseOverlay[key] = .hostileBase
+        }
+    }
+
+    // Fill from terrain first with no per-cell dictionary probe (a 256x256 dictionary lookup
+    // pass measured slower than the handful of overlay entries warrants), then patch the
+    // (typically tiny) pill/base overlay sets directly -- bases first, pills last so pills
+    // still win when co-located, matching tilefor()'s priority.
+    var grid = TileGrid()
+    for key in grid.storage.indices {
+        grid.storage[key] = terrainToTile(Terrain(rawValue: state.terrain.storage[key])!).rawValue
+    }
+    for (key, tile) in baseOverlay {
+        grid.storage[key] = tile.rawValue
+    }
+    for (key, tile) in pillOverlay {
+        grid.storage[key] = tile.rawValue
+    }
+    return grid
+}
+
 // MARK: - BMAP File Format Structs
 //
 // Pure data carriers mirroring the packed structs in Reference/c/bmap.h.

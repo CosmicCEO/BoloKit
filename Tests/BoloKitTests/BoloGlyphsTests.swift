@@ -125,6 +125,34 @@ struct BoloGlyphsTests {
         }
     }
 
+    // MARK: - Connective corner fill (Wave 7.2 finding, GlyphSource.swift's drawConnective)
+
+    private func isFullyOpaque(_ patch: Canvas16) -> Bool {
+        !stride(from: 3, to: patch.pixels.count, by: 4).contains { patch.pixels[$0] != 255 }
+    }
+
+    @Test(
+        "a family with no tracked diagonal bits (sea/river/forest/crater/boat) renders a solid fill when fully orthogonally connected, not a cross with transparent corners",
+        arguments: [TileFamily.sea, .river, .forest, .crater, .boat]
+    )
+    func nonDiagonalFamilyFullyConnectedIsSolid(family: TileFamily) {
+        let patch = renderGlyph(.connective(family: family, ortho: 0b1111, diag: 0))
+        #expect(isFullyOpaque(patch), "\(family) should render a solid fill when all 4 orthogonal neighbors connect")
+    }
+
+    @Test("wall's real diagonal tracking is unaffected by the corner-inference fix")
+    func wallCornerFillStillUsesItsOwnDiagBitsNotInference() {
+        // Orthogonally connected on all 4 sides but explicitly no diagonal neighbors --
+        // wall must still leave all four corners transparent, unlike the inferred families
+        // above, since it has real diagonal data to trust instead of inferring from ortho.
+        let noDiag = renderGlyph(.connective(family: .wall, ortho: 0b1111, diag: 0))
+        #expect(!isFullyOpaque(noDiag), "wall must not infer corners from ortho pairs -- it tracks real diag bits")
+
+        // Fully connected on every side, including diagonals -- must be solid, same as before.
+        let fullDiag = renderGlyph(.connective(family: .wall, ortho: 0b1111, diag: 0b1111))
+        #expect(isFullyOpaque(fullDiag))
+    }
+
     // MARK: - Tank heading convention (D70)
 
     /// Centroid of every non-transparent pixel in a 16x16 patch, relative

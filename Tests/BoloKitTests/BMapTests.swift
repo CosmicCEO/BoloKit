@@ -223,6 +223,119 @@ private let expectedTile: [Terrain: Tile] = [
     #expect(!writeRun(run, data: data, into: &grid))
 }
 
+// MARK: - tileFor / displayTileGrid (Wave 7.2) — ported from client.c's tilefor()
+
+@Test func tileForFallsThroughToTerrainWhenNoPillOrBaseIsPresent() {
+    let terrain = TerrainGrid.mapDefault()
+    let tile = tileFor(x: 128, y: 128, terrain: terrain, pills: [], bases: [], localPlayer: 0, players: [])
+    #expect(tile == terrainToTile(Terrain(rawValue: terrain.storage[128 * 256 + 128])!))
+}
+
+@Test func tileForReportsFriendlyPillWithArmourWhenAllied() {
+    let terrain = TerrainGrid.mapDefault()
+    let players = [PlayerState(used: true, alliance: 0b10), PlayerState(used: true, alliance: 0b01)]
+    let pill = Pill(x: 5, y: 5, armour: 7, owner: 1, speed: 0, counter: 0)
+    let tile = tileFor(x: 5, y: 5, terrain: terrain, pills: [pill], bases: [], localPlayer: 0, players: players)
+    #expect(tile == .friendlyPill07)
+}
+
+@Test func tileForReportsHostilePillWhenNotAllied() {
+    let terrain = TerrainGrid.mapDefault()
+    let players = [PlayerState(used: true, alliance: 0), PlayerState(used: true, alliance: 0)]
+    let pill = Pill(x: 5, y: 5, armour: 3, owner: 1, speed: 0, counter: 0)
+    let tile = tileFor(x: 5, y: 5, terrain: terrain, pills: [pill], bases: [], localPlayer: 0, players: players)
+    #expect(tile == .hostilePill03)
+}
+
+@Test func tileForReportsHostilePillWhenOwnerIsNeutral() {
+    // Mirrors tilefor()'s literal condition: pill.owner != NEUTRAL is required for the
+    // friendly branch, so a neutral-owned pill (still not onboard) falls to hostile, not
+    // some third neutral-pill case -- there is no neutral pill tile in the Tile enum.
+    let terrain = TerrainGrid.mapDefault()
+    let players = [PlayerState(used: true)]
+    let pill = Pill(x: 5, y: 5, armour: 0, owner: playerNeutral, speed: 0, counter: 0)
+    let tile = tileFor(x: 5, y: 5, terrain: terrain, pills: [pill], bases: [], localPlayer: 0, players: players)
+    #expect(tile == .hostilePill00)
+}
+
+@Test func tileForSkipsOnboardPills() {
+    let terrain = TerrainGrid.mapDefault()
+    let pill = Pill(x: 5, y: 5, armour: pillOnboard, owner: 0, speed: 0, counter: 0)
+    let tile = tileFor(x: 5, y: 5, terrain: terrain, pills: [pill], bases: [], localPlayer: 0, players: [])
+    #expect(tile == terrainToTile(Terrain(rawValue: terrain.storage[5 * 256 + 5])!))
+}
+
+@Test func tileForReportsBaseOwnershipTiles() {
+    let terrain = TerrainGrid.mapDefault()
+    let players = [PlayerState(used: true, alliance: 0b10), PlayerState(used: true, alliance: 0b01)]
+
+    let neutral = Base(x: 1, y: 1, armour: 10, owner: playerNeutral, shells: 0, mines: 0)
+    #expect(tileFor(x: 1, y: 1, terrain: terrain, pills: [], bases: [neutral], localPlayer: 0, players: players) == .neutralBase)
+
+    let friendly = Base(x: 2, y: 2, armour: 10, owner: 1, shells: 0, mines: 0)
+    #expect(tileFor(x: 2, y: 2, terrain: terrain, pills: [], bases: [friendly], localPlayer: 0, players: players) == .friendlyBase)
+
+    let hostilePlayers = [PlayerState(used: true, alliance: 0), PlayerState(used: true, alliance: 0)]
+    let hostile = Base(x: 3, y: 3, armour: 10, owner: 1, shells: 0, mines: 0)
+    #expect(tileFor(x: 3, y: 3, terrain: terrain, pills: [], bases: [hostile], localPlayer: 0, players: hostilePlayers) == .hostileBase)
+}
+
+@Test func tileForPillTakesPriorityOverBaseAtTheSameCell() {
+    // Matches tilefor()'s literal scan order: pills are checked before bases.
+    let terrain = TerrainGrid.mapDefault()
+    let players = [PlayerState(used: true, alliance: 0b10), PlayerState(used: true, alliance: 0b01)]
+    let pill = Pill(x: 4, y: 4, armour: 2, owner: 1, speed: 0, counter: 0)
+    let base = Base(x: 4, y: 4, armour: 10, owner: 1, shells: 0, mines: 0)
+    let tile = tileFor(x: 4, y: 4, terrain: terrain, pills: [pill], bases: [base], localPlayer: 0, players: players)
+    #expect(tile == .friendlyPill02)
+}
+
+@Test func displayTileGridIsPlainTerrainWhenNoPillsOrBasesExist() {
+    let state = GameState(terrain: .mapDefault())
+    let grid = displayTileGrid(for: state)
+    for y in 0..<256 {
+        for x in 0..<256 {
+            let expected = terrainToTile(Terrain(rawValue: state.terrain.storage[y * 256 + x])!)
+            #expect(grid[x, y] == expected.rawValue)
+        }
+    }
+}
+
+@Test func displayTileGridAgreesWithTileForAtEveryCell() {
+    // displayTileGrid's implementation deliberately diverges from tileFor's per-cell scan for
+    // performance (a naive per-cell call is O(256x256x(pillCount+baseCount)), measured at
+    // ~120ms/call in a debug build for just 28 overlays -- see displayTileGrid's doc comment).
+    // This is the test that keeps the two paths honest against each other.
+    let players = [PlayerState(used: true, alliance: 0b10), PlayerState(used: true, alliance: 0b01)]
+    var pills: [Pill] = []
+    for i in 0..<10 {
+        pills.append(Pill(x: UInt8(i * 7 + 1), y: UInt8(i * 11 + 2), armour: UInt8(i), owner: UInt8(i % 2), speed: 0, counter: 0))
+    }
+    var bases: [Base] = []
+    for i in 0..<5 {
+        bases.append(Base(x: UInt8(i * 13 + 3), y: UInt8(i * 17 + 4), armour: 10, owner: UInt8(i % 2), shells: 0, mines: 0))
+    }
+    let state = GameState(terrain: .mapDefault(), pills: pills, bases: bases, players: players, localPlayer: 0)
+    let grid = displayTileGrid(for: state)
+    for y in Int32(0)..<256 {
+        for x in Int32(0)..<256 {
+            let expected = tileFor(
+                x: x, y: y, terrain: state.terrain, pills: state.pills, bases: state.bases,
+                localPlayer: state.localPlayer, players: state.players
+            )
+            #expect(grid[Int(x), Int(y)] == expected.rawValue, "mismatch at (\(x), \(y))")
+        }
+    }
+}
+
+@Test func displayTileGridOverlaysAPillOnTopOfTerrain() {
+    let players = [PlayerState(used: true, alliance: 0b10), PlayerState(used: true, alliance: 0b01)]
+    let pill = Pill(x: 40, y: 40, armour: 5, owner: 1, speed: 0, counter: 0)
+    let state = GameState(terrain: .mapDefault(), pills: [pill], players: players, localPlayer: 0)
+    let grid = displayTileGrid(for: state)
+    #expect(grid[40, 40] == Tile.friendlyPill05.rawValue)
+}
+
 @Test func writeRunGuardsAgainstOverrunPastColumn256() {
     // Corrupt "like tiles" run claiming 9 repeats (header nibble 15) from
     // a 2-column span starting near the grid edge — attempting to write

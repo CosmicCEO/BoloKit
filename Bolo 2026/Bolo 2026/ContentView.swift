@@ -6,34 +6,45 @@
 import BoloKit
 import SwiftUI
 
-/// Wave 7.1 placeholder. This is the "minimal window" the sub-wave is scoped to — it exists to
-/// prove the app shell is wired up, and is replaced wholesale by Wave 7.2's draw loop.
-///
-/// It deliberately reports the two things 7.1 is responsible for delivering, so a regression in
-/// either is visible the moment the app launches rather than at 7.2:
-///   - `BoloKit` is linked (reads a constant from `Physics.swift`),
-///   - the D72 Run Script phase put both generated sheets in the bundle.
+/// Wave 7.2 demo. `GameRenderView` (own file, D82) needs *something* to render before 7.3's
+/// tick loop exists to drive it -- this hand-builds a small terrain patch (not a real map
+/// loader; that's future scope) plus one spawned local player, purely so the draw loop is
+/// visually verifiable now. Wave 7.3 replaces `demoState` with real tick-driven `GameState`.
 struct ContentView: View {
-    private static let sheetNames = ["Tiles", "Sprites"]
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Bolo 2026")
-                .font(.title)
-            Text("Wave 7.1 shell — no game rendering yet (Wave 7.2).")
-                .foregroundStyle(.secondary)
-            Divider()
-            Text("BoloKit linked: \(Int(ticksPerSec)) ticks/sec")
-            ForEach(Self.sheetNames, id: \.self) { name in
-                Text("\(name).png in bundle: \(Self.isInBundle(name) ? "yes" : "NO")")
-            }
+        ScrollView([.horizontal, .vertical]) {
+            GameRenderRepresentable(state: Self.demoState)
         }
-        .padding()
-        .frame(minWidth: 360, minHeight: 200)
+        .frame(minWidth: 480, minHeight: 360)
     }
 
-    private static func isInBundle(_ name: String) -> Bool {
-        Bundle.main.url(forResource: name, withExtension: "png") != nil
+    private static var demoState: GameState {
+        var terrain = TerrainGrid.mapDefault()
+
+        // Exercises autotiling variety (grass/road/forest connectivity, already validated by
+        // Wave 7.0's own tests) without a real map loader.
+        for y in 100..<160 {
+            for x in 100..<160 {
+                terrain.storage[y * 256 + x] = Terrain.grass0.rawValue
+            }
+        }
+        for x in 100..<160 {
+            terrain.storage[128 * 256 + x] = Terrain.road.rawValue
+        }
+        for y in 100..<120 {
+            for x in 100..<120 {
+                terrain.storage[y * 256 + x] = Terrain.forest.rawValue
+            }
+        }
+
+        var player = PlayerState()
+        player.tank = Vec2f(x: 130, y: 130)
+        player.dir = 0
+        player.dead = false
+        player.connected = true
+        player.used = true
+
+        return GameState(terrain: terrain, players: [player], localPlayer: 0)
     }
 }
 

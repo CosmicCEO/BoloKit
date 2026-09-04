@@ -68,10 +68,18 @@ private func familyColor(_ family: TileFamily) -> (UInt8, UInt8, UInt8) {
     }
 }
 
-/// Draws a plus-shaped blob: a fixed core, extended toward each orthogonal
-/// direction with a connectivity bit set, with diagonal corners filled in
-/// when their bit is set -- a generic autotile look, not a fidelity target
-/// (D64: freshly-generated sheets carry no fidelity obligation).
+/// Draws a plus-shaped blob: a fixed core, extended toward each orthogonal direction with a
+/// connectivity bit set -- a generic autotile look, not a fidelity target (D64: freshly-
+/// generated sheets carry no fidelity obligation).
+///
+/// Corner fill: `.wall` is the only family `Autotile.swift` tracks real diagonal bits for
+/// (`needsDiag`), so it uses `diag` directly. Every other family (sea/river/forest/crater/
+/// boat) always gets `diag == 0` -- corners inferred from their two adjacent orthogonal bits
+/// instead, a discovered-by-Wave-7.2 fix: leaving those corners permanently transparent meant
+/// any run of 2+ adjacent same-family tiles (open water, forest, craters -- most of any real
+/// map) rendered with a permanent checkerboard of transparent gaps at internal corners rather
+/// than a continuous fill, invisible to Wave 7.0's own per-glyph-in-isolation tests since
+/// nothing tiled glyphs adjacently before this wave existed to do it.
 private func drawConnective(_ c: inout Canvas16, family: TileFamily, ortho: UInt8, diag: UInt8) {
     let (r, g, b) = familyColor(family)
     c.fillRect(4, 4, 12, 12, r, g, b)
@@ -79,10 +87,15 @@ private func drawConnective(_ c: inout Canvas16, family: TileFamily, ortho: UInt
     if ortho & 2 != 0 { c.fillRect(4, 0, 12, 4, r, g, b) }
     if ortho & 4 != 0 { c.fillRect(12, 4, 16, 12, r, g, b) }
     if ortho & 8 != 0 { c.fillRect(4, 12, 12, 16, r, g, b) }
-    if diag & 1 != 0 { c.fillRect(0, 0, 4, 4, r, g, b) }
-    if diag & 2 != 0 { c.fillRect(12, 0, 16, 4, r, g, b) }
-    if diag & 4 != 0 { c.fillRect(0, 12, 4, 16, r, g, b) }
-    if diag & 8 != 0 { c.fillRect(12, 12, 16, 16, r, g, b) }
+
+    let nw = family == .wall ? diag & 1 != 0 : (ortho & 1 != 0 && ortho & 2 != 0)
+    let ne = family == .wall ? diag & 2 != 0 : (ortho & 4 != 0 && ortho & 2 != 0)
+    let sw = family == .wall ? diag & 4 != 0 : (ortho & 1 != 0 && ortho & 8 != 0)
+    let se = family == .wall ? diag & 8 != 0 : (ortho & 4 != 0 && ortho & 8 != 0)
+    if nw { c.fillRect(0, 0, 4, 4, r, g, b) }
+    if ne { c.fillRect(12, 0, 16, 4, r, g, b) }
+    if sw { c.fillRect(0, 12, 4, 16, r, g, b) }
+    if se { c.fillRect(12, 12, 16, 16, r, g, b) }
 }
 
 private func drawPill(_ c: inout Canvas16, armor: Int, friendly: Bool) {
