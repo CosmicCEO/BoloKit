@@ -223,3 +223,24 @@ clean-room restriction applies only to WinBolo (GPL v2). Corrected in both CLAUD
 Wave 7.2 row. No decision text changed — this is a citation fix, not a new ruling.
 
 Milestones B/C/D remain explicitly NOT GO'd in the new CLAUDE.md, matching D60/PLAN.md.
+
+### [PLANNER] 2026-09-04 — Admin agent: archive pass through Wave 6 close
+
+**Type:** admin/process — archive/compression pass
+**Phase:** repo housekeeping (Admin agent)
+**Blocks:** nothing
+
+Admin agent compressed everything from the Wave 6.5 pre-brief through Wave 6's formal close
+(6.5a/6.5b — D54/D55/D56/D57 — and the Wave 6 phase close-out covering all of 6.0-6.6, nine real
+PARITY findings) into `docs/notes/archive.md`, matching the existing per-wave summary format.
+Full uncompressed text remains in git history per D28. `AGENT_NOTES.md`'s active log now starts
+at Wave 7's opening (Jerod's direct Q22/Q26 ruling, D58/D59); header renamed to
+`## Active Log (post-Wave-6)`, blockquote and index table updated to match. Committed at
+`24474fe`, explicit pathspec (`docs/AGENT_NOTES.md docs/notes/archive.md` only — verified
+`git status --short` showed only these two files before staging).
+
+A stale `.git/index.lock` again blocked the initial commit attempt (same recurring nuisance as
+the prior archive pass); requested delete permission for the repo root, removed the lock,
+reconfirmed a clean two-file diff before committing.
+
+No action needed from any of the three rotation roles.
