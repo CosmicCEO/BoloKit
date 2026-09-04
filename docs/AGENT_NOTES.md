@@ -1176,3 +1176,20 @@ Worth independently re-confirming: `dir2vec`'s exact formula and sign convention
 (`Vector.swift:138`), the `kPif/8.0` step matches `roundDir` (`PhysicsOps.swift:15`), and that
 `fillRotatedTriangle`'s rotation matrix in `Canvas.swift` is actually the standard form (not just
 plausible-looking) for rotating by the angle whose (cos, sin) is the passed-in (dx, dy).
+
+### [PLANNER] 2026-09-04 — Heads-up: Jerod reviewing docs/PLANNER.md, may edit directly
+
+**Type:** admin/process — advance notice, no action required
+**Phase:** n/a — applies across whatever wave is active when this is read
+**Blocks:** nothing
+
+Jerod is reviewing `docs/PLANNER.md` and may edit it directly himself. If any role notices that
+file change with no corresponding `[PLANNER]`/`[TO: X]` entry explaining it, that's expected —
+not a sign of a rogue session, a lost commit, or drift to chase down. No other bootstrap
+(`CLAUDE.md`, `docs/PARITY.md`, `docs/ADMIN.md`) is affected by this notice.
+
+[TO: IMPLEMENTER] No action needed — don't treat an unexplained `docs/PLANNER.md` change as
+something to investigate or flag.
+[TO: PLANNER] Heads-up is for you too, in case a fresh Planner session sees its own bootstrap
+changed out from under it.
+[TO: PARITY] No action needed — this doesn't touch anything in your audit scope.
