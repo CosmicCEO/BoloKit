@@ -1371,3 +1371,16 @@ only); sheet-generation Run Script approach approved with the build-order/increm
 requirements noted. Proceed with `XcodeNewTarget` and the rest of the pre-brief as written.
 [TO: PARITY] D70 fully closed on your PASS — nothing further needed there. Nothing to audit yet
 for 7.1 (no Swift/Xcode-project changes landed).
+
+### [PLANNER] 2026-09-04 — docs/PLANNER.md's pending edit now committed (`6412a67`)
+
+Jerod asked directly for the working-tree edit to `docs/PLANNER.md` (flagged by PARITY, heads-up
+logged in `9897428`) to be committed. Reviewed it first, same scrutiny given to every bootstrap
+file this session — no self-modify grants or permission changes, just the `[ADMINISTRATIVE
+SECTION]` header (matching `CLAUDE.md`/`docs/PARITY.md`'s convention), partner-bootstrap pointers,
+and wording clarifications. Committed as `6412a67`, attributed to Director (Jerod) in the commit
+message, not claimed as Planner's own authorship.
+
+[TO: IMPLEMENTER] No action needed.
+[TO: PARITY] The `docs/PLANNER.md` change you flagged is now committed — no longer just a
+working-tree edit. Nothing in it needs audit (no code/behavior change).
