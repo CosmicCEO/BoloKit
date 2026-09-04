@@ -327,3 +327,56 @@ the Wave 5.9 scoped-parallel-worktree pattern for whichever one runs as the seco
 template. Coordinate between the two sessions (or with Jerod relaying) on which sub-wave takes the
 primary `main` slot vs. the parallel worktree, since that choice isn't fixed by this ruling.
 [TO: PARITY] No action yet — nothing coded this entry to audit.
+
+### [PLANNER] 2026-09-03 — Wave 6.5b folded in: NAT-PMP/UPnP shipped, PARITY held pending shared build
+
+**Type:** planning — fold-in of a standalone report + PARITY-activation call
+**Phase:** Wave 6.5b coding complete, audit pending
+**Blocks:** Wave 6.5b's PARITY audit (deliberately, see below) — nothing else
+
+Folding in IMPLEMENTER 6.5b's completion report (`docs/notes/WAVE65B_REPORT.md`, commit `a250c57`)
+per its own request, since it was logged there rather than directly to this file to avoid racing
+the concurrent 6.5a session's commits (both sessions worked the same checkout, not separate
+worktrees — noting for the record since I'd recommended the Wave 5.9 worktree pattern and that
+wasn't what actually ran; it still worked cleanly here because the two sub-waves' file lists were
+genuinely disjoint, confirmed by `a250c57`'s diff touching only `PortMapping.swift`,
+`PortMappingTests.swift`, and its own report file).
+
+**Wave 6.5b shipped:** `Sources/BoloNet/PortMapping.swift` wraps `DNSServiceNATPortMappingCreate`
+(D54) as an `AsyncStream`, same D49/D52 pattern, boxing the stream continuation through
+`Unmanaged`/`UnsafeMutableRawPointer` since `dnssd`'s callback is a C function pointer and can't
+capture Swift state directly — a genuinely new mechanism-crossing shape for this codebase, not a
+mechanical repeat of the two prior `AsyncStream` listeners. Decision logic
+(`decodePortMappingReply`) is correctly factored out of the callback for independent testing,
+consistent with D31/D36/D42's decision-vs-mechanism split applied everywhere else in this port —
+good instinct to preserve *something* testable given D55 already disclosed this sub-wave has no C
+oracle. `doubleNAT` treated as a successful update with a flag, not a thrown error, matching the
+API's own state-change-callback model rather than inventing a request/response shape for it. Byte
+order handling (host-order `port` parameters, network-order wire values, `externalAddress` left
+raw matching `DgramServerPeerAddress.addr`'s existing convention) is consistent with the rest of
+`BoloNet`. 5 new tests, all against the pure decision function except one safety check
+(`cancel()` idempotency) that legitimately talks to the live `mDNSResponder` daemon — disclosed
+correctly as the one test touching real mechanism, not decision logic, and explicitly distinguished
+from D55's actual non-goal (a live router round-trip, which nothing here exercises).
+
+**No changes requested — this reads as complete and correctly scoped to exactly what the coding
+GO accepted.**
+
+**PARITY held, as IMPLEMENTER itself recommended — confirmed correct, not just accepted on
+faith.** `netops.c`/`CXBolo.h` are mid-edit from the concurrent Wave 6.5a session as of this
+writing (confirmed via `git status` at fold-in time: those files plus `Preambles.swift`/
+`Tracker.swift`/`TrackerBrowser.swift`/`TrackerRegistration.swift` show uncommitted changes) — the
+shared `DifferentialTests` target won't build until 6.5a lands, so a real audit isn't possible yet
+regardless of 6.5b's own cleanliness. This is a build-dependency block, not a finding against
+6.5b.
+
+**Test count:** baseline 572 (Wave 6.4c). 6.5b adds 5 (577 once the suite builds again) — 6.5a's
+own count is still pending its landing. Full-suite re-run and grand total confirmation deferred to
+whichever of the two lands second, per IMPLEMENTER's own request.
+
+[TO: IMPLEMENTER] Wave 6.5b is folded in, no changes requested — nothing further needed on 6.5b
+unless the full-suite re-run (once 6.5a lands) surfaces something. Whichever of 6.5a/6.5b commits
+second should run the full suite and report the real grand total in its own completion report.
+[TO: PARITY] Hold on both 6.5a and 6.5b until the shared `CXBolo`/`DifferentialTests` target
+builds clean again (blocked on 6.5a's in-flight edits) — will re-activate once both land and the
+suite builds.
