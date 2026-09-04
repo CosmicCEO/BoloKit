@@ -61,9 +61,7 @@ and D60 for the authoritative text; this is a working summary.
   reference direction and rotational sense (shipped: heading 0 = north, clockwise; `dir2vec`: 0 =
   east, counterclockwise). Ruled: fix the generator to match `dir2vec` exactly, add a named
   regression test, before 7.2 wires a real heading to a sprite column — small, not a reopen of 7.0.
-- **7.1 — Xcode app target.** No `.xcodeproj` exists; the project is SPM-only (`Package.swift`:
-  BoloKit, CXBolo, BoloNet, BoloGlyphs, BoloKitTests, DifferentialTests). This wave creates the
-  actual macOS app shell wrapping the SPM package. Blocks 7.2 and 7.3.
+- **7.1 — Xcode app target. ✅ Coding GO'd on pre-brief 2026-09-04 (D72/D73).** No `.xcodeproj` exists yet; native Cocoa App template via `XcodeNewTarget`, minimal SwiftUI `WindowGroup` window, generated-not-copied placeholder icon, v1-sized empty entitlements (no network client entitlement — not needed until Milestone B). **Target/product name is `Bolo 2026` (D21) — not `BoloApp`, corrected at pre-brief review.** Depends on `BoloKit` only for the whole v1 slice (7.1-7.3); `BoloNet` is Milestone B's concern, not wired in here or at 7.3 (D73 — 7.3 is explicitly single-process, no networking). Sheets (`Tiles.png`/`Sprites.png`) generated at build time via a Run Script phase invoking the built `BoloGlyphs` executable, not committed to git (D72) — `BoloGlyphs` must be an explicit target dependency so build order is correct. Blocks 7.2 and 7.3.
 - **7.2 — Game rendering.** The draw loop replicating `GSBoloView.m`'s role (600 lines): terrain +
   tanks from a live `GameState`. **SwiftUI Canvas/TimelineView vs. AppKit `NSView`/`CALayer` via
   `NSViewRepresentable` is your call to prototype and propose in your pre-brief** — not something

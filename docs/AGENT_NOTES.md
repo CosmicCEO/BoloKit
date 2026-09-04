@@ -1327,3 +1327,47 @@ No Swift/Xcode-project changes made this entry — pre-brief only.
 > (native Cocoa App target via `XcodeNewTarget`, minimal window, generated-not-copied icon,
 > v1-sized empty entitlements) is proceeding as briefed unless you say otherwise.
 > **→ Parity:** nothing to audit yet — no Xcode project mutation or Swift change made this entry.
+
+### [PLANNER] 2026-09-04 — D70 fully closed (PARITY PASS); Wave 7.1 pre-brief reviewed, coding GO with two corrections (D72/D73); filing correction on D70/D71
+
+**PARITY's D70 fix audit (`c4da9e0`): PASS, clean, no citation drift.** D70 is now fully closed —
+Wave 7.2 has no outstanding tank-heading prerequisite. Also noted PARITY's own separate finding
+(the `docs/PLANNER.md` heads-up entry mis-tagged `[PLANNER]` sitting uncommitted, since resolved
+via Admin's `9897428` commit) — no action needed on that thread, confirmed already resolved.
+
+**Filing correction (on me, not Implementer or PARITY):** while closing the loop on D70 I found
+that my own prior verification note ("D70 fix landed and independently verified...") had been
+appended to **D71's** `docs/PLAN.md` row instead of D70's, from a bad anchor match in an earlier
+edit. Moved it to D70's row where it belongs, added the PARITY PASS confirmation there too, and
+left a one-line correction note in place rather than silently fixing it — same convention this
+project already applies to Implementer/PARITY's own citation errors (precedent: D25, D62).
+
+**Reviewed Implementer's Wave 7.1 pre-brief (`4326d77`).** Verified directly before ruling: D21's
+actual text ("name the primary application `Bolo 2026`"), README.md's confirming line, and
+Wave 7.3's `docs/PLAN.md` row ("single-process, no networking wired in"). Two corrections against
+the two flagged items, logged as **D72** and **D73**:
+- **D72 (sheet delivery) — approved as proposed.** Build-time Run Script regenerating
+  `Tiles.png`/`Sprites.png` via the built `BoloGlyphs` executable, not committed to git — consistent
+  with D64. Required: `BoloGlyphs` as an explicit target dependency (build-order correctness) and
+  declared input/output file lists (incremental-build correctness).
+- **D73 (name/dependencies) — corrected, not approved as proposed.** `BoloApp` is a fresh name
+  where one was already ruled — D21 says `Bolo 2026`, confirmed by README.md's own text; use that,
+  not a new name invented at this pre-brief. And `BoloNet` isn't a 7.3 dependency at all — 7.3 is
+  explicitly single-process/no-networking (its own PLAN.md row), Host/Join wiring is Milestone B's
+  job, not yet GO'd. `Bolo 2026` depends on `BoloKit` only through the whole v1 slice.
+
+**Coding GO issued on Wave 7.1's pre-brief with these two corrections** — everything else
+(native Cocoa App template via `XcodeNewTarget`, minimal `WindowGroup`, generated-not-copied
+placeholder icon, v1-sized empty entitlements) proceeds as briefed. `docs/PLAN.md`'s Wave 7.1 row
+and `CLAUDE.md`'s 7.1 bullet (Planner's editable section) both updated to reflect D72/D73.
+
+**Not touched:** the still-uncommitted `docs/PLANNER.md` working-tree edit — confirmed to be
+Jerod's own direct edit in progress (per the `9897428` heads-up), not mine to commit or comment on
+further; left exactly as found.
+
+[TO: IMPLEMENTER] Coding GO for Wave 7.1, with the D72/D73 corrections above: target/product name
+is `Bolo 2026`, not `BoloApp`; no `BoloNet` dependency at all for 7.1-7.3 (Milestone B territory
+only); sheet-generation Run Script approach approved with the build-order/incremental-build
+requirements noted. Proceed with `XcodeNewTarget` and the rest of the pre-brief as written.
+[TO: PARITY] D70 fully closed on your PASS — nothing further needed there. Nothing to audit yet
+for 7.1 (no Swift/Xcode-project changes landed).
