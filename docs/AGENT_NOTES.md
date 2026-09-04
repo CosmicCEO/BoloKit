@@ -1850,3 +1850,253 @@ scheme are now in place, so nothing is in flight. Your priority list from PLANNE
 One addition: Xcode has since re-serialized the `PBXShellScriptBuildPhase` I hand-wrote (details
 above), so what you'll be reading is Xcode's own encoding of it, not my original text — the
 `git diff` in `6e060e9` shows exactly what changed if you want the before/after.
+
+### [PARITY] 2026-09-04 — Wave 7.1 final-state audit (`6e060e9`): project state and encoding PASS; one confirmed defect in shipped PNG bytes (F1), three record corrections
+
+**Type:** post-commit audit
+**Phase:** Wave 7.1, final state (D75/D76 landed)
+**Audited:** `6e060e9` (per `55e27be`/`0073139`'s redirection away from `426c6a4`). Working tree at
+audit time is `0073139` plus the three untracked Director artifacts — not touched.
+
+**Activation:** Director (Jerod) relayed me ad hoc. `ece3f7d` had activated PARITY but asked for the
+post-D75/D76 state; that commit landed mid-audit, so I re-baselined from `426c6a4` to `6e060e9` and
+re-ran every project-level check against the new state. Logging the ad hoc relay as the deliberate
+override PARITY.md contemplates, not a protocol break.
+
+**Standing limitation — does not apply this session, and `docs/PARITY.md` is wrong about it.**
+PARITY.md says "this environment has no Swift toolchain … your audit is a line-for-line hand-trace,
+not a compile-and-run." I checked instead of assuming: `/usr/bin/swift` (Apple Swift 6.4,
+swiftlang-6.4.0.33.1), `/usr/bin/xcodebuild`, `plutil`, `codesign`, `vtool`, `xmllint` are all
+present and working. **So this audit is execution-verified, not hand-traced** — I built the app from
+scratch, ran the suite, decoded the shipped PNGs, and ran controlled build experiments. That is a
+stronger claim than usual and I want it on the record as such. Proposed PARITY.md amendment at the
+bottom (drafted, not self-applied, per PARITY.md's propose-then-adopt rule).
+
+---
+
+## Claims re-derived, not taken on faith
+
+- **Test count 608 → 612 (D28).** `swift test --list-tests`: `BoloKitTests` 456 + `DifferentialTests`
+  156 = **612**, my own count, at HEAD. Full `swift test` exits 0, zero failures. The +4 icon tests
+  are present and named as reported. No removals. **D28 satisfied.**
+- **`.pbxproj` structure.** `plutil -lint` OK. **21 objects**, histogram exactly as reported: 1
+  `PBXNativeTarget`, 1 `PBXShellScriptBuildPhase`, 1 `PBXTargetDependency`, 1
+  `XCLocalSwiftPackageReference`, 2 `XCSwiftPackageProductDependency`. Beyond what was claimed, I ran
+  full referential integrity over all 25 id-shaped references: **0 dangling, 0 orphaned**. The
+  duplicate/orphan failure mode PLANNER's crash caution was written about is not present.
+- **D72 build-order dependency.** Verified by consequence, not by reading: clean build from a fresh
+  isolated DerivedData (`-derivedDataPath /tmp/parity_dd2 clean build`) → `BUILD SUCCEEDED`, and both
+  `Tiles.png`/`Sprites.png` land in `Contents/Resources`, byte-identical (md5) to what
+  `swift run BoloGlyphs` produces standalone. `BoloGlyphs` therefore really is built before the phase
+  runs.
+- **Entitlements.** Reproduced on *my own* signed build, not the reported one:
+  `codesign -d --entitlements -` returns exactly `com.apple.security.app-sandbox`,
+  `com.apple.security.files.user-selected.read-only`, `com.apple.security.get-task-allow`, and **no
+  network entitlement of any kind**. Claim confirmed.
+- **D75.** Target `MACOSX_DEPLOYMENT_TARGET = 26.0` in both configurations; shipped binary
+  `vtool -show-build` → `minos 26.0`, `sdk 27.0`; `Info.plist` `LSMinimumSystemVersion = 26.0`.
+  Confirmed on the product. Implementer's own flag is also confirmed: **project-level** is still
+  `27.0` in both configurations.
+- **D76.** `xcodebuild -list` with Xcode uninvolved resolves scheme `Bolo 2026`; `xmllint` clean;
+  `BlueprintIdentifier = 6288C26D304B70C6007A9580` matches the target's real UUID. `BoloGlyphs` and
+  `BoloKit` also appear as schemes — auto-derived package-product schemes, correctly diagnosed by
+  Implementer, not duplicates. **Concrete D76 benefit worth recording:** before it landed,
+  `xcodebuild -derivedDataPath` refused to run at all ("The flag -scheme, -testProductsPath, or
+  -xctestrun is required when specifying -derivedDataPath") — I had to fall back to SYMROOT/OBJROOT
+  overrides on `426c6a4`. Isolated-DerivedData builds now work, which is exactly the CI/second-machine
+  case D76 was for.
+- **Licensing re-check, re-run as asked.** 95 image-type files under `Reference/c` → 62 distinct
+  md5s; 7 committed icon PNGs; **intersection empty**. Claim reproduced. Two caveats I want on the
+  record rather than implied: md5 only catches *byte-identical* copies — a rescaled or re-encoded
+  derivative would pass — so the load-bearing assurance is generative provenance (`AppIcon.swift`
+  composites `renderGlyph` output), which I read and confirmed. Stronger evidence than the
+  determinism test: I regenerated all seven icons with `swift run BoloGlyphs icon` and they are
+  **byte-identical (md5) to the committed PNGs**, so the committed artifacts are genuinely in sync
+  with the generator source, not a stale drop.
+- **`Package.swift` products.** Exactly two: `.library(BoloKit)`, `.executable(BoloGlyphs)`.
+  **`BoloNet` is genuinely not exported** — confirmed by reading the manifest, per D73/D74.
+  `swift build`/`swift test` unaffected at 612. **D26 intact:** `-ffp-contract=off` still on `CXBolo`
+  (`Package.swift:22`), untouched.
+- **Conventions.** `import Foundation` in `Sources/BoloKit`: **0 occurrences**. `Tiles.png`/
+  `Sprites.png` tracked in git: **0** (D72 honoured). Stray `-Xcc` index store: gone, confirmed
+  absent; no `.gitignore` entry exists for it (Implementer's report says so — accurate).
+- **D18.** Nothing in this wave puts `Double`/`CGFloat` into position/physics/trig. Considered and
+  cleared, not overlooked: `Canvas.swift`'s `fillCircle`/`fillRing`/`fillRotatedTriangle` take
+  `Double` geometry, but that is pre-existing Wave 7.0 offline art tooling whose output is
+  byte-deterministic and tested, not runtime position/physics state — outside D18's scope. Flagging
+  it as examined so a later audit doesn't re-raise it as new.
+
+## Encoding second opinion (PLANNER's stated highest-value item)
+
+`BoloKit`'s wiring is textbook: `XCSwiftPackageProductDependency` + `PBXBuildFile.productRef` in the
+Frameworks phase + listed in `packageProductDependencies`. `BoloGlyphs` is wired the
+executable-as-target-dependency way: `PBXTargetDependency` carrying a bare `productRef`, and it is
+**not** listed in `packageProductDependencies` (which holds `BoloKit` alone).
+
+**I could not obtain the reference-project comparison that was asked for** — I searched this host for
+another `project.pbxproj` using `XCSwiftPackageProductDependency` and found none within budget. So I
+will not claim a canonical-schema verdict. Saying that plainly rather than dressing up a structural
+read as one.
+
+What I can offer is better than my own opinion, and it arrived during the audit: **`6e060e9` is a
+partial canonicalization by Xcode's own writer.** `UpdateTargetBuildSetting` caused Xcode to
+re-serialize the file, and it *actively rewrote* the `PBXShellScriptBuildPhase` it considered
+non-canonical (dropped five keys sitting at defaults, converted `shellScript` from an escaped string
+to a string array) while leaving **`XCLocalSwiftPackageReference`, both
+`XCSwiftPackageProductDependency` objects, `PBXTargetDependency`, `PBXBuildFile`, and
+`packageProductDependencies` byte-identical**. Xcode had the whole graph in hand and normalised one
+section but not those. Combined with 0 dangling/0 orphaned refs, `plutil`-clean, package graph
+resolving (`BoloKit: /Users/jerodprice/Developer/XBolo @ local`), and repeated successful
+from-scratch builds with correct phase ordering, my verdict on the hand-written encoding is
+**sound — no finding**. Implementer's own caveat is fair and I echo it: a rewrite is not proof of
+correctness, so this is convergent evidence, not a schema proof. Also note `inputPaths`/`outputPaths`
+**survived** the re-serialization intact, so D72's incremental-build properties are still declared.
+
+---
+
+## Findings
+
+### F1 — CONFIRMED DEFECT: the PNG encoder corrupts every partial-alpha colour. Shipped bytes differ from source intent, and no test can see it.
+
+`Sources/BoloGlyphs/main.swift`'s `writePNG` builds its `CGContext` with
+`CGImageAlphaInfo.premultipliedLast` and then `copyMemory`s the glyph buffer in verbatim. But those
+buffers are **straight** alpha: `Canvas.swift`'s `set`/`fillRect` write `r,g,b` and `a` independently
+with no premultiplication. CoreGraphics therefore reads (50,50,50) at a=200 as already-premultiplied
+and *un-premultiplies* it on PNG export.
+
+Not inferred — measured, by decoding the PNG out of the built `.app`:
+
+- Source intent: `Sources/BoloGlyphsCore/GlyphSource.swift:92` — `fillRect(2, 2, 14, 14, 50, 50, 50, 200)`,
+  the pill body backing → RGB(50,50,50) @ a=200.
+- **Shipped `Bolo 2026.app/Contents/Resources/Tiles.png` actually contains RGB(64,64,64) @ a=200
+  across 2,548 pixels.** `round(50 × 255 / 200) = 64` — an exact match to the un-premultiply formula,
+  which pins the mechanism rather than just the symptom.
+- **Scope today is `Tiles.png` only.** `Sprites.png` uses only alphas {0, 255}; all seven icons are
+  alpha 255 throughout. At a=255 un-premultiply is the identity, and at a=0 the buffer is zeroed
+  (I verified 0 pixels with a=0 and RGB≠0). So sprites and icons are unaffected, and the committed
+  icons are *not* wrong.
+- **Why the whole suite is blind to it:** every sheet and icon test asserts on the in-memory
+  `Canvas16`/`RGBASheet` buffers. Nothing decodes an emitted PNG. This entire defect class is
+  invisible to current coverage — which I consider the more important half of the finding.
+- **Provenance, stated plainly:** pre-existing from Wave 7.0 — `426c6a4` left `premultipliedLast`
+  unchanged, so 7.1 did not introduce it. **My own Wave 7.0 audit missed it.** It is in scope now
+  because 7.1 is what first ships these bytes inside an app bundle and refactored `writePNG` into the
+  shared sheet+icon path.
+- Impact today is cosmetic: one pill backing renders ~14/255 lighter than authored. The blast radius
+  grows with every partial-alpha glyph Wave 7.2+ adds, and 7.2 is the wave that starts drawing these
+  tiles for real.
+- Fix direction only (PARITY does not write fixes): either declare the context
+  `CGImageAlphaInfo.last` to match the straight-alpha buffers, or premultiply at write time — plus a
+  regression test that decodes the emitted PNG and compares against the source buffer, which is the
+  gap that let this survive two audits.
+
+### F2 — The Run Script sandboxing rationale is wrong. Tested both ways, per PLANNER's "test that claim rather than accept it."
+
+The completion report states the declared `inputPaths`/`outputPaths` "are what make the phase legal
+under [`ENABLE_USER_SCRIPT_SANDBOXING = YES`] — this would fail silently-ish without them." I tested
+it on a throwaway clone at `426c6a4`:
+
+- **Removed both `outputPaths` entries** → `BUILD SUCCEEDED`, script logged
+  `Wrote …/Tiles.png and …/Sprites.png`, both PNGs correctly in the bundle. Only a warning: *"Run
+  script build phase 'Generate Glyph Sheets' will be run during every build because it does not
+  specify any outputs."*
+- **Restored outputs, removed `inputPaths`** → `BUILD SUCCEEDED`, both PNGs written.
+
+Mechanism, from the generated `.sb` profile: it is `(allow default)` with targeted
+`(deny file-read* file-write* (subpath (param "SYMROOT")))` and friends. Declared outputs *do* add
+`(allow file-read* file-write* (literal (param "SCRIPT_OUTPUT_FILE_n")))`, so the grant mechanism is
+real and would be load-bearing for a phase writing **outside** the build directory. But here the
+writes target `$BUILT_PRODUCTS_DIR`, and on this toolchain (Xcode 27.0 beta, 27A5252f) those
+build-root denies are not enforced as hard failures — I confirmed the phase genuinely was
+`sandbox-exec`'d and that `-D SYMROOT=…` was bound, and the write still succeeded.
+
+**What the declarations actually buy is dependency-analysis and incremental-build correctness, not
+sandbox legality.** The implementation is right and must not change — declaring them is correct, and
+without `outputPaths` the phase loses up-to-date checking and re-runs every build. Only the stated
+reason is wrong. Worth correcting because the wrong mental model would mislead whoever adds a script
+phase that writes outside the build dir, where the distinction genuinely bites. Toolchain-specific;
+could change on a future Xcode.
+
+### F3 — Two build settings the report quotes as `= NO` do not exist in the project at all.
+
+The report states the template defaults are "already exactly the state the pre-brief was asking for —
+`ENABLE_APP_SANDBOX = YES`, `ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO`,
+`ENABLE_INCOMING_NETWORK_CONNECTIONS = NO`." Checked all four `XCBuildConfiguration` objects at HEAD:
+only `ENABLE_APP_SANDBOX = YES` is present (target level, both configurations). **Neither network
+setting appears anywhere in the `.pbxproj`.**
+
+The *conclusion* is correct — absent means no network entitlement is synthesized, which I confirmed
+on the signed product — so nothing shipped wrong. But absent-and-defaulting is not the same as
+explicitly `NO`: it depends on Xcode's default staying `NO` across toolchain updates, and there is
+nothing in the file for a reader to see. **This bears directly on D74**, which records "Milestone B's
+`ENABLE_OUTGOING_NETWORK_CONNECTIONS` flip" as though the key exists at `NO`. At Milestone B it will
+have to be **added**, not flipped. Recommend correcting D74's wording so a future session doesn't
+hunt for a key that was never there.
+
+### F4 — `SWIFT_VERSION = 5.0` on the app target, while the package is `swift-tools-version: 6.4`. Raise it now, before 7.2/7.3 write concurrency into it.
+
+`Bolo 2026`'s own sources compile in **Swift 5 language mode** (both configurations) — no strict
+concurrency checking, `Sendable`/actor-isolation violations downgraded — while `BoloKit` is built
+under Swift 6 semantics. Inert for a 17-line `WindowGroup` plus a 42-line `ContentView`. But 7.2 and
+7.3 put the draw loop, the tick loop, and input handling in *exactly this target*, which is where
+actor-isolation and `Sendable` diagnostics are worth the most under D41's tick-timing discipline.
+Not a 7.1 defect and not a blocker — raising it while the target is 59 lines rather than after a
+render loop exists. PLANNER's call whether it rides along with 7.2's pre-brief.
+
+### F5 — TRIVIAL: comment in `AppIcon.swift` claims the opposite of what the code does.
+
+`Sources/BoloGlyphsCore/AppIcon.swift:31-33`. The `else` branch's comment says it "only exists so a
+future change there fails loudly at review rather than silently recolouring" — but the code silently
+falls back to a hardcoded `(70, 140, 60)`. It does not fail loudly, and that literal sits awkwardly
+against the function's own doc comment ("rather than a literal so the icon tracks the sheet's own
+palette"). No behavioural impact: `GRAS00IMAGE` is an unconditional `.flatFill` in `tileGlyphRole`,
+so the branch is unreachable today. If the intent is fail-loudly it wants `preconditionFailure`; if
+it is a genuine fallback the comment should say so.
+
+---
+
+## Verdict
+
+**PASS on everything Wave 7.1 set out to deliver.** The app target, `BoloKit` linkage, D72 build-time
+sheet generation and build ordering, entitlements posture, generated-not-copied icon provenance, D75,
+D76, D26, D28, and the hand-written `.pbxproj` encoding all verified — most of them by execution, and
+several by stronger evidence than the completion report offered. The two Xcode crashes left no
+detectable trace in the project state; Implementer's diagnosis on that holds up.
+
+**Not a clean PASS overall, because of F1**: a confirmed, measured discrepancy between authored glyph
+colours and the bytes shipped in `Tiles.png`, sitting behind a test-coverage gap that hides the whole
+defect class. It is cosmetic today, it is pre-existing from Wave 7.0 rather than a 7.1 regression, and
+my own 7.0 audit missed it — so I have no standing to call it a 7.1 blocker. PLANNER's call whether
+7.1 closes with F1 routed to a follow-up or fixed first; my recommendation is that the *regression
+test* is the part that shouldn't wait, since Wave 7.2 is about to start drawing these tiles.
+F2 and F3 are corrections to the written record, not to code. F4 is cheap now and expensive later.
+F5 is trivial.
+
+[TO: PLANNER] Wave 7.1 final state (`6e060e9`) audited by execution, not hand-trace — this
+environment does have a Swift toolchain, contrary to `docs/PARITY.md`. PASS on all of 7.1's own
+deliverables. One confirmed defect (**F1**, PNG premultiply mismatch — 2,548 pixels in the shipped
+`Tiles.png` are RGB(64,64,64) where the source authors RGB(50,50,50)); it is pre-existing from Wave
+7.0 and my own 7.0 audit missed it, so I flag it without claiming it blocks 7.1. **F2** and **F3** are
+record corrections you may want folded into D72's and D74's text respectively — F3 specifically
+because D74 says "flip `ENABLE_OUTGOING_NETWORK_CONNECTIONS`" and that key does not exist. **F4**
+(app target is Swift 5 language mode) is worth deciding before 7.2 writes a tick loop into it.
+Also: `Q?` — nothing from me requires a Jerod ruling.
+[TO: IMPLEMENTER] F1 is the only one that touches code: `writePNG` in `Sources/BoloGlyphs/main.swift`
+declares `premultipliedLast` but is handed straight-alpha buffers from `Canvas.swift`. Reproduce with
+any glyph using `a < 255` — today only `GlyphSource.swift:92`. The missing coverage (no test decodes
+an emitted PNG) matters more than the one wrong colour. F2: your inputs/outputs declarations are
+correct and should stay — only the *reason* recorded for them is wrong, tested both ways on a clone.
+F5 is a two-line comment fix. Your D75/D76 report's numbers all checked out against my own counts.
+
+## Proposed `docs/PARITY.md` amendment (drafted, not applied — propose-then-adopt)
+
+Replace the "Standing limitation" paragraph's claim that the environment has no Swift toolchain with
+an instruction to **verify tooling at the start of each session and state what was available**. As of
+2026-09-04 this host has Swift 6.4, `xcodebuild`, `plutil`, `codesign`, `vtool` and `xmllint`, and
+this audit used all of them — the current text would have had me hand-trace things I could simply run,
+and F1 is a finding that only surfaced because I decoded shipped bytes rather than reading source.
+Suggested replacement: *"Check your tooling first (`which swift xcodebuild plutil`) and say in your
+findings which checks were executed versus hand-traced. Where a toolchain exists, prefer execution —
+build it, run the suite, decode the artifact. Where it doesn't, hand-trace against `Reference/c` and
+say so. IMPLEMENTER's green build remains the authority that the code executes; you are the authority
+that it is correct against the oracle."*
