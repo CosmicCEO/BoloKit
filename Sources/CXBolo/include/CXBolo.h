@@ -285,4 +285,44 @@ int dgramserver_relay_oracle(
   int *outRelayTo, int *outRelayCount
 );
 
+// Wave 6.5a: TrackerHost/TrackerHostList layout ground truth (the one wire
+// struct family in this project that is NOT packed -- see netops.c's
+// tracker_layout_oracle() for the full trap explanation) plus the two
+// field-assignment extracts (registerserver()/sendtrackerupdate()) that
+// prove the T-2/D56 timelimit byte-order asymmetry is real, not assumed.
+struct TrackerLayoutOracle {
+  size_t sizeofTrackerHost;
+  size_t offPlayerName;
+  size_t offMapName;
+  size_t offPort;
+  size_t offGameType;
+  size_t offTimeLimit;
+  size_t offPassReq;
+  size_t offNPlayers;
+  size_t offAllowJoin;
+  size_t offPause;
+
+  size_t sizeofTrackerHostList;
+  size_t offListAddr;
+  size_t offListGame;
+};
+
+struct TrackerLayoutOracle tracker_layout_oracle(void);
+
+// `playername`/`mapname` must point at exactly TRKPLYRNAMELEN/
+// TRKMAPNAMELEN bytes each.
+void trackerhost_encode_oracle(
+  const uint8_t *playername, const uint8_t *mapname,
+  uint16_t port, uint8_t gametype, uint32_t timelimit,
+  uint8_t passreq, uint8_t nplayers, uint8_t allowjoin, uint8_t pause,
+  struct TrackerHost *out
+);
+
+void trackerupdate_encode_oracle(
+  const uint8_t *playername, const uint8_t *mapname,
+  uint16_t port, uint8_t gametype, uint32_t timelimit,
+  uint8_t passreq, uint8_t nplayers, uint8_t allowjoin, uint8_t pause,
+  struct TrackerHost *out
+);
+
 #endif /* CXBOLO_H */

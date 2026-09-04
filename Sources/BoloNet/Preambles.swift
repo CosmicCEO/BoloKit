@@ -204,6 +204,10 @@ public struct TrackerPreamble: Sendable, Hashable {
         guard let version = r.getU8() else { return nil }
         return TrackerPreamble(version: version)
     }
+
+    /// `ident[8]` + `version`(1) -- matches `JoinPreamble.wireSize`'s and
+    /// `BoloPreamble.wireSize`'s existing convention (Wave 6.5a).
+    public static let wireSize = 9
 }
 
 /// `NET_GAME_IDENT`/`NET_GAME_VERSION` (`bolo.h:27,37`) -- the game

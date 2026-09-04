@@ -588,3 +588,110 @@ int dgramserver_relay_oracle(
 
   return 1;
 }
+
+/* Struct-layout ground truth for TrackerHost/TrackerHostList
+   (tracker.h:41-56), for Wave 6.5a oracle testing -- this is the one wire
+   struct family in the entire protocol that is NOT
+   __attribute__((__packed__)) (docs/PLAN.md's Wave 6.5 flag), so unlike
+   every other CL/SR/preamble struct's offsets, these cannot be assumed
+   from field order alone; they need this explicit offsetof check the
+   same way preamble_layout_oracle() above already does for
+   BOLO_Preamble's own traps. */
+struct TrackerLayoutOracle {
+  size_t sizeofTrackerHost;
+  size_t offPlayerName;
+  size_t offMapName;
+  size_t offPort;
+  size_t offGameType;
+  size_t offTimeLimit;
+  size_t offPassReq;
+  size_t offNPlayers;
+  size_t offAllowJoin;
+  size_t offPause;
+
+  size_t sizeofTrackerHostList;
+  size_t offListAddr;
+  size_t offListGame;
+};
+
+struct TrackerLayoutOracle tracker_layout_oracle(void) {
+  struct TrackerLayoutOracle L;
+
+  L.sizeofTrackerHost = sizeof(struct TrackerHost);
+  L.offPlayerName = offsetof(struct TrackerHost, playername);
+  L.offMapName = offsetof(struct TrackerHost, mapname);
+  L.offPort = offsetof(struct TrackerHost, port);
+  L.offGameType = offsetof(struct TrackerHost, gametype);
+  L.offTimeLimit = offsetof(struct TrackerHost, timelimit);
+  L.offPassReq = offsetof(struct TrackerHost, passreq);
+  L.offNPlayers = offsetof(struct TrackerHost, nplayers);
+  L.offAllowJoin = offsetof(struct TrackerHost, allowjoin);
+  L.offPause = offsetof(struct TrackerHost, pause);
+
+  L.sizeofTrackerHostList = sizeof(struct TrackerHostList);
+  L.offListAddr = offsetof(struct TrackerHostList, addr);
+  L.offListGame = offsetof(struct TrackerHostList, game);
+
+  return L;
+}
+
+/* Verbatim field-assignment extracts of registerserver()'s send-game-data
+   step (server.c:1379-1390) and sendtrackerupdate() (server.c:1569-1588),
+   for Wave 6.5a oracle testing -- this pair is what proves the T-2/D56
+   byte-order asymmetry on `timelimit` (registration htonl's it, the
+   60-second heartbeat doesn't) is real compiler-observed behavior, not
+   merely a reading of the source. `pause` is the already-computed 0/1
+   both real functions pass in (`server.pause == -1` / `getpauseserver()`,
+   `server.c:1387`/`:1581`) -- neither oracle function recomputes that.
+
+   Both `memset` `*out` to 0 first -- the real C functions never do this
+   (T-3, disclosed in the Wave 6.5a pre-brief: `strncpy(dst,src,LEN-1)`
+   leaves the struct's offset-51 pad byte, and `playername`/`mapname`'s
+   own final byte on an exactly-full-length input, as uninitialized stack
+   garbage). That is genuinely undefined behavior, not a fact to
+   reproduce -- the zeroing here exists only so this oracle's *other*
+   bytes (the ones that ARE well-defined) have something deterministic to
+   diff against; it is not a claim about the real function's own
+   behavior. Swift's `TrackerHost.encode()`/`encodeAsHeartbeat()` always
+   zero-fills those same locations, a disclosed Swift-safety deviation
+   asserted by its own regression test, not by comparison against this
+   oracle. */
+void trackerhost_encode_oracle(
+  const uint8_t *playername, const uint8_t *mapname,
+  uint16_t port, uint8_t gametype, uint32_t timelimit,
+  uint8_t passreq, uint8_t nplayers, uint8_t allowjoin, uint8_t pause,
+  struct TrackerHost *out
+) {
+  memset(out, 0, sizeof(*out));
+  memcpy(out->playername, playername, TRKPLYRNAMELEN);
+  memcpy(out->mapname, mapname, TRKMAPNAMELEN);
+  out->port = htons(port);
+  out->gametype = gametype;
+  out->timelimit = htonl(timelimit);
+  out->passreq = passreq;
+  out->nplayers = nplayers;
+  out->allowjoin = allowjoin;
+  out->pause = pause;
+}
+
+/* Same field set, from sendtrackerupdate() (server.c:1569-1588) -- the
+   real bug: `timelimit` is assigned directly with NO htonl
+   (server.c:1577), unlike the registration path above. Ported bit for
+   bit, not corrected (D24/D40/D56). */
+void trackerupdate_encode_oracle(
+  const uint8_t *playername, const uint8_t *mapname,
+  uint16_t port, uint8_t gametype, uint32_t timelimit,
+  uint8_t passreq, uint8_t nplayers, uint8_t allowjoin, uint8_t pause,
+  struct TrackerHost *out
+) {
+  memset(out, 0, sizeof(*out));
+  memcpy(out->playername, playername, TRKPLYRNAMELEN);
+  memcpy(out->mapname, mapname, TRKMAPNAMELEN);
+  out->port = htons(port);
+  out->gametype = gametype;
+  out->timelimit = timelimit;  /* <- the bug: no htonl, server.c:1577 */
+  out->passreq = passreq;
+  out->nplayers = nplayers;
+  out->allowjoin = allowjoin;
+  out->pause = pause;
+}
