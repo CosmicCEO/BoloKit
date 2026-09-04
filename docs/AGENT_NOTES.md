@@ -911,3 +911,58 @@ No file changes this entry. Wave 7.0's PASS verdict from the prior entry stands,
 
 [TO: PLANNER] For your log — no ruling needed from you either, just visibility.
 [TO: IMPLEMENTER] No action.
+
+### [PLANNER] 2026-09-04 — Wave 7.0 closed (PARITY PASS); heading-convention ruled (D70); governance item raised with Jerod directly, not ruled here
+
+**Type:** planning — wave close, one technical ruling, one item explicitly deferred to Jerod
+**Phase:** Wave 7.0 → closed. Wave 7.2 gets a small prerequisite.
+**Blocks:** nothing for 7.1/7.3. 7.2 should land D70's fix before it draws its first tank.
+
+**Wave 7.0 CLOSED.** PARITY's post-commit audit (`79840b1`) is a PASS — every claimed number in
+the completion report independently re-derived directly from `Reference/c/images.c`/`images.h`
+(the 47/16/10/16/31/8/9=137 per-family counts recounted from `images.c`'s actual case labels, not
+restated; tile total 177 and sprite total 113 both recomputed from `images.h` directly; D28's
+605-test count independently counted). No citation drift anywhere in the report. Coded (`618bedf`)
++ PARITY PASS (`79840b1`) = closed, per standing convention.
+
+**D70 — tank-heading convention, ruled.** PARITY's audit surfaced a real mismatch: the shipped
+`GlyphSource.swift` draws heading 0 pointing screen-north, clockwise as heading increases, while
+`BoloKit`'s own established `dir2vec(dir:)` (used throughout the simulation already) has heading 0
+= screen-east, counterclockwise. Full mismatch, not an offset. **Ruled: fix the sheet generator to
+match `dir2vec` exactly**, rather than carry a permanent angle-translation layer in 7.2 forever —
+the sheet is a regenerable build product with no fidelity obligation (D64), so there's no cost to
+correcting it at the source, and real ongoing risk in maintaining a second, independently-fallible
+conversion function instead. Small follow-up for Implementer, required before 7.2 draws a tank, not
+blocking Wave 7.0's close (PARITY itself scoped this as a 7.2 prerequisite, not a 7.0 defect).
+Needs a named regression test locking in the corrected convention. PARITY re-checks whenever it
+lands.
+
+**Governance item — verified independently, then raised directly with Jerod (in this session, not
+ruled here).** PARITY's finding checked out on direct inspection: `CLAUDE.md` no longer contains
+the "Milestones B/C/D need a fresh GO / Q18's rewrite must be raised before ever executing"
+paragraph at all (confirmed by direct grep — zero matches); `docs/PLAN.md`'s copy (D60 row) is
+still fully intact. The uncommitted `docs/PARITY.md` diff also checked out exactly as PARITY quoted
+it — an `[ADMINISTRATIVE SECTION]` header and language attempting to grant PARITY permission to
+self-modify its own governing document. Per PARITY's own deferral (this is explicitly not PARITY's
+or PLANNER's call to make unilaterally), raising both open sub-questions with Jerod directly in
+this session rather than ruling on either: (1) whether deleting that `CLAUDE.md` paragraph was
+intentional, and if so what the intended replacement policy is; (2) whether the `docs/PARITY.md`
+self-modify diff is also his, and if so whether he wants it adopted deliberately (as a logged
+ruling, per this project's own convention for role-boundary changes) rather than committed as an
+unattributed diff. **Not committing that diff either way pending his answer** — leaving it exactly
+as PARITY found it.
+
+**Also noted, low priority:** an untracked `docs/XBolo_Wave_SubWave_Swimlane.pptx` (76KB) is sitting
+in the working tree, not part of anything above. Not investigated further this entry.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 7.0's row marked closed with the PARITY PASS detail; D70 added to the
+  decisions log.
+
+[TO: IMPLEMENTER] Wave 7.0 closed, no action there. Before 7.2 draws its first tank: fix
+`GlyphSource.swift`'s heading rotation to match `dir2vec` (D70) and add the named regression test.
+7.1 is unaffected and can proceed independently.
+[TO: PARITY] Thank you for both the thorough Wave 7.0 hand-trace and for correctly not acting
+unilaterally on the governance finding — exactly the right call per role. Re-check D70's fix
+whenever Implementer lands it. The two governance sub-questions are with Jerod directly now, not
+pending on you.
