@@ -711,3 +711,55 @@ these two files before staging).
 actually matches the C's implicit `int`→`uint32_t` conversion behavior (not just "doesn't trap"),
 and that the new test's `-300` input and `0xFFFF_FED4` expected value are both correct rather than
 coincidentally passing.
+
+### [PARITY] 2026-09-04 — D57 re-audit: fix confirmed, Wave 6.5a clear to close
+
+**Type:** post-commit re-audit of a confirmed finding's fix (`6cbec85`+`f7b0528`), standard
+sequence (Planner ruled D57 at `5a1e18a`, Implementer's own completion report requested this
+re-audit). Quick, targeted check — the fix is a 2-line behavioral change in one function plus one
+new test, not a re-audit of Wave 6.5a's already-confirmed layout/D56/T-3/T-8 findings from `c9e37ef`.
+
+**Standing limitation as always:** no Swift toolchain here; every check below is a direct hand-read
+of the diff and current source, not a build.
+
+**Verdict: PASS. The fix is exactly what was ruled, correctly matches the C's actual conversion
+semantics (not just "doesn't trap"), and the regression test's expected value is independently
+verified correct by hand, not just trusted.**
+
+- `Sources/BoloNet/Tracker.swift`'s `trackerHost()` now reads
+  `timeLimit: UInt32(truncatingIfNeeded: state.timeLimit)`, exactly the fix D57 ruled — confirmed
+  by reading the current source directly, not the diff hunk alone. `truncatingIfNeeded` on a
+  wider signed `Int` takes the low-order bits of its two's-complement representation, which is
+  precisely what C's implicit `int`->`uint32_t` conversion does for a negative value assigned into
+  an unsigned parameter (`htonl(server.timelimit)` where `server.timelimit < 0`) -- this is a
+  genuine semantic match to the oracle's behavior, not merely a trap-avoidance patch that happens
+  to produce *some* value.
+- **Hand-verified the regression test's own math, not trusted:**
+  `testTrackerHostTruncatesNegativeTimeLimitInsteadOfTrapping` sets `state.timeLimit = -300` and
+  asserts `host.timeLimit == 0xFFFF_FED4`. Checked by hand: 300 decimal = `0x0000012C`; 32-bit
+  two's complement of -300 = `~0x0000012C + 1` = `0xFFFFFED3 + 1` = `0xFFFFFED4` -- matches
+  exactly. This is a genuinely negative input (not a large-but-positive value that would happen
+  not to trap either way, which was the specific failure mode worth guarding against in the
+  original finding) -- confirmed by reading the test body directly, not just its name.
+- Scope confirmed minimal and undrifted: `git show 6cbec85 --stat` touches exactly
+  `Sources/BoloNet/Tracker.swift` (13 insertions/1 deletion -- the conversion fix plus a
+  D57-citing doc comment) and `Tests/DifferentialTests/TrackerDifferentialTests.swift` (15
+  insertions -- the one new test). No other file touched, no unrelated changes riding along.
+- Confirmed the fix doesn't disturb any already-passing behavior: for any non-negative
+  `timeLimit` (the only values ever actually exercised before this fix -- e.g. the existing
+  `testTrackerHostDerivesFromLiveGameState`'s `timeLimit = 600`), `UInt32(truncatingIfNeeded:)`
+  and the old `UInt32(_:)` produce identical results -- this is a strict widening of correct
+  behavior (negative inputs now truncate instead of trapping), not a behavior change for the
+  previously-working positive case.
+- **Test count confirmed directly:** `grep -rho "@Test" Tests/ | wc -l` gives **597**, matching
+  both the completion report's claim and the expected 596+1.
+
+**No new findings.** D57 is closed from PARITY's side. Wave 6.5a has no other open items from the
+`c9e37ef` audit (layout, D56's bug-pairing, T-3's zero-fill, and the T-8 UDP-echo mechanism
+substitution were all independently confirmed sound in that pass and are unaffected by this fix).
+
+[TO: PLANNER] D57's fix confirmed correct -- semantically matches the C's actual conversion
+behavior (not just trap-avoidance), regression test's expected bit pattern independently
+hand-verified, scope minimal and undrifted, test count 597/597 confirmed. No blockers remain on
+PARITY's side -- **Wave 6.5a is clear to close.** With Wave 6.5b already closed independently
+(`c9e37ef`), Wave 6.5 as a whole (6.5a+6.5b) is clear to close pending your formal sign-off.
