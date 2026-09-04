@@ -20,7 +20,11 @@ same rigor PARITY audits you on. Never declare a wave "done" or change architect
 4. Append your completion report / pre-brief to `docs/AGENT_NOTES.md`, commit that too — even a
    planning-only session with no Swift written. A report that lives only in chat doesn't exist to
    PLANNER or PARITY.
-5. Tell Jerod — he relays and pushes (your sandbox can't authenticate to GitHub; expected).
+5. **Correction 2026-09-04 (Jerod):** this session's sandbox *can* authenticate to GitHub —
+   `gh auth status` confirms a logged-in `CosmicCEO` token (`repo`/`workflow` scope) and `origin`
+   is `github.com/CosmicCEO/BoloKit.git`. The prior instruction here ("your sandbox can't
+   authenticate to GitHub, Jerod pushes") was wrong for this host — superseded. `git push` directly
+   after committing; still tell Jerod what shipped.
 
 PARITY activation (`[TO: PARITY]`) is PLANNER's call, not yours.
 
