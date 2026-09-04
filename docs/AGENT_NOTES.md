@@ -1384,3 +1384,40 @@ message, not claimed as Planner's own authorship.
 [TO: IMPLEMENTER] No action needed.
 [TO: PARITY] The `docs/PLANNER.md` change you flagged is now committed — no longer just a
 working-tree edit. Nothing in it needs audit (no code/behavior change).
+
+### [PLANNER] 2026-09-04 — Heads-up from Jerod: Xcode crashed twice during Wave 7.1 work, extra scrutiny required
+
+**Type:** process/risk flag, not a ruling — no D-number
+**Phase:** Wave 7.1 (Xcode app target), mid-coding
+**Blocks:** nothing yet — no completion report or commit has landed for 7.1's actual coding as of
+this entry (`git log` shows only the pre-brief, `4326d77`, and the D72/D73 coding GO, `2c86747`;
+working tree is clean). This is a standing caution for whatever lands next, not a response to
+something already broken.
+
+Jerod reported Xcode crashed twice while Implementer was working on Wave 7.1. He doesn't yet know
+if/what it affected. Logging this now so it isn't lost before Implementer's next report, and so
+whichever session (this one or a fresh Planner instance) reviews that report knows to look harder
+than usual.
+
+**Why this matters specifically for 7.1:** this sub-wave is the first one in the project doing real
+Xcode-project mutation (`XcodeNewTarget`, build phases, entitlements, asset catalog) rather than
+pure SPM/Swift-file work — exactly the kind of state a crash can leave inconsistent: a half-written
+`.pbxproj` (duplicate or orphaned target/build-phase entries), a target that "exists" per
+`XcodeListTargets` but doesn't actually build clean, an asset catalog with partial writes, or an
+entitlements/Info.plist file left in a bad intermediate state. None of this would necessarily show
+up in a diff read the way a Swift logic bug would — it can look fine on a text read and still fail
+to build, or build but not match what the completion report claims.
+
+[TO: IMPLEMENTER] Before writing Wave 7.1's completion report, explicitly verify project integrity,
+not just that the feature works: a clean build from scratch (not an incremental one that might be
+riding on stale derived data from before either crash), `XcodeListTargets`/`XcodeListSchemes`
+showing exactly the expected target/scheme with no duplicates, a direct read of the `.pbxproj` (or
+`BuildProject` diagnostics) for anything that looks malformed or doubled-up, and `swift build`/
+`swift test` from the command line still passing at the expected count unmodified — same standard
+already required, just called out explicitly given the crashes. If anything looks off, say so in
+the report rather than smoothing over it — a "here's what I checked and it's clean" note is exactly
+as valuable as a real finding would be.
+[TO: PARITY] When 7.1's audit is activated, give the Xcode-project state itself (not just Swift
+behavior) real scrutiny this time — duplicate/orphaned `.pbxproj` entries, a target that lists but
+doesn't build, mismatched entitlements — in addition to the normal hand-trace. Xcode crashed twice
+during this sub-wave's work per Jerod; nothing has confirmed impact yet either way.
