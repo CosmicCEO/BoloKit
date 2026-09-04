@@ -763,3 +763,66 @@ behavior (not just trap-avoidance), regression test's expected bit pattern indep
 hand-verified, scope minimal and undrifted, test count 597/597 confirmed. No blockers remain on
 PARITY's side -- **Wave 6.5a is clear to close.** With Wave 6.5b already closed independently
 (`c9e37ef`), Wave 6.5 as a whole (6.5a+6.5b) is clear to close pending your formal sign-off.
+
+### [PLANNER] 2026-09-04 — Wave 6.5a closed (D57 fix confirmed); Wave 6.5 and Wave 6 both closed; no next wave GO'd — evaluation below
+
+**Type:** planning — close-out chain + next-wave evaluation
+**Phase:** Wave 6 (networking) complete; next phase undetermined
+**Blocks:** nothing code-blocking, but no wave is currently GO'd
+
+Reviewed PARITY's D57 re-audit (`7f1a9ee`). Verdict: **PASS.** The fix genuinely matches the C's
+implicit `int`->`uint32_t` conversion semantics (not just trap-avoidance — PARITY independently
+hand-verified `truncatingIfNeeded` on `-300` produces the correct two's-complement bit pattern,
+`0xFFFF_FED4`), scope is minimal (2 files) and undrifted, and 597/597 is confirmed directly rather
+than trusted from the commit message.
+
+**Wave 6.5a is closed — PARITY PASS.** Full chain: `a23d49d` (591 tests) → `150e822` (PARITY
+activated) → `c9e37ef` (audit — layout/D56/T-3/T-8 all confirmed sound, D57 the one real finding)
+→ `6cbec85`+`f7b0528` (fix + completion report, 597 tests) → `7f1a9ee` (re-audit PASS).
+
+**Wave 6.5 (6.5a+6.5b combined) is closed** — both halves PARITY PASS, no open findings on either
+side. 572→597 tests across the wave, no coverage lost (D28).
+
+**Wave 6 (networking, 6.0-6.6 in full) is closed.** Every sub-wave from the wire codec through the
+tracker/NAT client is now PARITY PASS with no open findings: 6.0 (codec) → 6.1 (tick orchestrator)
+→ 6.2 (broadcast handlers) → 6.3 (session logic + preambles) → 6.4a/6.4b/6.4c (transport, join
+handshake, live UDP wiring) → 6.5a/6.5b (tracker protocol + NAT-PMP) → 6.6 (server receive
+handlers). Nine real PARITY findings across the whole wave (D35/D37/D39/D45/D46/D48's correction/
+D50/D53/D57) were each fixed and re-confirmed before their sub-wave closed — none left open or
+silently accepted. This is the largest single phase of the project closed to date.
+
+**No next wave is GO'd. Evaluated whether one should be, and it isn't a call I can make solo:**
+
+`docs/PLAN.md`'s own Phases section (Q18, already flagged as stale) still shows Phase 4
+(measurement rig + fidelity spec, via Infinite Mac / emulator log parsing) and Phase 5 (close the
+fidelity gaps) as **not yet started** — no wave in the 1-6 sequence has ever been that work; Waves
+1-6 were entirely Phase 3 (the behavior-preserving incremental port) plus the Wave 6 networking
+work Phase 3's own text never accounted for cleanly. Separately, D38 already recorded that a UI
+phase exists as a concept ("split out to its own phase") but **no wave has ever been defined for
+it** — there's no pre-brief, no file list, no scope document, nothing to GO. And two open
+questions are explicitly gated on whichever of these comes next: Q22 (dedicated headless server
+binary vs. in-process host) and Q26 (does this project ship a tracker daemon binary) are both
+flagged "relevant once the app-UI/distribution phase starts" — ruling either now, before that
+phase's shape exists, would be guessing at product scope I don't have.
+
+This is a genuine fork, not a sequencing call I can make from `docs/PLAN.md` alone (no code
+access, gate on what's reported — and nothing's been reported here because no one has started
+scoping any of these three candidates yet):
+1. **Phase 4/5 — fidelity measurement and gap-closing.** The originally-planned next step after
+   the port, using Infinite Mac to extract ground-truth behavior and close any gaps Phase 3's
+   behavior-preserving discipline deliberately left unresolved.
+2. **The UI/app phase.** Bolo 2026's actual player-facing app — menus, the "Host a Game" panel,
+   in-game HUD, settings — the layer D38 split out but never scoped. Q14 (explosions-list
+   attribution) is also explicitly deferred here.
+3. **Resolve Q22/Q26 first**, then let whichever answer falls out determine whether a dedicated
+   host binary or tracker daemon is even in scope for near-term work, before scoping either
+   Phase 4/5 or the UI phase around an assumption that might not hold.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 6.5a row marked complete; Wave 6.5 row marked complete; Wave 6 summary row
+  marked complete, noting no wave is currently GO'd.
+
+[TO: IMPLEMENTER] No action needed — Wave 6 is fully closed, nothing currently GO'd. Stand by for
+the next wave's pre-brief GO once Jerod picks a direction above.
+[TO: PARITY] No action needed — nothing open on your side. Wave 6's full chain (D35 through D57)
+has no outstanding findings.
