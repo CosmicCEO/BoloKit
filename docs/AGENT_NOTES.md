@@ -275,3 +275,98 @@ oracle") to say it's been removed and point to the original repo as canonical.
 [TO: IMPLEMENTER] No action — `Reference/c` stays exactly as-is, keep using it as the oracle for
 Wave 7 work as normal. Nothing changes about how you reference it day to day.
 [TO: PARITY] No action — same, no change to how you hand-trace against `Reference/c`.
+
+### [PARITY] 2026-09-04 — Wave 7 pre-code factual audit: `images.h` is two sheets, not one (blocker); 7.0 mostly already ported
+
+**Type:** audit — factual/numeric re-derivation of the Wave 7 brief, not a post-commit code audit
+**Phase:** Wave 7.0 (asset pipeline), pre-code
+**Blocks:** 7.0's sheet-writer design, until IMPLEMENTER accounts for two sheets
+
+**Activation note:** there is no open `[TO: PARITY]` tag — the prior entry says "no action, nothing
+coded this entry," and nothing has landed for Wave 7 yet, so there is no commit to hand-trace.
+Jerod activated this session ad hoc (`docs/PARITY.md`'s sanctioned override) to check the Wave 7
+brief's own numbers before a live Implementer session codes against them — applying "verify claimed
+numbers yourself" to the brief's arithmetic instead of to a completion report. Jerod's ruling: write
+findings, request retroactive `[TO: PARITY]` activation, do not treat this as protocol-as-usual.
+
+**Standing-limitation correction:** `docs/PARITY.md` states this environment has no Swift
+toolchain. That's stale — `swift --version` here reports Apple Swift 6.4,
+`arm64-apple-macosx27.0.0`. I ran no build this session (text/header analysis only), but a future
+PARITY session can `swift build && swift test` and check claimed test counts directly instead of
+trusting the report, which hasn't been possible before now. Worth PLANNER updating `docs/PARITY.md`.
+
+**F1 — BLOCKER.** `CLAUDE.md`'s Wave 7 section and `docs/PLAN.md`'s Wave 7 row both say `images.h`
+has "297 `#define ...IMAGE` indices (roughly `0x00`–`0x91`), fitting one 256-cell (16×16) sheet."
+Re-parsed `Reference/c/images.h` directly: 296 `#define` directives (297 counted the `__IMAGES__`
+include guard); of those, **290 unique names** (6 are benign identical redefinitions, e.g.
+`PTKB08IMAGE (0x08)` twice, zero conflicting values). More importantly, the index space **resets
+to `0x00` twice** — `WALL46IMAGE` at the top of the file and `PTKB00IMAGE` partway through — because
+these are **two independent index spaces for two separate sheets**, confirmed at
+`Reference/c/Mac OS X/GSBoloView.m:40-41` (`[NSImage imageNamed:@"Tiles"]` /
+`imageNamed:@"Sprites"]`), sampled from different call sites (`tiles` at lines 137/144/190/197/
+265/272, `sprites` at line 448). Tiles: 177 names, dense contiguous `0x00`-`0xb0`. Sprites: 113
+names, sparse `0x00`-`0x91` (33 unused cells). 177+113 = 290 > 256, so "one sheet" was arithmetically
+impossible regardless — the `0x91` in the brief is only the sprite max, paired with the tile-space
+name count. Both shipped sheets are confirmed 256×256px/16×16 cells from the PNG IHDR headers.
+Per-sheet the "fits a 256-cell sheet" conclusion is still true (tiles 177/256, sprites 113/256) —
+only the sheet *count* is wrong. `docs/PLAN.md`'s Phase-2 line and the 7.0 row itself already say
+"sheet(s)" plural elsewhere; it's specifically the "297 indices... one sheet" sentence that's wrong.
+
+**F2 — scope reduction.** 7.0 is scoped as "`BoloGlyphs` CLI parses `images.h` → manifest → renders."
+That parse/manifest step is already done: all 290 image constants are already ported to
+`Sources/BoloKit/Images.swift` (`public let <NAME>IMAGE: Int32 = 0x..`, starting near the top of the
+file) — mechanically diffed against `images.h`, zero missing, zero extra, zero value mismatches.
+`mapimage()` (`Reference/c/images.c`, the 742-line terrain→index neighbour-bitmask selector) is also
+already ported, at `Sources/BoloKit/Images.swift` (both a raw-pointer and a `TileGrid` overload),
+wired for differential testing via `Sources/CXBolo/images.c` + `tiles_shim.c`'s `mapimage_flat`.
+`Sources/BoloGlyphs/main.swift` is confirmed still a one-line stub. Recommend 7.0 consume `BoloKit`'s
+existing constants as the single source of truth for the sheet writer rather than re-parsing
+`images.h` a second time — a second parse would be a drift-prone duplicate, not new fidelity.
+
+**F3 — confirmed, with a trap.** The brief's `row = idx >> 4, col = idx & 0xF` decoding is verified
+correct — `GSBoloView.m:180`, `srcRect = NSMakeRect((image%16)*16, (image/16)*16, 16.0, 16.0)`,
+identical at all seven cell-math call sites. Trap for whoever writes the renderer: `GSBoloView`
+never overrides `isFlipped` (grep count 0), so that y is measured from AppKit's default
+**bottom-left origin** — index 0 is the sheet's bottom-left cell. Transcribing this y-math verbatim
+into a top-left-origin context (CoreGraphics, SwiftUI `Canvas`) inverts row order silently. Since
+7.0 generates fresh sheets, there's no fidelity *obligation* here, but the generator and the 7.2
+renderer need to agree on one row-0 convention explicitly. Also for 7.2: `client.images[y][x] == -1`
+is a "tile unseen, paint black" sentinel (`GSBoloView.m:130/183/258`), not a valid sheet index.
+
+**F4 — open question, not resolved here.** 7.2 is scoped to draw "terrain + tanks from a live
+`GameState`," but `GSBoloView` actually draws from three display-side arrays computed by the C
+client — `client.images[y][x]`, `isMinedTile(client.seentiles, …)`, `client.fog[y][x]`
+(`GSBoloView.m:178/193/201`) — and `Sources/BoloKit/BMap.swift` already documents, in its own
+comments, that `client.seentiles`/`client.images`/fog-of-war display state was never modeled
+anywhere in this port (same established precedent as `increasevis`/`decreasevis` elsewhere). 7.2
+therefore carries unbudgeted scope: building that display layer before it can draw a tile. Question
+for PLANNER, not mine to resolve per my own role: for a single-player v1 slice, is fog-of-war
+stubbed to "everything visible" (reducing `images[][]` to a straight per-tile `mapimage` pass, no
+`fog`/`seentiles` needed), or is the visibility layer in scope for 7.2? D60 doesn't address this.
+
+**Claims verified, not just restated:** `GSXBoloController.m` 4,037 lines ✓, `GSBoloView.m` 600
+lines ✓, `BoloGlyphs/main.swift` one-line stub ✓, all seven Wave 6 callback hooks
+(`onPlayerStatusChanged`/`onPillStatusChanged`/`onBaseStatusChanged`/`onTankStatusChanged`/
+`onMineExplosion`/`onSuperboomTerrain`/`onDropPills`) exist and are usable as claimed — minor
+imprecision only, the four `*StatusChanged` hooks live in `TCPSession.swift`/`JoinClientApply.swift`,
+not `HostSession.swift` as `CLAUDE.md` states; the mine/superboom/droppills trio does span
+`HostSession.swift` as claimed, plus `UDPSession.swift`/`DgramClientApply.swift`.
+
+**Decision checklist (D18/D24/D25+D33/D26/D27/D28):** not applicable this session — no Swift was
+committed for Wave 7, so there's no code to check for `Double` creep, replicated-bug drift, WinBolo
+similarity, build-flag regressions, per-tick ordering, or test-count change. Stated rather than
+silently skipped, per the standing-limitation discipline.
+
+> **→ Planner:** F1 blocks 7.0's sheet design as currently briefed — recommend correcting
+> `CLAUDE.md` and `docs/PLAN.md`'s Wave 7 row (297/one-sheet → 290 names/two sheets/177+113) before
+> more coding lands on the old numbers. F2 is a scope note for the 7.0 row (constants + `mapimage`
+> already ported; 7.0 is rendering only). F4 needs a ruling on fog-of-war scope for the v1 slice.
+> Also requesting this session be retroactively covered by a `[TO: PARITY]` tag, since none was
+> open when I started — logging as Jerod's deliberate ad hoc override, not a protocol break.
+> **→ Implementer:** F1 is a blocker if 7.0 is actively being coded — `BoloGlyphs` needs to emit
+> two sheets (tiles 177/256 cells, sprites 113/256 cells), not one flat 290-entry sheet; index
+> collisions exist between the two spaces (e.g. `0x08` = `WALL38IMAGE` in tiles, `PTKB08IMAGE` in
+> sprites). F2: no need to re-parse `images.h` — `Sources/BoloKit/Images.swift` already has all 290
+> constants and `mapimage()`; build the sheet writer on top of those rather than duplicating the
+> parse. F3: pick and document one sheet row-0 convention (native bottom-left vs. flipped) between
+> the sheet generator and the eventual 7.2 renderer, and treat `-1` as "no image," not an index.
