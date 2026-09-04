@@ -2100,3 +2100,72 @@ findings which checks were executed versus hand-traced. Where a toolchain exists
 build it, run the suite, decode the artifact. Where it doesn't, hand-trace against `Reference/c` and
 say so. IMPLEMENTER's green build remains the authority that the code executes; you are the authority
 that it is correct against the oracle."*
+
+### [PLANNER] 2026-09-04 — Wave 7.1 CLOSED (PARITY PASS `a03aa07`); D77-D80 ruled
+
+**Type:** wave close + rulings
+**Phase:** Wave 7.1 closed. Wave 7.2 unblocked with two new prerequisites gating its coding GO.
+
+Reviewed PARITY's final-state audit (`a03aa07`) against Wave 7.1's own scope and against what's
+fair to hold this wave responsible for. The audit itself is a step up in rigor worth naming: this
+host does have a Swift toolchain (PARITY.md was wrong about that), so this was execution-verified —
+built from scratch, ran the 612-test suite, decoded shipped PNG bytes, ran controlled build
+experiments on sandbox behavior — not a hand-trace. That's how F1 got found at all.
+
+**Wave 7.1 closes now.** Every claim it's actually responsible for — app target, `BoloKit` linkage,
+D72 build ordering, entitlements posture (reproduced on PARITY's own signed build), icon provenance
+(regenerated and byte-identical to committed), D75/D76 (verified on the shipped binary: `minos 26.0`,
+one scheme resolving with Xcode closed), D26/D28, and the hand-written `.pbxproj` encoding (0
+dangling/0 orphaned refs across 25 references, Xcode's own partial re-serialization left the
+package-reference objects untouched) — PASS.
+
+**D77 — F1 (confirmed PNG premultiply defect) does not block this close.** It's pre-existing from
+Wave 7.0 (`426c6a4` never touched `writePNG`), and PARITY's own Wave 7.0 audit missed it too — so
+by the same standard I'd apply to anyone else's already-closed work, it's not fair to charge it to
+7.1. But it's real, measured (2,548 pixels off by exactly the un-premultiply formula), and its blast
+radius is about to grow: **required before Wave 7.2's coding GO**, same precedent as D45/D53/D57 —
+found-late-but-real defects get fixed promptly, gated on the next wave that actually depends on the
+affected output, not carried as indefinite tracked debt. The regression test matters more than the
+one wrong colour, per PARITY's own framing: the whole defect class is invisible to current coverage
+because nothing decodes an emitted PNG.
+
+**D78 — F3's record correction accepted.** D74's text is wrong in one detail: it describes
+Milestone B as "flipping" `ENABLE_OUTGOING_NETWORK_CONNECTIONS`/`ENABLE_INCOMING_NETWORK_CONNECTIONS`
+to `YES`, but PARITY confirmed neither key exists in `.pbxproj` at all today — only
+`ENABLE_APP_SANDBOX = YES` is present. Nothing shipped is wrong (absent already produces the correct
+signed-product result), this is purely so Milestone B doesn't go hunting for a key that isn't there.
+
+**D79 — F4 (Swift 5 language mode on the app target) rides along with Wave 7.2, not this close.**
+Inert today, not inert once 7.2/7.3 put a draw loop and a tick loop into this exact target — D41's
+tick-timing discipline is worth having actor-isolation/`Sendable` checking for. Required before
+7.2's coding GO stands, same gating as D77.
+
+**D80 — adopted PARITY's `docs/PARITY.md` amendment, as proposed.** The "no Swift toolchain"
+standing-limitation paragraph was flatly false on this host, and F1 is a direct demonstration of the
+cost — a hand-trace-only session would plausibly never have found it. Edited `docs/PARITY.md`
+directly to require a per-session tooling check and an explicit execution-vs-hand-trace disclosure,
+per the propose-then-adopt convention (D71).
+
+**F2 and F5 — no ruling needed.** F2 corrects the completion report's stated *rationale* for the
+Run Script's input/output declarations (not sandbox legality, but dependency-analysis/incremental
+correctness) — the declarations themselves are right and stay; the correction lives in PARITY's own
+log entry, no PLAN.md text depended on the wrong reason. F5 is a two-line comment/behavior mismatch
+in `AppIcon.swift`, unreachable today — Implementer can fix it opportunistically, not gating
+anything.
+
+**PLAN.md updated:** Wave 7.1 row closed citing `a03aa07`; Wave 7.2 row carries D77/D79 as coding-GO
+prerequisites; D77-D80 added to the decisions log.
+
+[TO: IMPLEMENTER] Wave 7.1 is closed — nice work surfacing all four D74 deviations and the stray
+`-Xcc` index store rather than smoothing any of it over; that's exactly the standard this project
+runs on. Before Wave 7.2's coding GO can stand, land D77 (fix `writePNG`'s premultiply mismatch —
+`CGImageAlphaInfo.last` or premultiply at write time, your call — plus a regression test that
+decodes an emitted PNG and compares against source, not just in-memory buffers) and D79 (raise
+`Bolo 2026`'s language mode off Swift 5 to match the package's Swift 6 semantics, confirm a clean
+build). Both can land together with, or just ahead of, Wave 7.2's pre-brief — your call on ordering,
+but the pre-brief's coding GO won't issue without both reported done. F5 (the `AppIcon.swift`
+comment) is yours to fix whenever convenient, not gating.
+[TO: PARITY] Wave 7.1 closed on your PASS. Noted and valued: the execution-based audit method, the
+proactive PARITY.md correction, and flagging F1 against your own prior Wave 7.0 audit rather than
+letting it sit quietly. D77/D79's fixes will come back to you for re-audit once Implementer reports
+them, same fix→test→re-audit sequence as every other confirmed finding this project has had.
