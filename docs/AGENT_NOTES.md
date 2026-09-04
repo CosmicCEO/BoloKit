@@ -559,3 +559,69 @@ coding" rule.
 > the toolchain finding above is a correction to my own prior report, logged per Jerod's direction
 > to record-only, no `docs/PARITY.md` edit.
 > **→ Parity:** nothing to audit yet — no code committed this entry.
+
+### [PLANNER] 2026-09-04 — Wave 7.0 pre-brief reviewed, coding GO'd (D66-D68); role-attribution correction
+
+**Type:** planning — pre-brief review + coding GO, plus a correction to prior record
+**Phase:** Wave 7.0 (asset pipeline)
+**Blocks:** nothing — coding is now clear to start
+
+**Attribution correction first.** The entry two above this one (committed at `423ba37`,
+"[PARITY] ... Wave 7 pre-code factual audit") was authored by the Implementer session, not PARITY —
+it self-identified as PARITY in error, having read `git config user.name`
+("Claude (Architectural Reviewer)") as a role signal, which it isn't (identical across all four
+roles, per Admin's role-alignment audit below). Self-corrected directly by Implementer in `8170a18`.
+This doesn't change D62-D65's substance: every fact in that audit was independently re-verified by
+this session against the actual repo before those four decisions ruled, not taken on the report's
+word. Only the byline was wrong, corrected in `docs/PLAN.md`'s D62 row rather than silently rewritten
+(same convention as the D25 mis-citation fix).
+
+**Toolchain finding, resolved.** Also corrected by Implementer directly: `docs/PARITY.md`'s "no Swift
+toolchain" line isn't stale, it's host-conditional — false on the Xcode/Implementer host (`swift
+--version` succeeds there), true on the actual Claude.ai/PARITY host this device-bridge session also
+runs on (confirmed unreproducible here too). Per Jerod: log only, no `docs/PARITY.md` edit — the line
+is correct for PARITY's actual intended host. Closing this out; no longer an open item.
+
+**Wave 7.0 pre-brief (`8170a18`), reviewed and GO'd.** Independently re-verified before ruling:
+`Package.swift`'s `BoloGlyphs` target is exactly `.executableTarget(name: "BoloGlyphs")`, no
+dependencies; `Sources/BoloKit/Tiles.swift` exists; test baseline is 597 `@Test` declarations, 0
+parameterized, 0 `XCTest` imports — matches the claimed D28 baseline exactly.
+
+- **D66 — row-0 origin ratified: top-left.** Implementer's reasoning (PNG/CoreGraphics are top-down,
+  zero flips end to end, D64 already waives fidelity obligation on freshly-generated sheets) is
+  sound. Binding on both 7.0 and 7.2.
+- **D67 — approved: procedural CoreGraphics glyphs, no vendored OFL font.** Deviates from `PLAN.md`'s
+  named text, correctly flagged rather than just done. Good call: nothing in the 290-cell set is
+  actual text, hinted fonts render mushy at 16×16px, and dropping the font removes a vendored binary
+  + license file from a wave whose whole point is clean provenance — strictly less risk. The kept
+  `GlyphSource` seam means this isn't a one-way door if a font is wanted later.
+- **D68 — approved: `BoloGlyphsCore` (library) + `BoloGlyphs` (thin executable) target split.**
+  Standard SPM logic/CLI separation for testability; doesn't contradict any named decision about file
+  layout, which was always descriptive rather than a fixed target list.
+- The probe-`mapimage()`-across-256-neighbor-configs design for deriving glyph semantics (rather than
+  hand-tabulating) is Implementer's own call per `CLAUDE.md` and needs no ruling — noting it's a good,
+  self-checking approach (fails loudly if the sweep doesn't yield exactly 177 tile indices).
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D66/D67/D68 added; D62's row gets the attribution-correction sentence; Wave 7.0's
+  row updated to the ratified row-0 convention, the approved font/target-split deviations, and an
+  explicit coding-GO status.
+
+**Admin's role-alignment audit (`9614a62`) — three other findings, dispositioned:**
+1. The malformed `## [TO: IMPLEMENTER] PLANNER purges CLAUDE.md...` entry (H2, no role/date header)
+   stays as historical record, not rewritten — but restating here for any session pattern-matching
+   off recent entries instead of the Format section: every new entry is `### [ROLE] YYYY-MM-DD —
+   title`, full stop.
+2. Toolchain line — resolved above, no action.
+3. `git config user.name` being role-agnostic across all four roles: not changing it — this is
+   local git identity on Jerod's machine, out of scope for any of the four roles to touch
+   unilaterally (same reason none of us edit git config generally), and now that the actual failure
+   mode (inferring role from author identity) is named and corrected once, it shouldn't recur. If
+   Jerod wants distinguishable commit authors for his own `git log` skimming, that's his call to make
+   whenever convenient — not blocking anything.
+
+[TO: IMPLEMENTER] Wave 7.0 is coding-GO'd on this pre-brief as reviewed — D66 (top-left origin), D67
+(procedural glyphs), D68 (target split) all confirmed. Proceed.
+[TO: PARITY] Nothing yet to audit — no Swift committed. When 7.0 lands, this will be your first real
+post-commit audit of Wave 7 (the pre-code numeric review to date, corrected above, was never actually
+yours).
