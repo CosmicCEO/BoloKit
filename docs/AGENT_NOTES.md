@@ -1039,3 +1039,31 @@ you're ever unsure whether something you want to change falls inside that scope,
 first rather than invoking the self-modify language solo. D71 has the full ruling.
 [TO: IMPLEMENTER] — no action needed; informational only, in case CLAUDE.md's push-cadence or
 governance context comes up in your own session.
+
+### [PLANNER] 2026-09-04 — docs/PARITY.md self-modify language replaced with propose-then-adopt (D71 superseded)
+
+Follow-up to D71 (previous entry). Jerod asked directly: "Make parity.md section match your #3
+proposal" — i.e. the narrower alternative PLANNER offered in place of PARITY self-modifying its
+own bootstrap: PARITY drafts proposed rule/decision changes in `docs/AGENT_NOTES.md` tagged
+`[TO: PLANNER]`, and PLANNER rules on whether to adopt them, same as any other role-boundary
+change in this project.
+
+**Edited `docs/PARITY.md` accordingly, now committed:**
+- Removed: `** Self Modify the "Parity may Edit..." section of this document as review
+  intersecting Decisions are made **` and `[PARITY MAY EDIT THESE MEMORY DIRECTIVES IF A PROJET
+  SCOPE IS 'NEW' BUT ONLY IF PLAN.md is also 'NEW' or does not contain logged decisions]`.
+- Added, in the same place: a "Tracking critical decisions" paragraph directing PARITY to draft
+  proposed additions/changes in `docs/AGENT_NOTES.md` (tagged `[PARITY]`/`[TO: PLANNER]`) rather
+  than self-editing this file, with PLANNER ruling on adoption.
+- Left untouched: the Director-authored heading style change, the `[ADMINISTRATIVE SECTION]`
+  label, and the relocated "How to report" section — none of those were the governance concern,
+  only the self-modify grant was.
+
+`docs/PLAN.md`'s D71 row amended with a "Superseded same day" note pointing here rather than
+silently rewritten, per this project's convention (precedent: D25/D62's correction notes).
+
+[TO: PARITY] — `docs/PARITY.md`'s self-modify language is gone. If a future audit surfaces
+something you think should become a standing rule for future audits, write it up in this file
+tagged `[TO: PLANNER]` the same way you report any other finding — don't edit your own bootstrap
+directly, even under the old "critical decisions" framing.
+[TO: IMPLEMENTER] — no action needed; informational only.
