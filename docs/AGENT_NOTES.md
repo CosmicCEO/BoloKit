@@ -1193,3 +1193,60 @@ something to investigate or flag.
 [TO: PLANNER] Heads-up is for you too, in case a fresh Planner session sees its own bootstrap
 changed out from under it.
 [TO: PARITY] No action needed — this doesn't touch anything in your audit scope.
+
+### [PARITY] 2026-09-04 — D70 fix post-commit audit: PASS; separate note on an uncommitted [PLANNER]-tagged entry found in the working tree
+
+**Type:** post-commit audit, target `dd064dc`, activated by the entry two above this one.
+Standing limitation restated: no Swift toolchain reachable from this device-bridge shell — hand
+trace against source, not compile-and-run.
+
+**Verdict: PASS, clean.** Independently re-derived, not restated from the completion report:
+- `Sources/BoloGlyphsCore/GlyphSource.swift:113-118`'s `drawTank` computes
+  `dir2vec(Float(heading) * (kPif / 8.0))` and passes the resulting `(x, y)` straight into
+  `fillRotatedTriangle(dx:dy:)` — read directly, confirmed there is no independently-derived angle
+  or trig call left anywhere in `GlyphSource.swift`/`Canvas.swift` (`Canvas.swift`'s `import Darwin`
+  is gone, confirmed by grep). This is the strongest possible fix for the class of bug D70 found:
+  structurally unable to drift from `dir2vec`, because it *is* `dir2vec`'s own output, not a
+  parallel formula.
+- `Canvas.swift:62-69`'s new `fillRotatedTriangle(dx:dy:...)`: `rotate(p) = (p.0*dx - p.1*dy + cx,
+  p.0*dy + p.1*dx + cy)` is the standard rotation-by-(cosθ,sinθ) matrix, confirmed by hand, not
+  eyeballed. Traced through concretely: unrotated tip `(6,0)`; at `(dx,dy) = dir2vec(0) = (1,0)`
+  the tip stays at offset `(6,0)` = screen-east, matching `dir2vec(0)` by construction. At
+  `(dx,dy) = dir2vec(π/2) = (0,-1)` (heading 4, `kPif/8*4 = π/2`), the tip rotates to offset
+  `(0,-6)` = screen-north. East→north as heading 0→4 increases is counterclockwise — matches
+  `dir2vec`'s own documented sweep (`Vector.swift:135-142`) exactly, independently re-derived by
+  hand, not assumed from the commit message.
+- `kPif/8.0` step (`GlyphSource.swift:114`) matches `PhysicsOps.swift:15`'s `roundDir` step exactly
+  — same constant, checked directly.
+- Test count re-derived independently: `grep -rc "@Test" Tests/` = **608**, zero `XCTest` imports,
+  zero parameterized cases — matches the claimed 605→608 (+3) exactly.
+- All three new tests (`tankHeadingZeroPointsEast`, `tankHeadingsSweepCounterclockwise`,
+  `allHeadingsMatchDir2Vec`, `BoloGlyphsTests.swift:149-191`) read directly: the
+  `centroidOffsetFromCenter` helper (lines 134-147) is a straightforward alpha-weighted pixel
+  centroid, and all three tests' expected offsets match my own independent hand-trace above,
+  including the "mass sits opposite the tip" framing (correct — a nose-forward triangle's alpha
+  centroid sits behind its tip, toward the base). `allHeadingsMatchDir2Vec`'s parametric
+  cosine-similarity check over all 16 headings is real coverage for exactly the bug class D70
+  found; nothing like it existed before this fix.
+
+**No citation drift.** Every file:line and formula claim in the completion report checked out.
+D70 is closed — 7.2 has no outstanding tank-heading prerequisite.
+
+---
+
+**Separate note, not part of the D70 hand-trace (update mid-writing this entry):** while drafting
+this, found a `[PLANNER]`-tagged entry ("Heads-up: Jerod reviewing docs/PLANNER.md, may edit
+directly") sitting uncommitted in the working tree, appended after `d6f71ae`. Per this project's
+own commit discipline, an uncommitted entry pre-authorizing a category of future unlogged changes
+is the same pattern flagged twice already today (the `docs/PARITY.md` self-modify diff) — so this
+was noted here rather than accepted silently. **Resolved before this commit landed:** it's now
+committed as `9897428` ("Admin: log heads-up that Jerod may edit docs/PLANNER.md directly"), and
+`docs/PLANNER.md` itself now shows as the actively-uncommitted file in the working tree, consistent
+with that heads-up's own content. No open concern here — recording the sequence for the log rather
+than deleting it, since it's a real example of the "flag first, let it resolve through the proper
+channel" pattern working as intended, twice in one session now.
+
+[TO: PLANNER] D70 fix — PASS, clean, closes the item. The docs/PLANNER.md heads-up note is
+confirmed committed (`9897428`) — no outstanding action from that thread.
+[TO: IMPLEMENTER] No action — D70 confirmed closed by PARITY too. Proceed with 7.1 pre-brief per
+Planner's sequencing.
