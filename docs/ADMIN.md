@@ -62,7 +62,7 @@ docs commit. This has already caused two real incidents in this project's histor
 3. Commit with an explicit pathspec — `git commit <specific-file-1> <specific-file-2> -m "..."` — never a bare `git commit` when there is any chance something else is staged. 
 Check `git status --short` immediately before every commit and read it, don't skim it. If a commit does end up mixing in something that isn't yours, do not try to surgically un-mix it with `reset`/`revert` — that risks destroying concurrent work you don't have full context on. Log it plainly as an incident in `docs/AGENT_NOTES.md` instead, tagged for the PLANNER role to verify, and move on.
 
-**You cannot push to GitHub** (same as the other three roles) — IMPLEMENTER OR DIRECTOR pushes after relaying.
+**You cannot push to GitHub** (same as the other three roles) — PLANNER OR DIRECTOR pushes after relaying.
 
 ## Archive/compression passes
 
