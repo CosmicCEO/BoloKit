@@ -862,3 +862,50 @@ once he's ready to pick.
 [TO: IMPLEMENTER] No action needed — D58/D59 are scope confirmations for future waves, nothing to
 build yet.
 [TO: PARITY] No action needed.
+
+### [PLANNER] 2026-09-04 — Wave 7 (UI/app phase) opened, pre-brief GO'd
+
+**Type:** planning — new-wave open + pre-brief GO
+**Phase:** Wave 7 pre-brief
+**Blocks:** Wave 7 coding, pending IMPLEMENTER's pre-brief and PLANNER's review of it (standard
+two-stage gate, same as every prior wave)
+
+Jerod picked the UI/app phase as the next direction, out of the three-way fork laid out in the
+prior close-out entry (`3d5cf51`). **Wave 7 is open, pre-brief GO'd.**
+
+**Scope, at the level PLANNER can set (sequencing/boundaries, not code-level detail — that's
+IMPLEMENTER's pre-brief to write):** Bolo 2026's actual player-facing app — main menu, "Host a
+Game"/"Join a Game" panels (now scoped by D58: both in-process hosting and a separate Dedicated
+Host binary), in-game HUD, settings, whatever else the reference client's UI shell covers. Same
+D25 clean-room discipline already governing WinBolo applies to reading `Reference/c/`'s Cocoa UI
+layer (`GSXBoloController.m` et al.) for architectural understanding only, never copied. **Also
+folds in Q14** (explosions-list attribution) — PARITY already found no mechanical gameplay
+consumer, so this is squarely a UI-layer call now that this phase exists to make it in.
+
+**Real dependency surfaced before opening this blind: Phase 2 (glyph art) never happened.**
+Checked directly — `Sources/BoloGlyphs/main.swift` is a single-line stub comment, no
+implementation. This phase cannot render a single screen without an asset pipeline existing first.
+Recommending (not mandating — IMPLEMENTER's pre-brief should confirm or counter-propose) a **7.0
+sub-wave for the glyph-sheet generator + original-Cheshire-asset purge**, sequenced before any
+screen-level sub-wave — same shape as D23/D43's "split when it's genuinely two units of work"
+precedent, not a new product-scope call needing Jerod.
+
+**Flagging loudly, not deciding:** Phase 2's own verify step calls for a **git-history rewrite** to
+strip the original copyrighted assets before this project could ever be distributed with them
+still reachable in history (Q18 already noted the cost grows with every commit made before it
+happens — the project is now 60+ commits past where Q18 first flagged this). This is a real,
+deliberate, destructive git operation. It does not block starting the asset-pipeline work itself,
+but it should be raised to Jerod explicitly before anyone actually executes it — not treated as a
+routine step buried inside a pre-brief.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 7 row added (UI phase, D58/Q14/Phase-2-dependency noted); Wave 6 summary
+  row updated to point at Wave 7 instead of "nothing GO'd."
+
+[TO: IMPLEMENTER] Wave 7 (UI/app phase) is GO'd for pre-brief. Read `Reference/c/`'s UI layer
+(Cocoa client shell) and the current state of `Sources/BoloGlyphs/` (currently empty) before
+writing your pre-brief. Recommend scoping a 7.0 asset-pipeline sub-wave first, per the note above,
+but confirm or counter-propose in your own pre-brief rather than treating this as fixed. Do not
+execute the git-history rewrite (Q18) without raising it to PLANNER/Jerod first, even if it comes
+up naturally while scoping the asset purge.
+[TO: PARITY] No action yet — nothing coded this entry.
