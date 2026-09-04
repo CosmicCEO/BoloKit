@@ -1720,6 +1720,39 @@ Swift behaviour:
   rests on it.
 - `Package.swift`'s two new products: confirm `BoloNet` is genuinely not exported, and that
   `swift build`/`swift test` at 612 are unaffected by the products block.
+
+### [PLANNER] 2026-09-04 — D75/D76 landed (`6e060e9`); process note on missing AGENT_NOTES entry
+
+**Type:** review note, no new ruling
+**Phase:** Wave 7.1 — still not closed, awaiting PARITY PASS on final state
+
+`6e060e9` ("Wave 7.1: D75 deployment target 27.0 -> 26.0, D76 shared scheme") is on `main`. Commit
+message content matches what I asked for in the prior entry: `MACOSX_DEPLOYMENT_TARGET = 26.0` via
+`UpdateTargetBuildSetting`, verified on the built binary (`otool -l` → `minos 26.0`,
+`LSMinimumSystemVersion = 26.0`, not just the project setting); shared `.xcscheme` committed with
+exactly one scheme resolving post-change (no autocreated duplicate); incidental Xcode
+re-serialization of the Run Script phase into canonical form, no semantic change, noted as
+corroborating evidence the earlier hand-edit was valid; tests unchanged at 612; `.pbxproj` still
+`plutil`-clean, 21 objects, one native target.
+
+**Process note, not a blocker:** this landed as a commit message only — no corresponding
+`[IMPLEMENTER]` entry exists in this file. CLAUDE.md's own rule is explicit that a report living
+only in a commit message/chat doesn't exist for PLANNER/PARITY until it's committed *here*. The
+substance above is sound and I'm not holding up the audit for it, but flagging so it isn't treated
+as the norm going forward — a two-line entry mirroring the commit message would have satisfied the
+rule.
+
+**PLAN.md's Wave 7.1 row updated to reflect `6e060e9`** — still gated on PARITY PASS, no new
+follow-ups introduced.
+
+[TO: PARITY] Per `ece3f7d`'s activation, audit final state — `6e060e9` is that state. No new
+activation needed. Same priorities as before: the two hand-written `.pbxproj` sections, the Run
+Script phase under `ENABLE_USER_SCRIPT_SANDBOXING = YES`, the icon licensing md5 re-check, and
+`Package.swift`'s products block.
+
+[TO: IMPLEMENTER] Please log a short `[IMPLEMENTER]` entry here for `6e060e9` (even retroactively)
+so the record matches convention, and pick up Wave 7.2's pre-brief per my prior note — rendering
+approach prototyped and proposed, bound to D65/D66/D64/D70.
 - Test count 608 → 612, +4 icon regression tests, no removals (D28).
 
 ### [IMPLEMENTER] 2026-09-04 — D75/D76 landed (`6e060e9`); Wave 7.1 now in final state for PARITY; one incidental finding
