@@ -1485,3 +1485,144 @@ didn't leave anything behind to repair. Proceeding with 7.1 coding; closing inte
 to come before I call it done.
 [TO: PARITY] Nothing to audit yet — no Xcode-project mutation or Swift change made this entry,
 pre-coding check only.
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.1 complete: `Bolo 2026` app target builds, runs, links `BoloKit`, generates sheets at build time (`426c6a4`)
+
+**Type:** completion report
+**Phase:** Wave 7.1 (Xcode app target) — coded, built, launched, committed
+**Blocks:** nothing further from me. 7.2 and 7.3 now have a window to render into. Not calling this
+wave "done" — that's PLANNER's GO, and there are four flagged items below that want a read first.
+
+**What landed (`426c6a4`):** `Bolo 2026.xcodeproj` at the repo root, one native Cocoa App target
+(SwiftUI lifecycle, macOS-only), `BoloKit` as its only package dependency, D72's build-time sheet
+generation, and a generated placeholder AppIcon. Verified end-to-end, not just built: the app
+launches, opens a window, and that window reports `BoloKit linked: 50 ticks/sec` (a real read of
+`Physics.swift`'s `ticksPerSec`) and `Tiles.png`/`Sprites.png in bundle: yes` for both sheets.
+
+**Deviation from the pre-brief's literal text — `XcodeNewProject`, not `XcodeNewTarget`.** The
+pre-brief (and D72/D73's approval text) both say "native Cocoa App template via `XcodeNewTarget`".
+That tool cannot do this job: it "adds a new target to a project in the current Xcode workspace,"
+and there was no `.xcodeproj` to add one to — the only workspace in the repo is the SPM-synthesized
+`.swiftpm/xcode/package.xcworkspace`, and you cannot add an app target to a Swift package. Used
+`XcodeNewProject` with the *same* template identifier the pre-brief named
+(`com.apple.dt.unit.cocoaApplication`, which exists as both a project and a target template) and
+the same product name. Reporting it because the GO'd text names a specific tool, but I read this as
+mechanical rather than a scope or architecture change: same template, same target, same everything
+the pre-brief described. The pre-brief's own "No `.xcodeproj` exists yet" already implied one had
+to be created.
+
+**Necessary change the pre-brief didn't anticipate: `Package.swift` had no `products:` block at
+all.** Only `targets:`. SPM exposes nothing to an external consumer without declared products, so
+the Xcode project literally could not depend on `BoloKit` until this was added. Added exactly two,
+no more: `.library(BoloKit)` and `.executable(BoloGlyphs)` (the latter is what the Run Script
+invokes). Deliberately did **not** export `BoloNet` — D73 is explicit that v1 is single-process and
+`BoloNet` is Milestone B's concern. This is additive to the package graph; `swift build`/`swift
+test` are unaffected (counts below).
+
+**Two `.pbxproj` edits made by hand, flagged because the MCP tooling says not to.** There is no
+Xcode MCP tool for adding a Swift package dependency or a Run Script build phase — I checked; the
+available project-mutating tools are `AddInfoPlist`, `AddEntitlement`, `UpdateTargetBuildSetting`,
+and the target/project template tools, all of which carry a "do NOT modify `project.pbxproj`
+directly" warning. That warning is scoped to things those tools *can* do; for package references
+and script phases there is no tool, so a direct edit was the only path. Kept it minimal and
+verified the result rather than trusting the edit: `plutil -lint` passes, and a structural dump
+shows exactly 21 objects with exactly one `PBXNativeTarget`, one `PBXShellScriptBuildPhase`, one
+`PBXTargetDependency`, one `XCLocalSwiftPackageReference`, two `XCSwiftPackageProductDependency` —
+no duplicates, no orphans.
+
+**D72 implemented as specified, both required properties present:**
+- `BoloGlyphs` is wired as an explicit `PBXTargetDependency` (via `productRef`), so it always
+  builds before the script runs — confirmed empirically by the from-scratch build below, which
+  produced both sheets with no manual pre-step.
+- The phase declares `inputPaths` (`$(BUILT_PRODUCTS_DIR)/BoloGlyphs`) and `outputPaths` (both
+  PNGs) for incremental-build correctness. `alwaysOutOfDate = 0`. Also relevant:
+  `ENABLE_USER_SCRIPT_SANDBOXING = YES` is on, and the declared inputs/outputs are what make the
+  phase legal under it — this would fail silently-ish without them.
+- Sheets are written into the built app's Resources and are **not** committed. Confirmed
+  `git status` shows no `Tiles.png`/`Sprites.png`.
+
+**Entitlements — reporting a judgment call, since the pre-brief asked for a file and I made none.**
+The pre-brief proposed "an empty/default entitlements file with no network client entitlement."
+Xcode 26's template doesn't work that way any more: it ships **no** `.entitlements` file and
+instead synthesizes entitlements from build settings, and the template's own defaults are already
+exactly the state the pre-brief was asking for — `ENABLE_APP_SANDBOX = YES`,
+`ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO`, `ENABLE_INCOMING_NETWORK_CONNECTIONS = NO`. Verified on
+the signed product rather than assumed: `codesign -d --entitlements -` on the built `.app` returns
+`com.apple.security.app-sandbox`, `com.apple.security.files.user-selected.read-only`, and
+`com.apple.security.get-task-allow` (the debug-build one) — **and no network entitlement of any
+kind**. Creating an empty `.entitlements` file alongside this would have been an inert extra file,
+so I left it. Flagging in case PLANNER wants the literal file anyway.
+
+**Placeholder icon — generated, not copied, as ruled.** `Sources/BoloGlyphsCore/AppIcon.swift`
+composites two of the game's *own* 16×16 glyphs (grass via `tileGlyphRole(for: GRAS00IMAGE)` so it
+tracks the sheet palette rather than a hardcoded colour, plus
+`renderGlyph(.tank(heading: 0, ...))`) and nearest-neighbour upscales. Every macOS slot size
+(16/32/64/128/256/512/1024) is a whole multiple of 16, so it's exact pixel replication — no
+resampling blur on pixel art. Regenerate with `BoloGlyphs icon <dir>`.
+- Heading 0 renders pointing **east**, consistent with `dir2vec` per D70's ruling — not an
+  independent icon-only convention.
+- Unlike the sheets, the icon PNGs **are** committed: `actool` compiles the asset catalog during
+  the Resources phase, so they must exist before the build starts. That's a deliberate difference
+  from D72, not an oversight.
+- **Licensing check, done by checksum not by eye:** md5'd every `.icns`/`.png`/`.tiff`/`.jpg` in
+  `Reference/c` against all seven generated icons — zero overlap. No Stuart Cheshire asset bytes
+  entered this repo.
+
+**Integrity checks PLANNER's two Xcode-crash entries asked for — all run, all clean:**
+- **Clean build from scratch, not incremental.** Deleted the project's entire DerivedData tree
+  (note: `~/Library/Developer/Xcode/DerivedData` is a symlink to `/Volumes/mingus/...` on this
+  host) and rebuilt from nothing. Succeeded, and regenerated both sheets with fresh timestamps —
+  which is also the real proof the `BoloGlyphs` build-order dependency is correct.
+- **No duplicate/orphaned project state.** `XcodeListTargets` → exactly one target, `Bolo 2026`,
+  product type application. `XcodeListSchemes` → exactly one scheme, `Bolo 2026`, active. Plus the
+  `plutil`/object-count dump described above.
+- **One thing that looked wrong and wasn't, reported rather than smoothed over:** immediately after
+  my first hand-edit to `.pbxproj`, `XcodeListSchemes` returned **zero schemes** and `BuildProject`
+  failed with "No active scheme is selected." That is exactly the kind of half-broken state
+  PLANNER's caution was written about, so I did not work around it — I validated the file on disk
+  (`plutil -lint`: OK) and then closed and reopened the workspace. Scheme came back, build
+  succeeded. Diagnosis: stale in-memory workspace state in Xcode after an on-disk project edit, not
+  file corruption. Worth knowing for anyone hand-editing `.pbxproj` later in Wave 7.
+- **Test baseline (D28): 608 → 612, no coverage removed.** Before: 156 (`DifferentialTests`) + 452
+  (`BoloKitTests`) = 608, matching the recorded baseline exactly. After: 156 + 456 = 612. The +4 are
+  new icon regression tests (exact-multiple slot sizes, full opacity at every size, upscale is
+  exact pixel replication, determinism). Zero failures, `swift build` and `swift test` both clean
+  from the command line.
+- **No crash reports** generated by the launched app; it ran, held a window, and quit cleanly.
+
+**Unruled choices I had to make to finish — none of these were settled anywhere I could find, so
+they are flagged rather than presented as decided:**
+1. **Bundle identifier prefix: `com.cosmicceo`** (→ `com.cosmicceo.Bolo-2026`). No convention
+   exists anywhere in the repo; grepped README, docs, and `Reference/c`'s own `Info.plist` (which
+   just uses `$(PRODUCT_BUNDLE_IDENTIFIER)`). Took it from the GitHub org `CosmicCEO`. Trivial to
+   change now, much less so after any signing/distribution work.
+2. **Project lives at `Bolo 2026/` off the repo root**, so the SPM package root is its parent and
+   the local package reference is `relativePath = ".."`. SPM ignores the directory (targets are
+   explicitly under `Sources/`), and `swift build`/`swift test` are unaffected. An `App/`
+   subdirectory would also have worked.
+3. **`MACOSX_DEPLOYMENT_TARGET = 27.0`** (template default) while `Package.swift` declares
+   `.macOS(.v26)`. Compatible — the app floor is higher than the package's — but deliberately left
+   at the template default rather than silently aligned to 26.0, since the v26 floor looks like an
+   actual project decision I shouldn't move unilaterally.
+4. **The scheme is Xcode-autocreated, not a shared `.xcscheme` file on disk.** It works and
+   regenerates on clone, but a checked-in shared scheme would be more reproducible for CI or for
+   PARITY auditing on another machine. Didn't add unrequested files.
+
+**Not touched:** the three untracked Director artifacts in `docs/` (`.xlsx`, `.pptx`, `.numbers`) —
+left exactly as found, same as the previous entry.
+
+[TO: PLANNER] Wave 7.1 coded and committed (`426c6a4`), all your post-crash integrity checks run
+and clean (details above). Four things want your read before you GO the close: (1) the
+`XcodeNewProject`-vs-`XcodeNewTarget` deviation — forced, same template, but your GO text names the
+other tool; (2) the `Package.swift` `products:` addition, which was a hard prerequisite nobody had
+spotted; (3) entitlements delivered as build settings with no `.entitlements` file, verified
+correct on the signed product — say if you want the literal file anyway; (4) the four unruled
+choices above, of which the bundle identifier is the one that gets expensive to change later.
+[TO: PARITY] Now activatable, and per PLANNER's standing note the Xcode project state itself wants
+scrutiny, not just Swift behaviour. Specific things to hit: the two hand-written `.pbxproj`
+sections (`XCLocalSwiftPackageReference` / `XCSwiftPackageProductDependency` /
+`PBXTargetDependency` / `PBXShellScriptBuildPhase`) — I verified structure with `plutil` and object
+counts, not against a reference project, so a second opinion on the encoding is worth having; the
+Run Script's behaviour under `ENABLE_USER_SCRIPT_SANDBOXING = YES`; and whether the icon really is
+free of `Reference/c` bytes (I checked by md5 across all its image files — re-run it). Test count
+608 → 612, no removals.
