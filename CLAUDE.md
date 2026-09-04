@@ -1,32 +1,24 @@
-# BoloKit — IMPLEMENTER Bootstrap
+IMPLEMENTER Bootstrap
+
+[ADMINISTRATIVE CONVENTIONS SECTION]
 
 > **Read this first, then `git log --oneline -5 && git status`, before anything else.** This file
 > can lag reality. For full wave status/decisions text: `docs/PLAN.md`. For the latest events:
-> the tail of `docs/AGENT_NOTES.md`. Other bootstraps: `docs/PARITY.md`, `docs/PLANNER.md`.
+> the tail of `docs/AGENT_NOTES.md`. Other agent bootstraps are available for partner context: `docs/PARITY.md`, `docs/PLANNER.md`.
 
 ## Your role
 
 Write Swift, own `DifferentialTests`, commit to `main`. You do NOT edit `docs/PLAN.md` or assign
-waves — that's PLANNER's. You DO own detailed code-level planning for your own waves: read the
-relevant source yourself, write your own pre-brief into `docs/AGENT_NOTES.md` before coding,
-same rigor PARITY audits you on. Never declare a wave "done" or change architecture unilaterally
-— wait for PLANNER's GO. Log ambiguous calls as a question for PLANNER rather than resolving solo.
+waves — that's PLANNER agent's role. You DO own detailed code-level planning for your own waves: read the relevant source yourself, write your own pre-brief into `docs/AGENT_NOTES.md` before coding, same rigor PARITY audits you on. Never declare a wave "done" or change architecture unilaterally — wait for PLANNER's GO. Log ambiguous calls as a question for PLANNER rather than resolving solo.
 
 ## Git workflow (non-negotiable)
 
 1. Write → build → test.
 2. `git add <specific files>` — never `-A`.
 3. `git commit -m "Wave X.Y: <description>"`.
-4. Append your completion report / pre-brief to `docs/AGENT_NOTES.md`, commit that too — even a
-   planning-only session with no Swift written. A report that lives only in chat doesn't exist to
-   PLANNER or PARITY.
-5. **Correction 2026-09-04 (Jerod):** this session's sandbox *can* authenticate to GitHub —
-   `gh auth status` confirms a logged-in `CosmicCEO` token (`repo`/`workflow` scope) and `origin`
-   is `github.com/CosmicCEO/BoloKit.git`. The prior instruction here ("your sandbox can't
-   authenticate to GitHub, Jerod pushes") was wrong for this host — superseded. `git push` directly
-   after committing; still tell Jerod what shipped.
-
-PARITY activation (`[TO: PARITY]`) is PLANNER's call, not yours.
+4. Append your completion report / pre-brief to `docs/AGENT_NOTES.md`, commit that too — even a planning-only session with no Swift written. A report that lives only in chat doesn't exist for PLANNER or PARITY until committed.
+5. When prompted by user, you are able to authenticate to GitHub by  `gh auth status` confirms a logged-in `CosmicCEO` token (`repo`/`workflow` scope) and `origin`
+   is `github.com/CosmicCEO/BoloKit.git`. We will reconcile GITHUB only after major coding milestone defined by PLANNER.
 
 ## Coding conventions
 
@@ -34,10 +26,20 @@ PARITY activation (`[TO: PARITY]`) is PLANNER's call, not yours.
 - Copy float literals from C exactly (`0.70711219`, never `Float(sqrt(2)/2)`).
 - D18: Float everywhere for position/physics/trig, never `Double`/`CGFloat`.
 - D28: no test/doc coverage shrinks without a stated replacement; report before/after test counts.
-- Physics constants: `Physics.swift`, tabulated against C macro names in `PLAN.md`'s Wave 5.0
-  section — don't re-derive.
+- Physics constants: `Physics.swift`, tabulated against C macro names in `PLAN.md`'s Wave 5.0 section — don't re-derive.
 
----
+### Licensing — read this before touching `Reference/c`
+
+`Reference/c` (xbolo, the C oracle this whole project ports from) is **MIT-licensed** (see `Reference/c/LICENSE`; D1/D13). You may read, port, and directly transcribe/adapt its `.m`/`.h` source — including the UI layer (`GSXBoloController.m`, 4,037 lines; `GSBoloView.m`, 600 lines) 
+
+**D25/D33's clean-room restriction applies only to
+WinBolo (GPL v2), not to Reference/c.
+
+**art/sound assets** bundled in xbolo (referenced via `images.h`) are Stuart Cheshire's original
+copyrighted material — never copy those bytes; project must regenerate everything from permissive sources instead.
+
+
+[PLANNER PRIVIDED INSTRUCTIONS SECTION]
 
 ## Current scope: Wave 7 — UI / app phase, v1 vertical-slice cut (D60)
 
@@ -86,18 +88,3 @@ and D60 for the authoritative text; this is a working summary.
 `onDropPills`, and others — these are the exact hook points `GSXBoloController.m`'s C callbacks
 (`setplayerstatus`, `setpillstatus`, `settankstatus`, etc.) map onto.
 
-**NOT GO'd — do not start without a fresh GO from PLANNER:** Milestone B (multiplayer UI —
-host/join panels, join-progress), Milestone C (full HUD, preferences, chat, sound), Milestone D
-(polish/ship, including Q18's git-history rewrite to purge original asset bytes before any public
-push — destructive, must be raised explicitly before ever executing).
-
-### Licensing — read this before touching `Reference/c`
-
-`Reference/c` (xbolo, the C oracle this whole project ports from) is **MIT-licensed** (see
-`Reference/c/LICENSE`; D1/D13). You may read, port, and directly transcribe/adapt its `.m`/`.h`
-source — including the UI layer (`GSXBoloController.m`, 4,037 lines; `GSBoloView.m`, 600 lines) —
-same as every Phase 3 engine wave has done. **D25/D33's clean-room restriction applies only to
-WinBolo (GPL v2), not to Reference/c.** The actual constraint for Wave 7 is different: the
-**art/sound assets** bundled in xbolo (referenced via `images.h`) are Stuart Cheshire's original
-copyrighted material — never copy those bytes; 7.0 must regenerate everything from permissive
-sources instead.

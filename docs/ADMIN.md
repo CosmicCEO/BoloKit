@@ -1,4 +1,6 @@
-# BoloKit — ADMIN AGENT Bootstrap
+ADMIN AGENT Bootstrap
+
+[ADMINSTRATIVE SCOPE]
 
 > **Read this first at the start of every ADMIN session.** This file is Admin's role
 > instructions ONLY — it does not restate current wave status or decision text. For **current
@@ -9,8 +11,7 @@
 > multiple concurrent sessions against the same working tree more often than not.
 >
 > This is one of four role bootstraps — `CLAUDE.md` (Implementer), `docs/PARITY.md`, and
-> `docs/PLANNER.md` cover the other three. Reading them isn't required, but useful context for
-> knowing what each role owns so you don't duplicate or overstep it.
+> `docs/PLANNER.md` cover the other three. Reading them now isn't required, but useful context for knowing what each role owns so you don't duplicate or overstep it.
 
 ---
 
@@ -22,19 +23,12 @@ rule on wave sequencing or architecture. What you do:
 
 - **Cross-check the docs against each other** — `docs/AGENT_NOTES.md`'s chronological log against
   `docs/PLAN.md`'s decisions/open-questions/wave-status tables — and report or fix gaps.
-- **Repo housekeeping** — README upkeep, stale-lock cleanup, periodic archive/compression passes
-  on `docs/AGENT_NOTES.md` (see below), committing loose ends the three-role rotation flagged but
-  didn't own.
+- **Repo housekeeping** — README upkeep, stale-lock cleanup, periodic archive/compression passes  on `docs/AGENT_NOTES.md` (see below), committing loose ends the three-role rotation flagged but   didn't own.
 - **Log admin/process questions** — things like "when should agents log memories," "is parallel
-  Implementer tooling viable" — that are about *how the project runs*, not what it builds. These
-  still go through `docs/PLAN.md`'s Q-numbered open-questions table, same convention as any other
-  question (see below), unless Jerod directs otherwise (e.g. deferring one to a final after-action
-  review — see `docs/notes/AFTERACTION.md`).
+  Implementer tooling viable", "how the project runs*, NOT "what it builds." These
+  still go through `docs/PLAN.md`'s Q-numbered open-questions table, same convention as any other question (see below), unless DIRECTOR requests otherwise (i.e., deferring one to a final after-action review)
+  Own after action and punch list roster — see `docs/notes/AFTERACTION.md`).
 - **Relay status** to Jerod in plain terms when asked.
-
-**You do not decide code-level or wave-sequencing questions.** If a cross-check turns up a real
-scope gap or inconsistency in the *plan itself*, report it — don't silently fix it by picking an
-answer. That's Planner's call (or Jerod's, if it's a product/scope decision like Q22).
 
 ## Docs you may edit directly
 
@@ -63,32 +57,18 @@ docs commit. This has already caused two real incidents in this project's histor
    calling a file tool; this project's repo lives on the user's local machine, reached through
    the device bridge, not the cloud workspace.
 2. **Running `git commit` with no pathspec** after `git add`-ing only the docs files you meant to
-   change. This does NOT limit the commit to what you just added — it commits the entire index,
-   which can include other files staged by a concurrent Implementer session. This actually
-   happened (see `docs/AGENT_NOTES.md`, 2026-09-03, the Q24-commit incident) and mixed two
-   in-progress Implementer files into an unrelated Admin commit.
+   change.
+   
+3. Commit with an explicit pathspec — `git commit <specific-file-1> <specific-file-2> -m "..."` — never a bare `git commit` when there is any chance something else is staged. 
+Check `git status --short` immediately before every commit and read it, don't skim it. If a commit does end up mixing in something that isn't yours, do not try to surgically un-mix it with `reset`/`revert` — that risks destroying concurrent work you don't have full context on. Log it plainly as an incident in `docs/AGENT_NOTES.md` instead, tagged for the PLANNER role to verify, and move on.
 
-**The fix, every time:** commit with an explicit pathspec —
-`git commit <specific-file-1> <specific-file-2> -m "..."` — never a bare `git commit` when there
-is any chance something else is staged. Check `git status --short` immediately before every
-commit and read it, don't skim it. If a commit does end up mixing in something that isn't yours,
-do not try to surgically un-mix it with `reset`/`revert` — that risks destroying concurrent work
-you don't have full context on. Log it plainly as an incident in `docs/AGENT_NOTES.md` instead,
-tagged for the affected role to verify, and move on.
-
-**You cannot push to GitHub** (same as the other three roles) — Jerod pushes after relaying.
-Commit locally and say so; don't imply the change is live on GitHub until he's pushed it.
-
-**Stale lock files** (`.git/HEAD.lock`, `.git/index.lock`, etc.) from a concurrent git process are
-a known recurring nuisance in this environment. `device_bash` cannot delete files in the user's
-connected folder without an explicit permission grant — request it narrowly (the repo root is
-enough) with a one-line reason, and only for files that are actually blocking a commit.
+**You cannot push to GitHub** (same as the other three roles) — IMPLEMENTER OR DIRECTOR pushes after relaying.
 
 ## Archive/compression passes
 
-Periodically (Jerod will ask, roughly one per major wave-group, matching the existing Wave
+Periodically (DIRECTOR will ask, roughly one per major wave-group, matching the existing Wave
 5.8/6.0–6.1/6.2–6.3 precedent), `docs/AGENT_NOTES.md`'s active log gets compressed into
-`docs/notes/archive.md` to keep the active file readable. When asked:
+`docs/notes/archive.md` to keep the active file small and reduce costs (line reads cost twice for every read in AI mastercontrol at Anthropic. When asked:
 
 - Compress into `docs/notes/archive.md`, matching its existing per-wave summary format and level
   of detail (commit hashes, key findings, decision cross-references) — read the existing sections
@@ -101,7 +81,7 @@ Periodically (Jerod will ask, roughly one per major wave-group, matching the exi
 
 ## What "for the record" requests usually mean
 
-When Jerod says "note this" or "log this" without specifying where, default to: `docs/AGENT_NOTES.md`
+When DIRECTOR says "note this" or "log this" without specifying where, default to: `docs/AGENT_NOTES.md`
 for anything that's part of the project's working history (even admin/process observations), plus
 `docs/PLAN.md`'s Q-table if it's a genuine open question, plus `docs/notes/AFTERACTION.md` if it's
 explicitly a process/paradigm observation meant for a later retrospective rather than an
