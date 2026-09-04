@@ -370,3 +370,69 @@ silently skipped, per the standing-limitation discipline.
 > constants and `mapimage()`; build the sheet writer on top of those rather than duplicating the
 > parse. F3: pick and document one sheet row-0 convention (native bottom-left vs. flipped) between
 > the sheet generator and the eventual 7.2 renderer, and treat `-1` as "no image," not an index.
+
+### [PLANNER] 2026-09-04 — Rule PARITY's pre-code Wave 7 audit: F1/F2 corrected (D62/D63), F3 settled (D64), F4 ruled (D65)
+
+**Type:** planning — ruling on ad hoc PARITY findings, doc corrections, one scope decision
+**Phase:** Wave 7.0/7.2, pre-code
+**Blocks:** nothing now — corrections land before Implementer codes against the old numbers
+
+Jerod relayed PARITY's ad hoc pre-code audit (entry directly above this one) for review rather than
+letting Implementer begin 7.0 on the briefed numbers. Independently re-verified every factual claim
+before ruling — the images.h define count (297, matching PARITY's "296 + include guard"), both
+`0x00` reset points (`WALL46IMAGE` line 13, `PTKB00IMAGE` line 193), the two `imageNamed:` call
+sites in `GSBoloView.m`, the `Images.swift` constant/`mapimage()` count (290, both overloads
+present), `BoloGlyphs/main.swift`'s stub state, the `isFlipped` grep (zero hits), and the
+`client.images`/`seentiles`/`fog` read sites plus `BMap.swift`'s own "never modeled" comment. All
+confirmed independently, not just restated.
+
+**F1 — confirmed real, BLOCKER resolved by correction (D62).** `images.h` is two independent index
+spaces (tiles 177/256, sprites 113/256), not one 256-cell sheet as `CLAUDE.md`/`PLAN.md` said.
+`CLAUDE.md`'s 7.0 section and `PLAN.md`'s Wave 7/7.0 rows corrected to the right numbers.
+
+**F2 — confirmed, scope corrected (D63).** 7.0's parse/manifest step is already done in
+`Sources/BoloKit/Images.swift` (290 constants + `mapimage()`, from an earlier wave). 7.0 narrows to
+the sheet renderer only — corrected in `CLAUDE.md` and `PLAN.md`'s Wave 7.0 row.
+
+**F3 — settled, not left ambiguous (D64).** No fidelity obligation on sheet row-0 origin (sheets are
+freshly generated), but 7.0 and 7.2 must agree on one convention explicitly — Implementer picks in
+the 7.0 pre-brief, documents it, 7.2 consumes the same one. `-1` = no-image sentinel, never a valid
+index, in both sub-waves.
+
+**F4 — ruled (D65).** Fog-of-war/seen-tiles display (`client.images`/`seentiles`/`fog`, never
+modeled anywhere in this port per `BMap.swift`'s own comments) is out of scope for the v1 slice —
+every tile renders as fully visible, sheet index comes straight from `mapimage()`. Real fog-of-war
+display deferred to a future wave (not yet assigned), not a v1 blocker. `PLAN.md`'s Wave 7.2 row
+updated to say so.
+
+**One item NOT acted on:** PARITY also reported `docs/PARITY.md`'s "no Swift toolchain" line as
+stale, citing `swift --version` → Apple Swift 6.4 in its own session. Attempted to reproduce
+independently this session: `swift`, `xcrun`, and `/usr/bin/swift` all report not-found, and
+`/Applications` isn't even visible from this device-bridge shell. Not correcting `docs/PARITY.md`
+on unreconciled evidence — flagging the discrepancy instead. Possible explanations: PARITY's
+session had a different execution context (e.g. direct computer-use vs. this sandboxed device-bash
+VM) rather than the claim being wrong outright. Needs re-confirmation by whoever next runs a PARITY
+session, not assumed either way.
+
+**Ad hoc activation retroactively covered, per precedent.** No `[TO: PARITY]` tag was open when
+PARITY's session started; Jerod's direct activation (per `docs/PARITY.md`'s sanctioned override,
+same pattern as Wave 6.4a/6.4b's ad hoc assessments) is confirmed legitimate, not a protocol break.
+The uncommitted entry above this one is PARITY's own — committing it now alongside this ruling
+since it was never committed by that session (commit discipline: an entry only exists once
+committed).
+
+**Docs updated (committed alongside this entry, same commit as PARITY's own uncommitted entry
+above):**
+- `docs/PLAN.md` — D62/D63/D64/D65 added to the decisions log; Wave 7, 7.0, and 7.2 rows corrected/
+  annotated to match.
+- `CLAUDE.md` — 7.0 and 7.2 sections corrected with the same facts, so a fresh Implementer session
+  reads the right numbers without needing to cross-reference this entry.
+
+[TO: IMPLEMENTER] Wave 7.0/7.2 remain coding GO'd (D60) — proceed under the corrected facts above:
+two sheets not one (D62), build on `Images.swift`'s existing constants rather than re-parsing (D63),
+document your row-0 sheet convention in the 7.0 pre-brief and keep 7.2 consistent with it (D64),
+and skip fog-of-war/seen-tiles modeling in 7.2 — full visibility for v1 (D65).
+[TO: PARITY] Retroactive `[TO: PARITY]` activation confirmed for the ad hoc audit above — thank you
+for catching this before code landed on the wrong numbers. Please re-confirm the Swift-toolchain
+claim (`swift --version`) in whatever execution context your next session actually runs in; this
+session's device-bridge shell couldn't reproduce it.
