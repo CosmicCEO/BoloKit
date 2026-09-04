@@ -51,6 +51,13 @@ public struct PortMappingUpdate: Sendable, Equatable {
     /// itself is behind another NAT layer), so it surfaces as a flag on a
     /// successful update rather than a thrown error.
     public let doubleNAT: Bool
+
+    public init(externalAddress: UInt32, externalPort: UInt16, ttl: UInt32, doubleNAT: Bool) {
+        self.externalAddress = externalAddress
+        self.externalPort = externalPort
+        self.ttl = ttl
+        self.doubleNAT = doubleNAT
+    }
 }
 
 public enum PortMappingError: Error, Sendable, Equatable {
@@ -65,7 +72,7 @@ public enum PortMappingError: Error, Sendable, Equatable {
 /// an update or nothing is a plain value-in-value-out decision, the same
 /// "decision vs. mechanism" split this project has applied everywhere
 /// else (D31/D36/D42).
-func decodePortMappingReply(
+public func decodePortMappingReply(
     errorCode: DNSServiceErrorType, externalAddress: UInt32, externalPort: UInt16, ttl: UInt32
 ) -> PortMappingUpdate? {
     guard errorCode == kDNSServiceErr_NoError || errorCode == kDNSServiceErr_DoubleNAT else {

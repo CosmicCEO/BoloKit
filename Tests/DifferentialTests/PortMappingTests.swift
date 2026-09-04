@@ -15,7 +15,7 @@ import dnssd
 @Test func decodePortMappingReplySucceedsOnNoError() {
     // externalPort 0x1F90 (8080) in network byte order is 0x901F.
     let update = decodePortMappingReply(
-        errorCode: kDNSServiceErr_NoError, externalAddress: 0x0101_0A0A, externalPort: 0x901F, ttl: 7200
+        errorCode: DNSServiceErrorType(kDNSServiceErr_NoError), externalAddress: 0x0101_0A0A, externalPort: 0x901F, ttl: 7200
     )
     #expect(update?.externalAddress == 0x0101_0A0A)
     #expect(update?.externalPort == 8080)
@@ -25,16 +25,16 @@ import dnssd
 
 @Test func decodePortMappingReplySucceedsWithDoubleNATFlagOnDoubleNATError() {
     let update = decodePortMappingReply(
-        errorCode: kDNSServiceErr_DoubleNAT, externalAddress: 0xC0A8_0001, externalPort: 0x901F, ttl: 3600
+        errorCode: DNSServiceErrorType(kDNSServiceErr_DoubleNAT), externalAddress: 0xC0A8_0001, externalPort: 0x901F, ttl: 3600
     )
     #expect(update != nil)
     #expect(update?.doubleNAT == true)
 }
 
 @Test func decodePortMappingReplyReturnsNilOnAnyOtherError() {
-    #expect(decodePortMappingReply(errorCode: kDNSServiceErr_Unknown, externalAddress: 0, externalPort: 0, ttl: 0) == nil)
-    #expect(decodePortMappingReply(errorCode: kDNSServiceErr_Refused, externalAddress: 0, externalPort: 0, ttl: 0) == nil)
-    #expect(decodePortMappingReply(errorCode: kDNSServiceErr_NATPortMappingUnsupported, externalAddress: 0, externalPort: 0, ttl: 0) == nil)
+    #expect(decodePortMappingReply(errorCode: DNSServiceErrorType(kDNSServiceErr_Unknown), externalAddress: 0, externalPort: 0, ttl: 0) == nil)
+    #expect(decodePortMappingReply(errorCode: DNSServiceErrorType(kDNSServiceErr_Refused), externalAddress: 0, externalPort: 0, ttl: 0) == nil)
+    #expect(decodePortMappingReply(errorCode: DNSServiceErrorType(kDNSServiceErr_NATPortMappingUnsupported), externalAddress: 0, externalPort: 0, ttl: 0) == nil)
 }
 
 @Test func portMappingUpdateIsEquatable() {
