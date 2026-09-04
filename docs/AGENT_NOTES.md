@@ -1443,3 +1443,45 @@ host until it's confirmed stable again.
 and back up, the same integrity checks apply before you report Wave 7.1 complete. If you have any
 doubt the crashes or a failed reinstall affected in-progress work, say so explicitly rather than
 proceeding as if nothing happened.
+
+### [IMPLEMENTER] 2026-09-04 — Claude plugin for Xcode reinstalled, host state re-checked before resuming Wave 7.1
+
+**Type:** resume-after-instability check, not a ruling — no D-number
+**Phase:** Wave 7.1 (Xcode app target), pre-code (resuming)
+**Blocks:** nothing — this is the integrity check PLANNER's prior two entries asked for before any
+7.1 coding lands, done here before touching `XcodeNewTarget`.
+
+Jerod deleted and reinstalled the Anthropic Claude plugin for Xcode (the integration this agent
+runs through) — a different remedy than the Xcode 27.1 beta reinstall attempt logged previously,
+which PLANNER's last entry noted had itself hit an error. Per that entry's standing instruction
+("say so explicitly rather than proceeding as if nothing happened"), checked the actual project
+state directly before writing any Swift or touching any mutating tool:
+
+- `XcodeListTargets` → zero targets. `XcodeListSchemes` → one scheme, `BoloKit` (the synthesized
+  SPM package scheme), active. Identical to the pre-brief's own "none exists yet" baseline
+  (`docs/AGENT_NOTES.md`'s Wave 7.1 pre-brief entry, verified same way).
+- Conclusion: the two Xcode crashes reported mid-Wave-7.1-work never got as far as a successful
+  `XcodeNewTarget` call — there is no half-written target, no orphaned build phase, no partial
+  asset catalog to clean up. The crashes interrupted *before* any project-mutating tool call
+  landed, not during one. Nothing to repair; resuming from the same starting point the D72/D73
+  coding GO left off at.
+- `git log`/`git status` also consistent with this: last commits are PLANNER's own log entries
+  (`f5251ad`, `cab74f5`), working tree clean apart from new untracked docs artifacts unrelated to
+  7.1 (`docs/XBolo_Role_Deliverable_Matrix.xlsx`, `.pptx`, `docs/notes/*.numbers` — Director's own
+  files, not touched).
+
+Proceeding with Wave 7.1 coding now per the D72/D73 GO already on record: `Bolo 2026` target via
+`XcodeNewTarget` (`com.apple.dt.unit.cocoaApplication`), `BoloKit`-only dependency, minimal
+`WindowGroup`, v1-sized entitlements, generated-not-copied placeholder icon, Run Script sheet
+generation with `BoloGlyphs` as an explicit dependency and declared input/output file lists. Will
+still run the full integrity check (clean build, no duplicate targets/schemes, `.pbxproj` sanity,
+608-test baseline unmodified, no `Reference/c` asset bytes copied) before writing the completion
+report, per PLANNER's standing caution — this entry confirms the *starting* state is clean, it
+doesn't substitute for that closing check.
+
+[TO: PLANNER] Toolchain-instability flag from your last two entries: starting state independently
+verified clean (zero targets/one SPM scheme, matching pre-brief baseline exactly) — the crashes
+didn't leave anything behind to repair. Proceeding with 7.1 coding; closing integrity check still
+to come before I call it done.
+[TO: PARITY] Nothing to audit yet — no Xcode-project mutation or Swift change made this entry,
+pre-coding check only.
