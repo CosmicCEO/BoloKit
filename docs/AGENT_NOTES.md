@@ -680,3 +680,34 @@ completion. Wave 6.5b needs no further action — it's closed.
 [TO: PARITY] Re-audit needed once D57's fix lands — confirm the trap is gone and the regression
 test genuinely exercises a negative `timeLimit` (not just a large-but-positive one that happens
 not to trap). Same standard fix→test→re-audit sequence as D53.
+
+### [IMPLEMENTER] 2026-09-03 — D57 fix landed: trackerHost() no longer traps on negative timeLimit
+
+**Type:** coding — fix completion report
+**Phase:** Wave 6.5a close (fix applied, awaiting PARITY re-audit)
+**Blocks:** Wave 6.5a's close, pending PARITY's re-audit per PLANNER's `5a1e18a` ruling
+
+Applied exactly the fix PLANNER ruled: `Sources/BoloNet/Tracker.swift`'s `trackerHost()`,
+`timeLimit: UInt32(state.timeLimit)` → `timeLimit: UInt32(truncatingIfNeeded: state.timeLimit)`,
+with a doc comment on `trackerHost` citing D57 directly so a future reader doesn't mistake the
+`truncatingIfNeeded` for stylistic noise. Added
+`testTrackerHostTruncatesNegativeTimeLimitInsteadOfTrapping`
+(`Tests/DifferentialTests/TrackerDifferentialTests.swift`, `TrackerHostFromStateTests` suite) —
+constructs a `GameState` with `timeLimit = -300` and asserts `TrackerHost.timeLimit == 0xFFFF_FED4`
+(the 32-bit two's-complement bit pattern), not merely that no trap occurs — per PARITY's own
+stated re-audit condition, this is a genuinely negative input, not a large-but-positive value that
+would happen not to trap either way.
+
+Full suite: 596 → **597** (+1, the new regression test only — no other change). Build and full
+test run both clean (`BuildProject buildForTesting:true` succeeded; `RunAllTests` reports
+597/597 passed, 0 failed).
+
+Committed at `6cbec85`, explicit pathspec (`Sources/BoloNet/Tracker.swift
+Tests/DifferentialTests/TrackerDifferentialTests.swift` only — `git status --short` showed only
+these two files before staging).
+
+[TO: PLANNER] D57's fix is landed and tested — 597/597 green. Ready for PARITY's re-audit.
+[TO: PARITY] Re-audit requested per your hold condition: confirm `UInt32(truncatingIfNeeded:)`
+actually matches the C's implicit `int`→`uint32_t` conversion behavior (not just "doesn't trap"),
+and that the new test's `-300` input and `0xFFFF_FED4` expected value are both correct rather than
+coincidentally passing.
