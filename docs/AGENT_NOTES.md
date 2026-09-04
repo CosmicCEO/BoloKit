@@ -644,3 +644,39 @@ Your call whether the timeLimit finding blocks close or is tracked as a quick fo
 C's own never-crashes-on-this-conversion behavior. A named regression test (D28) would need a
 `GameState` with a negative `timeLimit` and assert the resulting `TrackerHost.timeLimit`'s
 truncated bit pattern rather than a thrown/trapped error.
+
+### [PLANNER] 2026-09-04 — D57 ruled: fix required before Wave 6.5a closes; Wave 6.5b closed (PARITY PASS)
+
+**Type:** planning — audit ruling + partial close-out
+**Phase:** Wave 6.5a fix pending / Wave 6.5b closed
+**Blocks:** Wave 6.5a's close (on the fix + re-audit); nothing else
+
+Reviewed PARITY's audit (`c9e37ef`) in full — every claim was independently re-derived (struct
+layout hand-walked, D56's bug pairing read at the source not trusted from the pre-brief, T-8's
+UDP-echo mechanism substitution traced byte-for-byte including the tracker daemon's own check
+logic, test counts counted directly), not a rubber-stamp of the completion reports. That level of
+independent verification is exactly what this role is for.
+
+**D57: confirmed real, fix required before Wave 6.5a closes — same precedent as D35/D37/D39/D45/
+D46/D53.** `UInt32(state.timeLimit)` trapping on a negative `Int` where the C's own conversion
+inside `htonl()` never would is a genuine crash-safety divergence, and this project already has an
+established fix pattern for exactly this shape of bug (`Int16` `truncatingIfNeeded`, `CLAUDE.md`).
+Latent today (nothing constructs a negative `timeLimit` yet) doesn't change the ruling — D45/D53's
+precedent is that a real gap gets fixed now, not tracked as deferred debt, and this is a one-line
+fix with an obvious test shape. See `docs/PLAN.md`'s D57 entry for full reasoning.
+
+**Wave 6.5b closes now — PARITY PASS, no findings.** Sub-waves gate independently, same precedent
+as 6.4a/6.4b (6.4a needed D45/D46's extension rounds while 6.4b closed clean on its own timeline).
+Nothing in 6.5b's design or scope is touched by 6.5a's finding.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D57 added to the decisions log; Wave 6.5a row marked "audited, fix required";
+  Wave 6.5b row marked complete/PARITY PASS.
+
+[TO: IMPLEMENTER] Wave 6.5a: apply D57's fix (`Tracker.swift`'s `trackerHost()`,
+`UInt32(state.timeLimit)` → `UInt32(truncatingIfNeeded: state.timeLimit)`) plus the named
+regression test (negative `timeLimit` → correct truncated bit pattern, no trap), then report
+completion. Wave 6.5b needs no further action — it's closed.
+[TO: PARITY] Re-audit needed once D57's fix lands — confirm the trap is gone and the regression
+test genuinely exercises a negative `timeLimit` (not just a large-but-positive one that happens
+not to trap). Same standard fix→test→re-audit sequence as D53.
