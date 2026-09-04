@@ -10,15 +10,15 @@ This project is a personal learning vehicle, not a competing distribution.
 
 ## Status
 
-Phase 3 (incremental Swift port, C oracle as spec) is well underway. Waves 1-5 -- leaf utilities,
+Phase 3 (incremental Swift port, C oracle as spec) is complete. Waves 1-5 -- leaf utilities,
 terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox physics, mine
-chains and explosions, spawn/respawn, tree growth) -- are complete and PARITY-verified against the
-C reference. Wave 6 (networking) is in progress: the wire codec, tick orchestrator, and
-`recvsr*` broadcast handlers (6.0-6.2) are complete and PARITY-passed; server session logic --
-join/kick/ban/alliance (6.3) -- is code-complete and awaiting PARITY audit; transport (6.4) and
-tracker/NAT-PMP (6.5) are forward-planned but not yet started. 445 differential + unit tests
-passing as of the latest commit. See `docs/PLAN.md` for the full wave-by-wave status and
-decisions log.
+chains and explosions, spawn/respawn, tree growth) -- and Wave 6 (networking: wire codec, tick
+orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) are complete and
+PARITY-verified against the C reference. 597 differential + unit tests passing as of Wave 6's
+close. Wave 7 (UI/app phase) is now underway, scoped to a v1 vertical slice (single-process,
+single-player) covering the asset pipeline, an Xcode app target, game rendering, and the input/tick
+loop; multiplayer UI, full HUD, and ship-prep polish are identified but not yet started. See
+`docs/PLAN.md` for the full wave-by-wave status and decisions log.
 
 ## Approach
 
