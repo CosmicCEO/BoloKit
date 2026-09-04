@@ -489,3 +489,73 @@ directly rather than trusting whatever context a prior session may have accumula
 deviation (informational, not urgent) and whether `git config user.name` should be updated to
 something that actually distinguishes roles.
 [TO: PARITY] No action needed.
+
+### [IMPLEMENTER] 2026-09-04 — Role self-correction (was misidentifying as PARITY); Wave 7.0 pre-brief
+
+**Type:** self-correction + coding pre-brief, no Swift written yet
+**Phase:** Wave 7.0 (asset pipeline), pre-code
+**Blocks:** Wave 7.0 coding start — pre-brief below needs PLANNER's read before I write Swift,
+same two-stage gate as every prior wave
+
+**Self-correction, confirmed by Jerod directly this session:** the session that wrote both the
+`[PARITY]` audit entry above (pre-`423ba37`) and, presumably, whatever live-session symptom the
+Admin role-alignment audit's suspected drift ("a live Xcode/Implementer session... self-identifying
+as PARITY") was reporting, **was this host** — the Xcode API session, which `AGENT_NOTES.md`'s own
+header (line 3) documents as IMPLEMENTER's host, not PARITY/PLANNER's (Claude.ai). The
+misidentification came from reading `git config user.name` ("Claude (Architectural Reviewer)") as a
+role signal — which the Admin audit's finding #3 already flagged as carrying *zero* role signal,
+identical across all four roles. I'm IMPLEMENTER. The audit content itself doesn't need redoing —
+PLANNER independently re-verified every claim before ruling D62-D65 — only the byline was wrong.
+
+**Toolchain finding, correcting my own earlier framing:** I told PLANNER (via the PARITY entry
+above) that `docs/PARITY.md`'s "no Swift toolchain" line was stale. More precisely, it's
+**host-conditional**: false here (`swift --version` → Apple Swift 6.4; confirmed compiling *and
+executing* a trivial program, not just present on `PATH`), true on Claude.ai, PARITY's actual
+intended host. PLANNER's device-bridge shell failing to reproduce it wasn't a contradiction, it was
+two different hosts. Per Jerod: log this, don't edit `docs/PARITY.md` — the line is correct for the
+host PARITY is meant to run on.
+
+**Wave 7.0 pre-brief.** Read `Reference/c/images.c` (742 lines, `mapimage()`), confirmed
+`Sources/BoloKit/Images.swift` (290 constants + both `mapimage()` overloads, `Sources/BoloKit/
+Tiles.swift`'s `TileGrid`/`Tile` enum/`is*LikeTile` predicates) already covers D63's "build on this,
+don't re-parse `images.h`" instruction, and confirmed `Package.swift`'s current `BoloGlyphs` is a
+dependency-free `.executableTarget` (no `BoloKit` dependency yet).
+
+- **D64 row-0 call:** top-left origin (`row = idx >> 4` measured from the top), not the C
+  original's implicit bottom-left (`GSBoloView` never sets `isFlipped`). Reasoning: PNG and
+  CoreGraphics are both top-down, 7.2 will sample `CGImage` sub-rects, top-left costs zero flips
+  end to end, and D64 already grants no fidelity obligation on freshly-generated sheets. 7.2 must
+  consume this same convention. `-1` stays a "no image" sentinel, never a valid index, in both.
+- **Design: derive glyph semantics by probing `mapimage()`, don't hand-tabulate them.** For each
+  `Tile` case, sweep all 256 eight-neighbor configurations on a `TileGrid` at an interior coordinate
+  (edges fabricate connections — `is*LikeTile` predicates return 1 out-of-bounds), call
+  `mapimage()`, and group configurations by resulting image index to recover each variant's
+  connectivity signature. Self-checking: if the sweep doesn't yield exactly the 177 expected tile
+  indices, a test fails before a wrong-looking sheet ships. Wall variants nest a diagonal-neighbor
+  switch inside the orthogonal one (`images.c`, `case kWallTile`) — exactly why the sweep needs 8
+  neighbors, not 4, to produce 47 variants from 4-bit logic.
+- **Proposed deviation from `docs/PLAN.md`'s 7.0 row, flagged not decided:** the row calls for
+  "geometric/box-drawing glyphs from an OFL font (Noto Sans Symbols/DejaVu)." Proposing procedural
+  CoreGraphics drawing instead, no vendored font at all — nothing in the 290-cell set is actually
+  text, hinted glyphs render mushy at 16×16px, and dropping the font removes a vendored binary +
+  license file from a wave whose whole point is clean provenance. Keeping a `GlyphSource` seam so a
+  font path could be added later without rework. This is otherwise my call per `CLAUDE.md`, but it
+  contradicts named `PLAN.md` text, so flagging rather than just doing it.
+- **Target split, also flagged:** `BoloGlyphs` is currently a bare `.executableTarget` with no
+  dependencies; executables can't be cleanly imported by tests. Proposing
+  `BoloGlyphsCore` (library, depends on `BoloKit`, holds the probe/derive/layout/pixel-buffer logic)
+  + `BoloGlyphs` (thin executable: CLI args + PNG encode via ImageIO) + `BoloKitTests` gaining a
+  `BoloGlyphsCore` dependency. `CXBolo`'s `-ffp-contract=off` (D26) untouched.
+- **D28 baseline, verified directly this session, not taken from docs:** 597 `@Test` declarations,
+  zero `@Test(arguments:)` parameterized cases (so declared count = executed count), zero
+  `import XCTest` anywhere in `Tests/`. Matches `docs/PLAN.md`'s stated 597. **Before = 597.**
+
+No Swift written yet — this is the pre-brief only, per `CLAUDE.md`'s "write your pre-brief before
+coding" rule.
+
+> **→ Planner:** two flagged deviations from the committed `PLAN.md` 7.0 text above (no-font
+> procedural glyphs; the `BoloGlyphsCore`/`BoloGlyphs` target split) — need your read before I
+> start Swift, not asking permission for the parts D60/D62/D63/D64/D65 already GO'd me on. Also:
+> the toolchain finding above is a correction to my own prior report, logged per Jerod's direction
+> to record-only, no `docs/PARITY.md` edit.
+> **→ Parity:** nothing to audit yet — no code committed this entry.
