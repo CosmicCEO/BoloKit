@@ -462,3 +462,52 @@ whichever of 6.5a/6.5b lands second reports the real grand total. No coverage lo
 for PARITY per your `c68d250` hold condition (shared build clean) now being satisfied.
 [TO: PARITY] Hold lifted from this side — both 6.5a (`a23d49d`) and 6.5b (`a250c57`, plus the build
 fix at `cdff28d`) are ready for audit once PLANNER activates.
+
+### [PLANNER] 2026-09-03 — Wave 6.5a/6.5b reviewed, PARITY activated
+
+**Type:** planning — completion review + PARITY activation
+**Phase:** Wave 6.5a/6.5b coding complete, audit pending
+**Blocks:** nothing — this is the standard post-commit gate
+
+Reviewed Wave 6.5a's completion report (`be0684c`) against the coding GO (`9e5e481`, D54/D55/D56)
+and the pre-brief's accepted scope. Matches, no deviations from what was approved:
+
+- **D56's two-bug pairing landed as ruled** — registration's `htonl`'d `timeLimit` vs. the
+  heartbeat's bit-for-bit reproduction of the missing-`htonl` bug, with a named test asserting the
+  two encodings differ *only* there and match everywhere else. Exactly the "don't collapse them
+  into one rule" concern the pre-brief itself raised.
+- **T-3's zero-fill (pad byte + `strncpy` boundary) implemented and asserted**, correctly framed
+  as a disclosed Swift-safety claim rather than an oracle-fidelity match (the oracle itself needs
+  its own `memset` first to make the comparison well-defined at that byte — good catch that this
+  isn't a real bit-for-bit comparison point).
+- **T-4/T-10 scope boundaries — accepted as disclosed, not oversights.** T-4 (tri-state return)
+  substituting Swift's structured-concurrency cancellation for a third enum case is a reasonable
+  mechanism substitution (D31's own latitude: port the wire format, not the C's control-flow
+  shape) and correctly not claimed as tested since there'd be nothing of this wave's own logic to
+  test. T-10 (heartbeat cadence/back-pressure) deferred to whichever future wave owns a tracker
+  scheduling loop, mirroring `UDPSession.sendLocalUpdate`'s identical existing boundary — same
+  precedent already accepted for other wire-level primitives, not a new gap. Neither needs a
+  Planner ruling; both are exactly the kind of call D45/D47 leave to the pre-brief/completion-report
+  process rather than requiring pre-approval.
+- **The 6.5b build fix (`cdff28d`) is legitimately mechanical** — visibility (`internal` →
+  `public`), a missing memberwise init, and explicit casts for `dns_sd.h`'s untyped `Int` error
+  constants. No behavioral change to 6.5b's own logic, consistent with what `c68d250` already
+  passed; correctly committed separately from `a23d49d` so attribution stays clean rather than
+  folded silently into 6.5a's commit.
+- **Test count verified: 572 → 591 (6.5a, +19) → 596 (+5, 6.5b) → 596/596 green.** No coverage
+  lost (D28).
+
+**No changes requested on either sub-wave.** Both read as complete and correctly scoped to what
+the coding GO accepted.
+
+**PARITY activated for both 6.5a and 6.5b** — the hold condition from `c68d250` (shared build
+green) is satisfied, confirmed independently against the commit history above, not just taken on
+IMPLEMENTER's word. Standard post-commit audit, same as every prior wave.
+
+[TO: IMPLEMENTER] No action needed on 6.5a/6.5b unless PARITY's audit surfaces a finding.
+[TO: PARITY] **Activated.** Audit Wave 6.5a (`a23d49d`) and Wave 6.5b (`a250c57`+`cdff28d`)
+against `Reference/c/` — `server.c`'s `registerserver()`/`sendtrackerupdate()`, `bolo.c`'s
+`listtracker()`, and `PortMapping.swift`'s `dnssd` usage (no C oracle for the last one per D55;
+verify the decision-logic split and disclosed test-coverage boundary instead of expecting a
+byte-exact comparison there). D56's bug-pairing test and T-3's zero-fill claim are the two items
+most worth independent verification, given they're the sub-wave's own highest-risk findings.
