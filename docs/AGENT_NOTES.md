@@ -298,3 +298,32 @@ Proceed per the pre-brief's proposed scope, file list, and test plan — no chan
 Remember to commit your own pre-brief/completion entries yourself, in the same sitting, going
 forward (see the note above).
 [TO: PARITY] No action yet — nothing coded this entry to audit.
+
+### [PLANNER] 2026-09-03 — Jerod directs: run Wave 6.5a and 6.5b simultaneously
+
+**Type:** planning — sequencing directive (Jerod's explicit call)
+**Phase:** Wave 6.5a/6.5b coding
+**Blocks:** nothing
+
+Jerod: run both sub-waves at once rather than picking one to start first. D55 already established
+there's no dependency between them, so this is compatible with that ruling, not a change to it —
+just exercising the "or concurrent" half of D55's "either order or concurrent work is fine."
+
+**Recommended mechanism: the proven scoped-parallel-Implementer-agent pattern (Wave 5.9,**
+**`docs/notes/WAVE59_BOOTSTRAP.md`), not two sessions both editing the shared docs live.** 6.5a
+(`Tracker.swift`/`TrackerRegistration.swift`/`TrackerBrowser.swift`) and 6.5b (`PortMapping.swift`)
+already touch disjoint files per the pre-brief's own file list, satisfying that pattern's
+precondition (independent wave, explicit off-limits list matching what the other session touches).
+Concretely: one of the two runs as the primary session against `main` as normal; the other runs on
+its own worktree/branch with its own bootstrap file and writes its progress to a standalone
+`docs/notes/WAVE65B_REPORT.md` (or `WAVE65A_REPORT.md`, whichever is the parallel one) instead of
+directly to `docs/AGENT_NOTES.md`/`docs/PLAN.md` — PLANNER folds it in at merge time, same as Wave
+5.9. This avoids two Implementer sessions racing to commit to the same shared log files, which is
+a real hazard this project's concurrency notes already warn about, not a hypothetical one.
+
+[TO: IMPLEMENTER] Both 6.5a and 6.5b are to proceed now, in parallel, per Jerod's direction. Use
+the Wave 5.9 scoped-parallel-worktree pattern for whichever one runs as the secondary session
+(own branch, own bootstrap, own report file) — see `docs/notes/WAVE59_BOOTSTRAP.md` as the
+template. Coordinate between the two sessions (or with Jerod relaying) on which sub-wave takes the
+primary `main` slot vs. the parallel worktree, since that choice isn't fixed by this ruling.
+[TO: PARITY] No action yet — nothing coded this entry to audit.
