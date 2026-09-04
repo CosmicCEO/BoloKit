@@ -125,6 +125,71 @@ struct BoloGlyphsTests {
         }
     }
 
+    // MARK: - Tank heading convention (D70)
+
+    /// Centroid of every non-transparent pixel in a 16x16 patch, relative
+    /// to the cell center (8, 8). A nose-forward triangle's pixel mass sits
+    /// opposite its tip, so this centroid should point *against*
+    /// `dir2vec(heading)`, not with it -- see the two explicit checks below.
+    private func centroidOffsetFromCenter(_ patch: Canvas16) -> (Double, Double) {
+        var sumX = 0.0, sumY = 0.0, count = 0.0
+        for y in 0..<Canvas16.size {
+            for x in 0..<Canvas16.size {
+                let a = patch.pixels[(y * Canvas16.size + x) * 4 + 3]
+                if a != 0 {
+                    sumX += Double(x) + 0.5
+                    sumY += Double(y) + 0.5
+                    count += 1
+                }
+            }
+        }
+        return (sumX / count - 8.0, sumY / count - 8.0)
+    }
+
+    @Test("tank heading 0 points screen-east, matching dir2vec(0), not screen-north")
+    func tankHeadingZeroPointsEast() {
+        let patch = renderGlyph(.tank(heading: 0, ownership: 0, destroyed: false))
+        let (offX, offY) = centroidOffsetFromCenter(patch)
+        // Tip points east (+x); pixel mass sits behind it, toward -x.
+        #expect(offX < -0.5)
+        #expect(abs(offY) < 0.5)
+    }
+
+    @Test("tank headings sweep counterclockwise on screen as the index increases, matching dir2vec")
+    func tankHeadingsSweepCounterclockwise() {
+        // heading 4 -> dir = pi/2 -> dir2vec = (0, -1) = screen-north.
+        let north = centroidOffsetFromCenter(renderGlyph(.tank(heading: 4, ownership: 0, destroyed: false)))
+        #expect(north.1 > 0.5)   // mass sits south (behind a north-pointing tip)
+        #expect(abs(north.0) < 0.5)
+
+        // heading 8 -> dir = pi -> dir2vec = (-1, 0) = screen-west.
+        let west = centroidOffsetFromCenter(renderGlyph(.tank(heading: 8, ownership: 0, destroyed: false)))
+        #expect(west.0 > 0.5)    // mass sits east (behind a west-pointing tip)
+        #expect(abs(west.1) < 0.5)
+
+        // heading 12 -> dir = 3pi/2 -> dir2vec = (0, 1) = screen-south.
+        let south = centroidOffsetFromCenter(renderGlyph(.tank(heading: 12, ownership: 0, destroyed: false)))
+        #expect(south.1 < -0.5)  // mass sits north (behind a south-pointing tip)
+        #expect(abs(south.0) < 0.5)
+    }
+
+    @Test("every heading's rendered tip direction matches dir2vec, not an independently-derived angle")
+    func allHeadingsMatchDir2Vec() {
+        for heading in 0..<16 {
+            let patch = renderGlyph(.tank(heading: heading, ownership: 0, destroyed: false))
+            let (offX, offY) = centroidOffsetFromCenter(patch)
+            let mag = (offX * offX + offY * offY).squareRoot()
+            guard mag > 0 else {
+                Issue.record("heading \(heading) rendered no pixels")
+                continue
+            }
+            let expected = dir2vec(Float(heading) * (kPif / 8.0))
+            // Pixel mass points opposite the tip, i.e. opposite dir2vec.
+            let cosineSimilarity = (offX * -Double(expected.x) + offY * -Double(expected.y)) / mag
+            #expect(cosineSimilarity > 0.8, "heading \(heading) diverges from dir2vec")
+        }
+    }
+
     // MARK: - Determinism
 
     @Test("sheet generation is deterministic")

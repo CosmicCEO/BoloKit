@@ -1,3 +1,5 @@
+import BoloKit
+
 // Procedural glyph drawing (D67): nothing in the 290-cell image set is
 // actual text, so this draws everything with pixel-level primitives rather
 // than vendoring an OFL font. `GlyphRole` is the seam a font-backed source
@@ -108,6 +110,11 @@ private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroy
         }
         return
     }
-    let angle = Double(heading) * (2.0 * Double.pi / 16.0)
-    c.fillRotatedTriangle(angle: angle, r, g, b)
+    // D70: rotate by BoloKit's own `dir2vec` output directly, matching the
+    // 16-heading quantization already established in `PhysicsOps.swift`
+    // (`roundDir`, step `kPif/8`) -- not an independently-derived angle
+    // that could silently drift from the simulation's own convention.
+    let dir = Float(heading) * (kPif / 8.0)
+    let v = dir2vec(dir)
+    c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
 }

@@ -1,5 +1,3 @@
-import Darwin
-
 /// A 16x16 RGBA pixel patch. Top-left origin, row 0 = top (D66) -- matches
 /// both PNG's and `CGContext`'s natural row order, so blitting into the
 /// sheet and encoding to PNG both need zero flips.
@@ -55,17 +53,19 @@ public struct Canvas16: Sendable {
         }
     }
 
-    /// Fills a triangle whose tip points toward -y (up) before rotation,
-    /// rotated clockwise by `angle` radians about the cell center -- the
-    /// "one directional glyph rotated per-angle" tank shape (PLAN.md 7.0).
-    public mutating func fillRotatedTriangle(angle: Double, _ r: UInt8, _ g: UInt8, _ b: UInt8, _ a: UInt8 = 255) {
+    /// Fills a triangle whose tip points toward `(dx, dy)` -- a unit vector
+    /// in screen space (+y down), the same convention `BoloKit.dir2vec`
+    /// returns. The unrotated tip is `(1, 0)` (screen-east), matching
+    /// `dir2vec(0)`; rotating by `(dx, dy)` directly (rather than by an
+    /// independently-derived angle) means this can never drift from
+    /// `dir2vec`'s own sign/reference conventions (D70).
+    public mutating func fillRotatedTriangle(dx: Double, dy: Double, _ r: UInt8, _ g: UInt8, _ b: UInt8, _ a: UInt8 = 255) {
         let center = (8.0, 8.0)
-        let tip = (0.0, -6.0)
-        let left = (-5.0, 6.0)
-        let right = (5.0, 6.0)
+        let tip = (6.0, 0.0)
+        let left = (-5.0, -5.0)
+        let right = (-5.0, 5.0)
         func rotate(_ p: (Double, Double)) -> (Double, Double) {
-            let s = sin(angle), c = cos(angle)
-            return (p.0 * c - p.1 * s + center.0, p.0 * s + p.1 * c + center.1)
+            (p.0 * dx - p.1 * dy + center.0, p.0 * dy + p.1 * dx + center.1)
         }
         let p0 = rotate(tip), p1 = rotate(left), p2 = rotate(right)
         for y in 0..<Canvas16.size {

@@ -1066,4 +1066,68 @@ silently rewritten, per this project's convention (precedent: D25/D62's correcti
 something you think should become a standing rule for future audits, write it up in this file
 tagged `[TO: PLANNER]` the same way you report any other finding — don't edit your own bootstrap
 directly, even under the old "critical decisions" framing.
+
+### [IMPLEMENTER] 2026-09-04 — D70 fix landed: tank heading now matches dir2vec exactly, 605 → 608 (+3)
+
+**Type:** coding — pre-7.2 fix required by D70
+**Phase:** Wave 7.0 (closed), fix requested before 7.2 starts
+**Blocks:** nothing further — clears the one outstanding item before 7.2 can begin
+
+Fixed per D70's ruling: PARITY found `GlyphSource.swift`'s tank glyph pointed heading-0 screen-north
+and swept clockwise, while `BoloKit`'s own `dir2vec(dir:)` (`Vector.swift:138`, used throughout the
+simulation already) has heading-0 = screen-east, sweeping counterclockwise — a full mismatch, not
+an offset. PLANNER ruled: fix the generator to match `dir2vec`, don't carry a translation layer in
+7.2.
+
+**Approach — call `dir2vec` directly rather than re-deriving an equivalent angle formula.** The
+prior bug happened because the tank rotation used a hand-rolled `sin`/`cos` with its own reference
+direction and sign convention, independently of `dir2vec`. Re-deriving a corrected formula by hand
+risks the exact same class of mistake with different arithmetic. Instead:
+- `Canvas.swift`'s `fillRotatedTriangle` now takes a `(dx, dy)` unit vector directly — the same
+  screen-space, +y-down convention `dir2vec` returns — instead of an angle. Its unrotated tip is
+  `(1, 0)` (screen-east), matching `dir2vec(0)` by construction, so there's no separate "angle 0
+  means what" convention left to get wrong.
+- `GlyphSource.swift`'s `drawTank` computes `dir2vec(Float(heading) * (kPif / 8.0))` and passes the
+  result straight through. The `kPif / 8.0` step-size is not a new constant — it's the same
+  16-heading quantization `PhysicsOps.swift:15`'s `roundDir` already uses, confirmed by reading it
+  directly rather than assuming `2π/16` was equivalent by coincidence.
+- `Canvas.swift`'s `import Darwin` (for the old `sin`/`cos`) is now unused and removed — the file
+  has no trig of its own left; rotation is a pure linear transform driven by the caller's vector.
+
+**Regression tests (3 new, named per D70's requirement to lock in the convention):**
+- `tankHeadingZeroPointsEast` — heading 0's rendered pixel mass sits opposite `dir2vec(0)`'s
+  direction (a nose-forward triangle's area centroid is behind its tip, not at it — confirmed by
+  hand from the triangle's own vertices before writing the test, not assumed).
+- `tankHeadingsSweepCounterclockwise` — headings 4/8/12 (quarter turns) checked against
+  `dir2vec`'s north/west/south, confirming the *sweep direction* is right, not just heading 0.
+- `allHeadingsMatchDir2Vec` — all 16 headings, cosine similarity between the rendered centroid
+  offset and `-dir2vec(heading)` must exceed 0.8. This is the one that would have caught the
+  original bug outright — PARITY noted `BoloGlyphsTests.swift` had "no test touching rotation
+  direction/offset" before this; now there is one, and it's parametric over every heading rather
+  than a single spot-check.
+
+**Verification:**
+- `swift build` clean.
+- `swift test`: **608 tests, +3 (605 → 608), zero failures.** `DifferentialTests` 156 +
+  `BoloKitTests` 452 = 608, checked via the full log (not just the tail) per the D28-count gotcha
+  noted in the prior completion report.
+- Regenerated both PNGs with `.build/debug/BoloGlyphs` and visually confirmed heading 0 (leftmost
+  column of each alive tank row) now points right/east, not up.
+
+**Files:** `Sources/BoloGlyphsCore/Canvas.swift`, `Sources/BoloGlyphsCore/GlyphSource.swift`,
+`Tests/BoloKitTests/BoloGlyphsTests.swift`. No `Package.swift` change needed this time.
+
+**Not committed by this session:** the uncommitted `docs/XBolo_Wave_SubWave_Swimlane.pptx` sitting
+in the working tree (PLANNER flagged it, unrelated to this fix) — left exactly as found.
+
+**Push held per the corrected workflow** (`CLAUDE.md`'s administrative section, Director/Jerod's
+edit): committing locally only; push is PLANNER/Director's call at a milestone, not mine per-commit.
+
+> **→ Planner:** D70 is fixed and tested — 7.2 has no outstanding prerequisite left. Ready to
+> pre-brief 7.1 (Xcode app target) or 7.2 (rendering) next, whichever you sequence first; both were
+> already coding-GO'd under D60, 7.1 doesn't depend on 7.2 or vice versa per the original scoping.
+> **→ Parity:** the fix and its three new tests are ready for your normal post-commit hand-trace
+> whenever activated — `dir2vec`'s exact formula (`Vector.swift:138`) and the `kPif/8.0` step
+> (`PhysicsOps.swift:15`) are the two things most worth independently re-confirming against the
+> source, same discipline as the original D70 finding.
 [TO: IMPLEMENTER] — no action needed; informational only.
