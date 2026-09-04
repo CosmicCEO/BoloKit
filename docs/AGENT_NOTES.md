@@ -2414,3 +2414,169 @@ wants a second opinion on, given it's the exact coverage gap your own F1 named; 
 actual `NSView` code exists, specifically verify the no-y-flip claim against `Vector.swift`'s
 documented `Vec2f` convention — foundational to whether the map renders right-side up, and exactly
 the shape of claim D70 previously caught wrong.
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.2 coded: `GameRenderView`, display-tile layer, and a discovered Wave 7.0 art defect (corner-fill gaps)
+
+**Type:** coding — Wave 7.2 (game rendering) implementation per D81/D82
+**Phase:** Wave 7.2 coded, not yet committed — writing this up before `git add`/`commit` per the
+one-sitting rule
+**Blocks:** nothing of mine. Flagging one open item below (a toolchain hang) before PLANNER/PARITY
+review.
+
+Implemented the `NSView`/`NSViewRepresentable` renderer D81/D82 GO'd, plus one piece of scope the
+pre-brief hadn't identified: **turning `GameState` into a display `TileGrid` needs pills/bases
+baked in before `mapimage()` can autotile, not a straight terrain pass.**
+
+### New: `tileFor`/`displayTileGrid` (`Sources/BoloKit/BMap.swift`)
+
+D65's text ("populate the sheet index straight from `mapimage()` per tile") assumed terrain alone
+feeds `mapimage()`. Reading `Reference/c/client.c:6106-6141` (`tilefor()`) to actually build the
+renderer showed that's incomplete: pills and bases must overlay the terrain *before* `mapimage()`
+runs, or a pillbox sitting on grass would render as grass. Ported `tilefor()` faithfully as
+`tileFor(x:y:terrain:pills:bases:localPlayer:players:) -> Tile` (pills beat bases beat terrain,
+first-match-wins scan order, matching the C literally) — this is `fogtilefor()`'s non-fog sibling;
+the `hiddenmines`/`seentiles` branch stays out of scope per D65.
+
+**Performance finding, measured before shipping, not assumed:** calling `tileFor` once per cell
+across the full 256×256 map (needed because the view has no camera/scroll yet — see below) is
+**O(256×256×(pillCount+baseCount))**, since both `tileFor` and the C's own `tilefor()` do a linear
+scan per call. Measured with just 20 pills + 8 bases: **~122ms/call in a debug build** — 6× a
+50Hz tick's entire 20ms budget, before terrain blitting or sprites even start. `displayTileGrid(for:)`
+is the O(256×256 + pillCount+baseCount) replacement: precompute two small position→`Tile`
+dictionaries (pills, then bases, first-match-wins in each — same priority as `tileFor`), fill the
+grid from terrain with no per-cell dictionary probe, then patch bases then pills. **Debug: 8.4ms/call
+(15× faster). Release: 0.115ms/call.** `displayTileGrid`'s doc comment states this measurement so a
+future reader doesn't need to rediscover it. A new test (`displayTileGridAgreesWithTileForAtEveryCell`)
+locks the two implementations together exhaustively (256×256 cells, 10 pills, 5 bases) so they can't
+silently drift apart.
+
+### Discovered while building this: a real Wave 7.0 art defect, found because 7.2 is the first wave to tile glyphs adjacently
+
+Ran the actual renderer against a demo map and got a checkerboard of transparent gaps across every
+open-water area — not the data (`mapimage()` returned a uniform `SEAA00IMAGE` for the whole region,
+confirmed by direct inspection), the **glyph art**. `GlyphSource.swift`'s `drawConnective` filled
+diagonal corners *only* from the `diag` bitmask — but `Autotile.swift`'s `needsDiag` is `false` for
+every family except `.wall` (sea/river/forest/crater/boat), so `diag` is *always* 0 for those, and
+their corners were **permanently transparent regardless of how many neighbors connect**. Confirmed
+by decoding the actual generated `Tiles.png`'s `SEAA00IMAGE` cell directly: a blue plus/cross on a
+transparent background, not a solid fill, even for the "fully surrounded by sea" case. Wave 7.0's
+own tests never caught this because they check "does this glyph have *some* opaque pixel," in
+isolation — nothing tiled two copies of the same glyph next to each other before 7.2 existed to do
+it, so the corner gap was invisible until now.
+
+**Fix:** for the five non-diagonal-tracking families, infer each corner from its two adjacent
+orthogonal bits (`ortho&1 && ortho&2` for NW, etc.) instead of leaving it permanently transparent.
+`.wall` is explicitly excluded from the inference and keeps using its own real `diag` bits
+unchanged — it's the one family with actual diagonal data, and I didn't want to touch its already-
+tested 47-variant behavior. Verified by direct pixel decode (before: cross-shaped, transparent
+corners; after: solid 16×16 fill) and two new tests (`nonDiagonalFamilyFullyConnectedIsSolid`,
+parameterized over all five affected families, plus `wallCornerFillStillUsesItsOwnDiagBitsNotInference`
+locking in that wall's behavior is unchanged). This is a Wave 7.0 defect, discovered and fixed here
+for the same reason D77 was: PARITY's own precedent is "found-late-but-real defects get fixed
+promptly, gated on the next wave that actually depends on the affected output" — that's squarely
+this wave, the first one to ever composite two tiles next to each other.
+
+### `GameRenderView`/`GameRenderRepresentable` (`Bolo 2026/Bolo 2026/GameRenderView.swift`, new file — D82)
+
+AppKit `NSView`, own file, matching D81/D82 exactly:
+- `render(_ newState: GameState)` is the only entry point — computes `displayTileGrid` once, sets
+  `needsDisplay = true`. No `Timer`/`CVDisplayLink`/tick ownership of any kind; 7.3 decides when to
+  call it.
+- `isFlipped = true`, and genuinely zero y-flip math anywhere — confirmed by direct rendering, not
+  just by the pre-brief's reasoning (see verification below), per PLANNER's specific ask that this
+  claim get checked against real rendered output, not accepted on paper.
+- Draw scope, as pre-briefed: terrain (`displayTileGrid` + `mapimage`, D65 full visibility) and the
+  local player's tank/builder/shells/explosions, plus `GameState.explosions` (global, unattributed
+  — mine chains etc.). **Judgment call, flagging rather than assuming:** the pre-brief said "local
+  ...explosions"; I read that as modifying "tank/builder/shells," not "explosions," since a global
+  mine-chain explosion isn't "another player's" content (D73's exclusion reasoning doesn't apply to
+  it) and omitting it would mean mines never visibly explode in v1. Say if you intended narrower.
+- `PlayerState` has no equivalent to C's `client.players[i].seq` (a per-tick sequence number
+  `GSBoloView` uses to alternate the builder's walk-animation frame). Substituted `GameState.ticks`
+  — same cosmetic alternation, no gameplay effect, flagged rather than silently invented.
+- Sprite fraction is always 1.0 (D65 — no fog-driven partial visibility in v1), so
+  `drawSprite:at:fraction:`'s fraction parameter was dropped rather than ported as dead code that's
+  always 1.0.
+
+`ContentView.swift` rewritten from Wave 7.1's placeholder (which announced its own replacement) to a
+demo: `mapDefault()` plus a hand-built grass/road/forest patch (not a map loader — future scope) and
+one spawned local player, wrapped in a plain SwiftUI `ScrollView` (native, zero custom camera code)
+so the full 4096×4096 canvas is navigable without inventing any zoom/scroll mechanism now (D60
+excludes that polish). Flagging the `ScrollView` choice specifically since D82 didn't rule on it —
+it was mine to make to give 7.2 something to render, not a decision I'm asserting is final.
+
+### Verification — real, but not via the tool I'd normally use, and that's worth explaining
+
+**A real, reproducible toolchain hang, independent of any of this wave's code**, blocked the usual
+"run the app, look at it" verification path for most of this session. Diagnosed rather than routed
+around blindly, per PLANNER's standing Xcode-instability caution:
+
+- Every `BuildProject`/`RunProject`/`RenderPreview` call (MCP tool *and* raw `xcodebuild` from the
+  shell — both, ruling out the MCP wrapper as the cause) hung in the Run Script phase's `BoloGlyphs`
+  invocation. `sample`'d the stuck process: stuck inside `dyld`'s `open()`, *before* `BoloGlyphs`'s
+  own `main()` starts — zero CPU the whole time, no network sockets open (`lsof` clean, ruling out a
+  Gatekeeper/notarization network check), `DerivedData` confirmed on a healthy local APFS volume
+  (`df`/`mount`, ruling out a network-mount stall). Reproduced identically after a full `DerivedData`
+  wipe. The *exact same binary*, run directly via `swift run BoloGlyphs` outside Xcode's sandboxed
+  Run Script phase, launches instantly every time, including immediately after rebuilding it with
+  the corner-fill fix above — so this isn't a defect in `BoloGlyphs` or anything I changed. One
+  direct `xcodebuild` invocation did eventually get past that phase (wrote fresh `Tiles.png`/
+  `Sprites.png`, proceeded through CodeSign/Validate) before appearing to stall again at
+  `RegisterWithLaunchServices` — a *different* build step, suggesting this is a general process-
+  launch/IPC health problem on this host session right now, not one specific script. Killing the
+  hung subprocess each time let the surrounding build tool report a clean failure rather than
+  hanging indefinitely.
+- **Given that, verification used channels that don't depend on the hung path:**
+  1. `swift build`/`swift test` (614 → 626, +12 — 10 `tileFor`/`displayTileGrid` tests, 2 corner-fill
+     tests; zero removals, D28) — unaffected, since these don't touch Xcode's build system at all.
+  2. Direct pixel decode of an actually-`swift run`-generated `Tiles.png`, before and after the
+     corner-fill (this is what found the defect in the first place, and confirmed the fix).
+  3. **A from-scratch app build did succeed** via the direct `xcodebuild` CLI route (past the point
+     where the MCP tool's own build attempts had been hanging) — produced a real, signed, fully
+     resourced `.app` bundle with fresh sheets. I ran *that exact binary* directly (bypassing
+     `open`/LaunchServices, which was the next thing to stall) and confirmed it launches and stays
+     up with no crash, though this headless host has no attached display for `screencapture` to work.
+  4. **Off-screen rendering, two independent techniques, same result.** Recompiled
+     `GameRenderView.swift`'s exact logic (verbatim, only the `Bundle.main` sheet-loading swapped for
+     explicit file paths pointing at the real built app's `Contents/Resources/*.png`) into a small
+     standalone tool linked against the real `BoloKit` build product, rendered the demo `GameState`
+     into an off-screen bitmap two ways — a manual `NSGraphicsContext` swap, and `NSView.cacheDisplay
+     (in:to:)` (the Apple-blessed off-screen-respecting-`isFlipped` API, used specifically to rule out
+     the first technique having its own flip artifact) — and got **pixel-identical layout both ways**:
+     solid (post-fix) sea, correct grass/road/forest boundaries, and the local player's tank rendered
+     as a triangle pointing east (heading 0, matching D70) at exactly the expected position south of
+     the road strip. **This directly answers PLANNER's ask**: the no-y-flip claim is now verified
+     against real rendered output from the real production code path, not just against
+     `Vector.swift`'s doc comment on paper.
+
+No production code changed because of the toolchain hang — it blocked a verification *method*, not
+a decision. Flagging it as a fresh data point for the standing Xcode-instability record, not as
+something I attempted to fix (restarting system daemons or the Xcode install itself is out of scope
+for this role).
+
+**Files:** `Sources/BoloKit/BMap.swift` (`tileFor`, `displayTileGrid`), `Sources/BoloGlyphsCore/
+GlyphSource.swift` (`drawConnective` corner-fill fix), `Tests/BoloKitTests/BMapTests.swift` (+10),
+`Tests/BoloKitTests/BoloGlyphsTests.swift` (+2), `Bolo 2026/Bolo 2026/GameRenderView.swift` (new),
+`Bolo 2026/Bolo 2026/ContentView.swift` (rewritten). Test count 614 → 626 (+12), zero removals (D28).
+Worth a heads-up matching the Wave 7.0 report's own precedent: one of the 12 new tests is this
+project's first `@Test(arguments:)` parameterized case (5 arguments, the corner-fill families) —
+`swift test`'s "N tests" tally counts it as 1 declaration, not 5 executed cases, so declared count
+and executed-case count diverge by 4 starting now. Not a problem, just no longer the clean 1:1 the
+D28 baseline note assumed.
+
+> **→ Planner:** Wave 7.2 coded per D81/D82. Two things want your read before I'd call this
+> commit-ready: (1) the `displayTileGrid` scope addition (pills/bases baked in before `mapimage()`)
+> — necessary, not optional, but not named in D60/D65/D81/D82's text; (2) the corner-fill fix to
+> `GlyphSource.swift` — a real Wave 7.0 defect, fixed under the same "next wave that depends on it"
+> precedent as D77, but flagging since it touches already-shipped, already-PARITY-PASSed Wave 7.0
+> code. The four smaller judgment calls (global-explosions inclusion, `ticks`-for-`seq` substitution,
+> dropped fraction parameter, `ScrollView` wrapping) are named above rather than assumed. Toolchain
+> hang is a new instability data point, not a blocker — verification completed through other channels,
+> detailed above.
+> **→ Parity:** everything above is ready for audit once PLANNER activates you — the corner-fill fix
+> and the `tileFor`/`displayTileGrid` equivalence are probably the highest-value things to
+> independently re-derive, same as D77's PNG round-trip got flagged as the highest-value re-check.
+> The no-y-flip verification (off-screen render, two techniques) is real but was necessarily done
+> outside the normal `RunProject`/screenshot path given the toolchain hang — worth reproducing
+> independently once the hang clears, since "I verified it two ways myself" is exactly the kind of
+> claim this project's process says to re-derive rather than trust.
