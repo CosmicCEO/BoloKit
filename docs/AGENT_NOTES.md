@@ -380,3 +380,85 @@ second should run the full suite and report the real grand total in its own comp
 [TO: PARITY] Hold on both 6.5a and 6.5b until the shared `CXBolo`/`DifferentialTests` target
 builds clean again (blocked on 6.5a's in-flight edits) — will re-activate once both land and the
 suite builds.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.5a shipped: tracker protocol (register/heartbeat/browse)
+
+**Type:** coding — completion report
+**Phase:** Wave 6.5a coding, per PLANNER's `9e5e481` GO
+**Blocks:** nothing — this is the second of 6.5a/6.5b to land, per Jerod's simultaneous-start
+directive (`d6f2011`); full suite re-run below per that entry's own request.
+
+Coded to the pre-brief's accepted scope, no deviations. `Sources/BoloNet/Tracker.swift`:
+`TrackerHost`/`TrackerHostList` wire structs (`tracker.h:41-56`), zero-filling the offset-51 pad
+byte and the name/map fields' potential trailing byte on encode (T-3, disclosed Swift-safety
+deviation from the C's own uninitialized stack bytes there) plus `trackerHost(...)`, deriving the
+struct from a live `GameState` the same way `assembleBoloPreamble` already does.
+`Sources/BoloNet/TrackerRegistration.swift`: `TrackerSession` (persistent, classic
+completion-handler `NWConnection` API — same precedent `TCPSession`/`UDPSession` already set, since
+a session must stay open across the handshake and every later heartbeat) plus
+`registerWithTracker(...)`, porting `registerserver()`'s nine-step handshake
+(`server.c:1259-1509`) and `sendtrackerupdate()`'s heartbeat (`server.c:1569-1588` — the
+**previously undocumented 60-second heartbeat** the pre-brief found, `TRACKERUPDATESECONDS`,
+`server.h:20`). `Sources/BoloNet/TrackerBrowser.swift`: `listTrackerGames(...)`, porting
+`listtracker()` (`bolo.c:346-450`) via the closure-scoped `withNetworkConnection` API (`JoinClient.
+swift`'s precedent, since this is a one-shot handshake, not a persistent session).
+
+**D56's two-bug pairing, both landed as ruled:** `TrackerHost.encode()` (registration) correctly
+`htonl`'s `timeLimit`; `encodeAsHeartbeat()` reproduces the real bug bit-for-bit (`server.c:1577`'s
+missing `htonl`) by emitting `timeLimit`'s raw little-endian bytes — correct specifically because
+every deployment target for this port is little-endian, same as the C oracle's own compiled
+behavior on this architecture. `testRegistrationAndHeartbeatEncodingsDifferOnlyInTimeLimitByteOrder`
+asserts both the byte-order difference AND that every other field matches exactly, so a future
+edit collapsing the two paths back into one would fail loudly. The offset-51 pad byte and the
+`strncpy`-boundary UB (T-3) are zero-filled unconditionally in both paths and asserted zero by
+`testEncodePadByteIsAlwaysZero` — not compared against the oracle at that byte, since the oracle
+also has to `memset` first to make its *own* comparison well-defined (see `netops.c`'s
+`trackerhost_encode_oracle`/`trackerupdate_encode_oracle` header comment) — the zero-fill is a
+disclosed Swift-side claim, not a fidelity match.
+
+**T-4 (tri-state `registerserver()` return) — disclosed mechanism substitution, not implemented as
+a third enum case.** Swift's structured-concurrency cancellation (`Task` cancellation →
+`CancellationError` from the suspended read/write) already covers "closed by main thread"'s real
+job cooperatively; `registerWithTracker` only models the two protocol-level outcomes (success /
+specific rejection) plus T-5's `nil`-hostname short-circuit. Not separately unit-tested (would only
+exercise Swift's own `Task` cancellation machinery, not this wave's code) — disclosed here rather
+than silently dropped from the pre-brief's test list.
+
+**T-10 (heartbeat back-pressure/single-flight guard) — scoped out, disclosed, not silently
+dropped.** `TrackerSession.sendHeartbeat` takes an already-built `TrackerHost` and sends it once;
+cadence/back-pressure is explicitly the caller's job (matching `UDPSession.sendLocalUpdate`'s
+identical existing boundary) because no tick-orchestrator wave yet exists to own a 60-second
+scheduling loop for the tracker the way `RunTick.swift` owns one for the game tick. The guard
+belongs to whichever future wave builds that scheduler, not to this one's wire-level primitive —
+noted so it isn't mistaken for a coverage gap later.
+
+**Oracle exports** (`Sources/CXBolo/netops.c`/`include/CXBolo.h`): `tracker_layout_oracle()`
+(offsetof ground truth, confirms the padding trap `docs/PLAN.md`'s Wave 6.5 row flagged, rather
+than trusting my own hand-derivation) plus `trackerhost_encode_oracle()`/
+`trackerupdate_encode_oracle()` (verbatim extracts of the two real field-assignment bodies,
+`memset`-first per the T-3 note above), proving T-2/D56's byte-order asymmetry is real
+compiler-observed behavior. `Preambles.swift`'s `TrackerPreamble` gained a `wireSize = 9` static
+per the pre-brief, matching its two siblings' existing convention.
+
+**Found and fixed, separately committed and disclosed, not folded into this wave's own commit:**
+building for testing against the shared `DifferentialTests` target (blocked, per PLANNER's
+`c68d250` entry, until 6.5a's edits landed) surfaced two real compile errors in Wave 6.5b's already
+-folded-in `PortMapping.swift`/`PortMappingTests.swift` — `decodePortMappingReply` was `internal`
+(unreachable from the separate `DifferentialTests` module) and `PortMappingUpdate` had no `public`
+initializer (a `public let`-fields struct doesn't synthesize a public memberwise init), plus the
+test file passed `dns_sd.h`'s error constants — which import as plain `Int`, not
+`DNSServiceErrorType`, since they're an untagged anonymous C enum — without the explicit cast the
+parameter type requires. All three are visibility/type-inference fixes with zero behavioral change
+to 6.5b's own logic; PLANNER's `c68d250` review already passed 6.5b's design with no changes
+requested, and nothing here revisits that. Committed separately (`cdff28d`, not folded into
+`a23d49d`) so the attribution stays clean.
+
+**Test count:** 572 (Wave 6.4c baseline) → 591 after 6.5a's own 19 new tests → **596** once 6.5b's
+5 (already landed at `a250c57`, blocked from running until the shared build fix above) are
+included. Full suite run and confirmed green at 596/596, per PLANNER's `c68d250` request that
+whichever of 6.5a/6.5b lands second reports the real grand total. No coverage lost (D28).
+
+[TO: PLANNER] Wave 6.5a and 6.5b are both landed and the shared suite is green at 596/596. Ready
+for PARITY per your `c68d250` hold condition (shared build clean) now being satisfied.
+[TO: PARITY] Hold lifted from this side — both 6.5a (`a23d49d`) and 6.5b (`a250c57`, plus the build
+fix at `cdff28d`) are ready for audit once PLANNER activates.
