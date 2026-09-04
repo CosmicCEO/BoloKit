@@ -50,22 +50,17 @@ and D60 for the authoritative text; this is a working summary.
 
 **Coding-GO'd now — sub-waves 7.0 through 7.3, in dependency order:**
 
-- **7.0 — Asset pipeline.** `Sources/BoloGlyphs` is currently a one-line stub, but the parse step
-  isn't — `Sources/BoloKit/Images.swift` already has all 290 `images.h` constants and both
-  `mapimage()` overloads, ported and tested in an earlier wave. Build the sheet writer on those;
-  don't re-parse `images.h`. **Corrected 2026-09-04 (D62/D63, PARITY factual audit — the old
-  "297 indices/one sheet" text below was wrong):** `images.h` is two independent index spaces for
-  two sheets (`GSBoloView.m` loads `"Tiles"` and `"Sprites"` separately as distinct `NSImage`s),
-  each resetting to `0x00` — **tiles: 177 names, dense `0x00`–`0xb0`**; **sprites: 113 names,
-  sparse `0x00`–`0x91`** (177+113=290; index collisions across the two spaces, e.g. `0x08` =
-  `WALL38IMAGE` in tiles vs. `PTKB08IMAGE` in sprites, are normal — the spaces are never compared).
-  Emit two 256×256 sheets, not one. **Pick and document one sheet row-0 convention in your
-  pre-brief (D64):** the C original never sets `isFlipped` on `GSBoloView`, so its
-  `row = idx >> 4` math is implicitly bottom-left-origin — you have no fidelity obligation to keep
-  that for freshly-generated sheets, but whichever you pick, 7.2 must consume the same one. `-1` is
-  a "no image" sentinel in the reference, never a valid sheet index. Generate everything from
-  **permissive sources only** (OFL fonts, synthesized sounds) — see licensing note below. Do not
-  touch or reference the original art/sound bytes.
+- **7.0 — Asset pipeline. ✅ CLOSED 2026-09-04 (`618bedf`, PARITY PASS `79840b1`).** `BoloGlyphs`
+  now ships two real 256×256 sheets (`BoloGlyphsCore`/`BoloGlyphs` split per D68) built on
+  `Sources/BoloKit/Images.swift`'s existing 290 constants + `mapimage()`, not a re-parse of
+  `images.h`. Settled facts for anything touching this sheet going forward: two independent index
+  spaces (tiles 177/256, sprites 113/256 — not one sheet); row-0 origin is **top-left** (D66);
+  glyphs are procedural raw-pixel-buffer drawing, no vendored font (D67); `-1` is a "no image"
+  sentinel, never a valid index. **Outstanding before 7.2 draws a tank (D70):** `GlyphSource.swift`'s
+  `drawTank` currently disagrees with `Sources/BoloKit/Vector.swift`'s `dir2vec(dir:)` on both
+  reference direction and rotational sense (shipped: heading 0 = north, clockwise; `dir2vec`: 0 =
+  east, counterclockwise). Ruled: fix the generator to match `dir2vec` exactly, add a named
+  regression test, before 7.2 wires a real heading to a sprite column — small, not a reopen of 7.0.
 - **7.1 — Xcode app target.** No `.xcodeproj` exists; the project is SPM-only (`Package.swift`:
   BoloKit, CXBolo, BoloNet, BoloGlyphs, BoloKitTests, DifferentialTests). This wave creates the
   actual macOS app shell wrapping the SPM package. Blocks 7.2 and 7.3.

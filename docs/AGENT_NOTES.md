@@ -966,3 +966,45 @@ in the working tree, not part of anything above. Not investigated further this e
 unilaterally on the governance finding — exactly the right call per role. Re-check D70's fix
 whenever Implementer lands it. The two governance sub-questions are with Jerod directly now, not
 pending on you.
+
+### [PLANNER] 2026-09-04 — CLAUDE.md's Milestone-guardrail deletion confirmed deliberate; CLAUDE.md restructured with a PLANNER-editable section, refreshed for Wave 7.0's close
+
+**Type:** planning — governance sub-question 1 resolved; bootstrap-file structural change; content refresh
+**Phase:** repo housekeeping / Wave 7 handoff hygiene
+**Blocks:** nothing
+
+**Governance sub-question 1, resolved directly by Jerod.** The Milestone B/C/D/Q18 "needs a fresh
+GO" paragraph's removal from `CLAUDE.md` (`5ae6068`, "Director") was deliberate, not accidental —
+Jerod: it was redundant, `docs/PLAN.md`'s D60 row (confirmed still fully intact) is the durable
+copy. No restoration needed. **Sub-question 2 (the `docs/PARITY.md` self-modify diff) is still
+open** — raised a structural concern about an adversarial auditor being able to edit its own
+governing rules, proposed a narrower alternative (PARITY drafts suggested rule changes in
+`AGENT_NOTES.md`, PLANNER rules on adopting them, same as every other role-boundary change here),
+and it's with Jerod for a decision. `docs/PARITY.md`'s working-tree diff remains uncommitted and
+untouched.
+
+**New CLAUDE.md structure, per Jerod directly:** the file is now explicitly split into an
+`[ADMINISTRATIVE CONVENTIONS SECTION]` (top, lines 1-~39 as of this entry — durable, not PLANNER's
+to edit) and a `[PLANNER PROVIDED INSTRUCTIONS SECTION]` (everything below that marker) which
+PLANNER may now edit directly, going forward. This is new — previously PLANNER only reached
+`CLAUDE.md`'s content indirectly, through `docs/PLAN.md`'s wave rows and trusting Implementer's own
+purge/refresh passes to stay in sync. Recording this here since it changes how future PLANNER
+sessions should operate: **the PLANNER-owned section of `CLAUDE.md` can and should be kept current
+directly**, not just written about in `PLAN.md`/`AGENT_NOTES.md` and hoped to propagate.
+
+**Used the new permission immediately:** `CLAUDE.md`'s 7.0 section was stale (still described 7.0
+as an un-coded pre-brief target with open D62-D65 questions). Refreshed it in place to reflect
+reality — 7.0 marked ✅ CLOSED with commit refs, the settled D66-D68 facts (top-left origin,
+procedural no-font glyphs, target split) stated as fact rather than open pre-brief questions, and
+D70's heading-fix requirement added as a concrete pre-7.2 to-do so the next Implementer session
+reading `CLAUDE.md` doesn't need to cross-reference `AGENT_NOTES.md` to know it's outstanding.
+Did not touch the administrative section above the marker, per Jerod's boundary.
+
+**Docs updated (committed alongside this entry):**
+- `CLAUDE.md` — 7.0 section refreshed to closed status + D66-D70 facts, admin section untouched.
+
+[TO: IMPLEMENTER] `CLAUDE.md`'s 7.0 section now reflects the closed state directly — D70's
+heading-fix is a concrete requirement before 7.2 starts drawing tanks, stated there now, not just
+in `AGENT_NOTES.md`.
+[TO: PARITY] No action. The `docs/PARITY.md` self-modify question is still with Jerod, not you —
+nothing changes about how you operate until that's resolved.
