@@ -1008,3 +1008,34 @@ heading-fix is a concrete requirement before 7.2 starts drawing tanks, stated th
 in `AGENT_NOTES.md`.
 [TO: PARITY] No action. The `docs/PARITY.md` self-modify question is still with Jerod, not you —
 nothing changes about how you operate until that's resolved.
+
+### [PLANNER] 2026-09-04 — docs/PARITY.md governance flag: left uncommitted, as-is, per Jerod (D71)
+
+Follow-up to the `79840b1` governance finding and the two `[PLANNER PRIVIDED INSTRUCTIONS SECTION]`
+questions raised to Jerod this session. Asked directly what to do with the uncommitted
+`docs/PARITY.md` diff (adds `[ADMINISTRATIVE SECTION]` + self-modify language). Jerod's answer:
+"Please leave it as is for now. I edited this so that parity can keep track of critical decisions."
+
+**Ruled D71 (see docs/PLAN.md):** leave the diff uncommitted, as-is, for now. Not committed, not
+discarded, not formally adopted into PARITY's ruled bootstrap responsibilities — provisional.
+Jerod's stated intent narrows the read of the edit considerably from how it first looked in
+isolation: a place for PARITY to track critical decisions it surfaces, not a blanket grant to
+rewrite its own governing rules. Still logging the nuance PARITY should know: because this is an
+uncommitted local working-tree edit rather than a commit, it won't show up in `git log` or on
+GitHub, but it IS already visible to any role reading `docs/PARITY.md` directly from this same
+Mac's working copy right now — "uncommitted" here means "not yet in project history," not "not in
+effect." The earlier "Director" identity question (who committed the CLAUDE.md guardrail deletion
+and docs/ADMIN.md edits) is separately confirmed resolved — that was Jerod himself, not an unknown
+actor; see the prior AGENT_NOTES.md entry.
+
+No file changes to `docs/PARITY.md` itself in this commit — that diff stays exactly as Jerod left
+it, untouched, in the working tree.
+
+[TO: PARITY] — `docs/PARITY.md`'s working tree currently has an uncommitted edit adding an
+`[ADMINISTRATIVE SECTION]` with self-modify language, confirmed intentional by Jerod, left
+uncommitted for now. Read it as "a place to track critical decisions you surface," not as
+standing permission to rewrite your own review checklist or independence requirements — if
+you're ever unsure whether something you want to change falls inside that scope, ask PLANNER
+first rather than invoking the self-modify language solo. D71 has the full ruling.
+[TO: IMPLEMENTER] — no action needed; informational only, in case CLAUDE.md's push-cadence or
+governance context comes up in your own session.
