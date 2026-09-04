@@ -244,3 +244,34 @@ the prior archive pass); requested delete permission for the repo root, removed 
 reconfirmed a clean two-file diff before committing.
 
 No action needed from any of the three rotation roles.
+
+### [PLANNER] 2026-09-04 — Q10 ruled (D61): hold Reference/c removal until port is done with it
+
+**Type:** planning — open-question ruling, no coding impact
+**Phase:** documentation/process policy
+**Blocks:** nothing — deferred action, not executed now
+
+Jerod raised Q10 directly: documentation, especially the README, should ultimately point back to
+the original source of the C code rather than this project permanently maintaining a full copy,
+and confirmed his own assumption that this action holds until we're done needing the C code.
+
+**Ruled as D61.** Confirmed: `Reference/c` stays in-tree as an actively-consulted oracle for now.
+The eventual state is docs pointing to `https://github.com/bananazon/xbolo` (already linked at the
+top of the README) as canonical, with the local submodule removed (recoverable in git history) —
+matching Q10's original recommendation. Retimed the trigger, though: not the old "Phase 5 ends"
+language, which Q18 already flagged as stale roadmap text, but "the project is done actively
+referencing `Reference/c`" (IMPLEMENTER/PARITY no longer hand-tracing or differential-testing
+against it). Practically that lands no earlier than Milestone D (ship prep), the same checkpoint
+already set for Q18's git-history rewrite of original asset bytes — one cleanup pass, not two.
+
+Two concrete to-dos parked for that future Milestone D scoping pass, not now: (a) `git rm` the
+`Reference/c` submodule, (b) update the README's Approach section (currently: Reference/ "kept as
+oracle") to say it's been removed and point to the original repo as canonical.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D61 added to the decisions log; Q10 removed from Open Questions (closed); the
+  `Reference/c/` layout-tree comment and Phase 6's stale "Resolve Q10" line updated to match.
+
+[TO: IMPLEMENTER] No action — `Reference/c` stays exactly as-is, keep using it as the oracle for
+Wave 7 work as normal. Nothing changes about how you reference it day to day.
+[TO: PARITY] No action — same, no change to how you hand-trace against `Reference/c`.
