@@ -244,3 +244,57 @@ noting for PLANNER to fix at convenience, not blocking.
 No coding this session — stopping here per the two-stage gate pending PLANNER's ruling on the
 above. [TO: PLANNER] Wave 6.5 pre-brief ready for review; four questions above. [TO: PARITY] No
 action yet — nothing shipped this session to audit.
+
+### [PLANNER] 2026-09-03 — Wave 6.5 pre-brief ruled: split approved, coding GO'd (D54/D55/D56, Q26)
+
+**Type:** planning — pre-brief review + coding GO
+**Phase:** Wave 6.5 pre-brief -> coding
+**Blocks:** nothing — both 6.5a and 6.5b are cleared to start
+
+Reviewed IMPLEMENTER's Wave 6.5 pre-brief against `docs/PLAN.md`'s cited decisions
+(D25/D31-D34/D41/D44/D48/D49/D52) and this project's split/bug-for-bug precedent (D23/D24/D40/D43/D47).
+Ruled all four open questions:
+
+1. **NAT-traversal approach — approved (D54).** `DNSServiceNATPortMappingCreate` is a system API
+   (`libSystem`, `import dnssd`), nothing bundled, satisfies `README.md`'s GPLv3-avoidance
+   commitment directly. Covers the same NAT-PMP/UPnP union `TCMPortMapper` did; wrap as an
+   `AsyncStream`, same proven pattern as D49/D52.
+2. **6.5a/6.5b split — approved (D55).** Different verification stories (6.5a oracle-testable,
+   6.5b only verifiable live) is the same grounds D23/D43 already used to split a wave; register
+   and browse stay together inside 6.5a per D47's "volume not complexity" reasoning. No
+   sequencing dependency between the two halves, unlike D43's 6.4a-before-6.4b risk ordering —
+   IMPLEMENTER's choice which to start first, or both concurrently.
+3. **Tracker daemon question — not ruled, tracked as Q26.** Genuinely adjacent to Q22 but a
+   distinct question (whether this project ships the daemon binary at all, vs. Q22's
+   host-in-process-vs-dedicated question). Not code-blocking for either 6.5a or 6.5b — both work
+   against a tracker regardless of who runs it. Jerod's call, same as Q22.
+4. **The two `TrackerHost` bugs get opposite treatment — confirmed (D56).** The heartbeat's
+   missing `htonl` on `timelimit` is deterministic, well-defined C behavior — D24/D40 bug-for-bug
+   precedent applies, replicate it. The un-`bzero`'d struct's indeterminate pad/tail bytes are
+   genuinely UB — D40's own carved-out exception (the `pills[-1]` contrast) applies instead:
+   zero-fill as a disclosed Swift-safety deviation, not a fidelity fix. Both need named regression
+   tests per D28, and IMPLEMENTER's own flag (these are four lines apart and easy to conflate) is
+   correct — the coding pass should keep them as two explicit, separately-asserted claims.
+
+Also fixed D32's stale `README.md:42-45` citation to `:61-64` per the pre-brief's own cosmetic
+drift note (non-blocking, folded in while touching this area).
+
+**Wave 6.5 is coding GO'd**, split into Wave 6.5a (tracker protocol) and Wave 6.5b (NAT-PMP/UPnP),
+both cleared to start per D55. Proposed file list, oracle exports, and test plan from the
+pre-brief are all accepted as scoped — no changes requested there.
+
+**Note on process:** this pre-brief was initially reported "ready" in a relayed session without
+being committed — caught before ruling, per this project's own commit-discipline rule (an entry
+only exists once committed). It was then staged and is being committed alongside this ruling.
+Flagging only so the pattern doesn't repeat, not as a blocker — no harm done this time.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D54/D55/D56 added to the decisions log; Q26 added to open questions; Wave 6.5's
+  row split into three (6.5/6.5a/6.5b) reflecting the coding GO; Wave 6 summary row updated; D32's
+  citation corrected.
+
+[TO: IMPLEMENTER] Wave 6.5 is coding GO'd, split into 6.5a (tracker protocol) and 6.5b (NAT-PMP).
+Proceed per the pre-brief's proposed scope, file list, and test plan — no changes requested.
+Remember to commit your own pre-brief/completion entries yourself, in the same sitting, going
+forward (see the note above).
+[TO: PARITY] No action yet — nothing coded this entry to audit.
