@@ -705,3 +705,50 @@ which show local modifications from other concurrent sessions this entry doesn't
 > what to hand-trace. The probe's per-family counts (47/16/10/16/31/8/9) and the sprite gap
 > structure are the numbers most worth independently re-deriving against `Images.swift`/`Tiles.swift`
 > directly, same discipline as the pre-code audit.
+
+### [PLANNER] 2026-09-04 — Wave 7.0 code reviewed, PARITY activated (D69)
+
+**Type:** planning — completion-report review, PARITY activation, one status update
+**Phase:** Wave 7.0 → PARITY audit
+**Blocks:** Wave 7.0's *close* (not 7.1 — 7.1 can proceed once GO'd separately; coded and closed
+are distinct states, per standing convention)
+
+Reviewed Implementer's Wave 7.0 completion report (`618bedf`) against the D66-D68 pre-brief GO.
+Implemented exactly as briefed, no undisclosed scope changes. Independently spot-verified before
+ruling: `Package.swift`'s target split matches the report exactly (`BoloGlyphsCore` library
+depending on `BoloKit`, thin `BoloGlyphs` executable depending on it, `BoloKitTests` gaining the
+same dependency); the claimed sprite-space gap at `0x66`-`0x6F` cross-checked directly against
+`Reference/c/images.h` — those code points belong to tile-space names (`SEAA*`/`FORE*`/`CRAT*`),
+while sprite-space `SHELL0IMAGE`-`SHELL5IMAGE` sit at `0x60`-`0x65` as claimed, consistent with two
+independent index spaces (D62); the reported per-family variant counts (47/16/10/16/31/8/9 = 137)
+sum correctly, and 137 + 8 flat + 32 pill = 177, matching D62's established tile count exactly.
+Full behavioral correctness (autotiling per family, sprite closed-form math, pixel-buffer drawing)
+is PARITY's job to hand-trace, not re-derived here.
+
+**On the flagged implementation refinement:** `GlyphSource`/`Canvas` shipped as raw RGBA
+pixel-buffer manipulation (fillRect/fillCircle/fillRing/point-in-polygon) rather than literal
+`CoreGraphics` calls, confined to `BoloGlyphsCore`, with `CoreGraphics`/`ImageIO` only in the thin
+executable for final PNG encoding. **No ruling needed — this satisfies D67's actual substance** (no
+vendored font, procedural, the `GlyphRole`/`GlyphSource` seam intact) and is arguably better: more
+directly unit-testable without standing up a `CGContext` inside the tested library. Noted in
+`PLAN.md`'s Wave 7.0 row for the record, not treated as a deviation.
+
+**D69 — PARITY activated.** First real post-commit audit of any Wave 7 content (the earlier
+pre-code numeric review, corrected 2026-09-04, was actually Implementer, not PARITY — see the two
+entries above). Hand-trace target: `618bedf`'s five new `BoloGlyphsCore` files plus the test file,
+per Implementer's own pointer — the per-family variant counts and sprite gap structure are the
+numbers most worth an independent re-derivation, same discipline already applied twice this session.
+
+**D28 baseline:** 597 → 605 (+8), no shrink, compliant.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — Wave 7.0 row updated to "Coded" status (distinct from "closed"), the
+  `GlyphSource` implementation note added; D69 added to the decisions log.
+
+[TO: IMPLEMENTER] No action — 7.0 is coded and under audit. Wave 7.1 (Xcode app target) is already
+covered by the standing D60 coding GO whenever you're ready to pick it up; it doesn't depend on
+7.0's PARITY result.
+[TO: PARITY] **Activated.** Audit `618bedf` — `Sources/BoloGlyphsCore/{Autotile,Canvas,GlyphSource,
+ImageIndex,SheetBuilder}.swift` and `Tests/BoloKitTests/BoloGlyphsTests.swift`, against
+`Reference/c/images.c`'s `mapimage()` and `Reference/c/images.h` directly. Report findings (or a
+clean PASS) the normal way; this closes Wave 7.0 once landed.
