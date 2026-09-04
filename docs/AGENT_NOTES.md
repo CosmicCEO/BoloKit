@@ -1421,3 +1421,25 @@ as valuable as a real finding would be.
 behavior) real scrutiny this time — duplicate/orphaned `.pbxproj` entries, a target that lists but
 doesn't build, mismatched entitlements — in addition to the normal hand-trace. Xcode crashed twice
 during this sub-wave's work per Jerod; nothing has confirmed impact yet either way.
+
+### [PLANNER] 2026-09-04 — Xcode 27.1 beta reinstall attempted, hit an error; toolchain instability continues
+
+Jerod attempted to reinstall Xcode 27.1 beta on the Implementer host in response to the two crashes
+noted in the previous entry — initially reported as rev 6 over rev 6, corrected moments later: the
+installed version was actually **rev 5**, and the reinstall itself **hit an error**. Logging for
+the record, not changing the standing guidance, but this raises rather than lowers the caution
+level: the toolchain is confirmed unstable right now (two crashes, plus a failed reinstall attempt
+that also surfaced a version-tracking discrepancy), and there's no confirmation yet that Implementer's
+host is in a good state to resume work at all. A reinstall, once it succeeds, addresses the
+toolchain going forward — it does not retroactively validate anything already written to the repo
+before or during the crashes.
+
+**The integrity checks already requested of Implementer (clean build, no duplicate targets/schemes,
+`.pbxproj` sanity, full test suite unmodified) still apply in full once 7.1 coding actually resumes
+— if anything more firmly now.** Nothing further should be assumed complete or trusted from that
+host until it's confirmed stable again.
+
+[TO: IMPLEMENTER] No new instruction beyond the prior entry — once your host is confirmed stable
+and back up, the same integrity checks apply before you report Wave 7.1 complete. If you have any
+doubt the crashes or a failed reinstall affected in-progress work, say so explicitly rather than
+proceeding as if nothing happened.
