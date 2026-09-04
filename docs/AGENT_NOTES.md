@@ -436,3 +436,56 @@ and skip fog-of-war/seen-tiles modeling in 7.2 — full visibility for v1 (D65).
 for catching this before code landed on the wrong numbers. Please re-confirm the Swift-toolchain
 claim (`swift --version`) in whatever execution context your next session actually runs in; this
 session's device-bridge shell couldn't reproduce it.
+
+### [PLANNER] 2026-09-04 — Admin agent: role-alignment audit (Jerod reported possible drift)
+
+**Type:** admin/process — cross-check audit, one doc fix, findings reported (not fixed)
+**Phase:** repo housekeeping (Admin agent)
+**Blocks:** nothing
+
+Jerod reported that a live Xcode/Implementer session appeared to be using the wrong
+`docs/AGENT_NOTES.md` entry template and, separately, self-identifying as PARITY. Admin agent
+audited all four current role bootstraps (`docs/ADMIN.md`, `CLAUDE.md`, `docs/PARITY.md`,
+`docs/PLANNER.md`) plus `docs/AGENT_NOTES.md`'s own Format section, `README.md`'s role/status
+text, and `docs/notes/WAVE59_BOOTSTRAP.md`/`WAVE65_BOOTSTRAP.md` for cross-contamination or stale
+role instructions. **The four bootstrap files as currently committed are clean** — none
+misidentifies a role, none instructs the wrong template, and `CLAUDE.md`'s content (post
+`dac5bd7`'s purge + `7195eff`'s D62-D65 corrections) reads correctly for a fresh Implementer
+session. Could not audit a live chat session's actual in-context state — that's outside this
+agent's reach — so this doesn't rule out the reported symptom having occurred in a session
+carrying forward older conversational context rather than misreading the committed files.
+
+**Real findings, for the record:**
+
+1. **`docs/AGENT_NOTES.md` line ~212** (`## [TO: IMPLEMENTER] PLANNER purges CLAUDE.md bootstrap
+   for Wave 7 restart`) doesn't follow the documented Format template — H2 not H3, no
+   `[ROLE] YYYY-MM-DD — title` header, no explicit authoring-role tag. Left as-is per the
+   append-only convention (not an archive pass), but flagging so future entries don't copy its
+   shape. A fresh session skimming recent entries for "what does a normal entry look like" would
+   see this one among the most recent and could plausibly pattern-match off it instead of the
+   Format section at the top of the file.
+2. **`docs/PARITY.md`'s "no Swift toolchain" line is already known-stale** (PARITY's own Wave 7
+   pre-code audit reported `swift --version` succeeding in its session; Planner's follow-up
+   couldn't reproduce from the device-bridge shell and explicitly held off correcting the doc
+   pending re-confirmation). Not touched here — already an open, deliberately-held item, not new.
+3. **`git config user.name` for this repo is `Claude (Architectural Reviewer) <claude@anthropic.com>`,
+   identical across every commit regardless of which of the four roles actually wrote it** — it
+   predates the IMPLEMENTER/PLANNER/PARITY/Admin naming and carries zero role signal in `git log`.
+   Cosmetic (doesn't affect any bootstrap file's content), but if any session leans on `git log`
+   authorship to infer "who I am" or "who did what," this is actively unhelpful. Flagging, not
+   changing — local git identity felt like a call for Jerod, not something to change unilaterally.
+4. **`README.md`'s Status paragraph was substantially stale** (described Wave 6 as in-progress at
+   445 tests, transport/tracker "forward-planned but not yet started") — genuinely out of sync
+   with `docs/PLAN.md`/`docs/AGENT_NOTES.md`'s actual state (Wave 6 fully closed, 597 tests, Wave
+   7 now the active wave). **Fixed** (`37e4d68`) — this is explicitly Admin's to keep in sync per
+   `docs/ADMIN.md`, not a report-only item.
+
+**No D-numbered decision changed, no code touched, no other role's committed work rewritten.**
+
+[TO: IMPLEMENTER] If you're picking up a fresh session and anything about your own role feels
+uncertain, `CLAUDE.md` as currently committed (post `7195eff`) is confirmed clean — re-read it
+directly rather than trusting whatever context a prior session may have accumulated.
+[TO: PLANNER] Two open items worth a look when convenient: the line-~212 entry's template
+deviation (informational, not urgent) and whether `git config user.name` should be updated to
+something that actually distinguishes roles.
+[TO: PARITY] No action needed.
