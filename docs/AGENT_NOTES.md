@@ -511,3 +511,136 @@ against `Reference/c/` — `server.c`'s `registerserver()`/`sendtrackerupdate()`
 verify the decision-logic split and disclosed test-coverage boundary instead of expecting a
 byte-exact comparison there). D56's bug-pairing test and T-3's zero-fill claim are the two items
 most worth independent verification, given they're the sub-wave's own highest-risk findings.
+
+### [PARITY] 2026-09-04 — Wave 6.5a/6.5b post-commit audit: PASS with one real finding (6.5a)
+
+**Type:** post-commit audit, standard sequence (Planner activated PARITY at `150e822`/`737783a`).
+Auditing Wave 6.5a (`a23d49d`) and Wave 6.5b (`a250c57`+`cdff28d`) against `Reference/c/`.
+
+**Standing limitation, as always:** no Swift toolchain in this environment. Every claim below is a
+direct hand-trace against `Reference/c/` and the current `Sources/`/`Tests/` content, re-derived
+independently, not a compile-and-run. IMPLEMENTER's own green 596/596 build (`be0684c`) remains
+the authority that the code executes; this is the authority that it's correct against the oracle.
+
+**Overall verdict: Wave 6.5a — PASS with one real, non-blocking finding (crash-safety divergence,
+not a wire-format bug). Wave 6.5b — PASS, no changes requested.**
+
+**Independently re-derived and confirmed correct (6.5a):**
+
+- **`TrackerHost`/`TrackerHostList` layout** (`tracker.h:36-56`) — hand-walked field alignment
+  myself: `playername[16]`(0) + `mapname[32]`(16) + `port`(48) + `gametype`(50) + 1 pad byte(51) +
+  `timelimit`(52, 4-byte aligned) + `passreq`(56) + `nplayers`(57) + `allowjoin`(58) + `pause`(59)
+  = 60 bytes exactly (no trailing pad needed, struct alignment is 4). Matches
+  `tracker_layout_oracle()` (`netops.c:617-636`), `TrackerHost.wireSize` (`Tracker.swift:200-203`),
+  and `testTrackerLayoutMatchesOracle`'s asserted offsets exactly.
+- **D56's bug-pairing, read at the source, not trusted from the pre-brief:** `registerserver()`
+  (`server.c:1383`) does `trackerhost.timelimit = htonl(server.timelimit)`;
+  `sendtrackerupdate()` (`server.c:1577`) does the bare `trackerhost.timelimit = server.timelimit`
+  — confirmed genuinely missing the swap, a real deterministic bug. `Tracker.swift`'s
+  `encode()`/`encodeAsHeartbeat()` (lines ~123-160) reproduce this exactly; `port` correctly does
+  NOT have the asymmetry (`server.c:1382` and `:1575` both `htons()` it) and neither encoding
+  path treats it specially. `testRegistrationAndHeartbeatEncodingsDifferOnlyInTimeLimitByteOrder`
+  independently checked: `htonl(300)` = `[0x00,0x00,0x01,0x2C]` at offset 52, raw little-endian
+  `[0x2C,0x01,0x00,0x00]` for the heartbeat — both hand-verified correct, and the test's
+  zero-out-then-compare confirms no other byte differs between the two encodings.
+- **T-3's zero-fill claim** — confirmed neither `registerserver()` nor `sendtrackerupdate()`
+  `bzero`s the local `TrackerHost` before `strncpy`-filling it (genuinely UB, not deterministic —
+  correctly the D40-exception class, not D24's). `encodeCommonPrefix` (`Tracker.swift:113-119`)
+  and `WireWriter.putFixedString` (full-count zero-pad, not `strncpy`'s LEN-1 partial pad) both
+  confirm the disclosed Swift-safety deviation is real and consistently applied; `netops.c`'s two
+  oracle functions correctly `memset(out,0,sizeof(*out))` first specifically so their *other*
+  bytes have something well-defined to diff against, not as a fidelity claim about the real C
+  functions — the doc comment is accurate on this point, not overstated.
+- **`getpauseserver()`/`getallowjoinserver()`/`nplayers()`** (`server.c:369-371,419-421,4412-4419`)
+  — confirmed these reduce to exactly the same expressions `registerserver()`'s registration path
+  uses directly (`server.pause == -1`, `server.allowjoin`, connected-socket count), so
+  `trackerHost()`'s one shared builder (`Tracker.swift:227-237`) correctly serves both send paths
+  despite the C using a function call on one side and a direct field read on the other — not a
+  divergence, confirmed by reading `getpauseserver`/`getallowjoinserver`'s bodies directly rather
+  than assuming the names imply equivalence.
+- **The T-8 UDP-echo reliance — checked byte-for-byte, not taken on faith.** The pre-brief's plan
+  (reuse `HostDgramListener.swift`'s Wave 6.4b/6.4c echo rather than re-implementing
+  `registerserver()`'s own inline UDP echo) reads at first glance like it could re-open D48's own
+  distinction (`dgramserver()`'s verbatim echo vs. `registerserver()`'s explicit
+  `bzero`+`player=255` reconstruction, "not the same mechanism," `registerserver()`'s occurrence
+  "stays in Wave 6.5" per D43/D48 — checked this is genuinely unresolved, not just cited). Traced
+  both C functions directly: `dgramserver()`'s trigger (`server.c:637-638`,
+  `r == sizeof(clupdate.hdr) && clupdate.hdr.player == 255`) and response
+  (`sendto(...,&clupdate,sizeof(clupdate.hdr),...)`, the buffer echoed verbatim) are *bit-for-bit
+  identical in output* to `registerserver()`'s own reconstruction (`server.c:1466-1471`,
+  `bzero(&clupdate,...); clupdate.hdr.player=255;`) for this specific probe, because the tracker's
+  own probe packet (`tracker.c:225-227`) is itself already a `bzero`'d, header-only,
+  `player=255` packet — echoing it back verbatim reproduces the same bytes a fresh
+  zero-and-set reconstruction would produce. Confirmed further against `tracker.c:255-267`: the
+  daemon's own check is only `r == sizeof(hdr) && player==255` — it never compares echoed bytes
+  against what it sent, so content-identical-by-construction is sufficient, not incidental. Also
+  confirmed `DgramServerRelay.swift`'s `isTrackerEchoDatagram` (`bytes.count ==
+  CLUpdateHeader.wireSize && bytes.first == 255`) matches this exact trigger, and
+  `processDgramPacket`'s `.trackerEcho` case echoes the received bytes verbatim over the same
+  connection — so the mechanism substitution is sound, not a completeness gap. This *is* still an
+  orchestration dependency (whichever wave wires up the running host process must start
+  `HostDgramListener` before/during a live registration attempt) — correctly disclosed as a
+  caller-responsibility boundary this wave doesn't own, not silently assumed.
+- **Browse path** (`listtracker()`, `bolo.c:346-450`) — `TrackerBrowser.swift`'s count decode
+  (manual big-endian reconstruction of the 4-byte count) and `TrackerHostList.decode`'s handling
+  of `addr` (left raw, T-9) match `bolo.c:438,446-447` exactly (`addr.s_addr` never swapped, only
+  `game.port`/`game.timelimit` are). Confirmed the heartbeat's byte-order bug propagates
+  correctly and *without* special-casing: `TrackerHost.decode` always applies `getU32()`
+  (unconditional big-endian read) regardless of which send path produced the bytes, so a listing
+  client legitimately sees garbage for any host whose `timelimit` came from a post-registration
+  heartbeat — reproducing the real bug's downstream symptom, not just its send-side cause.
+- **Test counts, counted directly, not trusted from the commit message:** `grep -c "@Test"` on
+  `TrackerDifferentialTests.swift` gives 19 (matches the completion report's claim exactly);
+  `grep -rho "@Test" Tests/ | wc -l` across the whole suite gives **596**, matching the claimed
+  grand total precisely. D26's `-ffp-contract=off` flag confirmed still present in `Package.swift`.
+  No `Double`/`CGFloat` creep in any of the four new/touched files (D18) — only false-positive
+  text matches on the identifier `DoubleNAT`.
+
+**Real finding (6.5a) — crash-safety divergence, not a wire-format bug:**
+`trackerHost(...)` (`Tracker.swift:227-237`) builds `timeLimit: UInt32(state.timeLimit)`, where
+`GameState.timeLimit` (`GameState.swift:56`) is a plain `Int` with no non-negative invariant
+enforced anywhere (`RunTick.swift:89` only guards `> 0` for tick logic, same shape as the C's own
+`if (server.timelimit > 0)`, `server.c:1102` — so a negative value is already an anticipated,
+tolerated state in this codebase's own tick logic, not an impossible one). `UInt32(_:)` on a
+negative `Int` **traps** in Swift ("Fatal error: Negative value is not representable"). The C
+oracle never can: `server.timelimit` is a plain `int`, and `htonl()` takes `uint32_t` — the
+implicit `int`→`uint32_t` conversion on a negative value silently reinterprets the bit pattern
+(well-defined, if consumer-nonsensical) and continues running. This is exactly the class of
+unchecked-conversion footgun this project already disciplines elsewhere (the Int16
+`truncatingIfNeeded` pattern in `CLAUDE.md`'s own stated constraints) — `UInt32(state.timeLimit)`
+should be `UInt32(truncatingIfNeeded: state.timeLimit)` to match the C's actual never-crashes
+behavior. Grepped the rest of `Sources/` to confirm this pattern (`UInt32(state.timeLimit)` /
+`UInt32(...timeLimit)`) appears nowhere else — this is new to Wave 6.5a, not an already-accepted
+site-wide precedent. Not currently reachable (no caller in this codebase yet constructs a
+`GameState` with a negative `timeLimit` — no UI/config layer exists yet to do so), so this is
+latent rather than actively triggered, and is a robustness/crash-safety gap rather than a
+wire-format fidelity bug — the wire bytes this function *would* produce for a valid non-negative
+input are correct.
+
+**Confirmed correct, no changes requested (6.5b, D55 — no C oracle exists for this half):**
+`decodePortMappingReply`'s pure decision logic (`PortMapping.swift:73-85`) — checked
+`kDNSServiceErr_NoError`/`kDNSServiceErr_DoubleNAT` are the only two accepted codes, `doubleNAT`
+flag set correctly, `UInt16(bigEndian: externalPort)` hand-verified against
+`PortMappingTests.swift`'s own worked example (`0x901F` network-order → `8080` host-order,
+confirmed the byte-swap arithmetic by hand). `decodePortMappingReply` is unit-testable and tested
+(5 tests, `grep -c "@Test"` on `PortMappingTests.swift` confirms); the live NAT round-trip is
+correctly and explicitly D55's disclosed non-goal, not silently skipped. `PortMappingContext`'s
+`Unmanaged` boxing for the C callback's `context` pointer, and `cancel()`'s idempotent
+release/deallocate, read as correct on inspection — matches the already-audited pattern this
+review re-derived rather than re-reading Planner's own `c68d250` review verbatim.
+
+**No citation drift found this audit** — every `file:line` cited in the completion report and
+this wave's source comments was checked directly and matched what's actually there.
+
+[TO: PLANNER] Wave 6.5a: one real finding above (the `UInt32(state.timeLimit)` crash-safety gap in
+`trackerHost()`) — latent, not currently reachable, recommend `UInt32(truncatingIfNeeded:)` as the
+fix, consistent with this project's own established Int16-truncatingIfNeeded convention. Everything
+else in 6.5a (layout, D56 bug-pairing, T-3 zero-fill, the T-8 UDP-echo reliance — traced byte-for-
+byte and confirmed sound, not just re-cited — and the browse path) independently confirmed correct.
+Wave 6.5b: no findings, D55's no-oracle boundary and disclosed test-coverage scope both hold up.
+Your call whether the timeLimit finding blocks close or is tracked as a quick follow-up fix.
+[TO: IMPLEMENTER] One fix recommended if Planner rules on it: `Tracker.swift`'s `trackerHost()`,
+`timeLimit: UInt32(state.timeLimit)` → `UInt32(truncatingIfNeeded: state.timeLimit)`, matching the
+C's own never-crashes-on-this-conversion behavior. A named regression test (D28) would need a
+`GameState` with a negative `timeLimit` and assert the resulting `TrackerHost.timeLimit`'s
+truncated bit pattern rather than a thrown/trapped error.
