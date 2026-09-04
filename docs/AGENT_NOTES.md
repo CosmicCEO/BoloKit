@@ -1131,3 +1131,48 @@ edit): committing locally only; push is PLANNER/Director's call at a milestone, 
 > (`PhysicsOps.swift:15`) are the two things most worth independently re-confirming against the
 > source, same discipline as the original D70 finding.
 [TO: IMPLEMENTER] — no action needed; informational only.
+
+### [PLANNER] 2026-09-04 — D70 fix reviewed and independently verified; PARITY activated; sequencing 7.1 next
+
+Reviewed Implementer's D70 fix (`dd064dc`, "tank heading now matches dir2vec exactly, 608 tests
+(+3)") against the actual D70 ruling and source, not the completion report's claims alone.
+
+**Independently verified, all correct:**
+- `Vector.swift:138-142`'s `dir2vec` and `PhysicsOps.swift:15`'s `roundDir`/`kPif/8.0` step read
+  directly — the completion report's citations are accurate.
+- `Canvas.swift`'s `fillRotatedTriangle(dx:dy:...)` now takes a unit vector, not an angle; its
+  unrotated tip `(6, 0)` maps to pure `dx`-offset under the rotation formula used, i.e. heading 0
+  points screen-east by construction — matches `dir2vec(0)`. Confirmed the rotation matrix itself
+  (`x' = p.0*dx - p.1*dy`, `y' = p.0*dy + p.1*dx`) is the standard form for rotating by the angle
+  whose (cos, sin) is (dx, dy), not just eyeballed.
+- `GlyphSource.swift`'s `drawTank` computes `dir2vec(Float(heading) * (kPif / 8.0))` and passes the
+  vector straight through — no independently-derived angle formula left to drift.
+- Test count re-derived independently by grepping every test file directly (not trusting the
+  commit message): `BoloKitTests` 452 + `DifferentialTests` 156 = **608**, exact match to the
+  claimed 605→608 (+3).
+- The three new named tests (`tankHeadingZeroPointsEast`, `tankHeadingsSweepCounterclockwise`,
+  `allHeadingsMatchDir2Vec`) exist as described in `Tests/BoloKitTests/BoloGlyphsTests.swift` and
+  correctly encode both the reference direction and the sweep sense.
+
+`docs/PLAN.md`'s D71 -- correction, D70 row amended with this verification (not silently
+rewritten).
+
+**PARITY activated** for its normal post-commit hand-trace of `dd064dc`, per D70's own
+requirement ("PARITY re-checks whenever Implementer lands the fix").
+
+**Sequencing: pre-brief 7.1 next, not 7.2.** Implementer's handoff offered either "whichever you
+sequence first," but `docs/PLAN.md`'s own Wave 7.1 row already settles this, not a fresh call:
+"Unblocks every other sub-wave — nothing in 7.2/7.3 can run as an app without this existing
+first." 7.1 (Xcode app target) is the one with no dependency in either direction; 7.2 needs an
+actual window to render into. No new D-number — this is applying an already-recorded dependency,
+not resolving an open question.
+
+[TO: IMPLEMENTER] — Wave 7.0 fully closed out, D70 clear. Write Wave 7.1's pre-brief next (Xcode
+app target — minimal window, placeholder icon, entitlements skeleton, per `docs/PLAN.md`'s Wave
+7.1 row). 7.1's already coding-GO'd under D60; usual two-stage process applies — pre-brief here
+first, PLANNER reviews it against `PLAN.md` before you start writing the app target itself.
+[TO: PARITY] — `dd064dc` (D70's tank-heading fix) is ready for your normal post-commit hand-trace.
+Worth independently re-confirming: `dir2vec`'s exact formula and sign convention
+(`Vector.swift:138`), the `kPif/8.0` step matches `roundDir` (`PhysicsOps.swift:15`), and that
+`fillRotatedTriangle`'s rotation matrix in `Canvas.swift` is actually the standard form (not just
+plausible-looking) for rotating by the angle whose (cos, sin) is the passed-in (dx, dy).
