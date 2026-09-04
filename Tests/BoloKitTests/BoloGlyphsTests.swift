@@ -199,4 +199,51 @@ struct BoloGlyphsTests {
         #expect(a.tiles.pixels == b.tiles.pixels)
         #expect(a.sprites.pixels == b.sprites.pixels)
     }
+
+    // MARK: - Placeholder app icon (Wave 7.1)
+
+    @Test("every macOS AppIcon slot size is an exact whole multiple of the 16x16 glyph")
+    func iconSizesScaleExactly() {
+        // The generator nearest-neighbour replicates pixels; a non-multiple would need
+        // resampling and would blur the pixel art.
+        for size in appIconPixelSizes {
+            #expect(size % Canvas16.size == 0)
+        }
+        // The distinct pixel sizes the 1x/2x mac slots in AppIcon.appiconset resolve to.
+        #expect(appIconPixelSizes == [16, 32, 64, 128, 256, 512, 1024])
+    }
+
+    @Test("app icon is fully opaque at every size and sized correctly")
+    func iconIsOpaqueAndCorrectlySized() {
+        for size in appIconPixelSizes {
+            let icon = buildAppIcon(size: size)
+            #expect(icon.size == size)
+            #expect(icon.pixels.count == size * size * 4)
+            // The grass base fills all 16x16, so compositing the tank over it must leave no
+            // transparent pixel anywhere -- a macOS app icon with holes would look broken.
+            let transparent = stride(from: 3, to: icon.pixels.count, by: 4).contains {
+                icon.pixels[$0] != 255
+            }
+            #expect(!transparent)
+        }
+    }
+
+    @Test("app icon upscale is exact pixel replication of the 16x16 base")
+    func iconUpscaleIsExactReplication() {
+        let base = buildAppIconBase()
+        let scale = 4
+        let icon = buildAppIcon(size: Canvas16.size * scale)
+        for y in 0..<icon.size {
+            for x in 0..<icon.size {
+                let src = ((y / scale) * Canvas16.size + x / scale) * 4
+                let dst = (y * icon.size + x) * 4
+                #expect(Array(icon.pixels[dst..<dst + 4]) == Array(base.pixels[src..<src + 4]))
+            }
+        }
+    }
+
+    @Test("app icon generation is deterministic")
+    func iconDeterministic() {
+        #expect(buildAppIcon(size: 256).pixels == buildAppIcon(size: 256).pixels)
+    }
 }

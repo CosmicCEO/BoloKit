@@ -4,27 +4,30 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-let outputDir = CommandLine.arguments.count > 1
-    ? CommandLine.arguments[1]
-    : "Resources/Generated"
+// Two modes:
+//   BoloGlyphs [<dir>]        - write Tiles.png/Sprites.png (the build-time path, D72)
+//   BoloGlyphs icon <dir>     - write the placeholder AppIcon PNGs (run by hand; committed)
+let args = Array(CommandLine.arguments.dropFirst())
+let iconMode = args.first == "icon"
+let outputDir = (iconMode ? args.dropFirst().first : args.first) ?? "Resources/Generated"
 
 try FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
 
-func writePNG(_ sheet: RGBASheet, to path: String) throws {
+func writePNG(_ pixels: [UInt8], size: Int, to path: String) throws {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     guard let context = CGContext(
         data: nil,
-        width: RGBASheet.size,
-        height: RGBASheet.size,
+        width: size,
+        height: size,
         bitsPerComponent: 8,
-        bytesPerRow: RGBASheet.size * 4,
+        bytesPerRow: size * 4,
         space: colorSpace,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
         throw NSError(domain: "BoloGlyphs", code: 1, userInfo: [NSLocalizedDescriptionKey: "could not create bitmap context"])
     }
 
-    sheet.pixels.withUnsafeBytes { src in
+    pixels.withUnsafeBytes { src in
         context.data!.copyMemory(from: src.baseAddress!, byteCount: src.count)
     }
 
@@ -42,7 +45,15 @@ func writePNG(_ sheet: RGBASheet, to path: String) throws {
     }
 }
 
-let sheets = buildSheets()
-try writePNG(sheets.tiles, to: outputDir + "/Tiles.png")
-try writePNG(sheets.sprites, to: outputDir + "/Sprites.png")
-print("Wrote \(outputDir)/Tiles.png and \(outputDir)/Sprites.png")
+if iconMode {
+    for size in appIconPixelSizes {
+        let icon = buildAppIcon(size: size)
+        try writePNG(icon.pixels, size: icon.size, to: outputDir + "/icon_\(size).png")
+    }
+    print("Wrote \(appIconPixelSizes.count) AppIcon PNGs to \(outputDir)")
+} else {
+    let sheets = buildSheets()
+    try writePNG(sheets.tiles.pixels, size: RGBASheet.size, to: outputDir + "/Tiles.png")
+    try writePNG(sheets.sprites.pixels, size: RGBASheet.size, to: outputDir + "/Sprites.png")
+    print("Wrote \(outputDir)/Tiles.png and \(outputDir)/Sprites.png")
+}

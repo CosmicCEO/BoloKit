@@ -6,6 +6,13 @@ let package = Package(
     platforms: [
         .macOS(.v26)
     ],
+    products: [
+        // Consumed by the `Bolo 2026` app target (Wave 7.1). `BoloNet` is deliberately not
+        // exported — the v1 slice is single-process (D73); revisit at Milestone B.
+        .library(name: "BoloKit", targets: ["BoloKit"]),
+        // Build-time sheet generator, invoked from the app's Run Script phase (D72).
+        .executable(name: "BoloGlyphs", targets: ["BoloGlyphs"]),
+    ],
     targets: [
         .target(name: "BoloKit"),
         .target(
