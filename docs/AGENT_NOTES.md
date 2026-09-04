@@ -131,3 +131,116 @@ permission for the repo root, removed the lock, reconfirmed a clean two-file dif
 committing.
 
 No action needed from any of the three rotation roles.
+
+### [IMPLEMENTER] 2026-09-03 — Wave 6.5 pre-brief: tracker protocol + NAT traversal research
+
+**Type:** planning — pre-brief (no coding this session, per the two-stage gate)
+**Phase:** Wave 6.5 pre-brief
+**Blocks:** Wave 6.5 coding, pending PLANNER's ruling below
+
+Read `docs/notes/WAVE65_BOOTSTRAP.md`, `docs/PLAN.md`'s Wave 6.5 row and cited decisions
+(D25/D31-D34/D41/D44/D48/D49/D52), and this file's tail confirming the pre-brief GO (`a5f28ef`).
+Researched the three areas the bootstrap explicitly left open — `registerserver()`'s full
+behavior, the tracker client browse path, and the NAT-mapping approach — directly against
+`Reference/c/`, plus independently re-derived the `TrackerHost` padding trap the bootstrap
+flagged rather than trusting `DEEPDIVE1.md`'s figure outright.
+
+**Confirmed facts (all `file:line`-cited in full detail below; summarized here):**
+
+- `tracker.h:41-56` — `TrackerHost` is 60 bytes with a padding byte at offset 51 (after
+  `gametype`, before the 4-byte-aligned `timelimit`); `TrackerHostList` is 64 bytes
+  (`in_addr` + `TrackerHost`). Independently re-derived by hand-walking field alignment, matching
+  `DEEPDIVE1.md`'s existing figure rather than assuming it.
+- `server.c:1259-1509` — `registerserver()` is a nine-step handshake (DNS resolve → TCP connect
+  → send `TRACKER_Preamble` → version-ack → send `kTrackerHost`+`TrackerHost` → TCP-open ack →
+  UDP-open ack, serviced live via the D48/6.4c echo → success), gated entirely on
+  `server.tracker.hostname != NULL` (no tracker configured is success, not an error). Return value
+  is tri-state (0 success / 1 "closed by main thread" / -1 error) via a shadowed `ret` variable —
+  easy to misread as binary.
+- **New finding, not in any prior doc:** `sendtrackerupdate()` (`server.c:1569-1588`) is a
+  **60-second heartbeat** (`TRACKERUPDATESECONDS`, `server.h:20`), scheduled from
+  `servermainthread()` (`server.c:1590-1630`, skip-if-still-queued + catch-up-if-late). Sends a
+  **bare** `TrackerHost` struct with no `kTrackerHost` msg byte — correct, since the daemon's
+  post-registration loop (`tracker.c:293-301`) reads bare structs forever.
+- **New finding — a real C bug:** the heartbeat's `trackerhost.timelimit = server.timelimit`
+  (`server.c:1577`) omits the `htonl()` the registration path applies at `server.c:1383`. The
+  daemon stores bytes verbatim and the browsing client unconditionally `ntohl`s
+  (`bolo.c:447`), so **60 seconds after any host registers, its advertised time limit becomes
+  byte-swapped garbage in every client's game listing.** Deterministic, not UB — a D24/D40
+  bug-for-bug candidate.
+- Also newly noted: neither `registerserver()` nor `sendtrackerupdate()` ever `bzero`s the
+  `TrackerHost` local before `strncpy`-filling it — `strncpy(dst,src,LEN-1)` zero-pads to `LEN-1`
+  but leaves the final byte and the offset-51 pad byte indeterminate, so the C sends uninitialized
+  stack bytes on the wire. Unlike the `timelimit` bug, this is indeterminate, not deterministic —
+  the D40 `pills[-1]`-class exception, not the D24 tautology-class rule. These two findings sit
+  four lines apart in the same struct and want opposite treatment; flagging explicitly so the
+  coding pass doesn't collapse them into one rule.
+- `bolo.c:346-450`/`bolo.h:485-490` — `listtracker()`/`stoptracker()`, the client browse path:
+  same preamble/version prologue, then `kTrackerList` → `ntohl` count → count × 64-byte
+  `TrackerHostList`, with only `port`/`timelimit` byte-swapped on decode (`bolo.c:446-447`) —
+  `addr.s_addr` is left in network order deliberately. Status enum `kGetListTracker*`
+  (`bolo.h:301-318`) is a **separate** enum from `registerserver()`'s `kRegister*`
+  (`bolo.h:274-299`) — different member sets (e.g. only the browse enum has `REGISTERING` and
+  `ECONNABORTED`), do not unify them into one Swift type.
+- `Sources/BoloNet/Preambles.swift:187-207` already has `TrackerPreamble` (Wave 6.3) — reuse
+  verbatim, just add a `wireSize = 9` static to match its two siblings' existing convention.
+
+**NAT-traversal recommendation, with license checked per the bootstrap's requirement:**
+`DNSServiceNATPortMappingCreate` (`import dnssd`) — confirmed via live `DocumentationSearch`
+this session (not training-data recall) that it supports both NAT-PMP and UPnP IGD, the same
+union `TCMPortMapper` covers, returns external IP/port, and self-renews/self-heals across
+sleep-wake and gateway changes. It is a system API in `libSystem` — nothing bundled, no GPL
+exposure, satisfying `README.md:61-64`'s commitment directly. Also confirmed
+`Network.framework` itself has no port-mapping facility (`includePeerToPeer` is local-link/AWDL
+only). Proposed shape: wrap the repeating callback as an `AsyncStream` drained by one consumer —
+the same pattern already proven twice per D49/D52 (`HostListener.swift`/
+`HostDgramListener.swift`), not a new mechanism.
+
+**Proposed scope split (not a decision — for PLANNER):** 6.5a (tracker protocol — codec,
+`registerserver()`, heartbeat, `listtracker()` — all oracle-testable) vs. 6.5b (NAT mapping — no
+C oracle possible, its only real verification is a live router round-trip, and the licensing
+constraint attaches to this half specifically). Same grounds as D23/D43: two units of work with
+different verification stories bundled under one name. Register and browse stay together inside
+6.5a despite being different roles — they share the codec and prologue, and browse is ~30 lines
+of decode, D47's "volume not complexity" case even more clearly than G-2 was.
+
+**Test plan (D28):** current baseline 572 tests, nothing shrinks. Extends
+`netops.c`'s existing `preamble_layout_oracle()` precedent (`netops.c:411-472`) with three new
+oracle exports — `tracker_layout_oracle()` (makes the offset-51 pad-byte claim a machine-checked
+fact, not a hand-derivation I'm asking to be trusted), `trackerhost_encode_oracle()`/
+`trackerupdate_encode_oracle()` (verbatim extracts of the two field-assignment bodies, `bzero`'d
+first per the stated T-3 deviation, proving the T-2 byte-order asymmetry rather than asserting
+it). Plus unit tests for: pad byte is zero; 64-byte round-trip with `s_addr` untouched; name/map
+truncation; each handshake branch (version-err/TCP-closed/UDP-closed/success); the tri-state
+return; nil-hostname short-circuit; heartbeat single-flight guard; 0-entry and n-entry browse
+decode.
+
+**Files proposed:** `Sources/BoloNet/Tracker.swift`, `TrackerRegistration.swift`,
+`TrackerBrowser.swift` (6.5a, new); `Sources/BoloNet/PortMapping.swift` (6.5b, new);
+`Preambles.swift` (add `wireSize`); `Sources/CXBolo/netops.c` + `include/CXBolo.h` (three oracle
+exports); `Tests/DifferentialTests/TrackerDifferentialTests.swift` (new) plus unit tests in the
+existing suites. Reusing `WireWriter`/`WireReader` (`WireIO.swift`) and `HostDgramListener.swift`
+(already owns the UDP socket the register handshake's live-echo step needs) rather than building
+either again.
+
+**Cosmetic doc-drift note:** D32 cites `README.md:42-45` for the GPL-avoidance paragraph; it's now
+at `README.md:61-64`. Same class of non-blocking citation drift PARITY has flagged before —
+noting for PLANNER to fix at convenience, not blocking.
+
+> **→ Planner:** Four open questions, none resolved solo per this project's convention:
+> 1. Approve `DNSServiceNATPortMappingCreate` as the NAT-traversal approach (license checked
+>    above)?
+> 2. Approve the 6.5a/6.5b split, or keep this as one wave?
+> 3. **Does this port need the tracker *daemon* (`tracker.c`) at all?** It's a third, separate
+>    binary from the host (`server.c`) and browsing client (`bolo.c`) halves this pre-brief
+>    otherwise covers — under D4 ("you and friends") someone has to run one for internet play to
+>    work at all. Genuinely undecided anywhere in this project's docs; adjacent to Q22 but not the
+>    same question — raising it, not answering it.
+> 4. Confirm D24/D40 bug-for-bug applies to the missing `htonl` on the heartbeat's `timelimit`
+>    (deterministic), and that the un-`bzero`'d struct gets the opposite (indeterminate-input,
+>    zero-fill-and-disclose) treatment — these are four lines apart in the same C function and
+>    the easy mistake is applying one rule to both.
+
+No coding this session — stopping here per the two-stage gate pending PLANNER's ruling on the
+above. [TO: PLANNER] Wave 6.5 pre-brief ready for review; four questions above. [TO: PARITY] No
+action yet — nothing shipped this session to audit.
