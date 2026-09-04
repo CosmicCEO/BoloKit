@@ -190,6 +190,42 @@ struct BoloGlyphsTests {
         }
     }
 
+    // MARK: - PNG round-trip (D77 -- PARITY's F1: nothing previously decoded an emitted PNG)
+
+    @Test("emitted PNG bytes match source buffer intent, including partial-alpha pixels")
+    func pngRoundTripPreservesStraightAlpha() throws {
+        let sheets = buildSheets()
+        for (label, sheet) in [("tiles", sheets.tiles), ("sprites", sheets.sprites)] {
+            let data = try #require(encodePNGData(sheet.pixels, size: RGBASheet.size), "\(label) failed to encode")
+            let decoded = try #require(decodePNGToStraightAlphaRGBA(data), "\(label) failed to decode")
+            #expect(decoded.count == sheet.pixels.count, "\(label) size mismatch")
+
+            var maxDiff = 0
+            for i in stride(from: 0, to: sheet.pixels.count, by: 4) {
+                // Alpha itself must be exact; RGB is allowed +/-1 for the premultiply/
+                // un-premultiply round-trip's integer rounding, but no more than that --
+                // this is the specific tolerance that would have caught F1 (a 14/255 drift).
+                #expect(decoded[i + 3] == sheet.pixels[i + 3], "\(label) alpha drift at pixel \(i / 4)")
+                for c in 0..<3 {
+                    let diff = abs(Int(decoded[i + c]) - Int(sheet.pixels[i + c]))
+                    maxDiff = max(maxDiff, diff)
+                }
+            }
+            #expect(maxDiff <= 1, "\(label) RGB round-trip drift exceeds rounding tolerance: max diff \(maxDiff)")
+        }
+    }
+
+    @Test("a known partial-alpha source pixel survives PNG round-trip exactly")
+    func pngRoundTripPillBackingPixel() throws {
+        // GlyphSource.swift's pill backing is fillRect(..., 50, 50, 50, 200) -- the exact
+        // pixel PARITY measured as shipping RGB(64,64,64) before the D77 fix.
+        var patch = Canvas16()
+        patch.fillRect(0, 0, 16, 16, 50, 50, 50, 200)
+        let data = try #require(encodePNGData(patch.pixels, size: Canvas16.size))
+        let decoded = try #require(decodePNGToStraightAlphaRGBA(data))
+        #expect(Array(decoded[0..<4]) == [50, 50, 50, 200])
+    }
+
     // MARK: - Determinism
 
     @Test("sheet generation is deterministic")

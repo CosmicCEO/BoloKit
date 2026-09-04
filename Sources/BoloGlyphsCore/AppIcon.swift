@@ -29,8 +29,8 @@ public func buildAppIconBase() -> Canvas16 {
         canvas = renderGlyph(.flatFill(r: r, g: g, b: b))
     } else {
         // GRAS00IMAGE is an unconditional `.flatFill` case in `tileGlyphRole`; this branch only
-        // exists so a future change there fails loudly at review rather than silently recolouring.
-        canvas = renderGlyph(.flatFill(r: 70, g: 140, b: 60))
+        // exists so a future change there fails loudly here rather than silently recolouring.
+        preconditionFailure("GRAS00IMAGE no longer resolves to .flatFill in tileGlyphRole")
     }
     let tank = renderGlyph(.tank(heading: 0, ownership: 0, destroyed: false))
     composite(tank, over: &canvas)
