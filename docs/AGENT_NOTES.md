@@ -1721,3 +1721,99 @@ Swift behaviour:
 - `Package.swift`'s two new products: confirm `BoloNet` is genuinely not exported, and that
   `swift build`/`swift test` at 612 are unaffected by the products block.
 - Test count 608 → 612, +4 icon regression tests, no removals (D28).
+
+### [IMPLEMENTER] 2026-09-04 — D75/D76 landed (`6e060e9`); Wave 7.1 now in final state for PARITY; one incidental finding
+
+**Type:** follow-up completion report (D75, D76)
+**Phase:** Wave 7.1 — both required follow-ups done, 7.1 still **not closed** (PARITY PASS pending)
+**Blocks:** nothing. This is the "final state" commit PLANNER wanted PARITY to audit once, rather
+than auditing `426c6a4` and then re-auditing.
+
+Executed only the two items D75/D76 named, per "keep it to these two items." **Wave 7.2's pre-brief
+(instruction 4) is deliberately not started** — Jerod asked me to execute the D items and then
+pause. It's queued, not forgotten.
+
+**D75 — done, and verified on the shipped product rather than on the setting.** Set
+`MACOSX_DEPLOYMENT_TARGET = 26.0` on the `Bolo 2026` target via `UpdateTargetBuildSetting` (the
+tool, as instructed — not a hand-edit). Nothing required 27, so there is nothing to escalate
+against D16:
+- `otool -l` on the built binary: `minos 26.0` (SDK still 27.0, which is correct — you build
+  against the newest SDK and deploy to the older floor).
+- `Info.plist`: `LSMinimumSystemVersion = 26.0`.
+- Clean build from a **deleted** DerivedData tree succeeded, and D72's script phase still
+  regenerated both sheets — so neither the app nor the sheet generation depended on 27.
+
+**One thing D75 did not fix, flagged rather than fixed unilaterally:** the *project*-level
+`MACOSX_DEPLOYMENT_TARGET` is still the template's `27.0` in both configurations (`.pbxproj` lines
+217 and 274); only the target's two configurations are now 26.0. That is enough for D75's actual
+concern — the shipped app is 26.0, confirmed above — because the target value overrides the
+project's. But the project-level 27.0 remains as the default any *future* target would inherit,
+which is the same drift D75 exists to prevent, just deferred to whoever adds target #2 (the
+Dedicated Host CLI under D58 is the obvious candidate). I did not change it because
+`UpdateTargetBuildSetting` only operates on targets, so fixing it means another hand-edit of
+`.pbxproj`, and D75 explicitly framed this one as "tool, not hand-edit." Your call whether that's
+worth a follow-up or just a note for the next target.
+
+**D76 — done, including the specific duplication check you asked for.** Wrote
+`Bolo 2026.xcodeproj/xcshareddata/xcschemes/Bolo 2026.xcscheme` (no MCP tool shares a scheme, and
+no existing `.xcscheme` existed anywhere on this host to copy shape from, so it's hand-written
+against the standard format; `xmllint` clean; `BlueprintIdentifier` matches the target's real
+`.pbxproj` UUID).
+- **No duplicate from the shared/autocreated pair** — the failure mode you named.
+  `XcodeListSchemes` after a workspace close/reopen: exactly **one** scheme, `Bolo 2026`, now
+  `isShared: true`. `XcodeListTargets`: still exactly one target.
+- The user-level `xcschememanagement.plist` now keys it as
+  `"Bolo 2026.xcscheme_^#shared#^_"` — Xcode reclassified the previously autocreated scheme as the
+  shared one instead of keeping both. That's the positive confirmation, not just absence of a
+  second row.
+- Verified it works **outside** the Xcode app too: `xcodebuild -project ... -list` resolves
+  `Bolo 2026` with Xcode uninvolved, which is the actual point of sharing it (CI, and PARITY on
+  another machine).
+- Related, not a duplicate: `xcodebuild -list` also shows `BoloGlyphs` and `BoloKit` schemes. Those
+  are auto-derived **package-product** schemes, a consequence of the `products:` block D74
+  accepted — they appear because the project now references the local package, and they are not
+  competing definitions of `Bolo 2026`. Noting it so it doesn't read as a duplication finding.
+
+**Incidental finding — 23 MB of derived index data was written into the `.xcodeproj` bundle.**
+While staging I found an untracked directory literally named `-Xcc` at
+`Bolo 2026.xcodeproj/-Xcc/`, containing `v5/records` and `v5/units` — a Clang **index store**, 23
+MB, timestamped mid-session during the D75 tooling work. Something in the toolchain passed an
+index-store path such that `-Xcc` was consumed as a *directory name* instead of a compiler flag.
+I inspected it before touching it (pure derived data, no source), deleted it, and confirmed it did
+not come back on a subsequent build. It is **not** in `6e060e9` — nothing was committed from it.
+Reporting it rather than quietly cleaning up because of the standing toolchain-instability caution:
+it's a third oddity from this host (after the two Xcode crashes and the failed reinstall), and if
+it recurs it's a 23 MB trap for anyone who runs `git add -A` — which this project's git rules
+already forbid, which is the only reason it didn't land in a commit. I did **not** add a
+`.gitignore` entry for it: that would be a third change outside D75/D76's scope, and it may be
+better fixed at the source than papered over. Flagging for your call.
+
+**Re-verification after both changes, per instruction 3:**
+- `swift build` clean; `swift test` **612 tests** (156 `DifferentialTests` + 456 `BoloKitTests`),
+  zero failures — unchanged from `426c6a4`, D28 intact.
+- `.pbxproj` `plutil -lint`: OK. Structural dump: still exactly **21 objects**, one
+  `PBXNativeTarget`, one `PBXShellScriptBuildPhase`, one `PBXTargetDependency`, one
+  `XCLocalSwiftPackageReference`, two `XCSwiftPackageProductDependency`. No duplicates or orphans
+  introduced.
+- Clean build from deleted DerivedData succeeded twice across these changes.
+
+**Worth knowing for PARITY's encoding review:** when `UpdateTargetBuildSetting` touched the project,
+**Xcode itself re-serialized my hand-written `Generate Glyph Sheets` phase** into its canonical
+form — dropped four keys that were sitting at their defaults (`buildActionMask`,
+`runOnlyForDeploymentPostprocessing`, `alwaysOutOfDate`, and the two empty file-list arrays) and
+rewrote `shellScript` from an escaped single string into a string array. Semantically identical,
+and the clean builds after it confirm the phase still runs. This is indirect evidence the
+hand-written encoding was valid — Xcode parsed and rewrote it rather than rejecting or mangling it
+— but it is not a substitute for the reference-project comparison you asked PARITY for, since Xcode
+would also happily rewrite a phase that was valid-but-wrong.
+
+[TO: PLANNER] D75 and D76 both landed in `6e060e9`; Wave 7.1 is in the final state you wanted
+audited once. Three things for you: (1) project-level `MACOSX_DEPLOYMENT_TARGET` is still 27.0 and
+will be inherited by the next target added — deliberately left, needs a hand-edit if you want it;
+(2) the stray 23 MB `-Xcc` index store described above, deleted, not committed, no `.gitignore`
+entry added; (3) Wave 7.2's pre-brief is not written — Jerod asked me to pause after the D items.
+[TO: PARITY] `6e060e9` is the commit to audit, not `426c6a4` — the deployment target and shared
+scheme are now in place, so nothing is in flight. Your priority list from PLANNER stands unchanged.
+One addition: Xcode has since re-serialized the `PBXShellScriptBuildPhase` I hand-wrote (details
+above), so what you'll be reading is Xcode's own encoding of it, not my original text — the
+`git diff` in `6e060e9` shows exactly what changed if you want the before/after.
