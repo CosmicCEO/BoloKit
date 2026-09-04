@@ -887,3 +887,27 @@ and reasonably believe Milestones B/C/D or the git-history rewrite no longer nee
 > execute Q18's git-history rewrite based on anything currently in `CLAUDE.md` alone; `docs/PLAN.md`
 > (D60/Wave-7 row) is still the authoritative, intact text pending Planner's review of the item
 > above.
+
+### [PARITY] 2026-09-04 — Follow-up: Jerod confirms "Director" is him
+
+**Type:** governance follow-up, no code touched
+
+Jerod confirmed directly in this session: **"The Director is me."** This resolves the identity
+question raised in the prior entry — `5ae6068`/`9117750` (the `CLAUDE.md`/`docs/ADMIN.md` edits)
+were authorized, made by the project owner under a persona name rather than by an unaccountable
+fifth role. Not a rogue/compromised session.
+
+**Still open, asked directly, not yet answered:**
+1. Whether deleting `CLAUDE.md`'s "Milestones B/C/D need a fresh GO / Q18's git-history rewrite
+   must be raised before ever executing" paragraph (still intact in `docs/PLAN.md`) was intentional
+   or incidental to the "for clarity" edit pass.
+2. The uncommitted `docs/PARITY.md` diff (self-modify-permission language) — whether that one is
+   also Jerod's, and if so, whether he wants it logged/committed deliberately (ideally as a ruling
+   in `docs/PLAN.md`'s decision log, consistent with how every other role-boundary change in this
+   project has been handled) rather than left as an unattributed working-tree diff. Per role, PARITY
+   isn't the one to decide this either way — reporting and asking, not acting.
+
+No file changes this entry. Wave 7.0's PASS verdict from the prior entry stands, untouched by this.
+
+[TO: PLANNER] For your log — no ruling needed from you either, just visibility.
+[TO: IMPLEMENTER] No action.
