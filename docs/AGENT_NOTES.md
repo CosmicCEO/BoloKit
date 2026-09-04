@@ -625,3 +625,83 @@ parameterized, 0 `XCTest` imports — matches the claimed D28 baseline exactly.
 [TO: PARITY] Nothing yet to audit — no Swift committed. When 7.0 lands, this will be your first real
 post-commit audit of Wave 7 (the pre-code numeric review to date, corrected above, was never actually
 yours).
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.0 shipped: BoloGlyphs sheet generator, 605 tests (+8)
+
+**Type:** coding — Wave 7.0 (asset pipeline) implementation
+**Phase:** Wave 7.0, coding complete
+**Blocks:** nothing — unblocks 7.1 (Xcode app target), which unblocks 7.2/7.3
+
+Implemented against the pre-brief above exactly as GO'd (D66/D67/D68), no scope changes discovered
+mid-build.
+
+**`Package.swift` (D68):** split `BoloGlyphs` into `BoloGlyphsCore` (library, depends on `BoloKit`)
++ `BoloGlyphs` (thin executable, depends on `BoloGlyphsCore`); `BoloKitTests` gained a
+`BoloGlyphsCore` dependency so the new tests could import it. `CXBolo`'s `-ffp-contract=off` (D26)
+untouched.
+
+**`Sources/BoloGlyphsCore/Autotile.swift` — the probe.** `deriveConnectivity(family:)` sweeps
+`mapimage()` (`Sources/BoloKit/Images.swift:301`) directly rather than hand-transcribing its case
+labels, confirmed against the source before writing: single-predicate families (river/forest/
+crater/boat/sea) sweep 4 orthogonal bits; wall adds 4 diagonal bits (its nested corner-resolution
+switches, e.g. `case 7`/`case 15`, read them); road is a separate sweep entirely — its branch reads
+*three* independent predicates (`isRoadLikeTile` and `isWaterLikeToLandTile` on the 4 orthogonal
+cells, `isRoadLikeTile` again on the 4 diagonals), and no single `Tile` value can express "road-
+like" and "water-like" as independent bits except `.unknown` (the one tile in both predicates'
+true-sets) — so each orthogonal neighbor is swept across all 4 `(road, water)` combinations rather
+than a single connected bit. `.grass` is the universal "disconnected" filler everywhere else,
+confirmed outside all seven `is*LikeTile` predicate sets by reading each one directly. Probed at
+(128,128), not an edge, since the predicates return `1` out-of-bounds (would fabricate connections).
+
+**Self-check landed clean on the first run** — the sweep reproduced exactly 47/16/10/16/31/8/9
+(wall/river/forest/crater/road/boat/sea = 137), summing with the 8 flat + 32 pill tile-space
+indices to exactly 177, with zero gaps/overlaps against `tileIndexRange` (`0x00...MINE00IMAGE`).
+This is what "self-checking" meant in the pre-brief: if the arithmetic had been wrong anywhere,
+this test would have failed loudly instead of shipping a wrong-looking sheet.
+
+**`ImageIndex.swift`:** all dispatch keys off `BoloKit`'s existing named constants (D63) — zero new
+numeric literals for image identity. Sprite space needed no probing at all: tank rows/headings,
+shell/explosion/builder frames, and crosshair/select are closed-form arithmetic on the index
+(`row = idx >> 4`, `col = idx & 0xF`, per D66), confirmed sparse exactly as the audit found —
+0x00-0x65, 0x70-0x75, 0x80-0x82, 0x90-0x91, 113 total, three gap runs left transparent.
+
+**`GlyphSource.swift`/`Canvas.swift` (D67):** no vendored font, no `CoreGraphics` in the testable
+library — raw RGBA pixel-buffer manipulation instead (fillRect/fillCircle/fillRing/a rotated-
+triangle point-in-polygon test for the tank chevron), which is a stricter reading of D67 than
+"procedural CoreGraphics" as pre-briefed: still procedural and font-free, just simpler and more
+directly unit-testable than standing up a `CGContext` inside `BoloGlyphsCore`. `CoreGraphics`/
+`ImageIO` are only used in the thin `BoloGlyphs` executable, for PNG encoding at the very end — the
+`GlyphSource` seam D67 asked for is the `GlyphRole` enum, unchanged by this refinement.
+
+**Verification:**
+- `swift build` clean.
+- `swift test`: **605 tests, +8, zero failures** (was 597, verified directly in the pre-brief, not
+  taken from `docs/PLAN.md`). `swift test` runs `DifferentialTests` and `BoloKitTests` as separate
+  processes with separate summary lines (156 + 449 = 605) — worth a heads-up for whoever next
+  reports a "before/after" count from a single `swift test` invocation's tail output, since only
+  the last target's summary line is visible without grepping the full log.
+- Ran the CLI directly (`.build/debug/BoloGlyphs /tmp/glyphs_out`) and visually inspected both PNGs:
+  wall/road/river blobs show visibly different connectivity shapes per neighbor configuration, tank
+  chevrons rotate correctly across all 16 headings per row, destroyed-tank rows render distinctly
+  from alive ones, pill gauges/shell/explosion/builder frames/crosshair/select all present.
+- 8 new tests: per-family variant counts, full tile-range coverage with no gaps/overlaps, sentinel
+  (`-1`) never reachable from an in-bounds probe, sprite gap structure, cell-math round-trip, sheet
+  geometry (256×256, every used cell non-transparent, every sprite gap cell fully transparent), and
+  byte-for-byte determinism across two generations.
+- Generated sheets are not committed by this entry — `BoloGlyphs` is a build product, regenerable
+  on demand; 7.1 will decide how/whether to bundle a generated copy into the app target.
+
+**Files:** `Package.swift`; `Sources/BoloGlyphs/main.swift` (rewritten, was a one-line stub);
+`Sources/BoloGlyphsCore/{Autotile,Canvas,ImageIndex,GlyphSource,SheetBuilder}.swift` (new);
+`Tests/BoloKitTests/BoloGlyphsTests.swift` (new). Not touching `CLAUDE.md`/`docs/ADMIN.md`, both of
+which show local modifications from other concurrent sessions this entry doesn't own.
+
+> **→ Planner:** Wave 7.0 done, no open questions. One implementation refinement worth a look, not
+> a deviation needing a ruling: `GlyphSource`'s drawing mechanism ended up as raw pixel manipulation
+> rather than literal `CoreGraphics` calls, still satisfying D67's actual substance (no font,
+> procedural, `GlyphRole` seam intact) — flagging for the record since the pre-brief said
+> "CoreGraphics paths" specifically. Ready for 7.1 (Xcode app target) whenever GO'd.
+> **→ Parity:** first real post-commit audit of Wave 7 — this entry plus the file list above is
+> what to hand-trace. The probe's per-family counts (47/16/10/16/31/8/9) and the sprite gap
+> structure are the numbers most worth independently re-deriving against `Images.swift`/`Tiles.swift`
+> directly, same discipline as the pre-code audit.

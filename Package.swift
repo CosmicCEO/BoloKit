@@ -15,8 +15,9 @@ let package = Package(
             cSettings: [.unsafeFlags(["-ffp-contract=off"])]
         ),
         .target(name: "BoloNet", dependencies: ["BoloKit"]),
-        .executableTarget(name: "BoloGlyphs"),
-        .testTarget(name: "BoloKitTests", dependencies: ["BoloKit"]),
+        .target(name: "BoloGlyphsCore", dependencies: ["BoloKit"]),
+        .executableTarget(name: "BoloGlyphs", dependencies: ["BoloGlyphsCore"]),
+        .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore"]),
         .testTarget(
             name: "DifferentialTests",
             dependencies: ["BoloKit", "BoloNet", "CXBolo"]
