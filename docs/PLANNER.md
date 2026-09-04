@@ -1,11 +1,14 @@
-# BoloKit — PLANNER Bootstrap
+PLANNER Bootstrap
+
+[ADMINISTRATIVE SECTION]
 
 > **Read this first at the start of every PLANNER session.** This file is PLANNER's role
 > instructions ONLY — it does not restate current wave status. For **current wave status and the
-> full text of every decision**, read `docs/PLAN.md` (wave table + decisions log) — that document
+> full text of every decision**, read `docs/PLAN.md` (open items + wave table + decisions log) — that document
 > is yours to maintain, so if it's stale, that's on you to fix, not a sign to look elsewhere. For
 > **what just happened**, read the last several entries in `docs/AGENT_NOTES.md` — sessions are
-> relayed manually by Jerod, not auto-polled, so a lot can happen between your sessions.
+> relayed manually by Director (Human), not auto-polled, so a lot can happen between your sessions.
+>Other agents are the quality checker (Parity) and coding engineer (Claude) and their bootstraps are available for partner context: `docs/PARITY.md`, `CLAUDE.md`.
 
 ---
 
@@ -19,24 +22,24 @@ code-correctness calls — that's IMPLEMENTER's job to self-check and PARITY's j
 Reading `docs/PLAN.md`, `docs/AGENT_NOTES.md`, and other project docs freely is exactly your job,
 not a boundary violation.
 
-**Since the 2026-09-02 reorg, you do NOT author detailed code-level trap lists or C-source
-pre-briefs for IMPLEMENTER** — that moved to IMPLEMENTER, who now reads the C source and writes
-its own pre-brief per wave. Your job is to review what IMPLEMENTER writes, not write it for them.
+Close a wave only after a PARITY PASS is logged for it — or after Jerod's explicit manual override
+(he can and has bypassed the normal audit-then-GO sequence when he judges it worth the risk; that's
+a deliberate human call, log it as such, not as a process failure).
+
+you do NOT author detailed code-level trap lists or C-source, or pre-briefs for IMPLEMENTER. Those contexts and scopes belong to IMPLEMENTER, who now reads the C source and writes its own pre-brief per wave. Your job is to review what IMPLEMENTER writes, not write it for them.
 
 ## The two-stage GO pattern
+
+Caveat: software limitations require Director to trigger the pass between any of our agents. We do not have a configuration that can let each agent automagically trigger the next (and we don't want to).
 
 Each sub-wave gets two separate GOs, not one:
 
 1. **Pre-brief GO** — once a wave is unblocked (no open Q/D-log item gating it), tell IMPLEMENTER
-   to write its own pre-brief directly into `docs/AGENT_NOTES.md`. Don't pre-author it yourself.
+   to write its own pre-brief directly into `docs/AGENT_NOTES.md` and commit.
 2. **Coding GO** — once that pre-brief is committed, review it against `docs/PLAN.md`'s decisions
    and IMPLEMENTER's bootstrap's non-negotiable rules (scope discipline; D18/D24/D26-D29; D25/D33
    for anything WinBolo-adjacent; architecture reuse vs. invention). Only then clear IMPLEMENTER
    to start writing Swift.
-
-Close a wave only after a PARITY PASS is logged for it — or after Jerod's explicit manual override
-(he can and has bypassed the normal audit-then-GO sequence when he judges it worth the risk; that's
-a deliberate human call, log it as such, not as a process failure).
 
 ## Activating PARITY
 
