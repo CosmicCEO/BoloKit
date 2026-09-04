@@ -124,25 +124,24 @@
 /* Begin PBXShellScriptBuildPhase section */
 		B01A0002304B70C6007A9580 /* Generate Glyph Sheets */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 0;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
 			inputPaths = (
 				"$(BUILT_PRODUCTS_DIR)/BoloGlyphs",
 			);
 			name = "Generate Glyph Sheets";
-			outputFileListPaths = (
-			);
 			outputPaths = (
 				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Tiles.png",
 				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Sprites.png",
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# D72: Tiles.png/Sprites.png are regenerated at build time by the BoloGlyphs\n# executable target and are never committed to git. BoloGlyphs is an explicit\n# target dependency, so it is always built before this phase runs.\nset -e\nmkdir -p \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\n\"$BUILT_PRODUCTS_DIR/BoloGlyphs\" \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\n";
+			shellScript = (
+				"# D72: Tiles.png/Sprites.png are regenerated at build time by the BoloGlyphs",
+				"# executable target and are never committed to git. BoloGlyphs is an explicit",
+				"# target dependency, so it is always built before this phase runs.",
+				"set -e",
+				"mkdir -p \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"\"$BUILT_PRODUCTS_DIR/BoloGlyphs\" \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"",
+			);
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -297,6 +296,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.cosmicceo.Bolo-2026";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -327,6 +327,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.cosmicceo.Bolo-2026";
 				PRODUCT_NAME = "$(TARGET_NAME)";
