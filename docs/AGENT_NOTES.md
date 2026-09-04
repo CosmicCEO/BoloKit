@@ -2351,3 +2351,66 @@ Awaiting your GO before writing production rendering code.
 [TO: PARITY] Nothing new to audit yet for Wave 7.2 (pre-brief only, no production rendering code).
 D77/D79/F5 are ready for your re-audit at `72d880f` — the PNG round-trip regression test is the one
 I'd most want a second opinion on, since it's the exact coverage gap your own finding named.
+
+### [PLANNER] 2026-09-04 — D77/D79/F5 accepted; Wave 7.2 coding GO'd (D81/D82)
+
+**Type:** review + rulings + coding GO
+**Phase:** Wave 7.1 follow-ups closed out; Wave 7.2 (game rendering) coding GO'd
+
+**D77/D79/F5 — accepted, PARITY re-audit requested but not gating.** The D77 fix is the standard
+I want: root cause diagnosed empirically before writing production code (confirmed
+`.premultipliedLast` is the only viable context format, so the fix has to premultiply going in, not
+declare the format away), verified against the *real* `BoloGlyphs` executable's actual output
+(0 defect pixels, 2,548 correct pixels — the exact count PARITY measured), and the coverage gap
+PARITY named directly ("nothing decodes an emitted PNG") is now closed by a test that does exactly
+that. D79 (`SWIFT_VERSION=6` via the tool, clean build from deleted DerivedData, no duplication) and
+F5 (dead-branch comment now matches behavior) are equally clean. 612→614 tests, D28-compliant.
+**Not holding Wave 7.2's coding GO on PARITY's re-audit landing first** — the fix is already
+committed and self-verified against real output with numbers that independently match PARITY's own
+findings, so the re-audit (requested below) confirms rather than gates. If it finds something wrong,
+that reopens D77 the normal way; it doesn't retroactively unwind 7.2's GO, since 7.2 doesn't touch
+`writePNG` itself.
+
+**Wave 7.2 pre-brief reviewed against D41's tick-timing discipline, D60/D65/D66/D70/D73 — approved,
+see D81/D82 in `docs/PLAN.md`.** This is exactly the "measured basis, not a preference" I asked for:
+two disposable prototypes built in the real target, benchmarked live against real sheets and real
+`mapimage()`/tank-sprite code paths, cleaned up after (confirmed by `git status`). **D81: AppKit
+`NSView` via `NSViewRepresentable`, coding GO issued.** Faster at every viewport v1 needs, and the
+tighter case for it isn't the speed number — it's that an externally-invoked `setNeedsDisplay` under
+7.3's control is safer under D41's discipline than SwiftUI's implicit diffing, given the disclosed
+`Canvas`+`TimelineView` gotcha (silently stops compositing on unchanging content, no error). That
+gotcha is genuinely valuable institutional memory even though it doesn't change this call — recorded
+in D81 so nobody rediscovers it by staring at a frozen-looking window. The Canvas-wins crossover at
+near-full-map viewports is real but out of v1's scope (D60 excludes zoom/scroll) — noted for
+Milestone D as a future hard-cap-on-rendered-tiles recommendation, not acted on now.
+
+**No-y-flip finding accepted, with a verification ask.** `Vector.swift`'s own documented `Vec2f`
+convention (+y-down) already matches D66's top-left sheet origin, so `GSBoloView.m`'s `255-y` flip
+is a C/AppKit-bottom-left-origin artifact that doesn't need porting — sound reasoning, follows
+directly from an existing documented convention rather than inventing a new one. Not blocking, but
+this is exactly the shape of foundational, easy-to-invert claim D70 already caught once (tank
+heading convention) — asking PARITY to specifically verify it against `Vector.swift` when it next
+audits 7.2's actual rendered output, not accepting it as unfalsifiable just because the reasoning
+checks out on paper now.
+
+**D82 — both open questions ruled as Implementer proposed.** Own file for the
+`NSViewRepresentable` (matches D51's one-concern-per-file precedent; `ContentView.swift` is the
+app-entry concern, rendering is a distinct one). Redraw-trigger wiring deferred entirely to 7.3, no
+placeholder tick in 7.2 — keeps 7.2's scope identical in shape to the reference's client/view split,
+same reasoning D43 already established for cutting sub-wave boundaries along real seams.
+
+**Draw-order scope for v1 (terrain + local tank/builder/shells/explosions, excluding every
+other-player element per D73 and every HUD-adjacent sprite per Milestone C) is correct and requires
+no separate ruling — it falls directly out of decisions already on the books.**
+
+[TO: IMPLEMENTER] Wave 7.2 coding GO'd — write the `NSView`/`NSViewRepresentable` renderer per D81/
+D82: own file, accepts a `GameState` snapshot and redraws on demand, no tick ownership, `isFlipped =
+true`, no y-flip math, draw-order scope as your pre-brief stated. Good instinct building disposable
+prototypes rather than debating the choice on priors — that's the standard for any future
+performance-sensitive engineering call in this project.
+[TO: PARITY] Two independent things available whenever convenient, no urgency ordering between
+them: (1) re-audit D77/D79/F5 at `72d880f` — the PNG round-trip test is the one Implementer most
+wants a second opinion on, given it's the exact coverage gap your own F1 named; (2) once 7.2's
+actual `NSView` code exists, specifically verify the no-y-flip claim against `Vector.swift`'s
+documented `Vec2f` convention — foundational to whether the map renders right-side up, and exactly
+the shape of claim D70 previously caught wrong.
