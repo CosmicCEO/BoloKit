@@ -909,3 +909,60 @@ but confirm or counter-propose in your own pre-brief rather than treating this a
 execute the git-history rewrite (Q18) without raising it to PLANNER/Jerod first, even if it comes
 up naturally while scoping the asset purge.
 [TO: PARITY] No action yet — nothing coded this entry.
+
+### [PLANNER] 2026-09-04 — Wave 7 re-scoped to a v1 vertical slice (D60), coding GO'd for 7.0-7.3
+
+**Type:** planning — scope revision + coding GO
+**Phase:** Wave 7.0-7.3 (v1 vertical slice)
+**Blocks:** nothing — Milestones B/C/D deliberately NOT GO'd, sequenced later
+
+Jerod flagged the prior GO as too large a step with no clear ship path. Correct call — sized the
+reference Cocoa UI directly before doing anything else: `Reference/c/Mac OS X/GSXBoloController.m`
+is 4,037 lines (IBOutlets for host/join panels, 48 status image views, key remapping, toolbar,
+allegiance/messages panels, tracker table), `GSBoloView.m` (the actual draw loop) is 600 lines,
+~5,700 lines total across the UI layer — and this project has no Xcode app target yet at all
+(SPM-only since Phase 0, by original design, deferred to "when there's UI to show"). Also checked
+`images.h` directly: 297 image indices, confirming the original single-256×256-sheet Phase 2 plan
+still fits. One piece of good news found while sizing this: `TCPSession.swift`/`HostSession.swift`
+already expose `onPlayerStatusChanged`/`onPillStatusChanged`/`onBaseStatusChanged`/
+`onTankStatusChanged` — the exact hook points the reference `setplayerstatus`/`setpillstatus`/
+`setbasestatus`/`settankstatus` C callbacks map onto — as a byproduct of Wave 6's networking work,
+already built and tested. Milestone C's HUD wiring won't be starting from nothing.
+
+Presented Jerod three staged options plus "show me the full breakdown first"; he picked the
+smallest — **a playable vertical slice as v1**, no menus, no networking UI, no HUD. **Ruled as
+D60.**
+
+**Wave 7 re-scoped and split into 7.0-7.3, all coding GO'd now** (not just pre-brief — the split
+itself, informed by direct research against `Reference/c/`, stands in for the normal pre-brief
+step here; IMPLEMENTER should still confirm each sub-wave's detailed approach, especially 7.2's
+rendering-mechanism choice, before coding it):
+
+- **7.0** — asset pipeline (Phase 2 proper): `BoloGlyphs` parses `images.h`, renders the tile/
+  sprite sheet(s), 16 tank headings as one rotated glyph, OFL-font geometric glyphs. Sound
+  explicitly deferred past v1.
+- **7.1** — Xcode app target: the app bundle/window/entitlements skeleton that doesn't exist yet.
+  Blocks 7.2/7.3 — nothing else can run as an app without it.
+- **7.2** — game rendering: the `GSBoloView`-equivalent draw loop, consuming 7.0's assets against
+  a live `GameState`. **Rendering mechanism (SwiftUI Canvas/TimelineView vs. an AppKit
+  `NSView`/`CALayer` wrapped via `NSViewRepresentable`) is left to IMPLEMENTER to prototype and
+  propose** — not a call to make blind from this side; PLANNER reviews whichever the pre-brief
+  proposes against D41's tick-timing discipline before that sub-wave's own coding proceeds.
+- **7.3** — input + tick loop: keyboard → real `BoloKit` tick loop → 7.2's render. Single-process,
+  no networking. This is what actually makes v1 "playable."
+
+**Milestones B (multiplayer UI), C (full HUD/prefs/chat/sound), D (polish + ship prep, including**
+**Q18's git-history rewrite no later than this point) are identified but deliberately NOT GO'd** —
+sequenced as their own future waves once 7.0-7.3 land and PARITY-pass, not bundled into this GO.
+
+**Docs updated (committed alongside this entry):**
+- `docs/PLAN.md` — D60 added; Wave 7's row rewritten to describe the v1-slice scoping; four new
+  sub-wave rows (7.0-7.3) added with individual scope and status.
+
+[TO: IMPLEMENTER] Wave 7.0-7.3 are coding GO'd — the v1 vertical slice only. Read
+`Reference/c/Mac OS X/` (GSXBoloController.m, GSBoloView.m) and `images.h` directly rather than
+re-deriving what's already confirmed above. Write a pre-brief per sub-wave as usual, but 7.2 in
+particular needs your own rendering-mechanism recommendation before PLANNER reviews it — don't
+treat SwiftUI-vs-AppKit as pre-decided. Do not scope or start Milestones B/C/D without a fresh GO.
+Do not execute Q18's git-history rewrite without raising it to PLANNER/Jerod first.
+[TO: PARITY] No action yet — nothing coded this entry.
