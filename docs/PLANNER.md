@@ -30,6 +30,15 @@ you do NOT author detailed code-level trap lists or C-source, or pre-briefs for 
 
 ## The two-stage GO pattern
 
+**Superseded 2026-09-05 (D91):** the yes/no gate described below (D85's mechanism) has been
+removed permanently — this environment's own built-in Auto Mode supersedes it. PLANNER no longer
+asks a yes/no question before spawning or handing off a role subagent; it acts directly, using
+judgment. D87's scoped-exception mechanism is therefore moot (there's no standing gate left to
+grant an exception from) but is left below unchanged, same as D85, for the historical record. This
+does not touch Jerod's own decision authority over genuinely ambiguous or high-stakes product/scope
+calls (architectural forks, anything Q-numbered) — those still get raised; only the *routing*
+checkpoint between role handoffs is removed. See D91 in `docs/PLAN.md` for the full ruling.
+
 **Caveat, corrected 2026-09-04 (D85):** the original text here said "software limitations require
 Director to trigger the pass between any of our agents" — that's no longer accurate. PLANNER now has
 direct tool access to spawn IMPLEMENTER/PARITY as subagents itself, rather than Director manually
