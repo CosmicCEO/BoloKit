@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B01A0001304B70C6007A9580 /* BoloKit in Frameworks */ = {isa = PBXBuildFile; productRef = B01A0010304B70C6007A9580 /* BoloKit */; };
+		B01A0004304B70C6007A9580 /* BoloNet in Frameworks */ = {isa = PBXBuildFile; productRef = B01A0012304B70C6007A9580 /* BoloNet */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				B01A0001304B70C6007A9580 /* BoloKit in Frameworks */,
+				B01A0004304B70C6007A9580 /* BoloNet in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -71,6 +73,7 @@
 			name = "Bolo 2026";
 			packageProductDependencies = (
 				B01A0010304B70C6007A9580 /* BoloKit */,
+				B01A0012304B70C6007A9580 /* BoloNet */,
 			);
 			productName = "Bolo 2026";
 			productReference = 6288C26E304B70C6007A9580 /* Bolo 2026.app */;
@@ -288,6 +291,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -319,6 +324,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -377,6 +384,10 @@
 		B01A0011304B70C6007A9580 /* BoloGlyphs */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BoloGlyphs;
+		};
+		B01A0012304B70C6007A9580 /* BoloNet */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BoloNet;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

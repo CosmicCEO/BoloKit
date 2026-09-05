@@ -7,9 +7,10 @@ let package = Package(
         .macOS(.v26)
     ],
     products: [
-        // Consumed by the `Bolo 2026` app target (Wave 7.1). `BoloNet` is deliberately not
-        // exported — the v1 slice is single-process (D73); revisit at Milestone B.
+        // Consumed by the `Bolo 2026` app target (Wave 7.1).
         .library(name: "BoloKit", targets: ["BoloKit"]),
+        // Host/Join panels, Milestone B (D93/B.0) — exported now that the app target needs it.
+        .library(name: "BoloNet", targets: ["BoloNet"]),
         // Build-time sheet generator, invoked from the app's Run Script phase (D72).
         .executable(name: "BoloGlyphs", targets: ["BoloGlyphs"]),
     ],
