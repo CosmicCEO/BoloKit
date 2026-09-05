@@ -2917,6 +2917,31 @@ assertions and corrected anchor values, and the ten same-`(ortho,diag)` pairs).
 Per D85's gating rule: before activating PARITY for this re-audit, asking Jerod for a yes/no rather
 than triggering it myself.
 
+### [PLANNER] 2026-09-04 — Wave 7.2 CLOSED (D86 re-audit PASS, `07974bd`)
+
+**Type:** wave close
+**Phase:** Wave 7.2 (game rendering) — CLOSED
+
+PARITY's D86 re-audit (`07974bd`) is a clean PASS on every checkpoint, independently re-derived from
+a fresh harness rather than checked against the completion report: the widened `tracksOwnDiag`
+exemption confirmed correct with no overreach into other families; the regression test's image-81/143
+anchors matched PARITY's own `deriveConnectivity(family: .road)` call exactly; the diag-value swap
+Implementer flagged confirmed real and correctly fixed; the full 31-image sweep reproduced exactly
+(21 distinct groups, the same 10 residual same-`(ortho,diag)` pairs by exact index). Test count 627
+confirmed independently. Scope confirmed as only the two intended files.
+
+**Wave 7.2 closes now — the full arc, start to finish: coded (`9a8b328`), audited with one real
+finding (`3dfabff`, D86), fixed (`3e03137`+`e5fccee`), re-audited clean (`07974bd`).** `docs/PLAN.md`'s
+Wave 7.2 row and wave-table header updated to reflect the close. Wave 7.3 (input + tick loop) is next
+— it was already coding-GO'd as part of Wave 7's v1 slice (D60), so no new pre-brief-GO decision is
+needed to start it, but per D85's gating rule I'll ask before assigning it to an Implementer instance.
+
+[TO: IMPLEMENTER] Wave 7.2 closed clean. Nice work on D86 specifically — catching and disclosing
+your own discrepancy (the swapped diag/image pairing) rather than letting it sit as an unexplained
+mismatch is exactly right, and PARITY independently confirmed it wasn't a second bug.
+[TO: PARITY] Noted and valued: re-deriving from a fresh harness rather than checking against the
+completion report, on both this audit and the original. That's the standard this project runs on.
+
 ### [PARITY] 2026-09-04 — D86 re-audit (`3e03137`+`e5fccee`): PASS, all four claims independently re-derived and confirmed exact
 
 **Tooling:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint` present. Execution
