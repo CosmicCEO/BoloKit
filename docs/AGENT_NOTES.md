@@ -910,3 +910,112 @@ than applying that reasoning as a blanket excuse everywhere.
 > level (`AppRootView`'s two closures wire to both enum cases, no dead case); (3) whether you want
 > to attempt `RenderPreview` yourself given a possibly-different runtime state, or accept the
 > compile/link-level verification as sufficient for a pure-layout sub-wave like this one.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.2 pre-brief: host panel
+
+**Type:** pre-brief (no production code yet), started in parallel with PARITY's B.1 audit per
+Planner's go-ahead — coding GO gated on B.1's clean PASS, same sequencing as every prior sub-wave.
+
+**Phase:** Milestone B, sub-wave B.2 — proposed split names it "host panel, local-only path (map
+picker, host settings form bound to already-modeled `DominationType`, wired to `HostSession`)."
+Read the reference's actual host-panel outlets (`GSXBoloController.h`) and every relevant
+`Sources/BoloNet/` file's real public surface (`HostListener.swift`, `HostDgramListener.swift`,
+`HostSession.swift`) rather than assuming "wired to `HostSession`" names a small task.
+
+## 1. The scope question this pre-brief exists to raise
+
+**"Local-only path" and "wired to `HostSession`" don't obviously agree, and the disagreement is
+sizable, not cosmetic.** Traced what actually exists:
+
+- `HostListener` (`HostListener.swift:279`): a real, tested `NWListener`-backed TCP accept loop —
+  `async throws init(port:)`, exposes `connections: AsyncStream<NWConnection>` for a caller to
+  drain one at a time (`JoinAcceptSerializer` — T-11's serialization).
+- `HostDgramListener` (`HostDgramListener.swift:40`): the UDP-side equivalent, exposing an
+  `AsyncStream<(bytes:, connection:)>`.
+- `HostSessionTable` (`HostSession.swift:106`): an `actor` holding per-player `Slot`s (TCP/UDP
+  connections, `seq`, `lastUpdate`) — real, tested, substantial (D52's cancel-and-replace
+  semantics, T-1's `seq`-reset timing).
+- `processJoinAttempt`/`runJoinHandshake` (`HostListener.swift:186-230`): the real join-handshake
+  logic — receive a `JoinPreamble`, call `evaluateJoinRequest`, accept/reject, `applyJoin`,
+  register the connection in the table.
+- `receiveAndDispatchOneHostMessage`/`CLDispatchCallbacks` (`HostSession.swift:360-413`): per-
+  message dispatch once a player is connected.
+
+**None of these are wired to each other yet.** There is no existing top-level driver anywhere in
+this codebase that (a) starts a `HostListener`+`HostDgramListener` pair, (b) drains their
+connection streams and calls `processJoinAttempt`, (c) runs the 50 Hz tick loop
+(`GameSession`'s own shape, Wave 7.3) *concurrently* with draining inbound messages and
+broadcasting `CLUpdate`s back out over every connected `HostSessionTable` slot, and (d) does all
+of this while respecting `state: inout GameState`'s single-writer discipline under real
+concurrent async I/O (a materially harder version of the exclusivity problem D88 §4 already
+surfaced once for a purely synchronous, single-player case). **This is a genuine, substantial,
+previously-undesigned unit of engineering — the same shape of hidden scope that split Wave 5.5a
+out of 5.2b (D22) and split Wave 7 into a v1 slice plus three deferred milestones (D60) — not a
+"wire a form to an existing call" task**, even though every primitive it would need already
+exists and is tested.
+
+**Proposing the narrower reading of "local-only path" as B.2's actual scope**, and flagging the
+host-network-engine work as real, currently-unnamed scope that needs its own sub-wave (not yet in
+the B.0-B.4 list) rather than silently ballooning B.2 to contain it:
+
+- **B.2 (this pre-brief, proposed):** the host settings *form* + map picker, ending in a real,
+  playable **single-process** game — reusing Wave 7.3's own `GameSession` machinery (the same
+  thing the B.1 "Play Demo" button already does), just seeded from a real loaded `.map` file and
+  the form's settings instead of the hardcoded demo terrain. **No `HostListener`/
+  `HostDgramListener`/`HostSessionTable` call anywhere.** No other player can ever actually join
+  in this sub-wave's shipped state — "local-only" taken at its most literal.
+- **A new, not-yet-named sub-wave (B.2b? B.5? — naming is Planner's call):** the real host-network
+  engine described above — accept loop, join handshake wiring, concurrent tick+relay orchestration.
+  This is where `HostSession`'s actual primitives get used for the first time.
+
+**→ Planner: which reading is right?** I can't tell from the proposed split's text alone whether
+"wired to `HostSession`" meant the full engine (in which case B.2 needs to be split further, right
+now, before coding starts) or was loose phrasing for "the settings model `HostSession`/`GameState`
+already share" (in which case the local-only reading above is exactly right and no further split
+is needed). Recommending the local-only reading and a new sub-wave for the engine — this keeps
+B.2 sized like B.0/B.1 (UI wiring against already-solid primitives) rather than silently becoming
+the largest, riskiest sub-wave in the whole milestone with no pre-brief of its own.
+
+## 2. B.2's proposed scope, under the local-only reading
+
+- **Map picker:** `NSOpenPanel` restricted to `.map`/BMAP files (matching the reference's own
+  `hostChoose:`, `GSXBoloController.m:762-782` — `types:[..., @"map", NSFileTypeForHFSTypeCode('BMAP')...]`).
+  Read the chosen file's bytes, decode via `decodeBMap(_:into:)` (`BMap.swift:530`, already built
+  and tested since Wave 6.4a) into a fresh `GameState`. On decode failure, surface an error
+  matching the reference's own two failure messages (`GSXBoloController.m:1028`/`:1036` — "Unable
+  to Open Map File" / "Incompatible Map Version") rather than a generic failure.
+- **Host settings form**, bound to fields `GameState` already models 1:1 with the reference's
+  outlets (`GSXBoloController.h:28-45`): time limit (`hostTimeLimitSwitch`/`Slider`/`Field` →
+  `GameState.timeLimit`), hidden mines (`hostHiddenMinesSwitch`/`TextField` → `.hiddenMines`),
+  password (`hostPasswordSwitch`/`Field` → `.passwordRequired`/`.serverPassword`), domination type
+  (`hostDominationTypeMatrix`, 3 options → `DominationType.open`/`.tournament`/`.strict` — the
+  header's own comment confirms domination is the *only* supported game type, so no
+  `hostGameTypeMenu` branching needed), domination base-control threshold
+  (`hostDominationBaseControlSlider`/`Field` → `.baseControlThreshold`).
+- **Port field** (`hostPortField` → `GameState` has no port field — it's transport-level) —
+  proposing to include it in the form for visual/settings-model completeness (so this sub-wave's
+  UI doesn't need rework once the real engine sub-wave lands and actually needs a port), but it
+  has no live effect yet — no listener exists to bind it to. Will comment this plainly in the code
+  so it doesn't read as a bug.
+- **Tracker/UPnP switches — excluded**, per the existing proposed split (B.4's stated scope).
+- **On "Start Hosting":** build the initial `GameState` from the decoded map + form settings,
+  hand it to a `GameSession` exactly like `GameView`'s existing `makeSession()`, transition
+  `AppRootView`'s `screen` to `.playing`. **Does not remove the B.1 "Play Demo" button** — per
+  Planner's own ruling, that's whichever of B.2/B.3 lands *second* (B.2 is proposed to land
+  before B.3 in the existing B.0→B.4 order), so B.3 owns that removal, not this sub-wave.
+
+## 3. Verification plan
+
+No `BoloKit`/`BoloNet` behavior change under the local-only reading (`decodeBMap` and `GameSession`
+are both already-shipped, already-tested — this sub-wave only calls them from new UI). `swift
+test` should stay at 639. Real `xcodebuild` (three consecutive clean builds now — B.0, B.1, and
+the underlying build for B.1's `RenderPreview` attempt) attempted directly. For an actual map file
+to test the picker against: none exists in this repo (confirmed at Wave 7.3's pre-brief, still
+true), but `Tests/BoloKitTests/BMapDecodeTests.swift:14`'s private `encodeFullBMap` helper already
+produces valid BMAP bytes for exactly this format — will reuse the same encoding shape in a small
+scratch script (not committed) to write a real `.map` file to disk under this session's job tmp
+dir, verifying the picker end-to-end against real bytes rather than skipping that check.
+
+No open question beyond §1's scope-split ask. Awaiting your ruling on that before a coding GO
+would stand — everything else in this pre-brief follows mechanically from whichever reading you
+confirm.
