@@ -409,23 +409,14 @@ private func flush(_ pending: [PendingBroadcast], table: HostSessionTable) async
     }
 }
 
-/// Reads one full `CL*` opcode message off `connection`, decodes it, and
-/// dispatches it to the matching `recvCl*` function (Wave 6.6) -- or, for
-/// the two opcodes with no such function (`CLHangUp`/`CLSendMesg`, per
-/// `RecvCL.swift`'s own header), the matching direct handling. Returns
-/// the opcode that was dispatched; the caller (`HostListener`'s per-player
-/// receive loop) treats `.hangUp` as T-13's "normal exit" signal.
-///
-/// `player` is this connection's own slot index -- the sender's identity
-/// for every opcode except `CLHitTank`, whose wire struct carries an
-/// explicit, semantically different `player` field (the tank being hit,
-/// not the sender -- `RecvCL.swift`'s own doc comment on
-/// `recvClHitTank`), used instead.
-@discardableResult
-public func receiveAndDispatchOneHostMessage(
-    connection: NWConnection, player: Int, state: inout GameState, table: HostSessionTable,
-    callbacks: CLDispatchCallbacks = CLDispatchCallbacks()
-) async throws -> ClientOpcode {
+/// I/O-only half of `receiveAndDispatchOneHostMessage` (B.5c, D96): reads exactly one `CL*`
+/// opcode's wire bytes off `connection` and returns them undecoded -- no `state` access, matching
+/// the merged-event-stream architecture's producer-task discipline (`HostGameEngine.swift`'s own
+/// header). Every opcode's wire size is static per-opcode (confirmed by reading every case below
+/// before splitting this out -- none of them need a decoded value to know how many more bytes to
+/// read), except `.sendMesg`'s null-terminated variable-length text, itself still a pure protocol
+/// read with no `state` dependency either.
+public func receiveOneHostMessageBytes(from connection: NWConnection) async throws -> (opcode: ClientOpcode, bytes: [UInt8]) {
     let opcodeByte = try await receiveOneByte(from: connection)
     guard let opcode = ClientOpcode(rawValue: opcodeByte) else {
         throw HostSessionError.malformedMessage
@@ -436,14 +427,8 @@ public func receiveAndDispatchOneHostMessage(
         [opcodeByte] + (try await receiveExactly(wireSize - 1, from: connection))
     }
 
-    var pending: [PendingBroadcast] = []
-
     switch opcode {
-    case .hangUp:
-        _ = try await rest(CLHangUp.wireSize)
-        // No `recvCl*` call -- `kHangupClientMessage` is a pure "normal
-        // exit" signal (`RecvCL.swift`'s header, `server.c:1068-1069`).
-
+    case .hangUp: return (opcode, try await rest(CLHangUp.wireSize))
     case .sendMesg:
         let fixed = try await rest(CLSendMesg.wireSize)
         var textBytes: [UInt8] = []
@@ -452,21 +437,66 @@ public func receiveAndDispatchOneHostMessage(
             if b == 0 { break }
             textBytes.append(b)
         }
-        guard let msg = CLSendMesg.decode(fixed + textBytes + [0]) else { throw HostSessionError.malformedMessage }
+        return (opcode, fixed + textBytes + [0])
+    case .dropBoat: return (opcode, try await rest(CLDropBoat.wireSize))
+    case .dropPills: return (opcode, try await rest(CLDropPills.wireSize))
+    case .dropMine: return (opcode, try await rest(CLDropMine.wireSize))
+    case .touch: return (opcode, try await rest(CLTouch.wireSize))
+    case .grabTile: return (opcode, try await rest(CLGrabTile.wireSize))
+    case .grabTrees: return (opcode, try await rest(CLGrabTrees.wireSize))
+    case .buildRoad: return (opcode, try await rest(CLBuildRoad.wireSize))
+    case .buildWall: return (opcode, try await rest(CLBuildWall.wireSize))
+    case .buildBoat: return (opcode, try await rest(CLBuildBoat.wireSize))
+    case .buildPill: return (opcode, try await rest(CLBuildPill.wireSize))
+    case .repairPill: return (opcode, try await rest(CLRepairPill.wireSize))
+    case .placeMine: return (opcode, try await rest(CLPlaceMine.wireSize))
+    case .damage: return (opcode, try await rest(CLDamage.wireSize))
+    case .smallBoom: return (opcode, try await rest(CLSmallBoom.wireSize))
+    case .superBoom: return (opcode, try await rest(CLSuperBoom.wireSize))
+    case .refuel: return (opcode, try await rest(CLRefuel.wireSize))
+    case .hitTank: return (opcode, try await rest(CLHitTank.wireSize))
+    case .setAlliance: return (opcode, try await rest(CLSetAlliance.wireSize))
+    }
+}
+
+/// Pure half of `receiveAndDispatchOneHostMessage` (B.5c, D96): decodes `bytes` (already read by
+/// `receiveOneHostMessageBytes`) and dispatches to the matching `recvCl*` function (Wave 6.6) --
+/// or, for the two opcodes with no such function (`CLHangUp`/`CLSendMesg`, per `RecvCL.swift`'s
+/// own header), the matching direct handling. No connection I/O -- only `await`s at the very end,
+/// into `table`'s actor-isolated broadcast primitives, matching `HostGameEngine.tick()`'s own
+/// "queue synchronously, flush after" shape for the identical reason (a `recvCl*` callback can't
+/// itself `await` while holding `state: &state`).
+///
+/// `player` is this connection's own slot index -- the sender's identity for every opcode except
+/// `CLHitTank`, whose wire struct carries an explicit, semantically different `player` field (the
+/// tank being hit, not the sender -- `RecvCL.swift`'s own doc comment on `recvClHitTank`), used
+/// instead.
+public func dispatchHostMessage(
+    opcode: ClientOpcode, bytes: [UInt8], player: Int, state: inout GameState, table: HostSessionTable,
+    callbacks: CLDispatchCallbacks = CLDispatchCallbacks()
+) async throws {
+    var pending: [PendingBroadcast] = []
+
+    switch opcode {
+    case .hangUp:
+        break
+        // No `recvCl*` call -- `kHangupClientMessage` is a pure "normal
+        // exit" signal (`RecvCL.swift`'s header, `server.c:1068-1069`).
+
+    case .sendMesg:
+        guard let msg = CLSendMesg.decode(bytes) else { throw HostSessionError.malformedMessage }
         // Pure masked relay (`sendsrsendmesg`, `server.c:3147-3173`) -- no
         // `GameState` effect, no `recvCl*` function (Wave 6.2/6.6's own
         // prior finding, restated in `RecvCL.swift`'s header).
         pending.append(.mask(UInt16(bitPattern: msg.mask), SRSendMesg(player: UInt8(player), to: msg.to, text: msg.text).encode()))
 
     case .dropBoat:
-        let bytes = try await rest(CLDropBoat.wireSize)
         guard let msg = CLDropBoat.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClDropBoat(x: Int(msg.x), y: Int(msg.y), state: &state, onShouldBroadcastDropBoat: { x, y in
             pending.append(.all(SRDropBoat(x: UInt8(x), y: UInt8(y)).encode()))
         })
 
     case .dropPills:
-        let bytes = try await rest(CLDropPills.wireSize)
         guard let msg = CLDropPills.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClDropPills(
             player: player, x: msg.x, y: msg.y, pills: msg.pills, state: &state,
@@ -476,7 +506,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .dropMine:
-        let bytes = try await rest(CLDropMine.wireSize)
         guard let msg = CLDropMine.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClDropMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -489,7 +518,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .touch:
-        let bytes = try await rest(CLTouch.wireSize)
         guard let msg = CLTouch.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClTouch(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -501,7 +529,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .grabTile:
-        let bytes = try await rest(CLGrabTile.wireSize)
         guard let msg = CLGrabTile.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClGrabTile(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -522,7 +549,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .grabTrees:
-        let bytes = try await rest(CLGrabTrees.wireSize)
         guard let msg = CLGrabTrees.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClGrabTrees(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -543,7 +569,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .buildRoad:
-        let bytes = try await rest(CLBuildRoad.wireSize)
         guard let msg = CLBuildRoad.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClBuildRoad(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
@@ -564,7 +589,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .buildWall:
-        let bytes = try await rest(CLBuildWall.wireSize)
         guard let msg = CLBuildWall.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClBuildWall(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
@@ -585,7 +609,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .buildBoat:
-        let bytes = try await rest(CLBuildBoat.wireSize)
         guard let msg = CLBuildBoat.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClBuildBoat(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
@@ -606,7 +629,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .buildPill:
-        let bytes = try await rest(CLBuildPill.wireSize)
         guard let msg = CLBuildPill.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClBuildPill(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), pill: Int(msg.pill), state: &state,
@@ -627,7 +649,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .repairPill:
-        let bytes = try await rest(CLRepairPill.wireSize)
         guard let msg = CLRepairPill.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClRepairPill(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
@@ -648,7 +669,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .placeMine:
-        let bytes = try await rest(CLPlaceMine.wireSize)
         // `msg.mines` is decoded but never forwarded -- `recvClPlaceMine`
         // takes no such parameter, matching the C exactly (`RecvCL.swift`'s
         // own doc comment: "costs no trees, always acks 0").
@@ -672,7 +692,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .damage:
-        let bytes = try await rest(CLDamage.wireSize)
         guard let msg = CLDamage.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClDamage(
             player: player, x: Int(msg.x), y: Int(msg.y), boat: msg.boat != 0, state: &state,
@@ -687,7 +706,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .smallBoom:
-        let bytes = try await rest(CLSmallBoom.wireSize)
         guard let msg = CLSmallBoom.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClSmallBoom(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -699,7 +717,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .superBoom:
-        let bytes = try await rest(CLSuperBoom.wireSize)
         guard let msg = CLSuperBoom.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClSuperBoom(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -711,7 +728,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .refuel:
-        let bytes = try await rest(CLRefuel.wireSize)
         guard let msg = CLRefuel.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClRefuel(
             player: player, base: Int(msg.base), armour: msg.armour, shells: msg.shells, mines: msg.mines, state: &state,
@@ -721,7 +737,6 @@ public func receiveAndDispatchOneHostMessage(
         )
 
     case .hitTank:
-        let bytes = try await rest(CLHitTank.wireSize)
         guard let msg = CLHitTank.decode(bytes) else { throw HostSessionError.malformedMessage }
         // `msg.player` -- the tank being hit -- not this connection's own
         // `player` (`RecvCL.swift`'s doc comment on `recvClHitTank`).
@@ -730,7 +745,6 @@ public func receiveAndDispatchOneHostMessage(
         })
 
     case .setAlliance:
-        let bytes = try await rest(CLSetAlliance.wireSize)
         guard let msg = CLSetAlliance.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClSetAlliance(player: player, alliance: msg.alliance, state: &state, onShouldBroadcastAlliance: { p, alliance in
             pending.append(.allExcept(p, SRSetAlliance(player: UInt8(p), alliance: alliance).encode()))
@@ -738,5 +752,19 @@ public func receiveAndDispatchOneHostMessage(
     }
 
     await flush(pending, table: table)
+}
+
+/// Reads one full `CL*` opcode message off `connection`, decodes it, and dispatches it -- the
+/// original Wave 6.4b combined shape, now a thin wrapper over the I/O/pure split above (B.5c).
+/// Preserved so every existing caller (`HostSessionTests.swift`'s ~15 call sites) keeps working
+/// unchanged. Returns the opcode that was dispatched; the caller (`HostListener`'s per-player
+/// receive loop) treats `.hangUp` as T-13's "normal exit" signal.
+@discardableResult
+public func receiveAndDispatchOneHostMessage(
+    connection: NWConnection, player: Int, state: inout GameState, table: HostSessionTable,
+    callbacks: CLDispatchCallbacks = CLDispatchCallbacks()
+) async throws -> ClientOpcode {
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: connection)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: player, state: &state, table: table, callbacks: callbacks)
     return opcode
 }

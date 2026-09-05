@@ -11,24 +11,38 @@ import Network
 // inlined into that consumer's `.newConnection` case rather than run as its own independent Task
 // alongside the other two branches -- reusing the logic, not the concurrency shape.
 //
-// **Scope, per this sub-wave's own pre-brief (B.5c is the separate, harder half):** no TCP `CL*`
-// message dispatch here -- a joined player's subsequent messages still go unread until B.5c
-// lands, the same disclosed intermediate state B.5a already accepted. No app-target/UI wiring.
+// **B.5c (D96 extended, Planner-approved 2026-09-05, `1b85dab`):** TCP `CL*` message dispatch is
+// now wired -- a per-player producer `Task` is spawned dynamically from inside the consumer's own
+// `.newConnection` handling once `processJoinAttempt` returns `.accepted`, generalizing D96's
+// three-fixed-producers shape to "three fixed + N dynamic," approved with no reservation (producer
+// *count* was never load-bearing to D96's safety, only "exactly one consumer mutates `state`" is,
+// and that's unchanged -- every dynamic producer is still I/O-only, same as the three static ones).
+// The producer loops `receiveOneHostMessageBytes` (I/O-only half of the Wave-6.4b
+// `receiveAndDispatchOneHostMessage`, split out this sub-wave) and yields `.clMessage`/
+// `.clConnectionEnded` into the same merged stream until the connection ends. No app-target/UI
+// wiring still (that's Wave 7.2/7.3's own concern).
 //
-// **`runTick`'s environmental callbacks, wired to real `SR*` broadcasts where the mapping is a
-// confident 1:1 (7 of them) -- the rest are deliberately left as their default no-op, not
-// guessed at.** `onPause`/`onTimeLimitWarning`/`onBaseControlWarning`/`onCoolPill`/
-// `onReplenishBase`/`onGrow`/`onShouldBroadcastDropPill` all have an exact, already-built `SR*`
-// wire struct whose fields match the callback's own parameters verbatim (traced each one
-// against `ServerMessages.swift`, not assumed from the struct's name alone). `onMineExplosion`/
-// `onSuperboomTerrain`/`onDropPills`/`onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn`/
-// `onPlayerLagStatusChanged`/`onPlayerDisconnected` do **not** have an equally obvious mapping --
-// some may need no wire broadcast at all (e.g. `onSpawn`'s effect is already observable via the
-// next `CLUpdate`), some may need to reuse whatever broadcast the CL*-dispatch path already sends
-// for the player-triggered version of the same event, and at least one (`onPlayerDisconnected`)
-// likely needs to call the already-built `handlePlayerDisconnect` rather than a fresh `SR*`
-// struct. Left unwired rather than guessed -- flagged in this sub-wave's own completion report
-// for Planner's call on whether that's its own targeted follow-up or folds into B.5c.
+// **`runTick`'s environmental callbacks -- final disposition, all 16 now accounted for, not
+// guessed at:**
+// - **8 wired to real `SR*` broadcasts**, each traced against `ServerMessages.swift`'s actual
+//   field names, not assumed from the callback's own name: `onPause`/`onTimeLimitWarning`/
+//   `onBaseControlWarning`/`onCoolPill`/`onReplenishBase`/`onGrow`/`onShouldBroadcastDropPill`
+//   (B.5b) plus `onPlayerDisconnected` (B.5c, below).
+// - **5 confirmed correctly unwired, not merely undecided** (B.5c pre-brief, read every actual
+//   call site rather than guessing from names): `onExplosion`/`onSuperboom`/`onSmallboom`/
+//   `onSpawn` (`TankTick.swift:129,135,142,159`) only ever fire inside a block gated on `player ==
+//   state.localPlayer` -- the local player's own death/respawn animation, mirroring how a real
+//   distributed client animates its own tank's death independently with no wire message (other
+//   players learn the new position from the next `CLUpdate`, already broadcast). `onPlayerLagStatusChanged`
+//   (`RunTick.swift:203-211`) mirrors `client.c:437-447`'s `client.setplayerstatus` -- read
+//   directly, that's a local UI callback, never a network send in the reference either.
+// - **3 left unwired, a real pre-existing gap bigger than this sub-wave, split out to B.5d**
+//   (Planner-approved 2026-09-05, `1b85dab`): `onMineExplosion`/`onSuperboomTerrain`/`onDropPills`
+//   as `runTick`'s own top-level params. `MineChain.swift:43-51`'s own Wave 5.5a header already
+//   disclosed this needs threading a causer parameter through `TankLocalTick`/`ShellTick`/
+//   `BuilderTick`'s closure signatures, none of which currently have one -- a signature-changing
+//   refactor across already-shipped files, not a callback-wiring task. `CLDispatchCallbacks`'s
+//   own version of these three (`HostSession.swift:372`) has the identical gap today.
 //
 // Since `runTick`'s callbacks are synchronous (`(Int) -> Void`, not `async`) but broadcasting
 // requires `await`ing into the `HostSessionTable` actor, this queues encoded bytes during the
@@ -39,6 +53,12 @@ import Network
 enum HostEngineEvent {
     case newConnection(NWConnection)
     case dgramPacket([UInt8], NWConnection)
+    /// One fully-read (but undecoded) `CL*` message from an already-joined player's own dynamic
+    /// producer `Task` (B.5c).
+    case clMessage(player: Int, opcode: ClientOpcode, bytes: [UInt8])
+    /// The connection for an already-joined player ended abnormally (read error/EOF) rather than
+    /// via a clean `.hangUp` opcode -- T-13's "abnormal" disconnect path.
+    case clConnectionEnded(player: Int)
     case tick
 }
 
@@ -50,6 +70,11 @@ public final class HostGameEngine: @unchecked Sendable {
     private let dgramListener: HostDgramListener
     private var timer: DispatchSourceTimer?
     private var consumerTask: Task<Void, Never>?
+    /// Stored so `.newConnection`'s dynamic per-player producer `Task` (B.5c) can yield into the
+    /// same merged stream `start()` created -- the three static producers already close over it
+    /// as a local; a dynamically-spawned one, created later from inside `handle(_:)`, needs it as
+    /// an instance property instead.
+    private var continuation: AsyncStream<HostEngineEvent>.Continuation?
     /// Mirrors `client.players[client.player].seq` (`client.c:434`) -- the local player's own
     /// outgoing per-tick counter, incremented every tick regardless of pause/time-limit gating
     /// inside `runTick` itself. A different role from `HostSessionTable.seq`, which tracks what
@@ -72,6 +97,7 @@ public final class HostGameEngine: @unchecked Sendable {
         guard consumerTask == nil else { return }
 
         let (stream, continuation) = AsyncStream<HostEngineEvent>.makeStream()
+        self.continuation = continuation
 
         let source = DispatchSource.makeTimerSource(queue: .main)
         source.schedule(deadline: .now(), repeating: 1.0 / Double(ticksPerSec), leeway: .milliseconds(0))
@@ -108,6 +134,7 @@ public final class HostGameEngine: @unchecked Sendable {
         dgramListener.cancel()
         consumerTask?.cancel()
         consumerTask = nil
+        continuation = nil
     }
 
     /// The single consumer -- the only place in this type that ever mutates `state`.
@@ -116,13 +143,50 @@ public final class HostGameEngine: @unchecked Sendable {
         case .newConnection(let connection):
             // Inlined from `runHostAcceptLoop` (B.5a) -- same call, just made from inside this
             // engine's single consumer instead of its own independent Task.
-            _ = await processJoinAttempt(
+            let outcome = await processJoinAttempt(
                 connection: connection, serializer: listener.serializer, state: &state, table: table
             )
+            // B.5c: on a successful join, spawn this player's own dynamic producer `Task` --
+            // I/O-only (just `receiveOneHostMessageBytes`, never touches `state`), matching the
+            // three static producers' own discipline. Reads the same `connection`
+            // `processJoinAttempt` already registered into `table` for this player.
+            if case .accepted(let player, _) = outcome {
+                let continuation = self.continuation
+                Task {
+                    while true {
+                        do {
+                            let (opcode, bytes) = try await receiveOneHostMessageBytes(from: connection)
+                            continuation?.yield(.clMessage(player: player, opcode: opcode, bytes: bytes))
+                            if opcode == .hangUp { break }
+                        } catch {
+                            continuation?.yield(.clConnectionEnded(player: player))
+                            break
+                        }
+                    }
+                }
+            }
 
         case .dgramPacket(let bytes, let connection):
             // Already fully built (`HostDgramListener.swift`) -- decode, apply, relay in one call.
             await processDgramPacket(bytes: bytes, from: connection, state: &state, table: table)
+
+        case .clMessage(let player, let opcode, let bytes):
+            // A decode failure here means the bytes were framing-correct (the producer already
+            // read the right length for this opcode) but logically invalid -- treat it the same
+            // as a dead connection (abnormal disconnect) rather than silently ignoring a message
+            // and leaving the connection's read position potentially desynced.
+            do {
+                try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: player, state: &state, table: table)
+            } catch {
+                await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
+                return
+            }
+            if opcode == .hangUp {
+                await handlePlayerDisconnect(player: player, reason: .normal, state: &state, table: table)
+            }
+
+        case .clConnectionEnded(let player):
+            await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
 
         case .tick:
             await tick()
@@ -131,11 +195,19 @@ public final class HostGameEngine: @unchecked Sendable {
 
     private func tick() async {
         var pending: [[UInt8]] = []
+        // B.5c: `RunTick.swift`'s own step 4 already drops onboard pills (via `onShouldBroadcastDropPill`,
+        // already wired above) and sets `connected = false` for a lag-timed-out player BEFORE
+        // firing `onPlayerDisconnected` -- this callback's only remaining job is the network-side
+        // half `handlePlayerDisconnect` would otherwise do, NOT that function itself (calling it
+        // would re-run `removePlayer`'s own drop-pills logic a second time). Collected separately
+        // from `pending` since it needs `table.disconnect`, not just a broadcast.
+        var disconnectedPlayers: [Int] = []
         let ticksSinceLastUpdate = await table.allTicksSinceLastUpdate(currentTick: state.ticks)
 
         runTick(
             state: &state,
             ticksSinceLastUpdate: ticksSinceLastUpdate,
+            onPlayerDisconnected: { player in disconnectedPlayers.append(player) },
             onPause: { seconds in pending.append(SRPause(pause: UInt8(seconds)).encode()) },
             onTimeLimitWarning: { seconds in pending.append(SRTimeLimit(timeRemaining: UInt16(seconds)).encode()) },
             onBaseControlWarning: { seconds in pending.append(SRBaseControl(timeLeft: UInt16(seconds)).encode()) },
@@ -149,6 +221,13 @@ public final class HostGameEngine: @unchecked Sendable {
 
         for bytes in pending {
             await table.sendToAll(bytes)
+        }
+
+        for player in disconnectedPlayers {
+            // Mirrors `handlePlayerDisconnect`'s own `.abnormal` broadcast + table cleanup
+            // (`HostSession.swift:310,312`) -- NOT a call to that function itself, see above.
+            await table.sendToAllExcept(player, SRPlayerDisc(player: UInt8(player)).encode())
+            await table.disconnect(player)
         }
 
         // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,

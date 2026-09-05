@@ -456,3 +456,147 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
     let absent = await confirmNoCLUpdateArrives(peerClient)
     #expect(absent, "expected no further CLUpdate broadcast past the time-limit boundary (D99)")
 }
+
+// MARK: - B.5c -- the TCP `CL*` dispatch loop
+
+@Test func hostGameEngineDispatchesARealClMessageFromAJoinedPlayer() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Ally", pass: "").encode())
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+
+    // A real `CL*` message over the same connection the join used -- this is B.5c's own dynamic
+    // per-player producer `Task` reading it, not a fake/direct call into `dispatchHostMessage`.
+    try await sendDatagram(joinClient, CLSetAlliance(alliance: 0b0110).encode())
+    try await waitForCondition(timeout: 3) { engine.state.players[1].alliance == 0b0110 }
+    #expect(engine.state.players[1].alliance == 0b0110)
+}
+
+@Test func hostGameEngineDisconnectsAPlayerNormallyOnHangUp() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Leaver", pass: "").encode())
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+
+    try await sendDatagram(joinClient, CLHangUp().encode())
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) == false }
+    #expect(await engine.table.isConnected(1) == false)
+    // `engine.state` is read directly (not actor-isolated) from this test's own task while the
+    // consumer task may still be mutating it -- polling rather than a single-shot read after only
+    // waiting on the (actor-isolated) `table` signal, same convention the relay test above uses
+    // for its own `engine.state.players[0].tank` check.
+    try await waitForCondition(timeout: 2) { engine.state.players[1].connected == false }
+    #expect(engine.state.players[1].connected == false)
+}
+
+@Test func hostGameEngineDisconnectsAPlayerAbnormallyWhenConnectionCloses() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    try await sendDatagram(joinClient, JoinPreamble(name: "Dropper", pass: "").encode())
+    // `table.isConnected(1)` becomes true as soon as `processJoinAttempt` calls
+    // `table.setConnection` (`HostListener.swift:230`) -- BEFORE the preamble/map send that
+    // follows it, and BEFORE `.accepted` is returned and this engine's own dynamic producer
+    // `Task` is spawned. Waiting on it alone and then immediately cancelling races that in-flight
+    // send: found via this exact test flaking under load, root-caused with a standalone repro
+    // (`table.isConnected(1)==false` yet `state.players[1].used/connected` stuck `true` forever --
+    // a real, separately-reported slot-leak bug in `HostListener.swift`'s own `.malformedOrClosed`
+    // catch branch, pre-existing since Wave 6.3/B.5a, not part of B.5c). Waiting for a real
+    // dispatched `CL*` message's effect first proves the join fully completed and this engine's
+    // own producer is actually running, before testing THIS producer's own disconnect handling --
+    // not exercising the join handshake's unrelated failure path at all.
+    try await sendDatagram(joinClient, CLSetAlliance(alliance: 1).encode())
+    try await waitForCondition(timeout: 3) { engine.state.players[1].alliance == 1 }
+
+    // No `.hangUp` -- just closing the connection, matching a crashed/network-dropped client
+    // rather than a clean exit. Should hit `.clConnectionEnded` -> `.abnormal`, not `.normal`.
+    joinClient.cancel()
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) == false }
+    #expect(await engine.table.isConnected(1) == false)
+    // Poll rather than a single-shot read -- see the hang-up test above for why.
+    try await waitForCondition(timeout: 2) { engine.state.players[1].connected == false }
+    #expect(engine.state.players[1].connected == false)
+}
+
+/// `onPlayerDisconnected`'s own wiring (`HostGameEngine.tick()`) -- distinct from the two tests
+/// above, which exercise the dynamic per-connection producer's disconnect paths. This one exercises
+/// `RunTick.swift`'s own step-4 lag-timeout path instead: a player whose `HostSessionTable`
+/// `lastUpdate` has gone stale gets disconnected by the tick timer itself, no dgram/TCP activity
+/// (or lack thereof) from the test required beyond seeding the table. The `SRPlayerDisc` broadcast
+/// encoding itself is already covered by `HostSessionTests.swift`'s own `handlePlayerDisconnect`
+/// tests (this wiring calls the same two `table` primitives, not a new encoding) -- this test's
+/// job is only to confirm `onPlayerDisconnected` actually reaches `table.disconnect`.
+@Test func hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer() async throws {
+    let (engine, _, dgramPort) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].dead = false
+        // Comfortably past `RunTick.swift`'s own 9-second (450-tick) lag-disconnect threshold.
+        state.ticks = 1000
+    }
+    defer { engine.stop() }
+
+    // Unlike the other tests in this file, this one actually triggers a real broadcast
+    // (`SRPlayerDisc`, via `table.sendToAllExcept`) against a connection registered through
+    // `setConnection` -- confirmed by direct instrumentation that `NWConnection.send` never
+    // completes on a connection that never left `.setup` (same root cause as
+    // `JoinClientTests.swift`'s own `ConnectionWaiter` doc comment, `POSIXErrorCode(rawValue: 22)`
+    // territory), which the other tests never hit only because their own `pending` broadcast
+    // lists happen to stay empty. `.start()` here, unlike the sibling `fakeTCP`s elsewhere in this
+    // file.
+    let fakeTCP = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: dgramPort)!, using: .udp)
+    fakeTCP.start(queue: .main)
+    guard let fakeAddress = peerAddress(from: fakeTCP) else {
+        Issue.record("expected a real loopback address")
+        return
+    }
+    await engine.table.setConnection(fakeTCP, for: 0)
+    await engine.table.setConnection(fakeTCP, for: 1)
+    await engine.table.setDgramAddress(fakeAddress, for: 0)
+    await engine.table.setDgramAddress(fakeAddress, for: 1)
+    // Player 0 stays "current" (isolates the test to player 1's disconnect only) -- player 1's
+    // `lastUpdate` stays at its default `0`, so `ticksSinceLastUpdate[1] == 1000`.
+    await engine.table.setLastUpdate(1000, for: 0)
+
+    engine.start()
+
+    try await waitForCondition(timeout: 2) { await engine.table.isConnected(1) == false }
+    #expect(await engine.table.isConnected(1) == false)
+    // Poll rather than a single-shot read -- see `hostGameEngineDisconnectsAPlayerNormallyOnHangUp`
+    // for why (`engine.state` isn't actor-isolated, so a single-shot read right after only waiting
+    // on the actor-isolated `table` signal is a real, if narrow, visibility race, not a hang risk).
+    try await waitForCondition(timeout: 2) { engine.state.players[1].connected == false }
+    #expect(engine.state.players[1].connected == false)
+    #expect(await engine.table.isConnected(0), "player 0 should be unaffected -- only player 1 was seeded stale")
+}
