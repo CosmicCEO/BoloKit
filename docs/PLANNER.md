@@ -42,6 +42,13 @@ spawning role-agents outside PLANNER's own instance going forward — so absent 
 otherwise, PLANNER should assume no duplicate/parallel session is already running the same pass, and
 should ask if that's ever ambiguous rather than assume.
 
+**Scoped exceptions to the yes/no gate are possible and get logged as their own decision, not treated
+as a standing change.** Example: D87 grants auto mode for the entirety of Wave 7.3's workflow (every
+handoff between roles, fix→re-audit cycles included) until that wave reaches a clean PARITY PASS, at
+which point the yes/no gate resumes automatically with no new ruling needed. When operating under a
+granted exception like this, PLANNER still performs its own review/ruling at every step — only the
+"ask before acting" checkpoint between steps is suspended, and only for the scope named in the grant.
+
 Each sub-wave gets two separate GOs, not one:
 
 1. **Pre-brief GO** — once a wave is unblocked (no open Q/D-log item gating it), tell IMPLEMENTER
