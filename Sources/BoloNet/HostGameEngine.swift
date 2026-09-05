@@ -151,6 +151,27 @@ public final class HostGameEngine: @unchecked Sendable {
             await table.sendToAll(bytes)
         }
 
+        // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,
+        // `if (client.timelimitreached || client.basecontrolreached || client.pause)`) skips
+        // `seq++`/`sendclupdate()` entirely while paused or once time-limit is reached --
+        // `runTick` already gates its own gameplay simulation on pause (`RunTick.swift:76-84`)
+        // but this `localSeq`/broadcast section, being this port's first real caller with its own
+        // `seq`/cadence, never re-joined that gate. Pause and time-limit-reached are both safe to
+        // re-derive here (pause is already an explicit `GameState` field per D39; time-limit-reached
+        // is monotonic -- `ticks` only increases and `timeLimit` is static, so once reached it
+        // stays reached, matching C's one-way latch exactly). **Base-control-reached is
+        // deliberately NOT re-derived here** -- unlike time limit, `state.baseControlCounter` can
+        // reset to 0 (`RunTick.swift`'s domination-counter logic, the "left untouched vs. reset to
+        // 0" trap already documented there) if alliance/ownership changes after the threshold was
+        // first crossed, so `counter >= threshold` would un-freeze broadcasting the moment that
+        // happens -- but C's `client.basecontrolreached` is a one-way latch that, once set, never
+        // clears. Reproducing that correctly needs an actual latch field in `GameState`, not a
+        // one-line guard; flagged for Planner rather than guessed at silently.
+        let paused = state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0
+        let timeLimitReached = state.timeLimit > 0
+            && Int(state.ticks) >= Int(ticksPerSec) * state.timeLimit
+        guard !paused, !timeLimitReached else { return }
+
         // The host's own outbound `CLUpdate` (`assembleClUpdate`, `CLUpdateCodec.swift`) --
         // `client.players[client.player].seq++` happens every tick (`client.c:434`), but
         // `sendclupdate()` itself only fires `if (seq % 5 == 0)` (`client.c:485-487`), confirmed

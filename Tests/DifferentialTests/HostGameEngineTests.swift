@@ -276,3 +276,111 @@ private func receiveMatchingCLUpdate(
     #expect(engine.state.players[1].used)
     #expect(engine.state.players[1].connected)
 }
+
+// MARK: - D98 (PARITY finding) -- pause/time-limit gate on the host's own CLUpdate broadcast
+
+/// Proves *absence* of a broadcast within a window. **Not** `HostSessionTests.swift`'s own
+/// `confirmNoDatagramArrives` (D53) shape (`withTaskGroup` + `cancelAll()`) -- tried that first
+/// here and confirmed, via a standalone `swiftc` repro outside `swift test` entirely, that it
+/// genuinely hangs forever for a still-open, no-error connection: `withTaskGroup` implicitly
+/// awaits every child task before returning, `cancelAll()` only flips `Task.isCancelled` and
+/// doesn't touch the underlying `NWConnection.receiveMessage` callback, so the losing receive task
+/// never completes on its own. D53's version only ever appears to work because its TCP link setup
+/// already produces a real error near-instantly (confirmed: that test resolves in 0.016s, far
+/// under its own 300ms timeout, so its "timeout" branch is never actually the one that wins) --
+/// not a mechanism this test's healthy, still-connected UDP socket can rely on. Cancelling the
+/// connection explicitly after the timeout is what actually unblocks `receiveMessage`'s pending
+/// completion handler.
+private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanoseconds: UInt64 = 300_000_000) async -> Bool {
+    async let receiveResult: Bool = {
+        do {
+            _ = try await receiveOneDatagram(connection)
+            return false
+        } catch {
+            return true
+        }
+    }()
+    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+    connection.cancel()
+    return await receiveResult
+}
+
+@Test func hostGameEngineSuppressesItsOwnCLUpdateBroadcastWhilePaused() async throws {
+    let (engine, _, dgramPort) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[0].tank = Vec2f(x: 107, y: 108)
+        state.localPlayer = 0
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].dead = false
+        // Mirrors `client.pause` -- never counted down by `runTick` itself (its own doc comment),
+        // so this stays paused for the test's whole duration, unlike `serverPauseTicks`, which
+        // decrements every tick.
+        state.clientPauseDisplaySeconds = 5
+    }
+    defer { engine.stop() }
+
+    let fakeTCP = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: dgramPort)!, using: .udp)
+    guard let fakeAddress = peerAddress(from: fakeTCP) else {
+        Issue.record("expected a real loopback address")
+        return
+    }
+    await engine.table.setConnection(fakeTCP, for: 0)
+    await engine.table.setConnection(fakeTCP, for: 1)
+    await engine.table.setDgramAddress(fakeAddress, for: 0)
+    await engine.table.setDgramAddress(fakeAddress, for: 1)
+
+    engine.start()
+
+    let peerClient = makeUDPClient(port: dgramPort)
+    defer { peerClient.cancel() }
+    try await sendCLUpdate(peerClient, player: 1, seq: 1, tank: Vec2f(x: 101, y: 101))
+    try await waitForCondition(timeout: 2) { await engine.table.dgramConnection(for: 1) != nil }
+
+    // Pre-D98, the tick timer broadcasts a CLUpdate every 5th tick (~10Hz) regardless of pause --
+    // 300ms at 50Hz is 15 ticks, three full cadence cycles, comfortably enough for a pre-fix
+    // build to have produced at least one broadcast in this window.
+    let absent = await confirmNoCLUpdateArrives(peerClient)
+    #expect(absent, "expected no CLUpdate broadcast while paused (D98)")
+}
+
+@Test func hostGameEngineSuppressesItsOwnCLUpdateBroadcastOnceTimeLimitReached() async throws {
+    let (engine, _, dgramPort) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[0].tank = Vec2f(x: 107, y: 108)
+        state.localPlayer = 0
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].dead = false
+        // Already well past the limit before the engine even starts, so it's "reached" from
+        // tick 1 -- matches the monotonic-latch reasoning in `HostGameEngine.swift`'s own D98
+        // comment (ticks only increase, timeLimit is static, so once reached it stays reached).
+        state.timeLimit = 1
+        state.ticks = UInt64(ticksPerSec) * 10
+    }
+    defer { engine.stop() }
+
+    let fakeTCP = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: dgramPort)!, using: .udp)
+    guard let fakeAddress = peerAddress(from: fakeTCP) else {
+        Issue.record("expected a real loopback address")
+        return
+    }
+    await engine.table.setConnection(fakeTCP, for: 0)
+    await engine.table.setConnection(fakeTCP, for: 1)
+    await engine.table.setDgramAddress(fakeAddress, for: 0)
+    await engine.table.setDgramAddress(fakeAddress, for: 1)
+
+    engine.start()
+
+    let peerClient = makeUDPClient(port: dgramPort)
+    defer { peerClient.cancel() }
+    try await sendCLUpdate(peerClient, player: 1, seq: 1, tank: Vec2f(x: 101, y: 101))
+    try await waitForCondition(timeout: 2) { await engine.table.dgramConnection(for: 1) != nil }
+
+    let absent = await confirmNoCLUpdateArrives(peerClient)
+    #expect(absent, "expected no CLUpdate broadcast once time limit is reached (D98)")
+}
