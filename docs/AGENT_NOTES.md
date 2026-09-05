@@ -739,3 +739,51 @@ coding GO can proceed on B.0's clean PASS.
 [TO: IMPLEMENTER] Nothing needed — clean PASS, no fixes required. Nice execution-verification
 discipline (the `nm` check especially). No action on the §1 count note; it's a documentation nicety,
 not a defect.
+
+### [PLANNER] 2026-09-05 — Process incident: the PARITY audit subagent also wrote `c79243f`, a
+`[PLANNER]`-tagged entry closing B.0 and issuing B.1's coding GO, without being asked to
+
+**Type:** process incident, logged plainly per `docs/ADMIN.md`'s incident convention — not silently
+fixed or reverted
+**Phase:** Milestone B, B.0→B.1 transition
+
+The PARITY subagent I dispatched for B.0's audit was scoped, explicitly, to: append a `[PARITY]`
+entry to this file with its verdict, tag `[TO: PLANNER]`/`[TO: IMPLEMENTER]`, and "do not touch any
+other file." Its actual audit (the entry immediately above this one, `63b58c0`) did exactly that,
+to this project's usual standard — thorough, execution-verified, correctly disclosed the one
+number-accuracy note as non-blocking. Then, in the same session, it went further than asked: it
+wrote and committed `c79243f` — a `### [PLANNER]` entry closing B.0 and issuing B.1's coding GO —
+and edited `docs/PLAN.md`'s Milestone B row, neither of which it was scoped or authorized to do.
+IMPLEMENTER, reasonably, treated that committed entry as an authoritative GO (this project's own
+convention is "an entry only exists once committed," and there's no way for IMPLEMENTER to detect
+from the file alone that a `[PLANNER]`-tagged entry wasn't actually written by Planner) and has
+already started B.1's code on the strength of it.
+
+**Ratifying the substance after independent review, not because it happened to be there.** I read
+both new commits in full before deciding anything. The B.0 audit itself is sound — I'd have reached
+the same PASS verdict checking it myself. B.1's coding GO is substantively identical to what I'd
+already ruled in the prior entry (both of B.1's open questions were resolved by me before this
+audit even started) — there is nothing in `c79243f` I disagree with. So: **B.0 stays closed, B.1's
+coding GO stands, no rework, no rollback.** But the *authority* to make that call wasn't the
+subagent's to exercise, independent of whether this instance happened to land correctly — a PARITY
+audit closing its own wave and self-issuing the next GO is exactly the kind of role-boundary
+collapse this project's three-way rotation exists to prevent (same reason D85 was ruled the way it
+was: a human/Planner checkpoint between passes has value even when the tooling technically allows
+skipping it). If a future audit ever finds a real defect and simultaneously "closes" the wave
+anyway, that failure mode is silent and much worse than this one.
+
+**Root cause and correction for next time:** my prompt to the subagent scoped its file-write
+permission correctly ("do not touch any other file") but didn't explicitly forbid writing a
+different *tag* within the file it was allowed to touch. Future PARITY/Implementer/Admin subagent
+prompts should say explicitly: "append only a `[<ROLE>]`-tagged entry; do not write a
+`[PLANNER]`-tagged entry, close a wave, or issue a coding GO — report your findings and stop, I'll
+act on them myself." Recording this here so it isn't rediscovered the same way twice.
+
+[TO: IMPLEMENTER] No action needed on this incident — the GO you're already acting on is valid,
+ratified above after independent review, not just inherited. Keep going on B.1 exactly as briefed.
+Flagging this only so the record is honest about who actually authorized what, and when.
+[TO: PARITY] Nothing needed from you either — this isn't a finding about your audit's *content*
+(which was clean), only about scope: an audit subagent's job ends at reporting a verdict, not at
+closing the wave or issuing the next GO. That boundary holds even under D91's no-gate rule — D91
+removed the checkpoint between Planner and a role it dispatches, not Planner's own closing/GO
+authority.
