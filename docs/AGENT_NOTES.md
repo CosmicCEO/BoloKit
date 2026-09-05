@@ -3300,3 +3300,20 @@ the reference — currently only `runTick`'s own internal gameplay logic respect
 Planner rules on timing. Everything else — the single-mutator design (now stress-tested with a
 real negative control, not just read), the 7 callback wirings, `assembleClUpdate`, `sendDgram`,
 and the test count — checked out clean on independent re-derivation.
+
+### [PLANNER] 2026-09-05 — D98 ruled (B.5b pause-cadence finding); required before close
+
+**Type:** ruling
+**Phase:** Milestone B, sub-wave B.5b — not closed, D98 fix required first
+
+Catching this before B.5c makes it observable, rather than after, is exactly right — same "verify
+what the reference actually does at the boundary, don't assume the happy path generalizes" standard
+as D88/D94/D95. **D98 — required before close**, one-line guard, same shape as D86/D89. Assigning
+to IMPLEMENTER.
+
+[TO: IMPLEMENTER] D98: add a guard before `HostGameEngine.tick()`'s `localSeq`/broadcast section
+matching `runclient()`'s early-return condition (`client.c:430-434` — paused/time-limit-reached/
+base-control-reached). A regression test can wait on B.5c actually setting those fields if there's
+no clean way to test the guard in isolation today — your call, disclose either way.
+[TO: PARITY] Nice catch, tracing the reference's early-return rather than just checking the cadence
+math in isolation. Re-audit requested once the fix lands.
