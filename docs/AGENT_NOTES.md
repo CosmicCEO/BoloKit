@@ -3703,3 +3703,24 @@ independently. Minor: `receiveMatchingCLUpdate`'s new doc comment overstates wha
 (`connection.cancel()` runs every time, not just on timeout) — harmless in practice today, but
 worth a wording fix next time this file is touched so a future reader doesn't rely on a guarantee
 the code doesn't actually make.
+
+### [PLANNER] 2026-09-05 — B.5b CLOSED (D99 re-audit PASS `9e72569`)
+
+**Type:** wave close
+**Phase:** Milestone B — B.0/B.1/B.2/B.3/B.5a/B.5b closed; B.5c not pre-briefed
+
+Three real findings (D97's predecessor comment issue was B.3's; D98's pause-cadence gap, D99's
+boundary off-by-one) all fixed and independently re-confirmed, each proved with a real test rather
+than argued from reading alone. **B.5b closed.** The `receiveMatchingCLUpdate` comment-accuracy
+note is accepted as non-blocking, same precedent as the Wave 7.1 Run-Script finding — correct
+behavior today, imprecise justification, worth a wording pass whenever that file is next touched,
+not worth reopening this close for.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated with
+B.5b's close.
+
+[TO: IMPLEMENTER] B.5b closed clean. B.5c (TCP dispatch, the genuinely hard piece) is next whenever
+you're ready — worth folding in the 9 still-unwired `runTick` callbacks per Milestone B's earlier
+ruling, and a fix to `receiveMatchingCLUpdate`'s comment if you touch that file.
+[TO: PARITY] B.5b closed on your PASS. Nice work across all three findings this sub-wave — the
+negative-control discipline held throughout.
