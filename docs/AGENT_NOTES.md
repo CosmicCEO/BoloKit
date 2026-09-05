@@ -4221,3 +4221,124 @@ you get to it, no rush. D102 is tracked for Wave 7.3, not assigned now.
 controls, the scratch-test proof on `stop()` rather than stopping at hand-tracing, real catches
 throughout. Thank you, passed along from Jerod as well. Nothing further needed until B.5d or the
 next wave lands.
+
+### [IMPLEMENTER] 2026-09-05 — B.5d pre-brief (mine-chain broadcast wiring): D100's causer-threading premise doesn't hold
+
+**Type:** pre-brief, not yet coding
+**Phase:** Wave 7 / Milestone B, sub-wave B.5d
+
+Read D100's full text in `docs/PLAN.md` and the B.5c pre-brief section it's drawn from first.
+Then read `server.c`'s actual `explosionat()`/`superboomat()` bodies directly (not inferred from
+this port's own comments) before assuming the causer-threading framing was right. **It isn't, for
+two of the three callbacks** — the real fix is smaller and different in shape than D100 scoped.
+
+## What `server.c` actually does (read directly, not restated from this port's comments)
+
+- **`explosionat(player, x, y)`** (`server.c:4121-4165`): the `player` parameter is referenced
+  **only in the `assert`**. Both branches that detonate a tile (mineable terrain, and mined-sea)
+  call `sendsrsmallboom(NEUTRAL, x, y)` — always `NEUTRAL`, regardless of who actually caused it
+  (a tank driving over a mine, a builder placing on one, or a chain/flood cascade). **No causer is
+  ever broadcast for a single-mine detonation.**
+- **`superboomat(player, x, y)`** (`server.c:4193-4249`): calls `sendsrsuperboom(player, x, y)`
+  using the **real** `player` argument, at the very end, unconditionally — after all the
+  terrain/flood/chain work, with no early return of any kind in the C source.
+
+This port's own `explosionAt`/`superboomAt` (`MineChain.swift:373-495`) already replicate the
+terrain/chain-scheduling logic exactly and already take a `player: UInt8` parameter — but **neither
+one ever calls `onMineExplosion`/`onSuperboomTerrain` itself**. Both only thread the closures
+further down into `applySplashDamage`, which fires them only via `smallboom()`/`superboom()`'s own
+separate, `state.localPlayer`-scoped "notify hook" (a different, Wave-5.2b/5.9-era call site,
+documented as firing *before* `dead` is set, for a different purpose).
+
+**Consequence: D100's "thread a causer parameter through `TankLocalTick`/`ShellTick`/`BuilderTick`"
+framing is the wrong shape of fix for `onMineExplosion` (needs no causer at all) and unnecessary
+for `onSuperboomTerrain` (the causer it needs is already an existing parameter on `superboomAt` —
+`ShellTick`/`BuilderTick`'s own call sites don't need to change).** The real gap is simpler: two
+missing call sites, inside functions that already have what they need.
+
+## Proposed fix shape (pending your GO)
+
+1. **`onMineExplosion`** — add a call inside `explosionAt`, right after `guard detonated else {
+   return }`, **before** the existing `if player != UInt8(state.localPlayer)` particle/builder-kill
+   gate at line 410 (that gate is this port's own addition for the local-particle/builder-kill
+   effect, not part of where C's broadcast sits — C's `sendsrsmallboom` fires unconditionally
+   whenever a detonation happens, in both branches). Maps to `SRSmallBoom(player: playerNeutral,
+   x:, y:)` in `HostGameEngine`'s wiring — always `NEUTRAL`, per the reference. No signature change
+   anywhere else needed.
+2. **`onSuperboomTerrain`** — add a call inside `superboomAt`, right after the chain-scheduling
+   block, **before** the existing `guard player != UInt8(state.localPlayer) else { return }` at
+   line 464 (C's `sendsrsuperboom` has no early return at all — putting the new call after that
+   guard would silently never broadcast the local player's own superboom). Maps to
+   `SRSuperBoom(player:, x:, y:)` using `superboomAt`'s own already-available `player` parameter.
+   No signature change needed here either.
+
+## One real question, not resolved here: does this double-fire the existing hooks?
+
+Yes, structurally — `smallboom()`/`superboom()` already fire `onMineExplosion(explosionPoint!)`/
+`onSuperboomTerrain(boomOrigin!)` once (the existing notify hook) and then call `explosionAt`/
+`superboomAt` themselves at the end of their own bodies, which would fire it *again* under this
+proposal, for the same tile. **This isn't actually a bug to reconcile away — it's two genuinely
+different things that happen to share a parameter name, matching a real asymmetry already in the
+C source:** `smallboom()`/`superboom()` (`client.c:5614,5647`) are the **client-role** optimistic
+local path and have no `sendsrsmallboom`/`sendsrsuperboom` call at all in C; the broadcast lives
+*only* in the **server-role** `explosionat()`/`superboomat()`. This port merges both roles into one
+process (`RunTick.swift`'s own header already discloses this unification), but the two callback
+firings still correspond to genuinely different C-side roles. **Recommend separate parameters**
+(e.g. `onMineExplosion` keeps its current client-role-notify meaning; a new, distinctly-named
+parameter carries the server-role broadcast), not collapsing them into one — the C source is why,
+not a test-preservation concern.
+
+## A separate, unrelated problem found in the same investigation: `onDropPills` may not belong in B.5d at all
+
+`runTick`'s own top-level `onDropPills: (UInt16, Vec2f) -> Void` (fed to `chain`/`flood`, distinct
+from the already-wired `onShouldBroadcastDropPill: (Int, Int, Int) -> Void`) is fired exclusively
+from `killBuilder`/`killTank`/`drown` (`TankLocalTick.swift`/`ShellTick.swift`) — every one of
+which just computes a mask and hands it to the closure with **no further `state` access**,
+structurally identical to `onSpawn`'s shape *before* its own Wave 7.3/D88-§4 fix. Wiring it as-is
+from inside a `runTick`-callback closure (to call the already-built `dropPills(player:x:y:pills:
+state:onShouldBroadcastDropPill:)`) would be the exact nested `inout` exclusivity violation on
+`state` that fix's own comment names by number, in this same file: *"a nested exclusive-access
+violation on the same `state` `runTick` already holds `inout` for the duration of this call."* The
+correct mirror of that fix is for `killBuilder`/`killTank`/`drown` to call `dropPills` **directly**
+themselves (they already run safely nested inside `runTick`'s own held access) and surface the
+already-wired `onShouldBroadcastDropPill` shape outward instead — at which point `onDropPills` as
+its own top-level `runTick` parameter may become unnecessary entirely. **This is a different
+problem from the broadcast-mapping question above** (it's about safe wiring, not about what SR*
+message to send) — flagging separately rather than letting it inflate this sub-wave; may deserve
+its own scope decision (fold into B.5d, or split further) rather than assuming it's included.
+
+## A related scoping question this surfaced, not resolved here either
+
+`killSquareBuilder`/`killPointBuilder` (`TankLocalTick.swift:43-78`) — called from `explosionAt`/
+`superboomAt` for **any** exploding tile, not just ones the local player caused — only ever check
+`state.players[state.localPlayer]`'s own builder, confirmed by the file's own header: *"Everything
+here is scoped to the LOCAL player only, matching C exactly... this is not a simplification, it is
+what the original code does."* That's true to a real distributed client's own `client.player`-only
+local logic, but in this port's single unified `GameState`, it means **a remote player's builder
+sitting on an exploding tile is never identified or killed by this call chain at all** — so even if
+`onDropPills` gets fixed per above, there's no real `player:` to pass `dropPills` at these specific
+call sites for a non-local builder. Whether `killSquareBuilder`/`killPointBuilder` need to become
+multiplayer-general (scan every player's builder at the tile, not just `state.localPlayer`'s) is a
+real question bigger than B.5d's own scope — flagging it, not resolving it.
+
+## Proposed B.5d coding scope, pending your GO
+
+1. `onMineExplosion` fix (item 1 above) — small, no signature changes.
+2. `onSuperboomTerrain` fix (item 2 above) — small, no signature changes.
+3. Two separate parameters (or equivalent) to resolve the double-fire question, your call on the
+   exact shape.
+4. Wire `HostGameEngine.tick()`'s `onMineExplosion`/`onSuperboomTerrain` (the new server-role ones)
+   to `SRSmallBoom(playerNeutral,...)`/`SRSuperBoom(player,...)`.
+
+**Explicitly NOT proposing to include, pending your ruling:** the `onDropPills` exclusivity fix,
+and the `killSquareBuilder`/`killPointBuilder` multiplayer-scoping question — both real, both found
+in this same investigation, both bigger or more separable than D100's own framing anticipated.
+
+> **→ Planner:** D100's causer-threading premise doesn't hold for 2 of the 3 callbacks — both
+> `explosionat()`/`superboomat()` reads are direct, not inferred (quoted above). Real fix is
+> smaller (two missing call sites, using data already available) but raises a genuine design
+> question (separate parameters for the client-role notify vs. server-role broadcast) plus two
+> separable findings (`onDropPills`'s own exclusivity problem, and `killSquareBuilder`/
+> `killPointBuilder`'s local-only scoping) that may or may not belong in this sub-wave. Same
+> situation as D100 itself — bringing the corrected picture back before coding, not narrowing
+> scope or guessing silently. Awaiting your coding-GO on the proposed scope above.
