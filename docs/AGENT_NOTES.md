@@ -3070,3 +3070,80 @@ recalling them.
 > **→ Planner:** Both corrections verified and posted as above. Ready for PARITY activation.
 > **→ Parity:** Audit against `HostGameEngine.swift:139-145` and the two `swift test` summaries
 > directly (647 total) rather than either of the wrong numbers in the original report.
+
+### [PARITY] 2026-09-05 — D97 re-audit (`d9f1cbc`+`909ea0f`): PASS, all five points independently re-derived
+
+**Type:** post-commit re-audit of a documentation/test-honesty fix (no architecture/mapping change
+in scope). **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint` all present;
+every check below is execution-verified, not hand-traced. **Concurrency note:** `README.md` sits
+modified-uncommitted throughout (Jerod's own in-progress edit per the request) — left completely
+untouched, never opened.
+
+**Verdict: PASS.** All five points Planner asked me to confirm hold up under fresh, independent
+re-derivation — not a re-read of my own prior audit or Implementer's report.
+
+**1. The corrected mechanism claim — reconfirmed fresh, not just cited from `cc10f29`.** Built a new
+scratch standalone SwiftPM executable (local path dependency on this checkout, `import BoloNet`,
+release config, deleted after running) calling the real, unmodified `joinClient(host: "127.0.0.1",
+port: 39218, ...)` — a fresh port, never used by my original 19-trial run or the shipped test's
+`39217`, to rule out any port-specific fluke. **5/5 fresh trials: `.timedOut`**, 3.00–3.19s each
+(matching the `connectTimeoutSeconds: 3` budget, not an instant failure). Confirmed the port is
+genuinely refused at the kernel level throughout, not silently accepting: a raw Python
+`socket.connect()` against the same port got `ConnectionRefusedError` in 0.0001s. This reproduces
+both halves of the corrected header's claim — the OS refuses instantly, but `joinClient` itself
+never sees it, only its own timeout fires — independently of Implementer's own 5/5 re-probe and my
+original 19/19, a third independent measurement now agreeing with both.
+
+**2. Withdrawn story marked withdrawn, not deleted — confirmed by reading the diff directly.**
+`git show d9f1cbc -- Sources/BoloNet/JoinClient.swift`: the new text explicitly states "(The
+original version of this comment attributed the gap to a sandboxing difference between a standalone
+binary and `swift test`'s own process — PARITY couldn't reproduce that framing, and neither could a
+fresh re-probe; withdrawn, replaced with the mechanism above...)" — visible, attributed, explained,
+not silently removed. Same treatment applied to `JoinClientTests.swift`'s matching comment
+(`"Asserting .timedOut as the expected outcome, per D97 ... not .connectionRefused"`, with the old
+sandboxing-split framing likewise called out as replaced rather than deleted outright).
+
+**3. `.connectionRefused`'s mapping code — byte-for-byte unchanged, verified by diffing every
+changed line, not just eyeballing the two hunks.** `git diff e9a981e HEAD -- Sources/BoloNet/
+JoinClient.swift | grep -E '^[+-]' | grep -v '^+++' | grep -v '^---' | grep -Ev '^[+-]//'` (every
+added/removed line that is *not* a `//`-comment line) returns **zero lines** — every single changed
+line in this file since the original B.3 commit I audited is a comment. The mapping itself, read at
+its current location: `JoinClient.swift:148-150` — `guard case .posix(let code) = error as? NWError
+else { return nil }` / `switch code { ... case .ECONNREFUSED: self = .connectionRefused ...}` —
+identical to what I confirmed correct in `cc10f29`.
+
+**4. Citation count — 21 confirmed accurate, counted directly, not trusted from the commit
+message.** Read `Reference/c/bolo.h`'s `kJoin*` enum myself at its current location
+(`bolo.h:240-268`): 6 progress/success (`RESOLVING` through `SUCCESS`) + 3 DNS + 4 connection
+(`ETIMEOUT`/`ECONNREFUSED`/`ENETUNREACH`/`EHOSTUNREACH`) + 6 other-errors + 2 server-errors = **21**,
+matching `grep -c "kJoin" Reference/c/bolo.h`'s own count exactly. `JoinClient.swift`'s header now
+correctly says 21.
+
+**5. Full `swift test` count, both targets separately, independently.** `swift test list | wc -l` at
+HEAD (`f28b64a`): **647** total. Split by qualified-name prefix (`sed -E 's/\..*//' | sort | uniq
+-c`): **483 `BoloKitTests`** + **164 `DifferentialTests`** = 647 — matches exactly what Planner's
+B.5b correction already established, gotten here independently rather than copied from that entry.
+Also ran `swift test --filter JoinClientTests` directly: all 6 pass, and
+`joinClientMapsConnectionRefusedToNamedError` took **3.134s** — consistent with hitting the 3s
+timeout and getting `.timedOut`, not a sub-second `.connectionRefused` pass, matching the corrected
+comment's own claim about what this test actually exercises.
+
+**Nothing else in scope for this re-audit** — the fix was documentation/test-comment only, and
+`git diff e9a981e HEAD -- Sources/BoloNet/JoinClient.swift Tests/DifferentialTests/
+JoinClientTests.swift` confirms no other file in B.3's original surface was touched between my
+original audit and now.
+
+[TO: PLANNER] D97 re-audited at `d9f1cbc`+`909ea0f` — **PASS** on all five points. The mechanism
+claim isn't just cited from my earlier audit — reproduced fresh with a new standalone binary against
+an unused port (5/5 `.timedOut`), a third independent data point alongside my original 19/19 and
+Implementer's 5/5, all in agreement. The withdrawn sandboxing story is visibly marked as withdrawn in
+both touched files, not deleted. `.connectionRefused`'s mapping code is provably byte-for-byte
+unchanged since `e9a981e` (diffed every changed line in the file; all are comments). The 21-code
+citation is accurate against a fresh direct read of `bolo.h`. Full test count independently confirmed
+at 647 (483 BoloKitTests + 164 DifferentialTests), matching your B.5b correction's numbers via a
+separate count. Nothing outstanding from PARITY on D97 or on B.3's original scope — B.3 is clear to
+close on my end. Per the scope guardrail I was given: not touching `docs/PLAN.md`, not closing
+anything, not issuing any GO — that's yours to do.
+[TO: IMPLEMENTER] Clean fix, nothing further needed. The re-probe, the withdrawal-not-deletion
+treatment of the old comment, and the citation correction all check out under independent
+re-derivation, not just a re-read.
