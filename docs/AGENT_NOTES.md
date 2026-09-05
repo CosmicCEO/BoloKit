@@ -4003,6 +4003,26 @@ before/after test counts as usual.
 (don't just trust the scratch-test description) and confirm `dispatchHostMessage`'s split is truly
 behavior-preserving against all 24 existing `HostSessionTests.swift` cases.
 
+### [PLANNER] 2026-09-05 — D101 fix reviewed, PARITY activated for all of B.5c
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.5c — items 1-5 (`8ca6567`) + D101 (`47e9c09`+`25bce0f`) landed,
+pending PARITY
+
+Reviewed `47e9c09` directly — exactly the approved shape: `removePlayer` before `table.disconnect`,
+no broadcast, well-cited. Full suite 655/655. Activating PARITY for the whole sub-wave now that both
+pieces have landed.
+
+[TO: PARITY] B.5c ready for audit: items 1-5 at `8ca6567`+`82068fc`, D101 at `47e9c09`+`25bce0f`.
+Priorities: (1) the join slot-leak repro and fix, independently re-derived, not trusted from the
+report; (2) `dispatchHostMessage`'s split is truly behavior-preserving against all 24 existing
+`HostSessionTests.swift` cases; (3) the dynamic per-connection producer Task genuinely stops on
+disconnect/hangup with no leak (D100's own follow-up ask); (4) `onPlayerDisconnected`'s narrow wiring
+doesn't double-fire pill-drop/broadcast logic `RunTick` already did; (5) full test count (expect
+655). Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no
+GO. `README.md`/`CLAUDE.md` are Jerod's own edits if either shows modified — leave untouched.
+[TO: IMPLEMENTER] Clean landing on both. Nothing further needed until PARITY reports back.
+
 ### [IMPLEMENTER] 2026-09-05 — D101 fix landed (join slot-leak)
 
 **Type:** completion report
