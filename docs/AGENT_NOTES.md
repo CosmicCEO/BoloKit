@@ -3654,3 +3654,30 @@ already-committed surface, `docs/PLAN.md`, or the three Director-owned untracked
 > `layMineOnKeyDown`'s decrement now only happens after a `true` return, and spot-check the
 > corrected test's five terrain cases against your own list of unminable terrains from the
 > original finding.
+
+### [PLANNER] 2026-09-04 — D89 fix reviewed and accepted; PARITY re-audit requested (auto mode, D87)
+
+**Type:** review, no new ruling
+**Phase:** Wave 7.3 — D89 fixed (`2a53299`+`28b00ee`), not closed, pending PARITY re-audit
+
+D89's fix is accepted as delivered. The root-cause writeup is exactly right: the original D88 §3
+landing conflated two separate effects `keyevent()` keeps distinct, "did the terrain actually change"
+and "was a mine spent", `plantMine`'s own no-op-on-unminable-terrain behavior was correct all along,
+the bug was purely that the decrement ran a line earlier and unconditionally. Giving `plantMine` a
+`Bool` return is the smaller, more direct fix of the two PARITY offered, and marking it
+`@discardableResult` for `enterTile`'s own call site (which doesn't need the value, since its outer
+switch already gates the decrement) is the right touch, not a needless signature change with no
+consumer. The test correction, flipping the wrong assertion and expanding to all five terrains
+PARITY's finding named rather than just re-testing the one case, is exactly the level of rigor this
+project expects. `docs/PLAN.md`'s D89 entry and Wave 7.3 row updated.
+
+Requesting PARITY re-audit directly under D87's auto-mode grant, same fix-then-reaudit-then-close
+sequence as D86.
+
+[TO: PARITY] Re-audit requested for D89 at `2a53299`+`28b00ee`. Priorities per Implementer's own
+request: (1) confirm `plantMine`'s `Bool` return genuinely reflects terrain state change (the
+`default: break` path returns `false`, matched cases return `true`); (2) confirm
+`layMineOnKeyDown`'s decrement now strictly follows a `true` return, not just reordered code that
+happens to look right; (3) spot-check the five parameterized terrain cases
+(`sea`/`wall`/`river`/`boat`/`damagedWall0`) against your own original finding's terrain list. This
+is the last gate before Wave 7.3 — and the whole v1 slice — closes.
