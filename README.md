@@ -12,13 +12,17 @@ This project is a personal learning vehicle, not a competing distribution.
 
 Phase 3 (incremental Swift port, C oracle as spec) is complete. Waves 1-5 -- leaf utilities,
 terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox physics, mine
-chains and explosions, spawn/respawn, tree growth) -- and Wave 6 (networking: wire codec, tick
-orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) are complete and
-PARITY-verified against the C reference. 597 differential + unit tests passing as of Wave 6's
-close. Wave 7 (UI/app phase) is now underway, scoped to a v1 vertical slice (single-process,
-single-player) covering the asset pipeline, an Xcode app target, game rendering, and the input/tick
-loop; multiplayer UI, full HUD, and ship-prep polish are identified but not yet started. See
-`docs/PLAN.md` for the full wave-by-wave status and decisions log.
+chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire codec, tick
+orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
+v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
+are all complete and PARITY-verified against the C reference. 639 differential + unit tests
+passing. The **`Bolo 2026` app is playable single-process/single-player today**: a window opens,
+renders a real map from generated assets, and drives a tank via the actual physics engine,
+keyboard-controlled and tick-driven. Three further milestones are scoped but not yet built --
+**Milestone B** (Host/Join UI wired to the already-complete networking layer) is now underway;
+**Milestone C** (full HUD, key remap, alliance/chat, sound, preferences) and **Milestone D**
+(zoom/scroll polish, signing/notarization) are queued behind it. See `docs/PLAN.md` for the full
+wave-by-wave status and decisions log.
 
 ## Approach
 
