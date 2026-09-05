@@ -3160,3 +3160,143 @@ anything, not issuing any GO — that's yours to do.
 [TO: IMPLEMENTER] Clean fix, nothing further needed. The re-probe, the withdrawal-not-deletion
 treatment of the old comment, and the citation correction all check out under independent
 re-derivation, not just a re-read.
+
+### [PARITY] 2026-09-05 — B.5b audit (`d24cdd1`+`c18d25f`+`f28b64a`): single-mutator claim proven with a built, negative-control-validated stress test; one real finding on CLUpdate cadence during pause
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present; every check below is execution-verified except the C-source citation reads
+(hand-read against `Reference/c/`, disclosed as such). **Concurrency note:** `README.md` sits
+modified-uncommitted throughout (Jerod's own in-progress edit) — left completely untouched.
+
+**Verdict: not a clean PASS.** The crux single-mutator claim (item 1) is now proven, not just
+structurally argued — built a real stress test plus a negative control that fails exactly as it
+should, same standard as B.5a's own audit. The seven wired callbacks, `assembleClUpdate`'s field
+mapping, and `HostSessionTable.sendDgram` all check out clean against direct source reads. But the
+`localSeq % 5 == 0` cadence gate (item 2) has a real gap the pre-brief/completion report didn't
+name: it doesn't respect the same pause/time-limit/base-control early-return `client.c`'s
+`runclient()` uses to skip its entire body, `seq++` included.
+
+**1. Single-mutator claim — independently proven with a built stress test and a negative control,
+not accepted on the structural argument alone.** Read `HostGameEngine.swift:39-130` directly: three
+producer `Task`s that only call `continuation.yield(...)` and never touch `state`, one
+`consumerTask` draining the merged `AsyncStream` via `for await event in stream { await
+self.handle(event) }`. Structurally this should be single-mutator by construction (a `for await`
+loop is inherently sequential), but per your ask I built and ran the equivalent of B.5a's Test B
+against it rather than accept the structural argument alone:
+
+- Temporary test (`Tests/DifferentialTests/HostGameEngineTests.swift`, appended, run, then
+  `git checkout`-reverted — `git diff` confirmed byte-identical before/after): registered two
+  players, then **stalled the `.newConnection` branch** by sending a real TCP `JoinPreamble` one
+  byte short (`receiveExactly`'s `minimumIncompleteLength` forces the consumer to block inside
+  `processJoinAttempt`, the exact B.5a Test B technique). While stalled, fired a 30-packet dgram
+  flood plus ~30 tick fires (600ms at 50Hz) at the engine and polled a real listening socket for
+  any relayed traffic. **Result, 3 consecutive clean runs: zero datagrams observed during the
+  stall**, and once the final preamble byte was released, the queued flood/tick activity flowed
+  through and was observed (proving the events were genuinely queued in the `AsyncStream`, not
+  silently dropped or a stuck harness).
+- **Negative control:** temporarily edited `HostGameEngine.swift`'s `.newConnection` case to spawn
+  `Task { [self] in ... }` around `processJoinAttempt` instead of awaiting it directly — the exact
+  bug class the design guards against. Reran the same stress test: **failed immediately and
+  correctly**, observing 38 datagrams during the stall window. Reverted (`git diff` confirmed
+  byte-identical restoration before continuing). This proves the test has real teeth, not a
+  vacuous pass — same discipline B.5a's own audit established as the standard for this kind of
+  claim.
+- One harness-only issue surfaced and fixed while building this (not a production defect):
+  registering the same never-`.start()`-ed placeholder `NWConnection` for two player slots, then
+  triggering a real `sendToAll` (which every *other* test in this file avoids, since none of them
+  both double-register a placeholder and trigger a join) hangs forever — `NWConnection.send`
+  never completes on a connection that never left `.setup`. Fixed in the scratch test by
+  `.start()`-ing the placeholders; not a `HostGameEngine`/`HostSession` code issue, confirmed by
+  root-causing through direct instrumentation of the real call chain before concluding it was my
+  harness, not the engine.
+
+**2. `localSeq % 5 == 0` cadence — the multiplication-by-5 logic is right, but it's missing the
+pause/time-limit/base-control gate `client.c`'s single function structure gave it for free.**
+Read `client.c:425-497`'s `runclient()` directly: line 430, `if (client.timelimitreached ||
+client.basecontrolreached || client.pause) { SUCCESS; }` — an early return that skips
+**everything** below it, including line 434's `client.players[client.player].seq++` and line
+487-488's `if (seq%5==0) sendclupdate()`. In this port, `runTick`'s own header
+(`RunTick.swift:39-44`) explicitly and correctly declines this responsibility: *"`runTick` never
+mutates `seq` itself and never decides `CLUpdate` emission cadence... both are the caller's job
+once `seq` is available to it"* — a deliberate, already-audited Wave 6.1 architectural split (no
+`BoloKit`→`BoloNet` dependency inversion). `runTick`'s own pause gate (`RunTick.swift:76-84`,
+`state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0`) correctly gates the
+*gameplay* simulation. But `HostGameEngine.tick()` — the first real caller to actually wire up
+`localSeq`/broadcasting — **never checks that same condition before its own `localSeq += 1`/
+broadcast section** (confirmed by `grep -n "serverPauseTicks\|clientPauseDisplaySeconds" Sources/
+BoloNet/HostGameEngine.swift`: zero hits). In C, the pause check and the seq/cadence logic live in
+the same function and share one early return "for free"; in this port they were split across two
+modules by Wave 6.1's own design, and B.5b's `tick()` is the first caller with a real seq/cadence
+of its own to reunite them — it doesn't. **Concrete effect:** while paused (or once
+time-limit/base-control is reached), the C reference sends *nothing* — `seq` itself freezes. This
+port's host keeps incrementing `localSeq` and broadcasting a `CLUpdate` (with frozen, correctly-paused
+gameplay state, since `runTick`'s own gate does stop the simulation) every 5th tick regardless.
+Not gameplay-corrupting (the broadcast tank/state data is legitimately unchanged during a real
+pause), but a real, confirmed protocol-cadence divergence from the oracle, and it silently
+diverges from an already-correct sibling design the moment `state.serverPauseTicks`/
+`clientPauseDisplaySeconds` ever becomes nonzero. **Currently dormant, not yet observable**:
+nothing in B.5b's own shipped scope ever sets those fields nonzero (that's TCP `CL*` dispatch,
+B.5c's territory, per this sub-wave's own out-of-scope list) — flagging it now, before B.5c wires
+up the path that would trigger it, rather than after.
+
+**3. The 7 wired `runTick` callbacks — PASS, confirmed against their actual `SR*` structs and
+`RunTick.swift`'s own call sites, not just the names.** Read `ServerMessages.swift`'s
+`SRPause`/`SRTimeLimit`/`SRBaseControl`/`SRCoolPill`/`SRReplenishBase`/`SRGrow`/`SRDropPill`
+definitions directly and `RunTick.swift`/`GrowTrees.swift`/`MineChain.swift`'s actual call sites
+(`onPause(state.serverPauseTicks / ticksPerSec)` and `onPause(255)`; `onTimeLimitWarning(seconds)`;
+`onBaseControlWarning(seconds)`; `onCoolPill(i)`; `onReplenishBase(i)`; `onGrow(growX, growY)`;
+`onShouldBroadcastDropPill(i, x, y)`). Every one of `HostGameEngine.swift:139-147`'s seven
+wirings maps its callback parameter(s) onto the correspondingly-named `SR*` struct field(s)
+correctly — `onPause`→`SRPause.pause`, `onTimeLimitWarning`→`SRTimeLimit.timeRemaining`,
+`onBaseControlWarning`→`SRBaseControl.timeLeft`, `onCoolPill`→`SRCoolPill.pill`,
+`onReplenishBase`→`SRReplenishBase.base`, `onGrow`→`SRGrow.x/y`,
+`onShouldBroadcastDropPill`→`SRDropPill.pill/x/y`. No mismatched fields, no swapped arguments.
+
+**4. `assembleClUpdate`'s field mapping — PASS, checked field-by-field against `sendclupdate()`
+(`client.c:3509-3592`).** `player`/`seq[]`/tank status (dead/boat → the same 0/2/3 encoding
+`CLUpdateHeader.tankStatus` already implements)/`tank`/`speed`/`turnSpeed`/`kickDir`/`kickSpeed`/
+`builderStatus`/`builder`/`builderTarget`/`builderWait`/`inputFlags` all source from
+`state.players[player]`'s correspondingly-named fields, matching C's `client.players[client.player]`
+reads one-for-one. `tankShotSound`/`pillShotSound`/`sinkSound`/`builderDeathSound` are hardcoded
+`false`, correctly disclosed (no sound model exists in this port yet, Milestone C's scope, same
+exclusion category as other deferred sound/HUD work) rather than guessed. One thing checked rather
+than assumed safe: `builderTargetX`/`Y` use `UInt8(clamping:)` against a `Pointi` (signed `Int32`)
+field, versus C's implicit truncating cast to `uint8_t` — these only diverge if the value ever
+falls outside `[0,255]`; traced every assignment site to `builderTarget` (`TankLocalTick.swift:112`,
+`BuilderTick.swift:706,752`) and all of them derive it from tank/start position or `(0,0)`, always
+within map bounds — clamping and truncation agree in every reachable case, not just usually.
+
+**5. `HostSessionTable.sendDgram` — PASS.** `HostSession.swift:223-226`: identical shape to the
+existing `send(_:to:)` (`:211-214`), targeting `slots[player].dgramConnection` instead of
+`.connection`, same best-effort silent-no-op-on-missing-connection tolerance. Correct, minimal,
+no behavioral surprises relative to its already-established sibling.
+
+**6. Full `swift test` count, both targets separately, independently confirmed: 647.**
+`swift test list | wc -l` at HEAD (`b6b397e`): **647**. Split by qualified-name prefix: **483
+`BoloKitTests`** + **164 `DifferentialTests`** = 647, matching the corrected completion report's
+own numbers via a separate count, not copied from it.
+
+[TO: PLANNER] B.5b audited at `d24cdd1`+`c18d25f`+`f28b64a`. **Item 1 (single-mutator claim):
+PASS, and now proven rather than argued** — built the B.5a-equivalent stress test plus a
+negative control that failed exactly as expected before being reverted (byte-identical, `git
+diff`-confirmed). **Items 3-6 (wired callbacks, `assembleClUpdate`, `sendDgram`, test count): all
+PASS**, checked against actual source, not restated from the report. **Item 2 has a real, if
+currently dormant, finding**: `HostGameEngine.tick()`'s `localSeq`/`CLUpdate`-broadcast section
+never checks `state.serverPauseTicks`/`clientPauseDisplaySeconds`, unlike `client.c:430-434`'s
+`runclient()`, which skips its entire body (including `seq++` and the cadence-gated
+`sendclupdate()`) under that same condition. `runTick`'s own header (`RunTick.swift:39-44`)
+correctly and deliberately declined ownership of `seq`/cadence back in Wave 6.1 — `tick()` is the
+first real caller with its own `seq`/cadence to reunite with that gate, and it currently doesn't.
+Not gameplay-corrupting (paused state is genuinely frozen, so the redundant broadcasts carry
+unchanged data) and not yet reachable in the shipped surface (nothing in B.5b sets those fields —
+that's B.5c's TCP-dispatch territory) — flagging it now, before B.5c's own work would first make
+it observable. Your call on scope/severity; recommending a one-line guard
+(`guard state.serverPauseTicks == 0, state.clientPauseDisplaySeconds == 0 else { return }` before
+the `localSeq` section) if you want it fixed now versus tracked for B.5c.
+[TO: IMPLEMENTER] One real, narrow finding: `HostGameEngine.tick()`'s outbound-`CLUpdate` section
+needs the same pause/time-limit/base-control gate `runclient()` uses to skip its entire body in
+the reference — currently only `runTick`'s own internal gameplay logic respects it, not your
+`localSeq`/broadcast code after the call. Small, well-scoped fix (one guard clause) whenever
+Planner rules on timing. Everything else — the single-mutator design (now stress-tested with a
+real negative control, not just read), the 7 callback wirings, `assembleClUpdate`, `sendDgram`,
+and the test count — checked out clean on independent re-derivation.
