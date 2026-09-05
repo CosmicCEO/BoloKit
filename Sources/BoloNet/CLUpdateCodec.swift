@@ -329,3 +329,51 @@ public struct CLUpdate: Sendable, Hashable {
 public func isNewerSeq(_ new: Int32, than old: Int32) -> Bool {
     (new &- old) > 0
 }
+
+// MARK: - Milestone B.5b (D96) — assembling the host's own outbound CLUpdate
+//
+// Mirrors `sendclupdate()` (`client.c:3509-3592`) for the local player's own tank -- the host is
+// also a player (playing locally, same shape as single-player `GameSession`), and its own tank
+// movement needs to reach every other connected client the same way a remote client's does, via
+// the same `CLUpdate` datagram every client broadcasts. Same caller-supplies-`seq` convention
+// `assembleBoloPreamble` already established (`Preambles.swift:235`) rather than deriving it
+// internally -- callers pass `table.allSeqsAsUInt32()`.
+//
+// `tankShotSound`/`pillShotSound`/`sinkSound`/`builderDeathSound` have no home in `GameState` --
+// this port has no sound model at all yet (Milestone C's own deferred scope, same exclusion
+// category as the toolbar/HUD work already out of Wave 7/Milestone B). Always `false` here, not
+// a guess at values this port has no way to compute.
+public func assembleClUpdate(player: Int, state: GameState, seq: [UInt32]) -> CLUpdate {
+    let p = player < state.players.count ? state.players[player] : PlayerState()
+    let seqAsInt32 = (0..<maxPlayers).map { i in Int32(bitPattern: i < seq.count ? seq[i] : 0) }
+
+    let header = CLUpdateHeader(
+        player: UInt8(player),
+        seq: seqAsInt32,
+        dead: p.dead,
+        boat: p.boat,
+        dir: p.dir,
+        tank: p.tank,
+        speed: p.speed,
+        turnSpeed: p.turnSpeed,
+        kickDir: p.kickDir,
+        kickSpeed: p.kickSpeed,
+        builderStatus: UInt8(p.builderStatus.rawValue),
+        builder: p.builder,
+        builderTargetX: UInt8(clamping: p.builderTarget.x),
+        builderTargetY: UInt8(clamping: p.builderTarget.y),
+        builderWait: UInt8(clamping: p.builderWait),
+        inputFlags: Int32(bitPattern: p.inputFlags.rawValue),
+        tankShotSound: false,
+        pillShotSound: false,
+        sinkSound: false,
+        builderDeathSound: false
+    )
+
+    let shells = p.shells.map { s in
+        CLUpdateShell(owner: s.owner, point: s.point, boat: s.boat, pill: s.pill, dir: s.dir, range: s.range)
+    }
+    let explosions = p.explosions.map { e in CLUpdateExplosion(point: e.point, counter: UInt8(clamping: e.counter)) }
+
+    return CLUpdate(header: header, shells: shells, explosions: explosions)
+}

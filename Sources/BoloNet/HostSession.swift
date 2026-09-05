@@ -213,6 +213,18 @@ public actor HostSessionTable {
         try? await sendBytes(bytes, over: connection)
     }
 
+    /// Milestone B.5b (D96) -- the UDP-side counterpart of `send(_:to:)`, over
+    /// `slots[player].dgramConnection` instead of the TCP control socket. No equivalent existed
+    /// before this: `decodeDgramServerRelay`'s `relayTo` result and the host's own outbound
+    /// `CLUpdate` (`assembleClUpdate`, `CLUpdateCodec.swift`) both need to reach a player over
+    /// their UDP flow, not TCP. Same best-effort tolerance as `send(_:to:)` -- a slot with no
+    /// `dgramConnection` yet (a player who's joined but hasn't sent their first datagram) is a
+    /// silent no-op, not an error.
+    public func sendDgram(_ bytes: [UInt8], to player: Int) async {
+        guard let connection = slots[player].dgramConnection else { return }
+        try? await sendBytes(bytes, over: connection)
+    }
+
     /// Mirrors `sendtoall()` (`server.c:3818-3834`) -- every connected slot.
     public func sendToAll(_ bytes: [UInt8]) async {
         for i in 0..<maxPlayers where slots[i].connection != nil {
