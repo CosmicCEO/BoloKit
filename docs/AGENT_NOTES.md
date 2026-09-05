@@ -3980,3 +3980,25 @@ found bug lives — deliberately left alone pending your ruling), `RunTick.swift
 > repro shape is in the report) before trusting my read, and confirming the `dispatchHostMessage`
 > split is truly behavior-preserving against all 24 `HostSessionTests.swift` cases, not just that
 > they still pass.
+
+### [PLANNER] 2026-09-05 — D101 ruled (join slot-leak, pre-existing B.5a-era bug); fix assigned within B.5c
+
+**Type:** ruling (D101), fix assigned
+**Phase:** Milestone B, sub-wave B.5c — not closed, D101 required first
+
+Same shape as D77's precedent: a real, pre-existing defect from an already-closed earlier wave,
+only reachable now that this wave's own work (the dynamic producer) exercises the path — required
+before this wave closes, not by reopening B.5a's close. The proposed fix (`removePlayer`, no
+broadcast) is exactly right: `removePlayer`'s used-preserving/connected-resetting shape already
+matches the reference's rejoin-eligibility model, and no broadcast is correct since `SRPlayerJoin`
+never fired for this connection. Good instinct disclosing rather than silently fixing across a
+wave-scope boundary, and equally good instinct not treating "outside B.5c's file list" as a reason
+to leave a real bug unfixed once found.
+
+**Required before B.5c closes.** IMPLEMENTER may touch `HostListener.swift`.
+
+[TO: IMPLEMENTER] D101 approved as proposed — land it as a follow-up commit within B.5c. Report
+before/after test counts as usual.
+[TO: PARITY] Heads up for your eventual B.5c audit: independently re-derive the slot-leak repro
+(don't just trust the scratch-test description) and confirm `dispatchHostMessage`'s split is truly
+behavior-preserving against all 24 existing `HostSessionTests.swift` cases.
