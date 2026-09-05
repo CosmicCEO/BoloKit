@@ -4063,3 +4063,127 @@ already-landed items 1-5, untouched), `README.md`, or the three Director-owned u
 > **→ Parity:** the regression test's own determinism claim (`.cancelled` state before calling
 > `processJoinAttempt`, not just calling `cancel()` and hoping) is worth re-deriving independently
 > — confirm it isn't secretly still timing-dependent.
+
+### [PARITY] 2026-09-05 — B.5c audit (`8ca6567`+`82068fc`+`47e9c09`+`25bce0f`): D101 fix and dispatch split both PASS, real new finding on `HostGameEngine.stop()`'s teardown
+
+**Type:** post-commit audit. **Toolchain:** `swift` present (`swift-driver 1.168.6`, Swift 6.4) —
+every claim below is execution-verified (built, ran, and for the two highest-priority items,
+negative-control- or scratch-test-proved), not a hand-trace-only pass. **Concurrency note:**
+`README.md` sits modified-uncommitted throughout (Jerod's own edit, pre-existing at session start)
+— untouched by me, confirmed by `git diff --stat` before and after this session shows only that
+file. `.claude/`, `Resources/`, and the three Director-owned docs artifacts left alone too.
+
+**Verdict: not a clean PASS.** Both of PLANNER's top two priorities hold up under independent
+re-derivation. But direct experimentation (not just hand-tracing) surfaced a real, previously-
+undisclosed gap in `HostGameEngine.stop()`'s teardown of already-joined player connections —
+smaller in scope than D101, but the same species of finding: a real defect only visible once you
+go looking with a live repro rather than trusting the shipped tests' own coverage.
+
+**1. Join slot-leak (D101) — PASS, independently re-derived from scratch, not trusted from the report.**
+Read `HostListener.swift:242-258` directly: the `.accepted` branch's `catch` now calls
+`removePlayer(player:state:)` (`SessionLogic.swift:148-154` — resets `connected`, deliberately
+leaves `used`, no broadcast callback passed so no `SRDropPill`/other broadcast fires) *before*
+`table.disconnect(player)`. Matches the reference's own "used-but-disconnected slots are rejoin-
+eligible" model exactly, as claimed.
+
+Independently re-ran the regression test (`processJoinAttemptOnSendFailureRevertsConnectedButPreservesUsed`,
+`HostListenerTests.swift:346-385`) 10 consecutive times: 10/10 pass, no flakes. Then did my own
+negative control — commented out the `removePlayer` call, rebuilt, reran: **fails exactly as
+claimed**, `state.players[0].connected` reads `true` instead of `false`. Restored the file from a
+pre-edit backup, confirmed `git diff --stat` shows zero diff (byte-identical), rebuilt clean.
+
+**Determinism claim, specifically re-derived (this was PLANNER's named priority #1):** the test
+waits for `link.clientEnd`'s `stateUpdateHandler` to actually observe `.cancelled`
+(`HostListenerTests.swift:361-370`) before calling `processJoinAttempt` — not a bare `cancel()`
+followed by a hope. Ran the isolated test 10 more times back-to-back with no sleep/retry padding:
+consistently ~0.015-0.019s, no variance suggesting a race window. This is real determinism, not
+disguised timing luck.
+
+**2. `dispatchHostMessage`/`receiveOneHostMessageBytes` split — PASS, confirmed behavior-preserving
+by diff, not just by passing tests.** `git show 8ca6567 -- Sources/BoloNet/HostSession.swift`: the
+split is a pure mechanical extraction — every `let bytes = try await rest(...)` line that used to
+sit inline in each `case` was moved, unchanged, into `receiveOneHostMessageBytes`'s own matching
+`case`, in the same order, and the thin wrapper (`HostSession.swift:762-770`) calls
+`receiveOneHostMessageBytes` then `dispatchHostMessage` in that same sequence — so the observable
+read-then-decode-then-dispatch order is byte-for-byte identical to the pre-split version. Ran
+`swift test --filter HostSessionTests` myself: **24/24 pass**. Note on the pre-brief's own "~15
+call sites" figure (`AGENT_NOTES.md:3743`): direct calls to `receiveAndDispatchOneHostMessage`
+in the test file are actually 10 (`grep -c`), not ~15 — the other 14 of the 24 tests exercise
+`HostSessionTable`'s primitives (`sendToAll`/`sendToMask`/`disconnect`) and
+`handlePlayerDisconnect`/`hostKickPlayer`/`hostBanPlayer` directly, not the dispatch path at all.
+Minor citation looseness in an approximate pre-brief figure, not a defect in the completion
+report's own claim ("all 24 ... pass unchanged") — that one is accurate as stated.
+
+**3. Dynamic per-connection producer — disconnect/hangup path PASS, but a real new finding on
+`stop()`'s own teardown.** Read `HostGameEngine.swift:153-167`: the producer loop breaks cleanly
+on `.hangUp` and on any thrown read error (`catch` -> yield `.clConnectionEnded` -> `break`) — no
+infinite retry, confirmed by re-running `hostGameEngineDisconnectsAPlayerNormallyOnHangUp` and
+`hostGameEngineDisconnectsAPlayerAbnormallyWhenConnectionCloses` myself (both real-network tests,
+both pass). That much matches the claim exactly.
+
+**But I went further than re-reading the disconnect path and built a scratch test
+(`HostGameEngineTests.swift`, appended, run, then restored from a pre-edit backup — confirmed
+`git diff --stat` zero afterward) to check `stop()`'s own teardown, since "no leaked Task" is
+PLANNER's actual ask and `stop()` is this type's only other lifecycle exit besides disconnect/hangup:**
+joined a real player over a real TCP connection, called `engine.stop()`, waited 300ms, then sent
+another `CL*` message on the still-open client connection. **The send succeeded with no error** —
+proving `stop()` (`HostGameEngine.swift:130-138`) never cancels already-accepted player
+`NWConnection`s or the dynamic producer `Task`s reading them: it only cancels `listener`/
+`dgramListener`/`consumerTask` and nils `continuation`, none of which reach a connection already
+handed off to its own per-player producer `Task` at `HostGameEngine.swift:154-166` (that closure
+captured its own local `continuation` copy at spawn time, independent of the instance property
+`stop()` nils). The practical effect: any already-joined player's producer `Task` — and the socket
+it's blocked reading — outlives `stop()` entirely, continuing to consume CPU/memory and buffer
+undelivered events into an abandoned `AsyncStream` for as long as the remote peer keeps the
+connection open (which could be indefinitely).
+
+**Currently latent, not yet a live bug:** `stop()` has no production caller yet (`grep` shows only
+`HostGameEngineTests.swift`'s own `defer` cleanups) — Wave 7.1-7.3's app target hasn't wired
+session start/stop to anything a user can trigger. But this is exactly the kind of thing D95/D96's
+own "no leaked Task" discipline exists to catch, and it will matter the moment a real app wires
+"stop hosting"/"quit" to this call. Not something I'm fixing — I don't write fixes — but real
+enough that PLANNER should decide whether it's worth a D-number now or a note to catch before Wave
+7.3 wires session lifecycle to UI.
+
+**4. `onPlayerDisconnected`'s narrow wiring — PASS, confirmed no double-fire.** Read
+`RunTick.swift:159-181` end to end: step 4 already computes the lagged player's onboard-pill mask,
+calls `dropPills` (firing `onShouldBroadcastDropPill` per pill), sets `connected = false`, *then*
+calls `onPlayerDisconnected(player)` — all before `onPlayerDisconnected` is even invoked.
+`HostGameEngine.tick()` (`HostGameEngine.swift:210,226-231`) only ever appends to
+`disconnectedPlayers` inside the callback, then after `runTick` returns does exactly two things per
+disconnected player: `table.sendToAllExcept(player, SRPlayerDisc(...))` + `table.disconnect(player)`
+— no second call to `removePlayer`/`dropPills`, confirmed by reading the full function body, not
+just the diff. Ordering also matches the reference: `pending` (which includes any `SRDropPill`
+broadcasts from step 4) is flushed via `table.sendToAll` *before* the `disconnectedPlayers` loop's
+`SRPlayerDisc` send, matching `handlePlayerDisconnect`'s own documented C ordering
+(`HostSession.swift:282-286`) of drop-pills-before-exit-broadcast.
+
+Also independently confirmed the "5 correctly-unwired callbacks" claim, not just trusted it: read
+`TankTick.swift:101-102` — `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn` (lines 129, 135, 142,
+159, exact line numbers as cited) all sit inside a block gated by `guard player ==
+state.localPlayer else { return }` at line 102, so they provably never fire for a non-local
+player's tank. And `client.c:436-446` (`client.setplayerstatus`, the C source
+`onPlayerLagStatusChanged` mirrors) really is gated only on a UI-layer function-pointer being
+non-NULL, with no `sendcl*`/`sendsr*` call anywhere in that block — confirmed by reading the actual
+C, not the port's paraphrase of it.
+
+**5. Test count — PASS, confirmed by direct execution, not by trusting the commit message.** Ran
+the full suite 3 consecutive times: **172 `DifferentialTests` + 483 `BoloKitTests` = 655**, matching
+exactly, stable across all 3 runs, zero flakes.
+
+[TO: PLANNER] B.5c audited at `8ca6567`+`82068fc`+`47e9c09`+`25bce0f`. **D101 (join slot-leak) and
+the `dispatchHostMessage` split: both PASS**, independently re-derived with a real negative control
+and a real diff-level behavior check, not just re-running the shipped tests. **`onPlayerDisconnected`'s
+narrow wiring: PASS**, confirmed no double-fire and correct ordering by reading `RunTick.swift`'s
+step 4 and `HostGameEngine.tick()` in full. **One real new finding**: `HostGameEngine.stop()`
+doesn't tear down already-joined players' `NWConnection`s or their dynamic producer `Task`s —
+proved with a built scratch test (send after `stop()` succeeds when it should fail), not just
+reasoned about. Currently latent (no production caller of `stop()` yet), so your call on whether
+this rides as its own D-number now or gets tracked as a known gap to close before Wave 7.3 wires
+session lifecycle to the app target. Test count confirmed: **655/655**, stable across 3 runs.
+[TO: IMPLEMENTER] Nothing required right now — the `stop()` gap above is flagged for PLANNER's
+ruling on timing, not assigned to you yet. If it does get assigned: the fix likely needs `stop()`
+to call `table.disconnect(player)` (or otherwise cancel the connection) for every currently-connected
+slot, which would make each blocked `receiveOneHostMessageBytes` throw and its producer `Task` exit
+via the existing `catch` -> `break` path — the same clean-termination shape the disconnect/hangup
+tests already prove works, just triggered from the other direction.
