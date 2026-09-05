@@ -599,3 +599,115 @@ until that message lands rather than self-triggering off PARITY's entry directly
 for later: whichever of B.2/B.3 lands second should remove the "Play Demo" button as part of its own
 completion report.
 [TO: PARITY] No change to B.0's audit scope — this entry is unrelated to what you're checking.
+
+### [PARITY] 2026-09-05 — Milestone B.0 audit (`27c200c`+`89fadd4`): PASS, every claim independently re-derived
+
+**Type:** post-commit audit, standard `[TO: PARITY]` activation (`da92254`)
+**Scope:** `Package.swift`'s `BoloNet` product export, `project.pbxproj`'s three-part target-dependency
+wiring, both `ENABLE_*_NETWORK_CONNECTIONS` entitlement keys, and the completion report's
+build/codesign/`nm` claims. No behavioral/simulation Swift changed this sub-wave, so no C-oracle
+hand-trace applies — this audit is entirely execution-verified (tooling check below), not hand-traced.
+
+**Tooling confirmed present this session:** `swift` (6.4, Xcode 27.0/27A5252f), `xcodebuild`,
+`plutil`, `codesign`, `nm` all resolved via `which`. Every check below was actually executed, not
+assumed.
+
+**Verdict: PASS.** Every one of the four numbered checks in the audit brief was independently
+confirmed:
+
+1. **`Package.swift`** (`git show 27c200c -- Package.swift`) — `.library(name: "BoloNet", targets:
+   ["BoloNet"])` added to `products:`, stale "deliberately not exported" comment corrected in place.
+   Confirmed the claim's shape on public surface: `grep -rEn "^\s*public (func|struct|class|enum|
+   protocol|var|let|init|typealias|static)" Sources/BoloNet/*.swift` finds public declarations in
+   exactly 18 of 19 files (`BoloNet.swift` has none) — the "18 files" part of the pre-brief's claim is
+   exact. The declaration *count* is not: my count is 638, not the pre-brief's stated "~126" — off by
+   roughly 5x. This is citation drift, not a substantive defect: the pre-brief itself hedged it as
+   "spot-checked, not exhaustively counted by hand," and the actual shape-check the brief asked for
+   (are the symbols the app needs already public) holds up even more strongly than claimed —
+   `HostSessionTable` (`Sources/BoloNet/HostSession.swift:106`, `public actor`) exposes all its slot
+   accessors, `send`/`sendToAll`/`sendToMask` (lines 150-233) as `public`; `joinClient` (`Sources/
+   BoloNet/JoinClient.swift:72`) is a public free function; `TrackerHost`/`TrackerHostList` (`Sources/
+   BoloNet/Tracker.swift:83,197`) and `trackerHost(...)` (`:238`) are public. The large true count is
+   explained by `ServerMessages.swift` (243 matches) and `ClientMessages.swift` (150 matches) being
+   dozens of small wire-format structs, each with `public var` fields, `public init`, `public static
+   let wireSize`, `public func encode`, `public static func decode` — five-plus public members per
+   message type, which the pre-brief's "spot-check" undercounted. Flagging as a number-accuracy note
+   for PLANNER's judgment on whether it's worth a standing "state counts as ranges, not point
+   estimates, when hedged as spot-checks" convention — not asking for a fix, nothing here is wrong.
+
+2. **`project.pbxproj`** — read the actual diff (`git show 27c200c -- "Bolo 2026/Bolo 2026.xcodeproj/
+   project.pbxproj"`): new `PBXBuildFile` (`B01A0004304B70C6007A9580`, `productRef` → `B01A0012...`)
+   added to `PBXFrameworksBuildPhase`'s `files` list (diff lines +11/+31 in the object graph), a new
+   `XCSwiftPackageProductDependency` (`B01A0012304B70C6007A9580`, `productName = BoloNet`), and that
+   ID added to the target's `packageProductDependencies` — exactly the `BoloKit`-shaped three-part
+   wiring, not `BoloGlyphs`'s build-order-only `PBXTargetDependency` shape (confirmed `PBXTargetDependency`
+   count stayed at 1, unchanged, meaning `BoloGlyphs`'s wiring wasn't touched or duplicated).
+   `plutil -lint "Bolo 2026/Bolo 2026.xcodeproj/project.pbxproj"` → `OK`. Independently diffed object
+   counts before (`git show 27c200c^:...`) vs. after: `PBXBuildFile` 1→2, `XCSwiftPackageProductDependency`
+   2→3 — matches the completion report exactly. `PBXTargetDependency` and `PBXNativeTarget` both stayed
+   at 1 (unchanged, as expected — no other object type moved, confirmed via a full `isa =` histogram
+   diff, not just the two claimed types). Checked both new IDs individually: `B01A0004304B70C6007A9580`
+   appears exactly twice (its own definition + the Frameworks-phase reference); `B01A0012304B70C6007A9580`
+   appears exactly three times (its own definition, the `PBXBuildFile`'s `productRef`, and
+   `packageProductDependencies`) — no duplicates, no orphans. Ran a full duplicate-ID scan across the
+   whole file (`grep -oE "^\s*[0-9A-F]{24} /\*[^*]*\*/ = \{"` → sorted → `uniq -d`) — empty, confirming
+   no ID collisions anywhere in the file, not just around the new objects.
+
+3. **Entitlements (D78 — added, not flipped)** — confirmed `ENABLE_INCOMING_NETWORK_CONNECTIONS`/
+   `ENABLE_OUTGOING_NETWORK_CONNECTIONS` both occur zero times in `git show 27c200c^:"Bolo 2026/
+   Bolo 2026.xcodeproj/project.pbxproj"`, and exactly twice each (Debug + Release, no dupes) in the
+   current file. Positioned exactly as claimed — `project.pbxproj:293-295` (Debug) and `:326-328`
+   (Release) both read `ENABLE_APP_SANDBOX` → `ENABLE_INCOMING_NETWORK_CONNECTIONS` →
+   `ENABLE_OUTGOING_NETWORK_CONNECTIONS` → `ENABLE_PREVIEWS`, correct alphabetical order, matching the
+   file's existing key-ordering convention.
+
+4. **Real build/test verification, execution-verified end to end:**
+   - `swift build` → `Build complete!`. `swift test` → two independent test-run totals, `156 tests in
+     13 suites` (`BoloKitTests`) + `483 tests in 7 suites` (`DifferentialTests`) = **639**, matching
+     the completion report's before/after (unaffected, no BoloKit/BoloNet Swift touched this sub-wave)
+     exactly. Also cross-checked via `grep -rc "@Test" Tests/` → 639 raw attribute occurrences,
+     consistent.
+   - Real `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration
+     Debug build` (backgrounded, monitored rather than blocked on) → `** BUILD SUCCEEDED **`. No
+     toolchain hang this run either — second sub-wave in a row it hasn't recurred (Wave 7.3, now
+     B.0), consistent with the completion report's claim.
+   - `codesign -d --entitlements -` on the built `Bolo 2026.app` myself: independently observed all
+     five entitlements — `com.apple.security.app-sandbox`, `.files.user-selected.read-only`,
+     `.get-task-allow` (all three pre-existing, untouched), plus `.network.client` and
+     `.network.server` newly present, `= true` on all five. Confirms the `ENABLE_OUTGOING_NETWORK_
+     CONNECTIONS`→`network.client` / `ENABLE_INCOMING_NETWORK_CONNECTIONS`→`network.server` mapping
+     the pre-brief predicted and the completion report asserted.
+   - `nm -m` on `Bolo 2026.debug.dylib`: `grep -c "BoloNet"` → **5,283** — exact match to the
+     completion report's stated count, not just "present." (`BoloKit` symbol count for comparison:
+     3,794 — sanity-check that the mangled-symbol grep is picking up a real, comparably-sized module,
+     not a fluke pattern match.)
+
+**Citation drift found:** none beyond the §1 count discrepancy above (which I'm treating as a
+number-accuracy note, not a citation error — no `file:line` in either the pre-brief or completion
+report pointed at the wrong place; both cite real, correctly-described locations throughout).
+
+**Scope check:** `git show 27c200c --stat` / `89fadd4 --stat` confirm exactly `Package.swift` +
+`project.pbxproj` in the code commit and only `docs/AGENT_NOTES.md` in the report commit — no stray
+changes, `docs/PLAN.md` untouched, none of the four Director-owned untracked artifacts touched.
+`git status --short` before this audit and before this commit both show only the same four untracked
+Director files (`Resources/`, the two `docs/` binary artifacts, `docs/notes/XBolo Deliverable
+Matrix.numbers`) — none touched by me.
+
+**Note on repo concurrency during this audit:** `docs/AGENT_NOTES.md` briefly showed an uncommitted
+PLANNER entry (B.1 pre-brief review) on disk while I was reading it. Flagged it to that session
+before proceeding; they confirmed it landed separately at `9774d6f` before I committed, so no
+sweep-in happened — this entry is appended cleanly on top of that commit, false alarm.
+
+[TO: PLANNER] B.0: **PASS.** All four checks in the audit brief independently confirmed — `Package.swift`
+export is purely additive, `.pbxproj` wiring is exactly `BoloKit`-shaped (not `BoloGlyphs`-shaped),
+object counts move by exactly the claimed amounts with no dupes/orphans, both entitlement keys are
+genuinely new and correctly positioned, and every numeric claim in the completion report (639 tests,
+5,283 `BoloNet` symbols, 5 entitlements) reproduced exactly on a real build I ran myself. One
+non-blocking number-accuracy note: the pre-brief's "126 public declarations across 18 files" — the
+file count is exact, the declaration count is off by ~5x (638 actual) because of how many public
+members `ServerMessages.swift`/`ClientMessages.swift`'s small wire-format structs carry; doesn't
+change the conclusion either claim was checking (the symbols the app needs are already public). B.1's
+coding GO can proceed on B.0's clean PASS.
+[TO: IMPLEMENTER] Nothing needed — clean PASS, no fixes required. Nice execution-verification
+discipline (the `nm` check especially). No action on the §1 count note; it's a documentation nicety,
+not a defect.
