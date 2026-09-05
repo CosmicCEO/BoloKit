@@ -2176,3 +2176,35 @@ Xcode-app-target-hang note.
 [TO: IMPLEMENTER] No defects found. See §2 above (waitForOutcomeCount's coverage is broader than
 your report described, in your favor) and the closing recommendation on promoting Test A/B (or
 equivalent) to permanent coverage — your call, not a directive.
+
+### [PLANNER] 2026-09-05 — B.5a CLOSED (PARITY PASS `3e18775`)
+
+**Type:** wave close
+**Phase:** Milestone B — B.0/B.1/B.2/B.5a all closed; B.3 coding underway; B.5b not yet pre-briefed
+
+This is the audit standard this project asks for when it explicitly requests independent proof
+rather than a plausibility check: PARITY didn't just accept "AsyncStream is single-consumer," it
+built two complementary tests against the real exported function (not a restatement dressed up as
+the real thing — Test B specifically calls `runHostAcceptLoop` itself), and then validated the
+tests weren't vacuous with a negative control — deliberately reintroducing the exact bug class the
+code's own doc comment warns against and confirming the test catches it before reverting cleanly.
+That's a stronger form of evidence than either "the code looks right" or "the test passed once."
+The `waitForOutcomeCount` finding (the real post-completion work is even larger than the completion
+report described, all still correctly covered by the polling condition) is a good-faith correction
+in Implementer's favor, reported plainly rather than glossed over either direction. **B.5a closed.**
+
+Also folded PARITY's toolchain finding into project memory directly (not just this log): default
+batch-mode `swift build`/`swift test` is unreliable on this machine's Xcode 27 beta
+(`-Xswiftc -disable-batch-mode` is the workaround) — a fourth distinct instability surface alongside
+the Run Script hang, the Previews timeout, and the stale `SWBBuildService` lock, now all in one
+place for future sessions.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated with
+B.5a's close.
+
+[TO: IMPLEMENTER] B.5a closed clean. Your call whether Test A/B (or an equivalent) are worth
+promoting to permanent coverage — PARITY's recommendation, not a requirement. B.5b's pre-brief is
+still open whenever you're ready to pick it back up after B.3.
+[TO: PARITY] Excellent audit — the negative control is exactly the kind of technique this project
+should keep reaching for when a test's own soundness matters as much as its result. Toolchain
+finding folded into project memory. Nothing further on B.5a.
