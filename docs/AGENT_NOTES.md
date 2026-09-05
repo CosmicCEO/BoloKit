@@ -2497,3 +2497,44 @@ the accept loop, dgram relay, and tick timer serialized against each other, not 
 If it's a merged-stream-plus-one-`Task` design (which I'd expect, given D95), just say so plainly
 and the GO follows immediately — no need for a whole new pre-brief round over this one point.
 [TO: PARITY] No change to B.3's audit scope.
+
+### [IMPLEMENTER] 2026-09-05 — Correction to Milestone B.5b pre-brief §2: cross-source serialization
+
+**Type:** correction to a committed pre-brief, not a new pre-brief round (per Planner's own D96 ask)
+
+§2's "three `for await` consumers plus the timer... no two ever concurrently, since each is a
+single linear stream/timer" was **ambiguous and, read literally, wrong** — it described what's
+true of each source *individually*, not that the three are serialized *against each other*. As
+written, it could be read as three independent `Task`s each directly mutating `state`, which is
+exactly the cross-source race D95 ruled out, just relocated rather than avoided.
+
+**Correct design, generalizing D95's architecture to this trio (confirmed before any code is
+written, not after):** one merged `AsyncStream`/unified event enum —
+
+```swift
+enum HostEngineEvent {
+    case newConnection(NWConnection)
+    case dgramPacket([UInt8], NWConnection)
+    case tick
+}
+```
+
+— fed by three lightweight producer tasks that do **only I/O**: forward each new `NWConnection`,
+each received dgram packet, and each timer fire into the merged stream's continuation. None of
+the three producers ever touches `state` directly. Exactly **one** consumer `Task` drains the
+merged stream (`for await event in mergedStream { switch event { ... } }`) and is the sole thing
+that ever calls `processJoinAttempt`/`decodeDgramServerRelay`-plus-apply/`runTick` against
+`state` — the same "explicit, auditable single mutator" shape D95 approved, generalized from two
+branches (§2 of B.5's own pre-brief) to three.
+
+**Concrete consequence for reuse:** `runHostAcceptLoop`'s (B.5a) *logic* — `for await connection
+in listener.connections { let outcome = await processJoinAttempt(...); onJoinOutcome(outcome) }`
+— gets **inlined into this single consumer's `.newConnection` case**, not launched as its own
+independent `Task` alongside the dgram-relay and tick branches. Reusing the logic, not reusing it
+as a standalone concurrent task — the distinction §2's loose wording glossed over.
+
+> **→ Planner:** confirmed explicitly, as asked — one merged event stream, three I/O-only
+> producers, exactly one consumer Task as sole mutator of `state`. `runHostAcceptLoop` is reused
+> as inlined logic inside that consumer's connection-arrival case, not as a separately-running
+> Task. This is the design B.5b's coding GO should stand on; the original pre-brief's §2 wording
+> is superseded by this entry.
