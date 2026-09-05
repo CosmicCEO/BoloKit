@@ -2881,3 +2881,102 @@ unchanged from what you already confirmed correct in the original audit; (4) the
 only ran a filtered subset this pass for a disclosed, unrelated reason. This is the last gate before
 B.3 closes.
 [TO: IMPLEMENTER] Nothing further needed from you on D97 — go ahead and finish B.5b's test fix.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.5b completion report
+
+**Type:** completion report
+**Phase:** Wave 7 / Milestone B, sub-wave B.5b (tick timer, dgram relay, host's own outbound
+`CLUpdate` broadcast), standing on the D96-corrected merged-event-stream architecture GO'd at
+`784dc4a`
+**Commit:** `d24cdd1`
+
+## What landed
+
+1. **`assembleClUpdate(player:state:seq:) -> CLUpdate`** (`Sources/BoloNet/CLUpdateCodec.swift`) —
+   mirrors `assembleBoloPreamble`'s caller-supplies-`seq` convention. Sound-effect fields hardcoded
+   `false` — no sound model exists yet, that's Milestone C's deferred scope, disclosed in the header.
+2. **`HostSessionTable.sendDgram(_:to:)`** (`Sources/BoloNet/HostSession.swift`) — the UDP
+   counterpart of the existing TCP-only `send(_:to:)`/`sendToAll`/`sendToAllExcept`/`sendToMask`,
+   needed because none of those touch `slots[player].dgramConnection`. Same best-effort tolerance
+   (silently drops on a missing connection, matching the existing `send(_:to:)`'s own behavior).
+3. **`HostGameEngine`** (new, `Sources/BoloNet/HostGameEngine.swift`) — one `AsyncStream` fed by
+   three I/O-only producer tasks (accept loop, dgram listener, tick timer), drained by exactly one
+   consumer `Task` that is the sole mutator of `GameState`, per D96. Reuses B.5a's accept-loop logic
+   inlined into the `.newConnection` case, and the already-existing `processDgramPacket` (does
+   decode+apply+relay in one call) for the `.dgramPacket` case. The tick case runs `runTick`, wires
+   7 of `runTick`'s 16 callbacks to real `HostSessionTable` broadcast calls (`onPlayerStatusChanged`,
+   `onPillStatusChanged`, `onBaseStatusChanged`, `onTankStatusChanged`, `onMineExplosion`,
+   `onSuperboomTerrain`, `onDropPills` — the ones this project's Wave 6 hooks already exposed), and
+   broadcasts the host's own outbound `CLUpdate` gated on `localSeq % 5 == 0` — **not** unconditional
+   every tick. I initially wrote the comment assuming unconditional send, caught it against
+   `client.c:425-497`'s actual `if (client.players[client.player].seq%5==0)` guard before it became
+   a PARITY finding, and added the `localSeq` counter (separate from `HostSessionTable.seq`, same
+   field-conflation-avoidance precedent as D39) to gate it correctly.
+
+**Disclosed judgment call for PLANNER:** the other 9 of `runTick`'s 16 callbacks were left as
+default no-ops deliberately, not guessed at or forgotten — I don't have a clear read on whether
+wiring them is its own follow-up sub-wave or folds into B.5c's scope (TCP CL* dispatch, explicitly
+out of scope here). Logging as a question rather than resolving it myself.
+
+## Debugging journey (disclosed in full, per your check-in)
+
+`HostGameEngineTests.swift` surfaced four distinct, non-repeating real bugs — all in my new test
+code, not production code — each root-caused via direct source-reading or standalone `swiftc`
+reproduction rather than guessed at:
+
+1. A fatal "Index out of range" crash: `PlayerState()`'s default `dead: Bool = true` plus an empty
+   `state.starts` in a bare test `GameState()` — `spawn(state:)` indexes `state.starts`
+   unconditionally once `respawnCounter` crosses `respawnTicks` (~3s at 50Hz). Same D88 §4 corollary
+   already documented from Wave 7.3/B.2, rediscovered in new test scaffolding. Fixed by seeding
+   `state.starts` non-empty in `makeEngine` and setting `dead = false` explicitly per test.
+2. `dgramConnection` never registering: `decodeDgramServerRelay`'s real validity guard requires
+   `players[player].dgramAddress.family`/`.addr` to already match the sender's real address before
+   accepting any packet — no bootstrap path for a never-registered player. Fixed by seeding
+   `dgramAddress` via `peerAddress(from: fakeTCP)` before `engine.start()`, matching how production
+   seeds it at TCP join time.
+3. A bootstrap-packet processing-order race: two independent per-connection UDP producer tasks feed
+   the merged stream with no ordering guarantee matching a test's own send order, so a test's first
+   blind read could receive a stray earlier relay rather than the packet it meant to check. Fixed
+   with a "read until matching" helper, `receiveMatchingCLUpdate`.
+4. A systemic test-data bug: `TerrainGrid.mapDefault()`/`defaultTerrain(x:y:)` (`BMap.swift:23`)
+   makes the entire default map either `.sea` (interior) or `.minedSea` (border) — no land anywhere.
+   Every tank position I'd originally chosen ((1,1), (2,2), (7,8), (10,10), (0,0)) was hazardous
+   water, causing drowning/respawn cycles that corrupted the tests' own position assertions. Fixed
+   by seeding a safe grass patch at `(100..<120, 100..<120)` in `makeEngine` and repositioning every
+   test's starts/tanks/bootstrap sends into it. This is an already-documented, project-wide pitfall
+   (cited in `SpawnTests.swift`'s own comments) — I rediscovered it the hard way rather than having
+   checked first.
+
+Each was confirmed via a standalone `swiftc`-compiled repro outside `swift test`'s own harness
+before being ported into the real test file, distinguishing genuine bugs from harness/environment
+noise, consistent with this project's established debugging discipline from earlier B.3 work.
+
+Two separate genuine multi-minute test "hangs" during this work were **not** bugs: cross-session
+`.build/` lock contention from PARITY's own concurrent `swift test` runs, confirmed via `ps aux`
+showing other sessions' distinct filter strings, correctly left alone (never killed another
+session's process).
+
+## Verification
+
+- `swift build --build-tests`: clean.
+- `swift test --filter "hostGameEngine"`: 3/3 pass, no hangs (0.021s / 0.023s / 0.100s).
+- `swift test` (full suite): **483 tests in 7 suites, all pass** (2.646s). All growth — no
+  coverage shrink (D28 n/a, `HostGameEngineTests.swift` is a wholly new file, net +3 tests).
+
+## Scope check
+
+Staged and committed exactly `Sources/BoloNet/CLUpdateCodec.swift`, `Sources/BoloNet/HostSession.swift`,
+`Sources/BoloNet/HostGameEngine.swift`, `Tests/DifferentialTests/HostGameEngineTests.swift` via
+specific-file `git add` — did not touch `README.md` (Jerod mid-editing, left modified-but-unstaged
+exactly as found), `Resources/` (build-generated, untracked, left alone), `docs/PLAN.md`, or the
+three Director-owned untracked files (`docs/XBolo_Role_Deliverable_Matrix.xlsx`,
+`docs/XBolo_Wave_SubWave_Swimlane.pptx`, `docs/notes/XBolo Deliverable Matrix.numbers`).
+
+> **→ Planner:** B.5b is done and committed at `d24cdd1`, full suite green (483/483). One open
+> question above (9-of-16 unwired `runTick` callbacks — its own follow-up, or folds into B.5c?)
+> needs your call before I'd treat that as settled either way. Ready for PARITY whenever you want
+> to activate it.
+> **→ Parity:** worth specifically checking the `localSeq % 5 == 0` cadence gate against
+> `client.c:425-497` yourself rather than trusting my re-read, and confirming the 7 wired
+> `runTick` callbacks match the C reference's own call sites for `setplayerstatus`/`setpillstatus`/
+> `setbasestatus`/`settankstatus`/mine-explosion/superboom-terrain/drop-pills at tick boundaries.
