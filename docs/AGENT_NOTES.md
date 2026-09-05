@@ -1812,3 +1812,69 @@ worth re-reading before you start) or B.5b's pre-brief (the tick+relay+dispatch 
 merged-consumer design gets built) — your call which one you pick up next, neither blocks the other.
 [TO: PARITY] Nice audit — the independent-values harness and the `Spawn.swift` bounds-check trace
 are exactly the standard this project expects. Nothing further on B.2.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.5a completion report
+
+**Type:** completion report
+**Phase:** Milestone B — sub-wave B.5a (accept/join wiring, D95's split), coding GO'd `bebf079`
+**Commit:** `01a2d89`
+
+Implemented exactly as GO'd — the pre-brief's proposed shape landed with no changes beyond fixing
+one real test-synchronization bug caught while verifying (below).
+
+## What landed
+
+- **`Sources/BoloNet/HostAcceptLoop.swift`** (new): `runHostAcceptLoop(listener:state:table:
+  onJoinOutcome:)` — a single `for await` over `HostListener.connections` calling the
+  already-built `processJoinAttempt` per connection, exactly as proposed. No new concurrency
+  design needed, confirmed by construction (an `AsyncStream` delivers to one consumer serially).
+- **`Tests/DifferentialTests/HostAcceptLoopTests.swift`** (new, 2 tests): drives a *real*
+  `HostListener(port: 0)` (ephemeral port — confirmed `NWListener` accepts `0` for OS-assigned)
+  through real loopback `NWConnection`s and `runHostAcceptLoop` itself — not the lower-level fake
+  `NWListener` harness `HostListenerTests.swift` uses for per-call `processJoinAttempt` coverage.
+  One test: two real joins register into `HostSessionTable` with distinct slots. One test: a
+  bad-version join is rejected, the connection closes, no slot is consumed.
+
+## A real bug caught by writing the through-the-loop test, not by inspection
+
+First run of the two-real-joins test failed intermittently reading a stale outcome count, then
+crashed on an out-of-bounds array access in my own test code. Root cause: receiving client A's
+handshake-reply byte only proves `processJoinAttempt`'s *send* completed — the accepted path still
+has an `await table.setConnection(...)` after that send, before `processJoinAttempt` returns and
+`runHostAcceptLoop`'s `for await` calls `onJoinOutcome`. There's a real, narrow async gap between
+"client sees the reply" and "outcome recorded server-side" that a naive test (assuming the reply
+byte means the whole call finished) misses. Fixed by polling `outcomeBox.outcomes.count` up to a
+bounded timeout instead of assuming synchronous completion (`waitForOutcomeCount`, commented in
+the test file explaining why). **This is a test-harness timing bug, not a production defect** —
+`runHostAcceptLoop`/`processJoinAttempt` themselves are correct; the test just needed the right
+synchronization point. Confirmed non-flaky across 3 repeated runs after the fix.
+
+## Verification
+
+- `swift build`: clean.
+- `swift test`: 639 → 641 (+2, 0 removed, D28-compliant) — 156 → 158 `DifferentialTests`, 483
+  `BoloKitTests` unaffected (no `BoloKit` change this sub-wave).
+- Ran the two new tests 3 times in a row after the fix above: consistent pass, same timings each
+  run (`0.012s`/`0.028s`) — no flakiness observed.
+
+## Scope check
+
+Touched exactly the two new files. Confirmed the B.5a/B.5b boundary held: no
+`HostDgramListener`/`receiveAndDispatchOneHostMessage` call anywhere in the diff, no app-target/UI
+file touched. Did not touch `docs/PLAN.md`, `Sources/BoloKit`, the three Director-owned untracked
+files, or `README.md` (still Jerod's own in-progress edit in the working tree — left alone, not
+staged).
+
+> **→ Planner:** B.5a implemented exactly as proposed. Test count 639 → 641 (+2, 0 removed). One
+> real test-harness timing bug found and fixed while verifying (detailed above) — not a
+> production defect, but worth knowing about since it's the first test in this codebase to drive
+> a background `Task` racing against explicit client-side synchronization, and the same "reply
+> byte received ≠ server-side call returned" gap could bite a future B.5b test the same way if
+> it isn't accounted for there too. No new open questions. Ready for PARITY's audit whenever you
+> activate it.
+> **→ Parity:** worth independently confirming the concurrency-safety claim itself: that
+> `runHostAcceptLoop`'s single `for await` genuinely never has two `processJoinAttempt` calls
+> in flight at once (I'd suggest instrumenting a counter the same shape as
+> `joinAcceptSerializerNeverAllowsOverlappingCriticalSections`'s existing test in
+> `HostListenerTests.swift`, applied to this loop instead, rather than taking "AsyncStream is
+> single-consumer" as self-evidently sufficient proof).
