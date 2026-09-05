@@ -457,3 +457,106 @@ Test count: 639 → 639 (unaffected, no BoloKit/BoloNet source changed this sub-
 > deltas above on `project.pbxproj`, a diff of `Package.swift`'s `products:` array, and your own
 > `codesign -d --entitlements -` run against a fresh build. No behavioral/simulation code changed
 > this sub-wave, so no C-oracle re-derivation applies here.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.1 pre-brief: navigation shell
+
+**Type:** pre-brief (no production code yet), started in parallel with PARITY's B.0 audit per
+Planner's go-ahead — **coding GO still gated on B.0's clean PASS**, same sequencing as every prior
+sub-wave.
+
+**Phase:** Milestone B, sub-wave B.1 (navigation shell) — proposed split names it as: "Host/Join
+tab window, currently nonexistent." Read the reference's actual window/nav structure
+(`Reference/c/Mac OS X/GSXBoloController.h`/`.m`) rather than inventing a shape, plus the current
+app target's real files (`Bolo_2026App.swift`, `ContentView.swift`) rather than assuming what's
+there.
+
+## 1. What the reference actually does (traced, not assumed)
+
+`GSXBoloController.h:16-20` declares four top-level `IBOutlet NSWindow`s plus one `NSTabView`:
+`newGameWindow` (hosts `newGameTabView`, presumably Host/Join tabs — the nib itself isn't text-
+readable, but every code reference treats it as the one pre-game window), `boloWindow` (the actual
+gameplay window — this port's `GameRenderView`'s home), `joinProgressWindow` (a modal sheet shown
+via `beginSheet:...modalForWindow:newGameWindow`, `GSXBoloController.m:998/1092/1119`, during a
+join attempt), and `preferencesWindow` (Milestone C).
+
+Traced the actual round trip: `newGame:` (`GSXBoloController.m:1208-1209`) just orders
+`newGameWindow` to the front. The "quit/disconnect" path (`GSXBoloController.m:740-760`) orders
+`boloWindow` (and the HUD panels) out, tears down the client/server, then calls `[self
+newGame:self]` again — i.e. the reference's real shape is a **round trip between two states**
+(pre-game ↔ in-game), not a one-way launch sequence into gameplay.
+
+## 2. Proposed shape for this port — mechanism is my call to propose (same footing as D81)
+
+D60/D81 already established that UI *mechanism* (vs. structure/behavior) is Implementer's
+engineering call to propose and Planner's to review against precedent, not something the reference
+binds by default. Proposing a single-window, state-driven equivalent rather than three literal
+`NSWindow`s:
+
+- **`AppRootView.swift`** (new): owns `@State private var screen: AppScreen = .newGame`, an
+  `enum AppScreen: Equatable { case newGame, playing }`. Switches between `NewGameView` and the
+  existing game view based on `screen` — one `WindowGroup`, no multi-window lifecycle to manage.
+- **Why not literal multiple `NSWindow`s:** the reference's three-window split is 2007-era
+  `NSWindowController`-per-purpose Cocoa convention, not a fidelity requirement — nothing in
+  `GSXBoloController`'s behavior *depends* on them being separate windows vs. one window with
+  swapped content (no cross-window drag, no simultaneous visibility of two of them at once anywhere
+  I found). A single window avoids introducing this project's first multi-window focus/lifecycle
+  management under Swift 6 concurrency for a mechanism the reference itself doesn't functionally
+  require. Flagging this explicitly as the tradeoff, same as D81's Canvas-vs-NSView disclosure, for
+  your review rather than assuming it's uncontroversial.
+- **`Bolo_2026App.swift`**: `WindowGroup { AppRootView() }`, replacing today's direct
+  `WindowGroup { ContentView() }`.
+- **`NewGameView.swift`** (new): a SwiftUI `TabView` (the idiomatic mapping of `newGameTabView`)
+  with two tabs — **Host** and **Join** — each showing a placeholder view for this sub-wave only
+  (`HostPlaceholderView`/`JoinPlaceholderView`, literally just static text naming the sub-wave
+  that fills them in: B.2 and B.3 respectively, per the proposed split). No map picker, no
+  `HostSession`/`JoinClient` call anywhere in B.1 — that's B.2/B.3's scope, not this shell's.
+- **`ContentView.swift` → renamed `GameView.swift`:** today's `ContentView` *is* the app's whole
+  content; once `AppRootView` exists, "ContentView" (a SwiftUI-template name implying "the app's
+  root content") no longer describes its role — it becomes one of two screens. Same `GameSession`/
+  `demoState`/rendering logic, unchanged, just relocated and renamed. Flagging the rename since it
+  touches a file name across the diff, not a behavior change.
+- **Round-trip completeness:** proposing a minimal "Quit to Menu" control in the game screen that
+  stops the session and sets `screen = .newGame` — matching the reference's actual round-trip shape
+  (§1) even before any real disconnect/host-teardown logic exists (that's deeper Milestone B/C
+  wiring). Cheap, and "navigation shell" should mean genuinely navigable both directions, not a
+  one-way door into the demo.
+
+## 3. The temporary demo-reachability question — flagging, not deciding solo
+
+Once `AppRootView` defaults to `.newGame`, nothing currently reaches `.playing` until B.2 (host) or
+B.3 (join) exists — Wave 7.3's fully-verified, PARITY-passed gameplay loop (`GameSession`, real
+tick/input/render) would otherwise become **unreachable from the UI** for however long B.2/B.3 take
+to land. Proposing a **temporary** third affordance on `NewGameView` (e.g. a "Play Demo" button)
+that sets `screen = .playing` directly, using the exact same `demoState`/`GameSession` construction
+`GameView` already has — explicitly labeled in code comments as scaffolding, to be removed once
+B.2 or B.3 provides a real path into `.playing` from an actual `HostSession`/`JoinClient`.
+
+**→ Planner:** is keeping a temporary demo-access affordance the right call, or would you rather
+B.1 land with the demo genuinely unreachable from the UI for the B.1→B.2/B.3 gap (recoverable at
+any time via `#Preview`/a debug build, just not from the shipped nav shell)? I lean toward keeping
+it — it costs one button and preserves a manually-verifiable "does the core loop still work" check
+at every commit in between — but this is a product-shape call, not a pure mechanics one, so raising
+it rather than deciding it myself.
+
+## 4. Explicitly out of scope for B.1 (confirming against the proposed split, not re-deciding it)
+
+No `HostSession`/`JoinClient` call anywhere (B.2/B.3). No map picker (B.2). No join-progress sheet
+UI (B.3 — blocked on the `JoinClient` progress-callback gap already recorded in Milestone B's
+pre-plan). No preferences window (Milestone C). No toolbar/HUD (`GSXBoloController.m`'s
+`awakeFromNib` toolbar setup, `preferencesWindow`'s toolbar) — Milestone C's territory, traced and
+confirmed unrelated to navigation structure itself.
+
+## 5. Verification plan
+
+No `BoloKit`/`BoloNet` Swift touched — `swift test` count should be unaffected (639 → 639). Real
+`xcodebuild -scheme "Bolo 2026" build` for a compile-level check (this environment's toolchain hang
+has not recurred across the last two real builds, so attempting it directly rather than assuming
+it will hang). For a visual check beyond "it compiles" — no automated SwiftUI-view snapshot
+infrastructure exists in this project yet, so will attempt `RenderPreview` (Xcode MCP tool) against
+`NewGameView`'s and `AppRootView`'s `#Preview`s; if that also hits toolchain instability, will say
+so plainly and fall back to a structural/logical description of the view hierarchy rather than
+claiming a visual confirmation that didn't happen.
+
+No new open architectural question beyond §3 above (a product-shape call, flagged rather than
+decided) and the mechanism disclosure in §2 (an engineering call, proposed with reasoning, same
+footing as D81). Awaiting coding GO — gated on B.0's clean PARITY PASS per standard sequencing.
