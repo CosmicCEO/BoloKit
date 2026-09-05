@@ -3203,3 +3203,51 @@ rather than block on it, and will say so plainly in the completion report.
 > `GSBoloView.m` itself sets, not a shortcut. No Jerod-level product/architecture fork identified —
 > everything above is an engineering call within the wave's already-GO'd scope, flagged per
 > protocol rather than decided solo. Awaiting coding GO.
+
+### [PLANNER] 2026-09-04 — Wave 7.3 pre-brief reviewed, coding GO'd (D88)
+
+**Type:** review + ruling + coding GO
+**Phase:** Wave 7.3 — pre-brief reviewed at `70e72b9`, coding GO issued
+
+This is the standard I want on a pre-brief: two real gaps found by actually tracing the C source
+(`keyevent()`, `DefaultPreferences.plist`) rather than assuming the wave's shape from its one-line
+row text, both flagged as open questions rather than resolved solo, with the exact citations needed
+to check the claims.
+
+**§3 (LMINE immediate on-keydown plant) and §4 (`onSpawn` never wired to `spawn()`) — both ruled
+in-scope, see D88.** Neither is optional: §4 specifically means this wave's own charter ("closes the
+loop... driven by the actual physics engine") breaks on the very first local-player death, and §3
+means the Lay-Mine key visibly does nothing under the most obvious use case. Both are small, both sit
+inside 7.3's own input/tick territory rather than reopening Wave 5/6 design, and §4's fix location
+(inside `tankMoveTick`'s own `inout` binding, not the app-level callback) correctly reuses the
+exclusivity-safe pattern Wave 5.9 already established for the mine-cascade callbacks — not a new
+mechanism invented under pressure.
+
+**Tick-driver mechanism and keyboard-capture architecture approved as proposed.** `DispatchSourceTimer`
+over `Timer`/`RunLoop` is the right call for a `@MainActor`-isolated Swift 6 target (D79) with no
+run-loop-tracking-mode blind spot the C reference's single-threaded model never had to consider —
+and it's explicitly framed as "to be confirmed by measurement once coded," matching D41's standard
+from 7.2's own benchmarking rather than asserting the nominal rate holds. Extending `GameRenderView`
+itself for key capture is the literal architecture `GSBoloView.m` already uses (same file owns
+rendering and first-responder key handling) — correctly disclosed as reopening an already-PARITY-passed
+file (`07974bd`), same "done in the open" standard D86 set. The hardcoded `autoSlowdownBool == true`
+behavior (Brake key intentionally inert) is exactly the kind of thing worth flagging so it doesn't
+read as a bug later — good instinct, no ruling needed, it's the shipped default's actual behavior.
+
+**Map source, out-of-scope confirmations, and test plan all correct as stated** — hand-built demo
+terrain (extended for §4's `starts` requirement) rather than inventing a map-loader wave; builder
+mouse-click control and view-scrolling/networking UI correctly excluded per already-standing
+decisions (BuilderTick's own documented scope boundary, D73/D60); test plan's app-target constraint
+(no oracle for `NSEvent` handling) handled with a pure-function extraction plus 7.2's own off-screen
+verification technique — reasonable, not a gap.
+
+**Coding GO issued — no separate Director checkpoint, per D87's auto-mode grant for this wave.**
+Flagging two things for PARITY's eventual audit, not blocking coding: confirm §3's new guard logic in
+`layMineOnKeyDown` doesn't silently duplicate `TankLocalTick.swift`'s existing tile-change guard
+without a shared helper (a DRY concern, not a correctness one, but worth a look); confirm §4's fix
+genuinely avoids the exclusivity trap it's designed around, not just asserts it does.
+
+[TO: IMPLEMENTER] Coding GO'd — proceed to production code per the pre-brief as written, both §3/§4
+included. Report measured tick jitter (not just nominal), before/after test counts (D28), and the
+usual completion-report format when done. Auto mode is in effect for this wave (D87) — commit and
+report when ready; I'll review and activate PARITY without a separate check-in.
