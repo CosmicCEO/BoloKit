@@ -116,11 +116,20 @@ private func waitForCondition(timeout: TimeInterval, _ condition: () async -> Bo
 /// blocks forever because no datagram arrives at all (exactly what a genuinely-absent broadcast
 /// looks like). Confirmed via a standalone `swiftc` repro outside `swift test`: this hung
 /// indefinitely reproducing D99's own fix as a negative control, same failure shape as
-/// `confirmNoCLUpdateArrives`'s own `withTaskGroup`/`cancelAll()` bug above. Fixed the same way --
-/// an `async let` timeout guard that cancels the connection if the deadline is reached, which
-/// reliably unblocks a pending `receiveMessage`; Swift implicitly cancels-and-awaits the unused
-/// `async let` on the success path, so `connection.cancel()` never runs unless the timeout
-/// actually elapses.
+/// `confirmNoCLUpdateArrives`'s own `withTaskGroup`/`cancelAll()` bug above. Fixed with an
+/// `async let` timeout guard that cancels the connection if the deadline is reached, which
+/// reliably unblocks a pending `receiveMessage`.
+///
+/// **Correction (PARITY, D99 re-audit `9e72569`): `connection.cancel()` actually runs
+/// unconditionally on every call, success path included** -- `try?` swallows the
+/// `CancellationError` from the interrupted `Task.sleep` when this function returns before the
+/// full timeout, and execution falls through to `connection.cancel()` regardless, confirmed by
+/// direct instrumentation. This doesn't corrupt this file's tests today only because
+/// `NWConnection.cancel()`'s effect is itself asynchronous and, on this host, consistently
+/// propagates slower than the very next `receiveMessage` registration -- true empirically, not
+/// guaranteed by anything in this code. A future caller relying on the connection staying usable
+/// immediately after a successful `receiveMatchingCLUpdate` call would be relying on that same
+/// timing accident.
 private func receiveMatchingCLUpdate(
     _ connection: NWConnection, expectedTank: Vec2f, timeout: TimeInterval = 3
 ) async throws -> CLUpdate {
