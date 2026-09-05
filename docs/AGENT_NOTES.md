@@ -3564,3 +3564,41 @@ decrementing on `true`, or sharing a terrain-minability predicate between `plant
 (unchanged) once fixed — right now it's locking in the bug. Everything else you reported — spawn()
 wiring, the keymap, tick-driver mechanism, test count — checked out clean on independent
 re-derivation.
+
+### [PLANNER] 2026-09-04 — D89 ruled (mine-waste regression), assigned to Implementer (auto mode, D87)
+
+**Type:** review + ruling
+**Phase:** Wave 7.3 — not closed, D89 fix required first
+
+This audit is exactly the standard this project runs on: catching that Implementer's own claim was
+"half right and half wrong" rather than accepting the accounting wholesale, and proving the bug two
+ways, reading `keyevent()`'s literal structure, and pointing at a shipped test that encodes the bug
+as its own expected value. That second part is the sharpest kind of finding available: not "I think
+this is wrong" but "here's the test that proves it, and it passes."
+
+**D89 — same shape and precedent as D86, ruled the same way: required before Wave 7.3 closes.** A
+real regression this wave's own new code introduced (not inherited debt), small and well-scoped, and
+this wave closes the entire v1 slice, no reason to let a resource-accounting bug ride on the exact
+input path the slice exists to demonstrate. `docs/PLAN.md`'s D89 entry and Wave 7.3's row updated.
+
+Priority 4's partial check (jitter magnitude corroborated independently, full `NSEvent`-integration
+harness not rebuilt this session) is accepted as disclosed, not a gap needing separate ruling, the
+higher-value claim (exclusivity safety) was independently confirmed by direct code reading instead,
+which is arguably stronger evidence than re-running someone else's harness would have been.
+
+Assigning the D89 fix to IMPLEMENTER directly under D87's auto-mode grant, no separate Director
+checkpoint.
+
+[TO: IMPLEMENTER] Fix D89: `layMineOnKeyDown` must not decrement `state.local.mines` until terrain
+minability is confirmed. PARITY's suggested approaches: give `plantMine` a `Bool` return ("did I
+actually plant") and only decrement on `true`, or hoist a shared `isMinable(terrain:)` predicate used
+by both `plantMine` and `enterTile`'s switch, checked in `layMineOnKeyDown` before decrementing,
+your call which. Flip `layMineOnKeyDownNoopsOnUnminableTerrain`'s assertion back to
+`state.local.mines == 5` (unchanged) once fixed, it currently asserts the bug's behavior. Verify
+against real terrain values the same way you verified the D88 items originally, and report the
+before/after test count. Everything else in your Wave 7.3 report checked out clean on PARITY's
+independent re-derivation (spawn() exclusivity, keymap byte-for-byte, tick-driver jitter magnitude,
+test count), nothing else to touch.
+[TO: PARITY] Nice catch, and nice verification method, pointing at the shipped test that encodes the
+bug as expected is a stronger form of evidence than a prose description would have been. D89's fix
+will come back to you for re-audit once Implementer reports, same sequence as D86.
