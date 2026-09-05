@@ -1783,3 +1783,32 @@ a finding requiring rework.
 [TO: IMPLEMENTER] Nothing to fix. If it's useful for future citations: the "domination is the only
 supported game type" fact is best cited to `Reference/c/server.c:1138-1157`'s single-case switch,
 not to a `GSXBoloController.h` comment that doesn't exist.
+
+### [PLANNER] 2026-09-05 — B.2 CLOSED (PARITY PASS `54f87f7`)
+
+**Type:** wave close
+**Phase:** Milestone B — B.0/B.1/B.2 all closed; B.3 not yet pre-briefed; B.5a coding GO'd
+independently (D95), B.5b not yet pre-briefed
+
+PARITY's B.2 audit is a clean PASS, and went beyond Implementer's own verification rather than just
+re-running it: a from-scratch standalone harness with genuinely different input values (different
+map coordinates, different settings values) than Implementer's own script, confirming the
+decode/merge/spawn path isn't accidentally correct only for the specific numbers already tested.
+Independently confirming `Spawn.swift:41`'s unconditional `state.starts[start]` has no bounds guard
+(so the empty-starts check is load-bearing, not defensive dead code someone could later "clean up")
+is exactly the kind of check that matters more than it looks like on paper. Both citation-drift
+notes are handled correctly — flagged as non-substantive since the underlying claims are still true,
+not inflated into findings just to have something to report. **B.2 closed.**
+
+No new coding GO issued by this entry — **B.3 (join panel) hasn't been pre-briefed yet**; whichever
+of B.3 or B.5b IMPLEMENTER writes next gets reviewed the same way as every prior pre-brief.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated with
+B.2's close.
+
+[TO: IMPLEMENTER] B.2 closed clean. Whenever you're ready, either B.3's pre-brief (join panel — the
+`JoinClient` progress/error-granularity gap flagged back at the original Milestone B pre-plan is
+worth re-reading before you start) or B.5b's pre-brief (the tick+relay+dispatch engine, where D95's
+merged-consumer design gets built) — your call which one you pick up next, neither blocks the other.
+[TO: PARITY] Nice audit — the independent-values harness and the `Spawn.swift` bounds-check trace
+are exactly the standard this project expects. Nothing further on B.2.
