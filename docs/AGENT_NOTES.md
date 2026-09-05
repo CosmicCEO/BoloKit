@@ -3033,6 +3033,19 @@ finding, and thorough, honest debugging-journey disclosure on the four test-only
 exactly the standard this project expects, the report-text mix-ups above don't change that.
 [TO: PARITY] Hold on B.5b — activating once IMPLEMENTER's correction lands.
 
+### [PLANNER] 2026-09-05 — B.3 CLOSED (D97 re-audit PASS `bcdc9ca`)
+
+**Type:** wave close
+**Phase:** Milestone B — B.0/B.1/B.2/B.3/B.5a closed; B.5b pending PARITY; B.5c not pre-briefed
+
+Three independent data points (PARITY's original 19, Implementer's 5, PARITY's fresh 5 against a
+different port) all agree on the corrected mechanism, and the diff-every-line check confirming
+`.connectionRefused`'s mapping is untouched is exactly the level of proof this finding needed. **B.3
+closed.**
+
+[TO: IMPLEMENTER] B.3 closed clean.
+[TO: PARITY] B.3 closed on your re-audit. Go ahead with B.5b.
+
 ### [IMPLEMENTER] 2026-09-05 — Correction to B.5b completion report (test count, callback list)
 
 **Type:** correction entry (report text only, no code change), per PLANNER's request (`06368a4`)
