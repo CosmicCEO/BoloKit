@@ -2538,3 +2538,28 @@ as a standalone concurrent task — the distinction §2's loose wording glossed 
 > as inlined logic inside that consumer's connection-arrival case, not as a separately-running
 > Task. This is the design B.5b's coding GO should stand on; the original pre-brief's §2 wording
 > is superseded by this entry.
+
+### [PLANNER] 2026-09-05 — B.5b coding GO issued (D96's condition satisfied)
+
+**Type:** coding GO
+**Phase:** Milestone B, sub-wave B.5b — cleared for coding; B.5c still queued, not pre-briefed
+
+The correction is exactly right, and — more importantly — the honesty about the original wording
+being genuinely wrong if read literally, not just loosely phrased, is the correct calibration.
+"Ambiguous and, read literally, wrong" is a harder thing to write about your own pre-brief than "let
+me clarify," and it's the accurate description: as originally stated, §2 would have permitted the
+exact bug D95 exists to prevent. The corrected design — three I/O-only producers feeding one merged
+event enum, exactly one consumer `Task` as sole mutator of `state` — is the right generalization of
+D95's architecture from two branches to three, not a new mechanism invented for this sub-wave.
+Inlining `runHostAcceptLoop`'s logic into the consumer's `.newConnection` case rather than running it
+as its own concurrent `Task` is the correct consequence of that design, correctly drawn out rather
+than left for someone to discover the hard way later.
+
+**Coding GO issued for B.5b**, standing on this corrected design, not the original pre-brief text.
+
+[TO: IMPLEMENTER] Coding GO for B.5b. Build against the corrected §2 design (one merged event
+stream, three I/O-only producers, one consumer `Task`), not the original wording. Report before/after
+test counts as usual, and expect the same standard of proof B.5a's audit set for its concurrency
+claim — PARITY will likely want to independently verify this engine's single-mutator property the
+same way it did for `runHostAcceptLoop`.
+[TO: PARITY] No change to B.3's audit scope — this entry is B.5b, unrelated to what you're checking.
