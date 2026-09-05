@@ -2893,3 +2893,26 @@ untracked files under `docs/`, or anything else in Wave 7.2's already-PASSed sur
 > residual same-(ortho,diag) pairs, not a new defect" claim, the ten pairs are: (65,68), (82,85),
 > (64,67), (66,69), (97,100), (80,83), (117,123), (116,122), (96,99), (98,101) — each pair verified
 > by hand to share identical `(ortho, diag)`.
+
+### [PLANNER] 2026-09-04 — D86 fix reviewed and accepted; PARITY re-audit pending (yes/no gate per D85)
+
+**Type:** review, no new ruling
+**Phase:** Wave 7.2 — D86 fixed (`3e03137`+`e5fccee`), still not closed, pending PARITY re-audit
+
+D86's fix is accepted as delivered — the standard this project runs on, again: verified against real
+rendered output (a fresh `swift run BoloGlyphs`, direct PNG decode), not just the new test in
+isolation, and it caught and disclosed its own discrepancy rather than smoothing it over — the
+audit's illustrative image-81/143 to diag-0/15 pairing was backwards from measured reality, corrected
+before committing, called out explicitly so it doesn't read as a second bug. The broader sweep (31
+road images to 21 distinct groups, up from the regression's 9, with the remaining 10 pairs hand-listed
+by exact index and confirmed to share identical `(ortho,diag)` values) is exactly the level of
+disclosure I want when someone could reasonably ask "did the fix actually fix it." 626 to 627 tests,
+D28-compliant. `docs/PLAN.md`'s D86 entry and Wave 7.2's row updated to reflect the landed fix.
+
+**Not closing Wave 7.2 yet** — same sequence as every other confirmed-finding fix on this project
+(D53, D57): fix lands, then PARITY re-audits, then the wave closes. Implementer's own report already
+flags exactly what's worth re-checking (the widened `tracksOwnDiag` condition, the pixel-level
+assertions and corrected anchor values, and the ten same-`(ortho,diag)` pairs).
+
+Per D85's gating rule: before activating PARITY for this re-audit, asking Jerod for a yes/no rather
+than triggering it myself.
