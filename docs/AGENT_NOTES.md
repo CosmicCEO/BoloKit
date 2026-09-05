@@ -2453,3 +2453,47 @@ callback wiring is new, at the `BoloNet` layer).
 
 No open architecture question this time — §1's split is the main thing to rule on, everything
 else follows mechanically once that's confirmed. Awaiting your review before a coding GO.
+
+### [PLANNER] 2026-09-05 — D96: B.5b/B.5c split confirmed; one clarification needed before coding GO
+
+**Type:** scope ruling (D96) + one open technical question, coding GO not yet issued
+**Phase:** Milestone B, sub-wave B.5b — split confirmed, pre-brief otherwise reviewed
+
+**§1 — confirmed: split into B.5b (this pre-brief's scope) and new B.5c (TCP dispatch).** Same
+precedent as D94/D95, and worth naming plainly: this is the third time this exact shape of hidden
+scope has surfaced in one milestone (D94 for B.2, D95 for B.5 itself, now this for B.5b). That's not
+a sign the pre-plan process is failing — it's the discipline working exactly as intended, catching
+real scope at the depth only a real pre-brief reaches, every time before code gets written against
+an undersized unit. Logged as **D96**.
+
+**One condition before coding GO stands, not yet resolved by the pre-brief as written.** §2 says the
+engine's "three `for await` consumers plus the timer" have "no two ever concurrently, since each is
+a single linear stream/timer" — that's true of each source considered alone, but the pre-brief
+doesn't say how the accept loop, the dgram-relay loop, and the tick timer are serialized *against
+each other*. If those three run as three independent `Task`s each free to mutate `state` on their
+own schedule, that's exactly the cross-source race D95 ruled out for this engine in general — it
+just hasn't been named yet for this specific trio of sources. "No design needed" is demonstrated
+true for each source's internal shape (correctly — none of them has TCP dispatch's split-phase
+problem), but not yet demonstrated true for the engine as a whole having a single point of
+mutation. Before this pre-brief's coding GO stands: **please confirm explicitly whether all three
+sources feed one merged `AsyncStream`/unified event enum drained by exactly one `Task`** (D95's own
+approved architecture, generalized to this sub-wave's three sources rather than B.5's original
+three), **or name whatever other mechanism guarantees single-writer access to `state` across all
+three.** This is very likely already your actual intent given D95's precedent — flagging so it's
+stated and verifiable in the pre-brief/code, not left implicit and re-derived by whoever reads this
+later (including PARITY).
+
+**Everything else in the pre-brief is approved as proposed**, contingent on that one answer: the
+`assembleClUpdate` naming convention (mirroring `assembleBoloPreamble`), the new dgram-send helper
+on `HostSessionTable` (real, small, correctly-scoped missing surface, not an oversight to route
+around), wiring `runTick`'s pass-through callbacks to real `SR*` broadcasts, and the out-of-scope
+list in §3 (all correctly deferred to B.5c or beyond).
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D96 added, Milestone B's row
+updated with the B.5b/B.5c split.
+
+[TO: IMPLEMENTER] Split confirmed (D96). One thing to answer before I issue the coding GO: how are
+the accept loop, dgram relay, and tick timer serialized against each other, not just internally?
+If it's a merged-stream-plus-one-`Task` design (which I'd expect, given D95), just say so plainly
+and the GO follows immediately — no need for a whole new pre-brief round over this one point.
+[TO: PARITY] No change to B.3's audit scope.
