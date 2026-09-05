@@ -2787,3 +2787,64 @@ unreproducible) by running it 19 times against the real function, then explainin
 stopping at "didn't reproduce." The `.waiting`-state finding is genuinely useful independent of this
 specific ruling. D97 fix will come back to you for re-audit once Implementer reports, same sequence
 as every prior required-before-close finding.
+
+### [IMPLEMENTER] 2026-09-05 — D97 completion report
+
+**Type:** completion report
+**Phase:** Milestone B, D97 (correction to B.3's comments, required before B.3 closes)
+**Commit:** `d9f1cbc`
+
+Implemented exactly as ruled, all three parts.
+
+## What landed
+
+1. **One cheap re-probe, not an extensive re-investigation.** Ran the exact scenario twice more
+   independently: `joinClient(host: "127.0.0.1", port: 39217, ...)` against a port nothing has
+   ever bound to, 5 fresh runs — **5/5 `.timedOut`**, matching PARITY's 19/19. Also re-ran the
+   *raw* `NWConnection`/`withNetworkConnection` probe (bypassing `joinClient` entirely) against
+   the same port — still gets `ECONNREFUSED` immediately, confirming the split is specifically
+   between the raw primitive and `joinClient`'s own wrapping, not a fluke or OS-level flakiness.
+2. **Corrected `JoinClient.swift`'s header** to describe the real mechanism PARITY traced:
+   `NWConnection` treats a refused connection as the retryable `.waiting(.posix(.ECONNREFUSED))`
+   state, not `.failed`, and never transitions out of it on its own on this OS/SDK —
+   `withNetworkConnection`'s own retry semantics ride that state rather than surfacing it, so only
+   `joinClient`'s explicit connect-phase timeout ever fires. Withdrew the original "sandboxing
+   difference between a standalone binary and `swift test`'s own process" story explicitly rather
+   than quietly deleting it — noted that neither PARITY's re-derivation nor a fresh re-probe here
+   could reproduce that framing. **No architecture or mapping change** — `.connectionRefused`
+   stays exactly as written (a clean, confident `POSIXErrorCode` mapping, correct-by-construction),
+   just documented as currently unreachable through `joinClient`'s own call path in this
+   environment, not merely hard to trigger. Also corrected the matching comment in
+   `JoinClientTests.swift`'s `joinClientMapsConnectionRefusedToNamedError` test.
+3. **Fixed the citation drift:** `grep -c "kJoin" bolo.h` gives 21, not the pre-brief's cited 19.
+   Corrected in `JoinClient.swift`'s header.
+
+## Verification
+
+- `swift build`: clean.
+- `swift test --filter "joinClient"`: 6/6 pass, including the corrected test
+  (`joinClientMapsConnectionRefusedToNamedError`, `3.0s`, `.timedOut` as expected).
+- Did not run the full suite this pass — `Tests/DifferentialTests/HostGameEngineTests.swift`
+  (uncommitted, mid-flight B.5b work, unrelated to D97) currently has a real bug of its own I'm
+  still fixing (a test-only issue: my dgram tests never seed `dgramAddress` on the table before
+  sending, so every packet gets `.dropped` on the family/addr check — confirmed by reading
+  `decodeDgramServerRelay`'s actual guard directly). Not blocking D97, which only touches
+  `JoinClient.swift`/`JoinClientTests.swift`, staged and committed separately from that
+  in-progress work.
+
+## Scope check
+
+Touched exactly `Sources/BoloNet/JoinClient.swift` and `Tests/DifferentialTests/JoinClientTests.swift`
+— did not touch `Sources/BoloNet/HostGameEngine.swift`/`HostSession.swift`/`CLUpdateCodec.swift`
+(B.5b's own in-progress, uncommitted work, left alone and unstaged), `docs/PLAN.md`, `README.md`,
+`CLAUDE.md` (Jerod's own in-progress edits per your heads-up, untouched), or the three
+Director-owned untracked files.
+
+> **→ Planner:** D97 fixed exactly as ruled. Re-probe confirmed PARITY's finding independently
+> (5/5, plus a raw-primitive control run), the header now describes the real mechanism rather
+> than the withdrawn sandboxing story, and the citation count is corrected. Ready for PARITY's
+> re-audit whenever you activate it. Returning to B.5b's in-progress test fix now.
+> **→ Parity:** the corrected comment in both files states the mechanism plainly — worth
+> confirming your own re-derivation matches the specific claim now written (`.waiting` never
+> transitioning to `.failed`, not a sandboxing difference) rather than just checking the test
+> still passes.
