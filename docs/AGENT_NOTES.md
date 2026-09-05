@@ -2830,3 +2830,66 @@ decisions log.
 
 Per the new subagent-gating rule (docs/PLANNER.md, D85): before assigning this fix to the
 standing-by Implementer subagent, I'm asking Jerod for a yes/no rather than dispatching it myself.
+
+### [IMPLEMENTER] 2026-09-04 — D86 fix: road's diagonal-data exemption in `drawConnective`
+
+**Type:** fix + regression test
+**Phase:** Wave 7.2 — D86 (PARITY's `3dfabff` finding, PLANNER-ruled required-before-close)
+
+Fixed exactly as scoped, nothing else touched. `Sources/BoloGlyphsCore/GlyphSource.swift:91-94`'s
+corner-inference exemption checked `family == .wall` only; extended to
+`family == .wall || family == .road` (introduced a `tracksOwnDiag` local so both corners' four
+lines read the same as before, just against the wider condition). Doc comment above `drawConnective`
+updated to explain why road belongs in the same bucket as wall (`deriveRoadConnectivity()`'s own
+diagonal sweep, `mapimage()`'s road branch genuinely reading diagonal neighbors via
+`isRoadLikeTile`) rather than the five-family "no real diagonal data" bucket.
+
+**Regression test:** `Tests/BoloKitTests/BoloGlyphsTests.swift`'s new
+`roadCornerFillStillUsesItsOwnDiagBitsNotInference`, mirroring the existing
+`wallCornerFillStillUsesItsOwnDiagBitsNotInference` structurally but going further per the brief:
+renders `ortho=0b1111` at `diag=0` and `diag=0b1111` and asserts on the actual `Canvas16.pixels`
+arrays being unequal (not just a structural/logic check), then anchors the test to the exact
+regression PARITY named by confirming those two connectivities really are `deriveConnectivity(family:
+.road)`'s images 143 and 81 — note the diag assignment came out swapped from the audit's illustrative
+phrasing (audit said "image 81 = diag=0, image 143 = diag=15"; measured reality is image 81 = diag=15,
+image 143 = diag=0, an artifact of `deriveRoadConnectivity()`'s last-write-wins dictionary construction
+over its `roadMask`/`waterMask`/`diagMask` sweep) — logged here so it isn't mistaken for a second bug.
+The pixel-level assertions don't depend on which way that swap goes; the anchor assertions were
+corrected to match measured values before committing.
+
+**Verified against real rendered output, not just the new test in isolation:** ran `swift run
+BoloGlyphs` fresh, decoded the emitted `Tiles.png` directly (Python/Pillow, no Xcode/xcodebuild
+involved — didn't hit the toolchain hang this session). Image 81 (diag=15): 256/256 opaque pixels,
+all four corners opaque. Image 143 (diag=0): 192/256 opaque, all four corners transparent (alpha=0).
+Confirmed pixel-distinct. Also swept all 31 road images through `renderGlyph` and grouped by
+rendered pixel content as a broader sanity check (not committed — done via a temporary test, removed
+before commit): 31 images now resolve to 21 distinct rendered groups, versus the regression's 9. The
+remaining 10 same-pixel pairs are not a residual defect: hand-checked, every pair shares the exact
+same `(ortho, diag)` `Connectivity` value already (different C-oracle image indices that
+`deriveRoadConnectivity()`'s probe legitimately collapses to identical ortho/diag because
+`drawConnective` only takes ortho+diag as input, never the `roadMask`/`waterMask` distinction some C
+image variants also encode) — expected under D64 (no fidelity obligation on generated art), present
+before this fix too, and outside D86's scope.
+
+**Build/test:** `swift build` clean. Full `swift test`: 156 `DifferentialTests` + 471 `BoloKitTests`
+= 627, all passing. Test count 626 → 627 (+1, the one new road regression test) — D28-compliant,
+matches the expected before/after exactly (one test added, nothing removed).
+
+**Scope check:** touched only `Sources/BoloGlyphsCore/GlyphSource.swift` and
+`Tests/BoloKitTests/BoloGlyphsTests.swift`. Did not touch `docs/PLAN.md`, the three Director-owned
+untracked files under `docs/`, or anything else in Wave 7.2's already-PASSed surface area.
+
+> **→ Planner:** D86 fixed and verified against real rendered output (direct PNG decode), not just
+> the new test in isolation. Test count 626 → 627 (+1), D28-compliant. No new open questions — this
+> was a one-line scope fix plus a mirroring regression test, exactly as ruled. Ready to close Wave
+> 7.2 pending PARITY's re-audit.
+> **→ Parity:** re-audit requested for D86 specifically: (1) confirm the `tracksOwnDiag` condition
+> at `GlyphSource.swift:91-94` now covers road correctly and doesn't overreach into any family it
+> shouldn't; (2) spot-check `roadCornerFillStillUsesItsOwnDiagBitsNotInference`'s pixel-level
+> assertions and its image-81/143 anchor values against your own re-derivation of
+> `deriveRoadConnectivity()` — note the diag-side-of-81/143 swap from your original audit phrasing,
+> called out above, in case you want to verify that swap independently rather than take my
+> re-derivation on trust; (3) if you want a second opinion on the "26→9 collapse fixed to 21
+> residual same-(ortho,diag) pairs, not a new defect" claim, the ten pairs are: (65,68), (82,85),
+> (64,67), (66,69), (97,100), (80,83), (117,123), (116,122), (96,99), (98,101) — each pair verified
+> by hand to share identical `(ortho, diag)`.
