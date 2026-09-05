@@ -3251,3 +3251,144 @@ genuinely avoids the exclusivity trap it's designed around, not just asserts it 
 included. Report measured tick jitter (not just nominal), before/after test counts (D28), and the
 usual completion-report format when done. Auto mode is in effect for this wave (D87) — commit and
 report when ready; I'll review and activate PARITY without a separate check-in.
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.3 completion report (D88)
+
+**Type:** completion report
+**Phase:** Wave 7.3 — input + tick loop, last sub-wave of Wave 7's v1 vertical slice (D60)
+**Commit:** `82d2c08`
+
+Implemented exactly as GO'd at D88, no scope beyond the pre-brief plus its two approved gaps.
+
+## What landed
+
+- **`GameSession.swift`** (new, app target, `@MainActor`): owns the live `GameState`, drives
+  `runTick` via a `DispatchSourceTimer` on `.main` at `1/ticksPerSec` (50 Hz), calls
+  `GameRenderView.render(_:)` after each tick (D82 — `GameRenderView` still owns no clock).
+  `ticksSinceLastUpdate` stays a fixed all-zero array for the lone local player all session,
+  correctly meaning "never lagged" under D73's single-process v1 (no network at all).
+- **`GameRenderView.swift`** reopened (D88 §2, flagged in the pre-brief as touching an already-
+  PARITY-passed file): added `acceptsFirstResponder`/`viewDidMoveToWindow`/`keyDown`/`keyUp`/
+  `flagsChanged`, mirroring `GSBoloView.m:465-505`'s own first-responder architecture exactly.
+  `isARepeat` guarded on both `keyDown`/`keyUp` (`GSBoloView.m:477-482`). `onInputFlagsChange`/
+  `onLayMineKeyDown` closures, set only by `GameSession`, are the sole way key events reach
+  `GameState` — never invoked from inside a `runTick` call (see exclusivity note below).
+  `GameRenderRepresentable` now wraps a `GameSession`'s already-constructed view instead of
+  building its own from a static `state`; `updateNSView` is a deliberate no-op (D82: the tick
+  loop, not SwiftUI diffing, decides when `render` fires). `loadSheetImage` promoted to a free
+  function so `GameSession`/`ContentView` share it.
+- **`InputKeymap.swift`** (new, `BoloKit`): `inputFlagsChange(forKeyCode:isDown:)`, a pure
+  function (no `AppKit`/`NSEvent` dependency) translating the literal default keymap decoded
+  from `Reference/c/en.lproj/DefaultPreferences.plist`'s `GSKeyConfigDict` (W/A/S/D/Q/E/Space/
+  Shift) plus the shipped `autoSlowdownBool == true` default (Accelerate's release auto-applies
+  Brake; the Brake key itself is deliberately unbound — dead code under that default, not an
+  omission). Placed in `BoloKit` purely for testability, not a simulation-scope claim — it's the
+  only piece of this wave's app-target work `swift test` can exercise directly, given no app-
+  target test target exists and this environment's Xcode toolchain is hang-prone (see below).
+- **D88 §3 — `layMineOnKeyDown(state:)`** (new, `TankLocalTick.swift`, same file as the existing
+  private `plantMine` it calls into): ported from `keyevent()`'s LMINE branch
+  (`client.c:6456-6516`) — fires once on the key-down edge regardless of tile change, guarded on
+  alive + no pill/base on the current tile + `mines > 0`. Deliberately does **not** duplicate a
+  terrain-minability switch — `plantMine`'s own switch already covers the identical terrain set
+  `keyevent()` checks, so an unminable tile silently no-ops through it, same as C's silent
+  `sendsrmineack(player, 0)` failure ack. (Directly answers Planner's flag for PARITY: no
+  duplicated guard logic exists to audit.)
+- **D88 §4 — `tankMoveTick`'s respawn branch** (`TankTick.swift`): now calls `spawn(state: &state)`
+  directly at the `respawnCounter >= respawnTicks` boundary, before firing `onSpawn()` as a pure
+  notify — same pattern Wave 5.9 used for the other callbacks. `ContentView`'s initial `GameState`
+  gained a nonempty `starts` array (`spawn`'s own unconditional `state.starts[start]` index would
+  otherwise crash on first death) — the corollary flagged in the pre-brief.
+
+## Verification
+
+**Unit level (`swift test`):** 627 → 639 (+12, 0 removed, D28-compliant) — 6 new
+`layMineOnKeyDown` tests (plants while stationary; no-ops while dead/no-mines/on-a-pill/on-a-base;
+no separate terrain guard, confirmed by a no-op-on-sea case going through `plantMine`'s own
+switch) and 6 new `inputFlagsChange` tests (one parameterized over the 6 simple bindings, plus
+Accelerate's two-bit coupling, the unbound Brake key, an unbound keycode, and the `lmineKeyCode`
+constant). Also updated the pre-existing `tankMoveTickRespawnTicksBoundaryCallsSpawn` test, which
+would otherwise have started crashing under the real `spawn()` wiring (empty `starts` array) —
+now asserts the actual revive (`dead`, repositioned `tank`, `local.spawned`), not just that the
+callback fired.
+
+**Type-check + real build, no shortcuts taken:** `swiftc -typecheck` against the three app-target
+files passed clean before attempting a full build. A real `xcodebuild -scheme "Bolo 2026" build`
+(project lives at `Bolo 2026/Bolo 2026.xcodeproj`, not the repo root — tripped on that once, fixed,
+re-ran) **completed with BUILD SUCCEEDED**, including D72's `BoloGlyphs` Run Script phase — the
+known toolchain hang (documented at Wave 7.1/7.2) did not recur this run. Launched the signed
+binary directly for ~4s with no crash (confirms the alive-branch path holds under a real launch;
+this alone doesn't exercise death/respawn/input, hence the harness below).
+
+**End-to-end integration harness, exercising the actual production code paths (not a reimplementation):**
+compiled the real `GameRenderView.swift` + `GameSession.swift` from this commit together with a
+small driver against the real compiled `BoloKit` and the real generated `Tiles.png`/`Sprites.png`
+from the successful build above (same technique Wave 7.2 used for its off-screen verification,
+extended here to drive a live `DispatchSourceTimer` session and synthesize real `NSEvent`s through
+`GameRenderView.keyDown`/`keyUp`/`flagsChanged` — the actual entry points, not a shortcut around
+them). Results, reproduced across 3 runs:
+- Started `dead: true`, `respawnCounter = respawnTicks - 3`. At t=0.3s (15 real ticks later):
+  `dead` flipped to `false`, `local.spawned == true`, `local.mines == 40` (matches `maxMines` for
+  `.open` domination) — **D88 §4 confirmed through the real timer-driven `runTick`, no
+  exclusivity trap, no crash.**
+- LMINE via synthesized `flagsChanged` (Shift) while stationary on the spawn tile: terrain
+  `grass0 → minedGrass`, `mines` `40 → 39` — **D88 §3 confirmed through the real modifier-key
+  path**, the exact "standing still" case the fix targets.
+- Accelerate+TurnRight via synthesized `keyDown`, held ~0.6s, then released: tank moved from
+  `(130.5, 130.5)` to `(130.80, 130.80)`, `dir` swept from `0` to `~5.01` rad, `speed` reached
+  `~1.46` — real physics driven by real key input through the full `GameRenderView` →
+  `GameSession` → `BoloKit` pipeline. Post-release `inputFlags` correctly retained `.brake` (set by
+  Accelerate's release under the `autoSlowdownBool == true` coupling) and `.lmine` (the script
+  never sent a Shift-up `flagsChanged`, so it correctly stays latched — not a bug in the fix,
+  an artifact of the harness not exercising every release path).
+- **Measured tick jitter (D41 — reported, not assumed):** 70 ticks over 1.4s confirms the real
+  50 Hz rate. Average interval ≈ 20.05–20.08 ms across 3 runs (nominal 20 ms). Steady-state jitter
+  (excluding the first post-`.resume()` interval, which measures `DispatchSourceTimer` setup
+  overhead rather than steady tick spacing) stayed in the 3.4–5.1 ms range; including that first
+  interval, worst-case jitter from nominal was 5.6–8.7 ms. All comfortably inside the 20 ms tick
+  budget, consistent with Wave 7.2's own finding that AppKit's rendering path has ample headroom
+  at v1's viewport sizes — no runaway drift observed in any of the 3 runs.
+
+## Scope check
+
+Touched: `Bolo 2026/Bolo 2026/{ContentView,GameRenderView}.swift` (modified), `GameSession.swift`
+(new); `Sources/BoloKit/{TankLocalTick,TankTick}.swift` (modified), `InputKeymap.swift` (new);
+`Tests/BoloKitTests/{TankLocalTickTests,TankTickTests}.swift` (modified), `InputKeymapTests.swift`
+(new). Did not touch `docs/PLAN.md`, the three Director-owned untracked files under `docs/`, or
+anything in Wave 7.2's surface beyond the one file (`GameRenderView.swift`) the approved D88 §2
+design required reopening.
+
+## Judgment calls, disclosed rather than assumed away
+
+1. **`InputKeymap.swift` placed in `BoloKit`, not the app target.** Literal key-bindings are
+   arguably app/UI-layer config, but this function has zero `AppKit` dependency and putting it in
+   `BoloKit` is what let it run under `swift test` rather than needing an app-target UI test (none
+   exists yet, and this environment's Xcode is hang-prone). Purely a testability call, not a claim
+   that key-remapping is core simulation scope.
+2. **`flagsChanged` tracks only the Shift bit**, not `GSBoloView.m:489-498`'s fully generic 8-bit
+   modifier diff — sufficient because no remap UI exists yet to bind anything else to a modifier
+   key; porting the fully generic version would be dead generality with nothing to exercise it.
+3. **`viewDidMoveToWindow` calls `makeFirstResponder` unconditionally** — an AppKit-idiomatic
+   choice for a single-view v1 window with nothing else competing for first-responder status, not
+   a port of anything specific in `GSXBoloController.m` (which wires first-responder status through
+   its own window-controller setup this port doesn't have).
+4. **`GameSession.recentTickIntervals` is a debug/measurement aid**, capped at a 200-entry rolling
+   window, not exposed anywhere in the UI (no HUD in v1) — added specifically so this report could
+   state measured jitter rather than assert the nominal rate holds, per D41.
+
+Test count 627 → 639 (+12, 0 removed). Build succeeded (`xcodebuild`, no hang this run).
+Integration-verified end to end via the harness above, not just unit tests in isolation.
+
+> **→ Planner:** Wave 7.3 is implemented, built, and verified per D88's coding GO. No new open
+> questions — both approved gaps (§3, §4) are in and integration-confirmed through the real timer/
+> input pipeline, not just unit tests. Ready for PARITY's audit whenever you activate it (auto mode
+> per D87 — proceeding on the understanding you'll route this directly).
+> **→ Parity:** two items you flagged for this audit are directly answerable from the diff itself:
+> (1) `layMineOnKeyDown` (`TankLocalTick.swift`) has no duplicated terrain-guard — it has exactly
+> three guard conditions (dead, pill, base) plus `mines > 0`, then delegates entirely to the
+> existing `plantMine`; (2) the exclusivity-trap avoidance for §4 is `tankMoveTick` calling
+> `spawn(state: &state)` directly using its own `inout` binding (`TankTick.swift`, at the
+> `respawnCounter >= respawnTicks` branch) — no callback captures/mutates `state` from inside a
+> `runTick` call anywhere in this diff. The integration harness above (§4/§3/§2 all exercised live
+> through a real `DispatchSourceTimer` + real synthesized `NSEvent`s) is reproducible from this
+> commit plus a `BoloGlyphs`-generated sheet pair if you want to re-run it independently rather
+> than take the reported numbers on trust.
