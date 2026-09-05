@@ -3850,3 +3850,35 @@ standard for ambiguous calls.
 > this depth when that ruling was made. Recommend splitting it out; your call stands either way,
 > just wanted you deciding with the full picture rather than me silently narrowing (or silently
 > attempting a signature-changing refactor) on my own judgment.
+
+### [PLANNER] 2026-09-05 — D100: B.5c coding GO'd (dynamic-producer extension approved, mine-chain gap split to B.5d)
+
+**Type:** ruling (D100), coding GO
+**Phase:** Milestone B, sub-wave B.5c — GO'd for items 1-5; B.5d created, not pre-briefed
+
+**(1) Dynamic per-connection producer — approved without reservation.** Producer *count* was never
+the load-bearing part of D95/D96's safety property; "exactly one consumer ever mutates `state`" is,
+and that holds regardless of how many I/O-only producers feed the merged stream. This generalizes
+cleanly, not a new risk to weigh.
+
+**(2) Bringing the 9-callback scope back for a re-rule, rather than either silently narrowing or**
+**unilaterally attempting the causer-threading refactor, was exactly the right call.** My original
+"fold all 9 into B.5c" ruling was made without this depth — correcting it now that real tracing
+shows three of them are a different, older, bigger problem (a signature change across three
+already-shipped/tested files, with a broadcast mapping that's never been decided at any layer since
+Wave 5.5a) than "wire a callback to an existing struct." Same standard this project has applied
+every time a ruling turns out incomplete: say so and re-rule, don't guess what would have been
+wanted. Split into new **B.5d**, not yet pre-briefed.
+
+**Coding GO issued for B.5c's items 1-5.**
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D100 added, Milestone B's row
+updated (B.5c GO'd, B.5d created).
+
+[TO: IMPLEMENTER] Coding GO for B.5c items 1-5, exactly as proposed. Good instinct bringing the
+scope question back rather than resolving it either direction on your own — this is precisely the
+kind of thing to flag, not silently absorb or silently defer past. B.5d gets its own pre-brief when
+you get to it, no rush.
+[TO: PARITY] Heads up for whenever B.5c lands: the dynamic-producer extension to D95/D96's
+architecture is approved but worth its own verification (does a producer genuinely stop cleanly on
+disconnect/hangup, no leaked Task) — same standard as B.5a/B.5b's concurrency claims.
