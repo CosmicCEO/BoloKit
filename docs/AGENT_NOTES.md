@@ -760,3 +760,141 @@ expect 660. Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.
 closing, no GO. `README.md` and the three Director-owned untracked files are Jerod's own — leave
 untouched.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
+
+### [PARITY] 2026-09-05 — B.5d audit (`35e2320`+`f3e79af`): mine-chain broadcast wiring and `onDropPills` direct-call refactor both PASS
+
+**Type:** post-commit audit. **Toolchain:** `swift` present (`swift-driver 1.168.6`, Swift 6.4) —
+every claim below is execution-verified (built, ran the full suite 3 consecutive times, and for
+both of PLANNER's top-priority claims, ran a real negative control by reverting the fix in place,
+rebuilding, and confirming the expected failure, then restoring), not a hand-trace-only pass.
+**Concurrency note:** `README.md` sits modified-uncommitted throughout (Jerod's own edit,
+pre-existing at session start) — untouched by me; `git diff --stat` before and after this session
+shows only that file plus this entry. `.claude/`, `Resources/`, and the three Director-owned docs
+artifacts left alone too.
+
+**Verdict: PASS.** Both of PLANNER's priorities hold up under independent re-derivation, and the
+two negative controls behave exactly as the completion report claimed.
+
+**1. "`RecvCL.swift`'s ~15 call sites already broadcast correctly since Wave 6.6" — PASS, spot-checked**
+**3 of them directly, not trusted from the report.** `git show 35e2320 -- Sources/BoloKit/RecvCL.swift`
+confirms the *entire* diff to that file is the `onDropPills` → `onShouldBroadcastDropPill` parameter
+rename, nothing else — no new `onShouldBroadcastSmallBoom`/`onShouldBroadcastSuperBoom` call was
+added anywhere in it. Read `recvClTouch` (`RecvCL.swift:100-126`), `recvClSmallBoom`
+(`RecvCL.swift:592-618`), and `recvClSuperBoom` (`RecvCL.swift:622-638`) in full:
+  - `recvClSmallBoom` re-derives its own `detonated` bool from the full terrain switch (mirroring
+    `explosionAt`'s own case list) before firing `onShouldBroadcastSmallBoom(playerNeutral, x, y)` —
+    correct, because unlike `chainAt`/`floodAt` its guard is *not* restricted to already-mined
+    terrain, so it can't assume detonation. Matches `recvclsmallboom()`
+    (`Reference/c/server.c:3034-3050`), which just forwards to `explosionat(player, x, y)`.
+  - `recvClSuperBoom` fires `onShouldBroadcastSuperBoom(player, x, y)` unconditionally with the real
+    causer, not `playerNeutral` — confirmed against `superboomat()` (`server.c:4242`,
+    `sendsrsuperboom(player, x, y)`, no terrain gate, real `player`). Correctly asymmetric with
+    `explosionat()`'s own unconditional `sendsrsmallboom(NEUTRAL, x, y)` (`server.c:4166`/`4170`,
+    both detonating branches) — verified by reading `explosionat`/`superboomat` in full
+    (`server.c:4121-4250`), not assumed symmetric.
+  - `recvClTouch` only reaches `explosionAt` from a switch case restricted to the 7 mined terrain
+    types, then fires `onShouldBroadcastSmallBoom(playerNeutral, x, y)` unconditionally — safe for
+    the same structural reason `chainAt`/`floodAt` are (see #2).
+  - Confirmed `NEUTRAL` really is `0xff` (`Reference/c/bolo.h:40`), matching `playerNeutral: UInt8 =
+    0xff` (`Sources/BoloKit/Physics.swift:119`).
+
+**2. `chainAt`/`floodAt`'s unconditional `onShouldBroadcastSmallBoom` fire — PASS, reasoning verified**
+**by reading the switch statements, not accepted on the comment's say-so.** `chainAt`
+(`MineChain.swift:292-310`) and `floodAt`'s mined branch (`MineChain.swift:238-259`) both guard on
+exactly the 7 mined terrain cases (`.minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest,
+.minedRubble, .minedGrass`) before calling `explosionAt`. Read `explosionAt`'s own switch
+(`MineChain.swift:390-436`): all 6 non-sea mined cases fall into the first case list (sets
+`detonated = true` after mutating terrain), and `.minedSea` is its own case (`detonated = true`
+directly) — there is no terrain value that passes `chainAt`/`floodAt`'s guard and reaches
+`explosionAt`'s `default: detonated = false` branch. The claimed "no `detonated` re-derivation
+needed" holds structurally, not just by inspection of one example. Cross-checked against C:
+`chainat()`/`floodat()` (`server.c:4014-4057`) call `explosionat(NEUTRAL, x, y)` from the same
+restricted mined-terrain switch, and `explosionat()` itself fires `sendsrsmallboom(NEUTRAL, x, y)`
+unconditionally in both its detonating branches (`server.c:4166`, `4170`) — the port's split
+(`explosionAt` no longer self-broadcasts; caller fires `onShouldBroadcastSmallBoom` after) correctly
+preserves that C-side unconditional behavior for this restricted-guard case. Confirmed threading
+through `chain()`/`flood()` (`MineChain.swift:264-283`, `316-335`) into `runTick`
+(`RunTick.swift:211-218`, new `onShouldBroadcastSmallBoom` parameter) into
+`HostGameEngine.tick()` (`HostGameEngine.swift:219-221`, wired to
+`SRSmallBoom(player:, x:, y:).encode()`). New tests `floodAtBroadcastsSmallBoomOnDetonationWithNeutralCauser`/
+`floodAtDoesNotBroadcastWhenNotDetonating`/`chainAtBroadcastsSmallBoomOnDetonationWithNeutralCauser`/
+`chainAtDoesNotBroadcastForNonMinedTerrain` (`MineChainTests.swift`) each exercise both the positive
+and negative case — read and confirmed they assert what they claim, not just that they pass.
+
+**3. `onDropPills`'s dead-simulation-behavior claim — PASS, independently re-derived with my own**
+**negative control, not just a re-run of the existing test.** Reverted `killBuilder`
+(`TankLocalTick.swift:100-107`) to stub out the real `dropPills(...)` call (restoring the shape of
+the pre-fix bare pass-through), rebuilt, and ran `killBuilderRespawnsAsParachuteAtAStart`
+(`TankLocalTickTests.swift:395-409`) in isolation: it failed exactly as expected —
+`broadcasts.count == 0` (not `1`), `broadcasts.first?.0` `nil` (not `2`) — confirming that before
+this fix, killing a builder never actually invoked the spiral-search placement logic, only a
+bare-data closure call with no `state` access. Restored the fix, rebuilt clean. Independently
+confirmed (by reading, not re-testing each) the same direct-call pattern is applied at all 5 real
+fire sites claimed: `killBuilder`/`drown`/`smallboom`/`superboom` (`TankLocalTick.swift`) and
+`killTank` (`ShellTick.swift:327-349`) — each now calls `dropPills(player:, x:, y:, pills:, state:
+&state, onShouldBroadcastDropPill:)` directly instead of the old bare `onDropPills(mask, point)`.
+All other touched files (`TankTick.swift`, `PillTick.swift`, `RecvSR.swift`, `TCPSession.swift`,
+`UDPSession.swift`, `DgramClientApply.swift`) are confirmed pure mechanical parameter renames with
+no new call sites or logic changes — checked each file's diff directly.
+
+**4. `CLDispatchCallbacks.onDropPills`'s dead-end-no-op fix — PASS, confirmed by diff and by my own**
+**negative control (the hang), not just accepted from the report.** `git show 35e2320 --
+Sources/BoloNet/HostSession.swift` shows the pre-fix struct field was exactly a bare
+`(UInt16, Vec2f) -> Void` with no `pending`/`table` access in its declaration or `init` — genuinely
+dead, since nothing in the shipped codebase ever configured it with a real implementation. Reverted
+just the `.touch` case's `onShouldBroadcastDropPill` closure (`HostSession.swift:533`) to a no-op
+(matching the old dead-end shape), rebuilt, and ran
+`dispatchTouchDetonationKillingABuilderBroadcastsRealDropPill`
+(`Tests/DifferentialTests/HostSessionTests.swift:285-317`) in isolation: it hung waiting on
+`receiveExactly` for an `SRDropPill` that never arrives, exactly as claimed — had to kill the
+background process after 45s rather than see a clean failure. Restored the fix, rebuilt clean, ran
+the full suite 3 times with no regression. The test's own ordering claim (`SRDropPill` byte stream
+arrives before `SRSmallBoom`) is structurally correct: `recvClTouch`'s single call to `explosionAt`
+runs (and, via `killSquareBuilder` → `killBuilder` → `dropPills`, fires
+`onShouldBroadcastDropPill` synchronously inside it) *before* `recvClTouch`'s own trailing
+`onShouldBroadcastSmallBoom(playerNeutral, x, y)` call — confirmed by reading `recvClTouch`
+(`RecvCL.swift:100-126`) top to bottom, not assumed from the test's own comment.
+
+**5. Test count — PASS, confirmed by direct execution.** Ran the full suite 3 consecutive times:
+**173 `DifferentialTests` + 487 `BoloKitTests` = 660**, up from 655 (172+483) at B.5c's close — a
+net +5 matching the report's claim (`MineChainTests.swift` ×4, `HostSessionTests.swift` ×1), stable
+across all 3 runs, zero flakes. Tree confirmed clean (`git diff --stat` shows only the pre-existing
+`README.md` and this entry) after both negative controls were reverted.
+
+**Coverage check on the "~15 already-wired" claim — ran it over the full set, not just the 3**
+**spot-checked sites.** `grep -rn "explosionAt(\|superboomAt(" Sources/BoloKit/*.swift` (excluding
+the two definitions) finds every call site. Of those: 11 in `RecvCL.swift` (server-role `recvCl*`,
+all followed by a broadcast, per #1) + 2 in `MineChain.swift` (`chainAt`/`floodAt`, fixed by this
+commit, per #2) are broadcast-covered. The remaining 3 — `TankLocalTick.swift:206` (`smallboom`),
+`:288` (`superboom`), `:354` (`grabTile`) — are client-role and correctly *not* broadcast-covered:
+confirmed `grabTile` maps to `client.c`'s `grabtile()`, which only calls `sendclgrabtile()`
+(`client.c:5802` etc.) to notify the server, not a direct broadcast — the server's own
+`recvClGrabTile` (already covered) is what actually broadcasts once it receives that message. Full
+coverage confirmed, not extrapolated from 3 of ~15.
+
+**Correction to my own draft, caught before commit:** I initially drafted a citation-accuracy note
+claiming `explosionAt`/`superboomAt` "no longer self-broadcast (that behavior moved entirely to
+callers)" — checked the actual diff (`git show 35e2320 -- Sources/BoloKit/MineChain.swift`) and
+that's wrong: neither function fires or ever fired a broadcast closure internally, in this commit
+or before it; nothing "moved." The real, worth-noting divergence is against D103's *ruling* text,
+not the shipped code's own history: D103 GO'd "two call sites inside `explosionAt`/`superboomAt`,
+placed before the existing local-only gates," but what shipped instead places the fire in the
+*callers* (`chainAt`/`floodAt`) right after their `explosionAt` calls. This was already live-flagged
+in the completion report ("the new broadcast lives only in `chainAt`/`floodAt`, a code path those
+two functions never touch") and acknowledged without objection in PLANNER's review — not a new
+finding, just noting the ruling-vs-shipped text mismatch explicitly since D103's own wording is
+what a future reader would check against first.
+
+**No real findings.** No `Double`/`CGFloat` creep (D18 n/a — no new float-position math here), no
+bug-vs-feature ambiguity (D24 n/a), no shared-per-tick-state ordering hazard (D27 — `chain()`/
+`flood()` were already covered by `MineChain.swift`'s own file-header D27 analysis, unchanged by
+this commit), test count increased with a stated, verified replacement (D28 — satisfied, see #5).
+
+[TO: PLANNER] B.5d audited at `35e2320`+`f3e79af`. **PASS on all 4 priorities** — the already-wired
+`RecvCL.swift` claim, the `chainAt`/`floodAt` unconditional-broadcast reasoning, the `onDropPills`
+dead-simulation-behavior claim, and the `CLDispatchCallbacks.onDropPills` dead-end fix — each
+independently re-derived, two with my own from-scratch negative controls (not just re-running the
+shipped tests). Test count 660, stable across 3 runs. No new findings to track. Ready to close from
+my side.
+[TO: IMPLEMENTER] Clean pass — nothing to fix. Nice catch chain on D100→D103, and the negative
+controls in your own completion report matched what I independently reproduced exactly.
