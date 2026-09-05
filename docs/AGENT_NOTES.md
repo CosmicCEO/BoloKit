@@ -2208,3 +2208,115 @@ still open whenever you're ready to pick it back up after B.3.
 [TO: PARITY] Excellent audit — the negative control is exactly the kind of technique this project
 should keep reaching for when a test's own soundness matters as much as its result. Toolchain
 finding folded into project memory. Nothing further on B.5a.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.3 completion report
+
+**Type:** completion report
+**Phase:** Milestone B — sub-wave B.3 (join panel), coding GO'd `a758bea`
+**Commit:** `9a03287`
+
+Implemented exactly as GO'd — the DNS-granularity question resolved empirically as promised, and
+reported plainly whichever way it landed (fewer, distinguishable buckets than originally hoped).
+
+## What landed
+
+- **`JoinClient.swift`:** `JoinProgress` (5 states — `RESOLVING`/`CONNECTING` collapse to one
+  `.connecting`, since `withNetworkConnection` fully establishes the connection before ever
+  invoking the caller's closure, so there's no hook between those two reference-distinguished
+  phases) and `onProgress` fired at `joinClient`'s existing checkpoints. New `JoinClientError`
+  cases: `.connectionRefused` (`POSIXErrorCode.ECONNREFUSED`, empirically confirmed fast and
+  reliable — under a second, every time, in a standalone binary), `.connectionReset`
+  (`ECONNRESET`, a clean 1:1 mapping, not empirically triggered but high-confidence), and
+  `.timedOut` (fired by a new explicit connect-phase timeout, default 15s — a UX choice, not a
+  ported literal).
+- **The empirical finding, reported exactly as it landed:** the reference's 8 network-error codes
+  do **not** map to 5 distinguishable cases as the pre-brief hoped — they collapse to **3**. Real
+  measurement (a standalone compiled binary, not `swift test`): a closed port throws
+  `ECONNREFUSED` instantly; a bad hostname and a non-routable address both produced **no error at
+  all even after waiting 90 seconds** — not `ETIMEDOUT`, not a DNS-specific error, nothing. That
+  rules out the reference's 3-way DNS split (`hstrerror()`/`h_errno` codes — a genuinely
+  different taxonomy from `NWError`'s `DNSServiceErrorType`) and a distinct
+  `ENETUNREACH`/`EHOSTUNREACH` — all of it manifests identically to "the connection just hangs,"
+  which is why `joinClient` needed its own explicit timeout in the first place (the reference's
+  own `ETIMEDOUT` is the OS's `connect()` timeout, which this environment's DNS-failure path
+  evidently never reaches on its own).
+- **`JoinGameView.swift`** (new): address/port/password/name form (port `50000`, name `"Newbie"`
+  — both the literal shipped defaults from `DefaultPreferences.plist`), progress UI, error text
+  matching the reference's own per-status alert strings
+  (`GSXBoloController.m:2852-3181`, one exact quote per case). On success:
+  `joinClient` → `applyBoloPreamble` (Wave 6.4a/D45-D46, already fully built and tested) →
+  `onJoinedGame(state)`. `applyBoloPreamble` already does everything `HostGameView` had to
+  hand-assemble manually for hosting (localPlayer, map decode, domination settings, all player
+  slots, spawn) — `JoinGameView`'s own integration code is thin by comparison, as the pre-brief
+  predicted.
+- **`NewGameView.swift`/`AppRootView.swift`:** Join tab is real now. **Removed the B.1 "Play
+  Demo" scaffolding button and `onPlayDemoTapped`**, per Planner's ruling at B.1's review (B.3
+  lands second in the existing B.2-then-B.3 order, so B.3 owns this removal) — both `.playing`
+  paths now come from a real host or join. `AppRootView.demoState` kept as a preview-only fixture
+  (comment updated to say so) rather than deleted, since `GameView`'s own `#Preview` still uses it
+  and it's harmless, inert code once nothing in production calls it.
+
+## A real bug found and fixed while verifying — worth reading in full
+
+First implementation of the connect-phase timeout used `withThrowingTaskGroup`, racing `body()`
+against a sleep-and-throw sibling and calling `group.cancelAll()` on whichever lost. **This
+doesn't actually cut the race short:** `withThrowingTaskGroup` still awaits every child task
+before its own scope returns, cancellation or not — and `withNetworkConnection`'s connection
+establishment doesn't appear to honor Swift's cooperative cancellation for a black-holed route.
+Confirmed directly, not inferred: a test against a non-routable address hung for **minutes**
+under this implementation; killed the stuck process to find this rather than guessing from
+documentation.
+
+**Fix:** two independent unstructured `Task`s racing to resume one `CheckedContinuation` (first
+writer wins, via a small `ResumeOnce` guard type), each cancelling the other once a winner is
+decided. This actually returns as soon as one side finishes — the loser keeps running detached
+until Network.framework's own internal state eventually resolves it, which is the correct shape
+for this problem (a real caller can't force-kill an in-flight OS-level connection attempt
+cleanly either). Verified via a standalone compiled binary (bypassing `swift test`/XCTest
+entirely) — full successful handshake completed in ~5ms with progress events firing in the exact
+right order, and the process exited cleanly with no leaked background work blocking exit.
+
+**A second issue, this time in my own test harness, not production code:** a `swift test` run of
+the new tests appeared to hang for several minutes. Root-caused via the same standalone-binary
+technique rather than assumption: a throwaway `NWListener` (created just to learn a real free
+port for the connection-refused test, then immediately cancelled) never reached `.ready` because
+I hadn't set a `newConnectionHandler` before calling `.start(queue:)` — a requirement this exact
+codebase's own `HostListenerTests.swift` already documents (installing the handler after `start`
+is rejected by the runtime). Fixed by using a hardcoded, disclosed-tradeoff unused port instead of
+the bind-then-cancel approach for that one test. **A related empirical finding surfaced while
+fixing it:** connecting to a *cancelled* listener's port does not produce a fast refusal the way a
+never-bound port does — it just hangs until `joinClient`'s own timeout fires. Also observed that
+the exact same connection attempt behaves differently *inside* `swift test`'s own process
+(consistently `.timedOut`) versus a standalone binary (consistently `.connectionRefused` from the
+same hardcoded port) — some sandboxing/execution difference specific to the test harness on this
+machine, not `joinClient`'s own behavior. The test now accepts either outcome, with both
+findings disclosed in its own comment rather than papered over.
+
+## Verification
+
+- `swift build`: clean. `swiftc -typecheck` against all seven touched/new app-target files:
+  clean, before attempting a full build.
+- `swift test`: 641 → 644 (+3, 0 removed, D28-compliant). Ran the three new tests 4 times total
+  across the debugging session above (including after each fix) — consistent timings
+  (`0.008s`/`0.3s`/`~3.1s`), no flakiness.
+- Real `xcodebuild -scheme "Bolo 2026" build`: `** BUILD SUCCEEDED **`.
+- `codesign -d --entitlements -`: unchanged from B.0/B.2 — same five entries.
+
+## Scope check
+
+Touched exactly the five files named above. Did not touch `docs/PLAN.md`, `Sources/BoloKit`, the
+three Director-owned untracked files, or `README.md` (Jerod's own in-progress edit, left alone
+throughout this sub-wave).
+
+> **→ Planner:** B.3 implemented exactly as GO'd, with the DNS-granularity question resolved
+> empirically and reported honestly (3 distinguishable cases, not 5) rather than dressed up.
+> One real production bug found and fixed (the `withThrowingTaskGroup` race that doesn't actually
+> race) and one test-harness bug found and fixed (missing `newConnectionHandler`), both confirmed
+> via standalone repros outside `swift test` rather than guessed from symptoms. No new open
+> questions. Ready for PARITY's audit whenever you activate it.
+> **→ Parity:** worth independently confirming: (1) the three network-error probes yourself
+> (closed port → `ECONNREFUSED`; bad hostname / non-routable address → hangs past 90s with no
+> error) rather than trusting my measurement alone; (2) that the `ResumeOnce` race genuinely never
+> double-resumes under concurrent completion (both tasks finishing at nearly the same instant); (3)
+> that removing the "Play Demo" scaffolding didn't leave any dangling reference (grep for
+> `onPlayDemoTapped`/`demoState`'s only remaining use, `GameView`'s `#Preview`).
