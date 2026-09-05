@@ -3427,3 +3427,140 @@ above and in the completion report itself (search "Wave 7.3 completion report" i
 closes Wave 7's entire v1 slice if it comes back clean, so the usual rigor applies at slightly higher
 stakes than a typical sub-wave. Auto mode is in effect (D87) — report findings the usual way and I'll
 act on them directly without a separate check-in.
+
+### [PARITY] 2026-09-04 — Wave 7.3 audit (`82d2c08`+`6fa224c`): not a clean PASS — `layMineOnKeyDown` wastes a mine on unminable terrain, diverging from `keyevent()` and from this port's own sibling mechanism
+
+**Tooling:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint` present. Execution used
+throughout: `swift build`/`swift test` at HEAD (`639` confirmed via `swift test list | wc -l`,
+matching the claimed 627→639/+12), `plutil -p` decoding `DefaultPreferences.plist` directly rather
+than trusting the pre-brief's transcription, and a small from-scratch `DispatchSourceTimer` harness
+(bare `Dispatch`, no `BoloKit`/AppKit) to independently sanity-check the tick-jitter magnitude. Did
+**not** rebuild Implementer's full synthesized-`NSEvent` integration harness this session (time-
+bounded, and the higher-value part of that claim — the exclusivity-safety argument — is fully
+checkable by reading `GameSession.swift` directly, which I did); noting that gap explicitly per this
+project's own disclosure standard rather than silently treating a partial check as a full one.
+
+**Priority 1 — `layMineOnKeyDown`: CONFIRMED DEFECT.** Implementer's claim ("no duplicated terrain
+guard — delegates entirely to `plantMine`'s own switch, same as C's silent failure ack") is **half
+right and half wrong**, and the wrong half is a real, gameplay-visible bug.
+
+Re-read `keyevent()` line by line (`client.c:6456-6516`): the guard order is `!dead` → no pill → no
+base → **terrain switch, matching one of 15 minable variants** (swamp0-3/crater/road/forest/
+rubble0-3/grass0-3) → *only inside those matched case labels* does `client.mines > 0` get checked
+and `client.mines--` happen. Terrain that isn't one of those 15 (sea, wall, river, boat, damaged-
+wall, any `mined*` variant) falls straight to `default: break` — **no decrement, nothing spent**,
+same as the dead/pill/base guards blocking entry entirely.
+
+`layMineOnKeyDown` (`TankLocalTick.swift:390-405`) checks `!dead`, no pill, no base, and
+`state.local.mines > 0`, **then unconditionally decrements `state.local.mines` before calling
+`plantMine`** — `plantMine`'s own terrain switch (`TankLocalTick.swift:354-374`) only decides
+whether the *tile* changes, via its own `default: break`, but by the time it runs the mine is
+already spent. Standing on `.sea` (or wall/river/boat/any unminable terrain) and pressing Lay-Mine
+**consumes a mine with nothing to show for it** — a real resource-accounting divergence from the C
+oracle, not a cosmetic one: mines are a scarce, strategy-relevant resource.
+
+This isn't a subtle inference — **the shipped test proves it**: `layMineOnKeyDownNoopsOnUnminableTerrain`
+(`Tests/BoloKitTests/TankLocalTickTests.swift`, new this wave) starts `mines: 5`, stands on `.sea`,
+calls `layMineOnKeyDown`, and asserts `state.local.mines == 4` — i.e. the test encodes the bug as
+the expected behavior rather than catching it. Ran it directly to confirm: `swift test --filter
+layMineOnKeyDownNoopsOnUnminableTerrain` passes, asserting the mine-loss.
+
+**The correct pattern already exists three lines away in the same file, for the sibling mechanism.**
+`enterTile`'s existing `.lmine`-flag handling (`TankLocalTick.swift:494-503`) is itself a `switch new`
+on terrain, with the `mines -= 1`/`plantMine` call living *inside* the matched
+`.swamp0...case .grass3` block — terrain-gated before the resource is touched, exactly matching
+`keyevent()`'s structure. `layMineOnKeyDown` breaks that established, correct pattern by moving the
+decrement earlier than the terrain check.
+
+**Fix direction only (I don't write fixes):** gate the decrement on terrain minability *before*
+spending the mine — either give `plantMine` a `Bool` return ("did I actually plant") and only
+decrement on `true`, or hoist a `isMinable(terrain:)` predicate shared by both `plantMine` and
+`enterTile`'s switch and check it in `layMineOnKeyDown` before decrementing. The existing
+`layMineOnKeyDownNoopsOnUnminableTerrain` test's assertion is backwards and needs to flip to
+`state.local.mines == 5` (unchanged) once fixed.
+
+**Priority 2 — `tankMoveTick`'s `spawn()` wiring: PASS.** Read `TankTick.swift:150-160` directly:
+`spawn(state: &state)` is called using `tankMoveTick`'s own already-`inout` binding, with `onSpawn()`
+fired *afterward* as a bare `() -> Void` notify that takes no state — structurally identical to
+Wave 5.9's pattern for the other callbacks (mutate inside the ported function itself, callback stays
+pure). Cross-checked `GameSession.swift`'s own exclusivity argument directly: `tick()`'s
+`runTick(state: &state, ...)` call and the `onInputFlagsChange`/`onLayMineKeyDown` closures (set once
+in `init`, invoked from AppKit's main-thread key-event delivery) never nest — both run serially on
+the main thread/queue, never inside each other's call frame — so there's no path from either into a
+second concurrent `inout` access on `state`. Confirmed the regression test
+(`tankMoveTickRespawnTicksBoundaryCallsSpawn`) asserts the real revive (`dead == false`, repositioned
+`tank`, `local.spawned == true`), not just that the callback fired, and confirmed `ContentView`'s
+`demoState` now carries a nonempty `starts` array (`[Start(x: 130, y: 130, dir: 0)]`) — the corollary
+the pre-brief flagged.
+
+**Priority 3 — keyboard-capture additions: PASS.** `GameRenderView.keyDown`/`keyUp`'s `isARepeat`
+guard matches `GSBoloView.m:477-482` exactly (`if (![theEvent isARepeat])`). `flagsChanged`'s
+Shift-only tracking is a disclosed v1 simplification versus `GSBoloView.m:489-498`'s fully generic
+8-bit modifier diff (which forwards the modifier key's own `keyCode`, not a hardcoded constant) — confirmed
+consistent with what's disclosed and harmless given no remap UI exists to bind a second modifier
+key; not re-litigating an already-flagged, already-accepted design simplification. **Keymap verified
+byte-for-byte**: decoded `Reference/c/en.lproj/DefaultPreferences.plist` myself via `plutil -p`
+(`GSKeyConfigDict`: `0`→TurnLeft, `1`→Brake, `2`→TurnRight, `7`/`8`→viewport (excluded, correct),
+`12`→DecreaseAim, `13`→Accelerate, `14`→IncreaseAim, `49`→Shoot, `56`→LayMine,
+`123`-`126`→viewport (excluded, correct)) and cross-read `GSXBoloController.m:1650-1687`'s
+`keyEvent:forKey:` dispatch directly against `InputKeymap.swift`'s `inputFlagsChange`: the
+Accelerate/autoSlowdownBool coupling matches exactly (`keyevent(ACCELMASK,event)` +
+`keyevent(BRAKEMASK,!event)` when `autoSlowdownBool` ⇒ Swift's `isDown ? (set:.accel,clear:.brake) :
+(set:.brake,clear:.accel)`), the plain 1:1 masks (TurnLeft/TurnRight/LayMine/Shoot/IncreaseAim/
+DecreaseAim) all match, and Brake's dead-code status under the shipped default (`if
+(!autoSlowdownBool)`) is correctly reflected by keycode `1` being absent from Swift's `switch`
+(falls to `nil`).
+
+**Priority 4 — tick jitter/integration harness: partially reproduced.** Did not rebuild the full
+`NSEvent`-synthesis integration harness this session. Did independently re-derive the two things
+that actually matter: (1) the exclusivity-safety claim, confirmed by direct code reading above, not
+by re-running the harness; (2) the jitter *magnitude*, via a from-scratch bare
+`DispatchSourceTimer` harness (no `BoloKit`, same scheduling parameters — `.main` queue, `1/50`
+repeating, zero leeway) run independently of Implementer's: 69 intervals, avg ≈ 20.09 ms,
+steady-state max deviation ≈ 5.07 ms (excluding the first post-`resume()` interval, which measured
+27.6 ms here — consistent with Implementer's own note that the first interval reflects timer setup
+overhead, not steady-state spacing). Both numbers land inside the ranges Implementer reported
+(avg 20.05–20.08 ms, steady-state jitter 3.4–5.1 ms) — same mechanism, same rough magnitude,
+independently measured. Not claiming this reproduces the dead-revival/mine-plant/physics-movement
+integration results specifically — those are confirmed instead by the direct code reads in
+Priorities 1–2 above (which is what those results are actually demonstrating: that the wiring
+works, and I verified the wiring by reading it).
+
+**Priority 5 — D28: PASS.** `639` confirmed via `swift test list | wc -l` at HEAD, matching the
+claimed `627 → 639 (+12, 0 removed)`.
+
+**Verdict: not a clean PASS.** Everything else in this wave — the `spawn()` exclusivity fix (the
+wave's own charter-critical item), the keyboard-capture architecture, the literal keymap including
+the autoSlowdownBool coupling, the tick-driver mechanism and its measured jitter — checks out clean,
+several by direct execution. But `layMineOnKeyDown` has a real, confirmed divergence from
+`keyevent()`'s LMINE branch: it spends a mine on terrain where the C oracle spends nothing, and the
+new test added to cover it encodes the bug as correct rather than catching it. This is exactly the
+kind of thing that matters more because this wave closes Wave 7's entire v1 slice — a player who
+taps Lay-Mine while sitting in water or against a wall silently loses mines for the rest of the
+session, on the very input path this slice exists to demonstrate.
+
+[TO: PLANNER] Wave 7.3 audited at `82d2c08`+`6fa224c` — **not a clean PASS**. Priorities 2, 3, 5 all
+PASS, independently re-derived (spawn() exclusivity confirmed by direct code reading of both
+`TankTick.swift` and `GameSession.swift`; keymap verified byte-for-byte against a fresh `plutil -p`
+decode and `GSXBoloController.m:1650-1687`; test count 639 confirmed). Priority 4 (jitter) has its
+magnitude independently corroborated via a from-scratch bare-timer harness, though I didn't rebuild
+the full NSEvent-integration harness this session — flagging that as a partial rather than complete
+re-derivation, not silently upgrading it to a full one. **Priority 1 is a real, confirmed defect**:
+`layMineOnKeyDown` unconditionally decrements `state.local.mines` before checking terrain
+minability, where `keyevent()` only spends a mine inside its terrain switch's 15 matched case
+labels — pressing Lay-Mine on sea/wall/river/boat/damaged-wall silently wastes a mine, and the
+existing `layMineOnKeyDownNoopsOnUnminableTerrain` test enshrines this as expected rather than
+catching it. Given this wave closes the entire v1 slice, recommend routing this as required-before-
+close, same shape as D86 was for Wave 7.2 (real regression discovered by this wave's own new code,
+not inherited debt, small well-scoped fix). Your call on the exact decision number/ruling.
+[TO: IMPLEMENTER] One real fix needed: `layMineOnKeyDown` (`TankLocalTick.swift:390-405`) must gate
+`state.local.mines -= 1` on terrain minability *before* spending the mine, matching both
+`keyevent()`'s structure (`client.c:6490-6516` — decrement lives inside the terrain switch's matched
+cases only) and this file's own `enterTile` `.lmine` handling (`TankLocalTick.swift:494-503`, which
+already gets this right). Smallest fix is probably giving `plantMine` a `Bool` return and only
+decrementing on `true`, or sharing a terrain-minability predicate between `plantMine` and
+`enterTile`'s switch, checked in `layMineOnKeyDown` before the decrement. The test
+`layMineOnKeyDownNoopsOnUnminableTerrain` needs its assertion flipped to `state.local.mines == 5`
+(unchanged) once fixed — right now it's locking in the bug. Everything else you reported — spawn()
+wiring, the keymap, tick-driver mechanism, test count — checked out clean on independent
+re-derivation.
