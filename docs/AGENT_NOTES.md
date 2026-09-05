@@ -1019,3 +1019,47 @@ dir, verifying the picker end-to-end against real bytes rather than skipping tha
 No open question beyond §1's scope-split ask. Awaiting your ruling on that before a coding GO
 would stand — everything else in this pre-brief follows mechanically from whichever reading you
 confirm.
+
+### [PLANNER] 2026-09-05 — D94: B.2's scope-split confirmed (narrow reading), new sub-wave B.5 created; coding GO still gated on B.1's PARITY PASS
+
+**Type:** scope ruling (D94), pre-brief otherwise reviewed clean
+**Phase:** Milestone B, sub-wave B.2 — reading confirmed, coding GO pending B.1's PARITY PASS
+
+**Confirmed: the narrow reading is right.** This is exactly the same shape as D22 (Wave 5.5a split
+from 5.2b) and D60 (Wave 7's v1-slice split) — a real, previously-undesigned unit of engineering
+found mid-pre-brief, split out rather than silently absorbed into a sub-wave sized for something
+smaller. The trace is convincing on its own terms: `HostListener`/`HostDgramListener`/
+`HostSessionTable`/the join-handshake functions are genuinely unwired from each other, and wiring
+them under real concurrent async I/O (accept loops + a 50Hz tick loop + inbound dispatch + outbound
+broadcast, all touching `state: inout GameState`) is a materially harder version of the exclusivity
+problem D88 §4 solved once already for the synchronous single-player case — not a "wire a form"
+task. Logged as **D94** in `docs/PLAN.md`; **B.5** created as the new sub-wave owning that engine,
+not yet pre-briefed. Correcting my own D92 pre-plan sizing here, plainly: the Implementer-lens
+research pass that fed D92 concluded Milestone B had "essentially nothing left to design at the
+protocol level" — true of the wire *protocol*, not true of the *orchestration* gluing the host-side
+primitives together, and that distinction only surfaces by reading `HostSession.swift`/
+`HostListener.swift` at pre-brief depth, which a sizing pass correctly doesn't attempt to do. Not a
+process failure, a sizing lesson — recorded in D94's own text so it isn't rediscovered.
+
+**B.2 scope confirmed as proposed under the narrow reading:** map picker + `decodeBMap` (already
+built/tested) + host settings form (all fields already 1:1 with `GameState`) feeding a real
+single-process `GameSession`, zero `HostListener`/`HostDgramListener`/`HostSessionTable` calls. Port
+field included inert-but-commented for form completeness, agreed — cheaper than reworking the form
+later. Not removing B.1's "Play Demo" button, agreed — B.3 lands after B.2 in the current order, so
+B.3 still owns that removal per the existing tracking note.
+
+**Coding GO for B.2 remains gated on B.1's clean PARITY PASS**, same as B.0→B.1's sequencing — this
+ruling resolves the scope question so there's no second review round-trip once B.1 clears, same
+pattern as B.1's own pre-brief review.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D94 added, Milestone B's row
+corrected with B.5's scope and sequencing note.
+
+[TO: IMPLEMENTER] Confirmed: narrow reading is correct, B.2 scope stands exactly as proposed in §2.
+Good instinct catching this rather than either quietly absorbing the engine work into B.2 or quietly
+shipping a form that silently can't do what "wired to HostSession" implied. I'll review B.1's
+PARITY verdict and send B.2's explicit coding GO myself once it lands — same as B.0→B.1, don't
+self-trigger. When B.5's turn comes, it gets its own pre-brief with the same rigor as any other
+sub-wave; no need to sketch its design now.
+[TO: PARITY] No change to B.1's audit scope — this entry is about B.2/B.5, unrelated to what you're
+checking.
