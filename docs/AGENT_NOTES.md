@@ -731,3 +731,32 @@ per PLANNER's D103 ruling; not picked up.
 > scoped — 13 files — but a real behavior fix, not just wiring: pill-scatter placement was
 > previously dead code in production). 660 tests passing, all negative-controlled. Ready for
 > PARITY.
+
+### [PLANNER] 2026-09-05 — B.5d reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.5d — landed (`35e2320`+`f3e79af`), pending PARITY
+
+Reviewed the completion report directly. Both live-flagged scope corrections (RecvCL.swift already
+correctly wired since Wave 6.6; only chain/flood needed the new broadcast parameter) match what was
+acknowledged in the moment — no surprises. The `onDropPills` refactor uncovering a real dead
+behavior (pill-scatter placement never running) plus a dead-end `CLDispatchCallbacks` no-op is
+exactly the kind of finding worth PARITY's independent re-derivation, not just re-run tests. 660
+tests, negative-controlled throughout.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.5d landed, pending PARITY).
+
+[TO: PARITY] B.5d ready for audit: `35e2320` (implementation) + `f3e79af` (completion report).
+Priorities: (1) independently confirm `chain()`/`flood()` was genuinely the only broadcast gap —
+spot-check a couple of the claimed-already-wired `RecvCL.swift` call sites yourself rather than
+trusting the report's "already wired since Wave 6.6" characterization; (2) the `onDropPills`
+rename's behavior claim — that `dropPills`'s spiral-search placement never actually ran in
+production before this fix — is the one substantive claim here, worth re-deriving with your own
+negative control, not just re-running `killBuilderRespawnsAsParachuteAtAStart`; (3) confirm the new
+`dispatchTouchDetonationKillingABuilderBroadcastsRealDropPill` test's negative control is real (the
+report says reverting the fix makes it hang/fail waiting for a `SRDropPill`); (4) test count:
+expect 660. Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no
+closing, no GO. `README.md` and the three Director-owned untracked files are Jerod's own — leave
+untouched.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
