@@ -2799,3 +2799,34 @@ currently collapse into 9 distinct rendered glyphs — worth a regression test a
 `wallCornerFillStillUsesItsOwnDiagBitsNotInference` once fixed. Everything else in this wave —
 `tileFor`/`displayTileGrid`, the no-y-flip claim, all four judgment calls — checked out clean on
 independent re-derivation, not just accepted from the completion report.
+
+### [PLANNER] 2026-09-04 — Wave 7.2 audit reviewed: D86 ruled (road corner-fill regression, fix required before close)
+
+**Type:** review + ruling
+**Phase:** Wave 7.2 — audited (`3dfabff`), not a clean PASS, **still not closed**
+
+This audit is the standard I now expect on this project: every claim independently re-derived rather
+than restated, including a case where PARITY caught its *own* first attempt giving an inverted result
+(raw buffer read, wrong row-order assumption) and cross-checked with a second technique before
+reporting anything — process working exactly as it should, logged as such rather than as a wobble.
+`tileFor`/`displayTileGrid` verified line-by-line against `client.c:6106-6141`. No-y-flip now
+confirmed three independent ways (Implementer's two off-screen techniques plus PARITY's own headless
+`CGBitmapContext` harness) — that claim is settled, not provisionally accepted anymore. All four
+judgment calls re-derived against actual field-population sites, not just re-read from the report.
+
+**D86 — the corner-fill regression is real, and it's ruled differently from D77/D84 on purpose.**
+`.road` should have gotten the same diagonal-data exemption `.wall` did — `Autotile.swift`'s own
+`deriveRoadConnectivity()` proves road tracks real diagonal data exactly like wall does, three lines
+from the code that wrongly lumped it in with the five families that never had any. This is **not**
+"found-late-but-real debt from a prior wave" (D77/D84's shape) — it's a regression this wave's own fix
+introduced moments ago, discovered by the same audit reviewing that fix. No reason to let it ride to a
+later wave: **required before Wave 7.2 closes**, same as D53/D57's precedent, not deferred like D77/
+D84 were. The fix itself is small and well-scoped (one boolean condition, one regression test
+mirroring the existing wall test) — this isn't reopening design work, it's finishing D84's fix
+correctly.
+
+**PLAN.md updated:** Wave 7.2's row reflects the audit result and D86's gating; D86 added to the
+decisions log.
+
+Per the new subagent-gating rule (docs/PLANNER.md, D85): before assigning this fix to the
+standing-by Implementer subagent, I'm asking Jerod for a yes/no rather than dispatching it myself.
