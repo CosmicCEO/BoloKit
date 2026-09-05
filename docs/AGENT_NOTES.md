@@ -649,3 +649,85 @@ its own pre-brief whenever you get to it, no rush.
 question is the one worth independently verifying (does the client-role notify path still fire
 exactly where it always did, with the new server-role broadcast genuinely additive and not
 reordering anything) — same standard as every other concurrency/ordering claim this milestone.
+
+### [IMPLEMENTER] 2026-09-05 — B.5d completion report
+
+**Commit:** `35e2320`. **Tests:** 655 → 660 (5 new: `MineChainTests.swift` ×4,
+`HostSessionTests.swift` ×1). All existing tests still pass; no coverage shrinkage.
+
+## What shipped, vs. the pre-brief's proposal — two corrections made along the way, both flagged to
+## PLANNER live rather than discovered only here
+
+1. **`onMineExplosion`/`onSuperboomTerrain` broadcast wiring — scope corrected DOWN from the
+   pre-brief's ~15-call-site estimate to 2.** Reading `RecvCL.swift`'s `recvCl*` functions properly
+   (not just grepping) showed every one of them already fires `onShouldBroadcastSmallBoom`/
+   `onShouldBroadcastSuperBoom` immediately after `explosionAt`/`superboomAt` — wired since Wave
+   6.6, already matching `server.c`'s real behavior (`recvClSmallBoom`'s own doc comment even
+   explains why it re-derives `detonated` locally rather than exposing a new parameter — the exact
+   call I nearly repeated). The **only** real gap was `chain()`/`flood()` (`MineChain.swift`) —
+   cascading detonations driven straight from `runTick`, with no broadcast hook at all. Fixed:
+   `chainAt`/`floodAt`/`chain`/`flood` gained `onShouldBroadcastSmallBoom: (UInt8, Int, Int) ->
+   Void`, fired unconditionally right after their `explosionAt` call (their own switch only reaches
+   it from an already-mined case — no `detonated` re-derivation needed, unlike `recvClSmallBoom`'s
+   broader switch). Threaded through `runTick`, wired in `HostGameEngine.tick()` to
+   `SRSmallBoom(player:, x:, y:)`.
+2. **No causer-threading refactor needed anywhere** (the double-fire question the pre-brief raised
+   never arose) — `smallboom`/`superboom`'s existing client-role notify-hook pre-fires were left
+   untouched; the new broadcast lives only in `chainAt`/`floodAt`, a code path those two functions
+   never touch.
+
+Both corrections were messaged to PLANNER live as found (`fbae6c46`, `b733e142` — cross-session
+message IDs), acknowledged without a ruling needed either time.
+
+## `onDropPills` direct-call refactor — larger mechanical footprint than scoped, real behavior fix
+## uncovered along the way
+
+Confirmed the pre-brief's finding: every real fire site (`killBuilder`/`drown`/`smallboom`/
+`superboom`, `TankLocalTick.swift`; `killTank`, `ShellTick.swift`) fired a bare `onDropPills(mask,
+point)` pass-through with **no `state` access** — meaning **`dropPills`'s real spiral-search
+placement never ran in production at all**, not just "no broadcast": a dead tank's/builder's
+onboard pills stayed in their old owned-but-unreachable slots, never actually scattered onto the
+map. This is a bigger fix than "broadcast wiring" — it restores real, previously-dead simulation
+behavior, using the exact `onSpawn`/D88-§4 precedent (call the mutating function directly, since
+these 5 sites already run nested inside `runTick`'s own held `&state`).
+
+Renaming `onDropPills: (UInt16, Vec2f) -> Void` → `onShouldBroadcastDropPill: (Int, Int, Int) ->
+Void` (already the correct shape, previously used only for the Wave-6.4c disconnect-drop case)
+touches every intermediate pass-through between those 5 sites and every top-level caller — 13
+files total, all mechanical except two real fixes found mid-refactor:
+- **`CLDispatchCallbacks.onDropPills`** (`HostSession.swift`) was a no-op struct field with no
+  `table`/`pending` access — meaning a builder killed by an explosion during any CL-dispatched
+  action (`touch`/`grabTile`/`grabTrees`/build*/`repairPill`/`placeMine`/`damage`/`smallBoom`/
+  `superBoom`) never broadcast its pill drop in production. Removed the field; all ~10 dispatch
+  sites now pass an inline `onShouldBroadcastDropPill` closure straight to `pending`, matching the
+  `.dropPills` case's own already-correct shape. Regression test:
+  `dispatchTouchDetonationKillingABuilderBroadcastsRealDropPill` (`HostSessionTests.swift`) —
+  negative-controlled (reverted to a no-op closure, confirmed the test hangs/fails waiting for a
+  `SRDropPill` that never arrives, restored, re-verified clean).
+- `TCPSession.swift`/`UDPSession.swift`/`DgramClientApply.swift`/`RecvSR.swift` (client-role
+  receive/apply path) needed the same rename purely for type compatibility, since they call the
+  same shared `drown`/`superboom`/`smallboom`/`killPointBuilder`/`killSquareBuilder`/`killTank`
+  functions — no behavior change there beyond the label (still defaults to a no-op everywhere; a
+  client should never fire a real broadcast from its own receive path, and nothing currently wires
+  a live implementation on that side).
+
+Negative-controlled the core fix too: reverted `killBuilder`'s `dropPills` call to a stub, confirmed
+`killBuilderRespawnsAsParachuteAtAStart` fails exactly as expected (`broadcasts.count == 0`),
+restored, re-verified clean.
+
+## Not touched, per PLANNER's explicit instruction
+
+D102 (`HostGameEngine.stop()` teardown gap) — tracked for Wave 7.3, out of scope here.
+
+## Split out, not assigned
+
+B.5e (`killSquareBuilder`/`killPointBuilder`'s `state.localPlayer`-only scoping, found investigating
+`explosionAt`/`superboomAt`'s builder-kill gate) — a remote player's builder sitting on an exploding
+tile is never identified or killed by this call chain today. Real, but bigger than B.5d's own scope
+per PLANNER's D103 ruling; not picked up.
+
+> **→ Planner:** B.5d landed as corrected (chain/flood broadcast gap only, no causer-threading
+> refactor needed) plus the `onDropPills` direct-call refactor (bigger mechanical footprint than
+> scoped — 13 files — but a real behavior fix, not just wiring: pill-scatter placement was
+> previously dead code in production). 660 tests passing, all negative-controlled. Ready for
+> PARITY.
