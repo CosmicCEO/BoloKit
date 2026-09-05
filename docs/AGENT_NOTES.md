@@ -3547,3 +3547,69 @@ equivalent) so this exact transition tick has coverage going forward.
 [TO: PARITY] Sharp find — proving it with a real seeded test rather than just reading the two
 freeze-branches and asserting a mismatch is exactly the standard here. Re-audit requested once the
 fix lands.
+
+### [IMPLEMENTER] 2026-09-05 — D99 fix landed (time-limit off-by-one), plus a second harness-timeout bug found
+
+**Type:** completion report
+**Phase:** Milestone B, sub-wave B.5b — D99 (required before close)
+**Commit:** `7680b9f`
+
+## What landed
+
+One-operator fix exactly as ruled: `HostGameEngine.swift`'s `timeLimitReached` guard changed from
+`Int(state.ticks) >= Int(ticksPerSec) * state.timeLimit` to `>`, matching `RunTick.swift:104`'s own
+two-phase freeze condition (the `== limitTicks` branch still runs a real simulated tick; only
+`> limitTicks` is actually frozen).
+
+Added the boundary-seeded regression test PARITY specified:
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` — seeds `ticks =
+limitTicks - 5` so the boundary tick lands exactly on a `localSeq % 5 == 0` cadence slot, asserts
+the boundary broadcast still arrives, then asserts nothing arrives after it.
+
+**Negative control run:** reverted `>` back to `>=`, rebuilt, reran the new test — see below, this
+surfaced a second real bug rather than a clean expected failure.
+
+## A second harness-timeout bug found and fixed (not a production bug)
+
+Running the negative control against the new boundary test **hung** rather than failing cleanly.
+Root cause, confirmed via a standalone `swiftc` repro outside `swift test` (same technique used
+for the `confirmNoCLUpdateArrives` bug earlier this same sub-wave): `receiveMatchingCLUpdate`'s
+`Date()`-based deadline check only runs *between* successive `receiveOneDatagram` calls — it never
+bounds a single call that blocks forever because no datagram arrives at all, which is exactly what
+"the broadcast is genuinely absent" (the reverted `>=` bug) produces. This is the same underlying
+class of bug as `confirmNoCLUpdateArrives`'s `withTaskGroup`/`cancelAll()` issue from D98's own
+report, in a different helper. Fixed with the same mechanism: an `async let` timeout guard that
+calls `connection.cancel()` if the deadline is reached, which reliably unblocks a pending
+`receiveMessage`. Verified the fix doesn't change the happy path (all pre-existing tests using
+`receiveMatchingCLUpdate` still pass) and does turn the negative control into a clean 3-second
+failure instead of a hang, before restoring the `>` fix (confirmed byte-identical via `git diff`).
+
+This is the second time this exact "timeout only checked between calls, not during one" shape has
+shown up in this sub-wave's own test helpers. Flagging as a pattern worth being alert for if any
+future test in this codebase writes a "read with timeout" loop around `NWConnection.receiveMessage`
+or similar blocking primitives — the timeout has to actually interrupt an in-flight call
+(`connection.cancel()`, or equivalent), not just gate the loop between calls.
+
+## Verification
+
+- `swift build --build-tests`: clean.
+- `swift test --filter "hostGameEngine"`: 6/6 pass (5 pre-existing + 1 new), no hangs.
+- Full suite: **167 DifferentialTests + 483 BoloKitTests = 650**, up from 649 (+1, matching the
+  new boundary test exactly). All pass.
+
+## Scope check
+
+Touched exactly `Sources/BoloNet/HostGameEngine.swift` (one-operator fix + comment) and
+`Tests/DifferentialTests/HostGameEngineTests.swift` (new boundary test + `receiveMatchingCLUpdate`
+timeout fix). Did not touch `RunTick.swift` (read-only reference for this fix), `README.md`
+(still Jerod's own in-progress edit), `Resources/`, or the three Director-owned untracked files.
+
+> **→ Planner:** D99 landed at `7680b9f`, full suite 650/650. No new open questions this time —
+> straightforward fix, confirmed with a negative control (which incidentally caught a second real
+> test-harness timeout bug along the way, same shape as D98's `confirmNoCLUpdateArrives` finding,
+> fixed the same way).
+> **→ Parity:** worth re-confirming the boundary test's own seed math (`limitTicks - 5` landing
+> exactly on a `%5==0` cadence slot) against a fresh trace rather than trusting my restatement,
+> and independently checking that `receiveMatchingCLUpdate`'s fix doesn't change any of the
+> *existing* three tests' actual pass/fail semantics, only their robustness under a hypothetical
+> future regression.
