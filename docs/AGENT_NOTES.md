@@ -3012,3 +3012,194 @@ the 21-groups/10-pairs sweep reproduced exactly including all ten index pairs an
 [TO: IMPLEMENTER] Nothing further needed on D86 — clean fix, correctly scoped, and your own
 disclosure (the 81/143 swap, the full 31-image sweep with exact pairs) held up under independent
 re-derivation rather than just re-reading. Test count and scope both check out.
+
+### [IMPLEMENTER] 2026-09-04 — Wave 7.3 pre-brief: input + tick loop
+
+**Type:** pre-brief (no production code yet, per the standard two-stage process)
+**Phase:** Wave 7.3 — last sub-wave of Wave 7's v1 vertical slice (D60), assigned by Planner citing
+D82/D41/D79, auto mode granted for this wave's workflow (D87).
+
+Read `Sources/BoloKit/RunTick.swift` (Wave 6.1 orchestrator) and
+`Bolo 2026/Bolo 2026/GameRenderView.swift`/`ContentView.swift` (Wave 7.2, just closed) in full
+before designing anything below, per Planner's instruction not to assume their shape. Also traced
+the actual C reference for the input path (`Reference/c/Mac OS X/GSBoloView.m`,
+`GSXBoloController.m:1650-1735`, `Reference/c/client.c:6456-6516`'s `keyevent()`,
+`Reference/c/en.lproj/DefaultPreferences.plist`) rather than assuming a keymap — this surfaced two
+real, previously-undiscovered scope items (§3, §4 below) that the wave's row text doesn't name.
+
+## 1. Tick-driver mechanism
+
+New file, `Bolo 2026/Bolo 2026/GameSession.swift` — a `@MainActor final class GameSession`
+owning the live `GameState`, the `ticksSinceLastUpdate: [UInt64]` array `runTick` requires, and a
+`DispatchSourceTimer` scheduled on `.main` at `1/Double(ticksPerSec)` (50 Hz / 20 ms, per
+`Physics.swift:11`). Each fire: `runTick(state: &state, ticksSinceLastUpdate: ..., ...)` then
+`renderView.render(state)` (D82's contract — `GameRenderView` still owns no clock of its own).
+
+Proposing `DispatchSourceTimer` over `Timer.scheduledTimer`, to be confirmed by measurement once
+coded (D41: "worth measuring, not assumed," same standard as 7.2's Canvas-vs-AppKit benchmark):
+`NSTimer`/`RunLoop`-based timers stop firing while the run loop is in a tracking mode (e.g. a
+window-resize drag), which `GSXBoloController`'s own C-era single-threaded model never had to
+contend with; a `DispatchSourceTimer` fires independent of run-loop mode while still executing on
+the main queue, so it stays safe to touch `@MainActor`-isolated `GameRenderView`/AppKit state
+directly (D79: Swift 6 language mode, no relaxed checking to lean on). Will report measured
+fire-to-fire jitter over a real run, not just assert the nominal 20 ms holds.
+
+Since v1 is single-process/single-player (D73), `GameSession` needs no actor isolation more
+elaborate than `@MainActor` — there's no background networking thread for `state` to race
+against in this slice.
+
+## 2. Keyboard input capture
+
+Proposing to extend `GameRenderView` itself (`acceptsFirstResponder`/`becomeFirstResponder`/
+`keyDown`/`keyUp`/`flagsChanged`) rather than inventing a separate capture view or reaching for
+SwiftUI's `.onKeyPress`. This mirrors the C reference's own architecture exactly:
+`GSBoloView.m:465-483` is the first responder handling `keyDown:`/`keyUp:` directly on the
+rendering view, forwarding to the controller's `keyEvent:forKey:` (`GSXBoloController.m:1650`) —
+same seam, same file, not a new pattern. **Flagging explicitly that this reopens
+`GameRenderView.swift`, a file Wave 7.2 already closed with a clean PARITY PASS (`07974bd`)** —
+same category of "touching an already-passed wave's surface" as D86's road-corner fix, done in the
+open rather than routed around. `.keyDown`/`.keyUp` ignore `theEvent.isARepeat` (`GSBoloView.m:478,
+484`) — without that guard, holding a key would re-fire at the OS's text-key-repeat rate on top of
+the flag already being set, which is harmless for the boolean `InputFlags` bits themselves but
+pointless work every repeat tick.
+
+**Default keymap** — ported literally from `Reference/c/en.lproj/DefaultPreferences.plist`'s
+`GSKeyConfigDict` (decoded via `plutil`, not guessed): virtual keycodes `13`=W→accelerate,
+`1`=S→brake, `0`=A→turnLeft, `2`=D→turnRight, `12`=Q→decreaseAim, `14`=E→increaseAim,
+`49`=Space→shoot, `56`=Shift→layMine. Arrow keys (123-126, scroll) and `7`/`8` (X/C, tank/pill
+view-centering) are the reference's viewport controls — out of scope, no HUD/viewport-scroll
+exists yet in v1. `56` (Shift) is a modifier key, so its down/up transitions arrive via
+`flagsChanged:`, not `keyDown:`/`keyUp:` — porting `GSBoloView.m:489-498`'s literal
+old-vs-new-modifier-bit diff (`modifiers & (oldModifiers ^ modifiers)` ⇒ down, else up) rather than
+substituting a plain key, since it's not meaningfully more code and keeps the literal default
+faithful with no remap UI (Milestone C) yet to fix a bad substitution.
+
+**`autoSlowdownBool` default is `true`** in the same plist. Under that setting, C's `keyevent()`
+(`GSXBoloController.m:1656-1669`) auto-applies `BRAKEMASK=true` the instant `ACCELMASK` releases,
+and the explicit Brake key does *nothing at all* (`if (!autoSlowdownBool) keyevent(BRAKEMASK,...)`
+— dead code under the shipped default). No prefs panel exists in v1 to change this, so proposing
+to hardcode the `autoSlowdownBool == true` branch as fixed v1 behavior: releasing accelerate sets
+`.brake` and clears `.accel`; the Brake key (S) maps to nothing. Flagging this because "the S key
+does nothing" looks like a bug if read cold — it's the shipped default's actual literal behavior,
+not an omission.
+
+## 3. New finding — LMINE's immediate on-keydown mine plant (not covered by the existing `.lmine` flag)
+
+`client.c:6456-6516`'s `keyevent()` isn't just a flag setter. On every call it also runs a
+same-tile check (not on a pill, not on a base, current terrain is one of the minable
+swamp/crater/road/forest/rubble/grass variants) and — **only** when `set && mask == LMINEMASK &&
+client.mines > 0` — plants one mine immediately, on that single key-down edge, regardless of
+whether the tank moves at all.
+
+This is a *different* mechanism from `Sources/BoloKit/TankLocalTick.swift:468-472`'s existing
+`.lmine`-flag handling, which only plants when `new != old` (the tank enters a new tile) — i.e. a
+player who stops and presses/holds Lay-Mine while standing still currently gets nothing from this
+port, where the real client plants one mine right away. Small, real, and squarely in this wave's
+own input-path territory (not a tick-loop concern) — same shape as `BuilderTick.swift`'s already-
+documented "one-shot resolved order" contract, just for mines instead of builder commands.
+
+`plantMine(at:state:)` (`TankLocalTick.swift:354`) is `private` to that file. Proposing a small new
+`public` BoloKit function — `public func layMineOnKeyDown(player: Int, state: inout GameState)` —
+ported directly from `keyevent()`'s LMINE branch (the pill/base/terrain-switch guard plus the
+`mines > 0` decrement), calling the existing private `plantMine` internally so the guard logic
+lives in BoloKit (core simulation), not duplicated in the app target. Called once from
+`GameRenderView.keyDown` on the LMINE key's down edge only (not key-up, not `isARepeat`) —
+mirrors `keyevent()` firing once per physical transition, not once per tick.
+
+**→ Planner: is this in scope for 7.3, or should it be logged as its own tracked gap (Wave 5.9's
+mine-cascade-split shape) and deferred?** Recommending in-scope: it's small, it's a new but tiny
+BoloKit surface, and it sits directly on the exact key (`.lmine`) this wave is already wiring —
+deferring it would mean 7.3 ships an LMINE key that visibly behaves wrong (does nothing while
+standing still) rather than not existing at all.
+
+## 4. New finding — `onSpawn` is still an unwired pass-through; a dead local player never revives
+
+`RunTick.swift`'s own header comment states plainly that `onSpawn` (fired from
+`TankTick.swift`'s dead-branch once `respawnCounter >= respawnTicks`) is "a straight pass-through
+... does **not** wire these into ... `spawn()` ... itself" — `spawn(state:)` (`Spawn.swift:20`,
+already fully ported and tested) is never actually called from anywhere in the shipped codebase
+(confirmed by grep, not assumed).
+
+This is exactly the kind of gap Wave 5.9 was carved out to close for the mine-cascade callbacks —
+same pattern, one callback narrower. Since v1 is single-player with no HUD/pause/UI layer to hang
+"real" behavior off of for the OTHER `runTick` callbacks (`onPlayerLagStatusChanged`,
+`onPlayerDisconnected`, `onCoolPill`, etc. — all fine left as their default no-op closures for this
+slice), `onSpawn` stands out because its consequence is core gameplay loop, not
+notification/UI: without it, any local-player death (self-mine detonation, a dropped mine, etc.)
+soft-locks the v1 demo in the dead-tumble state forever, which directly contradicts the wave's own
+charter ("closes the loop... driven by the actual physics engine").
+
+**Important implementation constraint, caught by tracing exclusivity, not assumed:** the fix
+can't live in the app-level `onSpawn: () -> Void` closure passed into `runTick` — that closure is
+invoked while `runTick`'s own `state: inout GameState` access is active, so a naive
+`onSpawn: { spawn(state: &self.state) }` in `GameSession` would be a nested exclusive-access
+violation on the same stored property (Swift's runtime exclusivity check would trap). The correct
+fix, matching exactly how Wave 5.9 wired the mine-cascade callbacks (mutate directly inside the
+already-`inout`-holding ported function itself; keep the callback a pure notify), is a one-line
+addition **inside** `TankTick.swift`'s `tankMoveTick`, at the `respawnCounter >= respawnTicks`
+branch: call `spawn(state: &state)` directly (using `tankMoveTick`'s own `inout` binding), then
+fire `onSpawn()` afterward as a pure notification, same as every other already-wired callback in
+that file.
+
+**Concrete corollary that must land alongside this fix:** `spawn(state:)` picks uniformly among
+`state.starts` and indexes `state.starts[start]` unconditionally — if `state.starts` is empty
+(true of Wave 7.2's `ContentView.demoState`, which never set it), this is an out-of-bounds crash
+the instant a player dies, not a graceful no-op. Whatever initial `GameState` 7.3 ships must
+include at least one `Start` entry.
+
+**→ Planner: same question as §3** — recommending in-scope, one-line `BoloKit` fix plus a named
+regression test (respawn actually revives: `dead` flips to `false`, tank repositioned to a real
+start, resources reset — mirroring `Spawn.swift`'s existing test style), because otherwise this
+wave's "driven by the actual physics engine" claim is falsified by the very first death.
+
+## 5. Map source
+
+No `.map`/BMAP asset files exist anywhere in the repo (checked) despite `decodeBMap` (`BMap.swift:
+530`) already being a complete, tested BMAP-format decoder from Wave 6.4a — there's simply nothing
+to feed it. Proposing to keep Wave 7.2's `ContentView.demoState`-style hand-built terrain patch as
+the initial `GameState`, extended only as needed for §4's `starts` requirement — not building a new
+map asset or a loader-wiring path, since neither is named in D60/this wave's row text and creating
+map content is its own separate scope, not input/tick work.
+
+## 6. Explicitly out of scope, confirming rather than assuming
+
+- **Builder mouse-click control** — `BuilderTick.swift`'s own header already documents
+  `getbuildertaskforcommand()`/click-to-order resolution as a UI-input-layer concern never modeled
+  in this port; the wave's row text says "keyboard input wired to **tank movement**," not builder
+  commands. Proposing to leave `state.local.builderTask` at its default (`.doNothing`) for v1 —
+  the builder simply never receives orders, which is a visible but acceptable v1 gap (no HUD to
+  issue builder commands through anyway).
+- **View scrolling/centering keys** (arrows, X/C) and the **Host/Join/networking UI** — D73/D60
+  already exclude these; the `ScrollView` that `ContentView` already wraps `GameRenderRepresentable`
+  in covers manual scrolling well enough for v1 with no dedicated key bindings needed.
+
+## 7. Test plan (D28)
+
+- `BoloKitTests`: new tests for `layMineOnKeyDown` (§3) mirroring `TankLocalTick.swift`'s existing
+  mine-planting test shapes (plants when guard conditions hold, no-ops on a pill/base tile, no-ops
+  at `mines == 0`); new test for the `tankMoveTick` respawn fix (§4) confirming a real revive.
+- App-target: no `DifferentialTests`/`BoloKitTests` coverage possible for AppKit key-event handling
+  itself (no oracle, no headless NSEvent harness precedent yet) — proposing a small pure-function
+  extraction (`InputFlags` diff-from-raw-keycode mapping, independent of `NSEvent`) that *can* be
+  unit-tested from `BoloKitTests` or a small app-target test target, plus the same off-screen
+  verification technique from Wave 7.2 (synthesizing `NSEvent`s / calling `keyDown`/`keyUp`
+  directly against a real `GameRenderView` instance) for confirming the wiring end-to-end.
+- Will report before/after test counts in the completion report per D28, same as every prior wave.
+
+## 8. Known environmental risk
+
+Per this project's own recent history (Wave 7.1/7.2), Xcode's Run Script build phase for
+`Bolo 2026` has hung reproducibly in this environment (`BoloGlyphs` subprocess stuck in `dyld`
+before `main()`), unrelated to any code here. If it recurs, will use the same substitute
+verification path already established (swift test, direct decode, off-screen `NSView` rendering)
+rather than block on it, and will say so plainly in the completion report.
+
+> **→ Planner:** two real, previously-unwired gaps found while reading the actual C source rather
+> than assuming the wave's shape (§3: LMINE's immediate on-keydown plant; §4: `onSpawn` never
+> calling the already-ported `spawn()`, plus the `state.starts`-must-be-nonempty corollary) —
+> recommending both in-scope for this wave, both small, both squarely in the input/tick territory
+> 7.3 already owns. Also flagging that keyboard capture reopens the already-PARITY-passed
+> `GameRenderView.swift` (§2) — proposing that architecture because it's the literal precedent
+> `GSBoloView.m` itself sets, not a shortcut. No Jerod-level product/architecture fork identified —
+> everything above is an engineering call within the wave's already-GO'd scope, flagged per
+> protocol rather than decided solo. Awaiting coding GO.
