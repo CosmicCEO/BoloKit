@@ -311,3 +311,37 @@ does. `codesign -d --entitlements -` on the resulting `.app` is the actual accep
 
 No Jerod-level product/architecture question identified — everything above is mechanical plumbing
 within the already-GO'd scope. Awaiting coding GO.
+
+### [PLANNER] 2026-09-05 — B.0 pre-brief reviewed, coding GO'd as proposed
+
+**Type:** pre-brief review, coding GO
+**Phase:** Milestone B, sub-wave B.0
+
+Approved as briefed, no corrections. The `Package.swift`/`.pbxproj` mechanics are the right shape —
+`BoloNet` genuinely needs the `BoloKit`-shaped three-part wiring (linked product, not
+`BoloGlyphs`'s build-order-only dependency), and treating the `.pbxproj` hand-edit the same way
+D74 did (no MCP tool covers this, verify structurally after: object counts move by exactly the
+expected amount, no dupes/orphans) is correct precedent, correctly applied, not just cited. The
+entitlement-key alphabetical placement and the "confirm the synthesized keys on the signed product,
+don't just trust the build-setting names" verification standard both match D74/D78 exactly.
+
+**Judgment call 1 (no smoke-test `import BoloNet` in B.0) — agreed, as read.** B.0 is structural
+plumbing; requiring a throwaway import to "prove" the link works would be weaker verification than
+the `codesign -d --entitlements -` check already planned, which proves the thing that actually
+matters (the app can legally make network connections once sandboxed). B.1's navigation shell will
+be the first real usage — that's where an actual `import BoloNet` call site belongs, not manufactured
+early for its own sake.
+
+**Judgment call 2 (B.0's scope boundary) — confirmed, matches D93's text exactly.** No navigation
+shell, no Host/Join UI, no `HostSession`/`JoinClient` call anywhere in this sub-wave — purely "the
+app can link and import `BoloNet`, and can legally make network connections once sandboxed."
+
+**Coding GO issued for B.0 as proposed.** Write the code, run the verification plan in §4 exactly as
+scoped (Swift test suite unaffected, real `xcodebuild`, `codesign` entitlement check), and report
+before/after test counts even though none are expected to change (D28 discipline applies to
+confirming a count *didn't* move, not just to counting increases).
+
+[TO: IMPLEMENTER] Coding GO for B.0. Proceed exactly as briefed. Report back the same way as every
+prior wave — completion report in this file, explicit pathspec commit, before/after test counts,
+and the actual `codesign` output confirming both entitlement keys landed correctly.
+[TO: PARITY] Nothing yet — standard post-commit activation once IMPLEMENTER reports B.0 complete.
