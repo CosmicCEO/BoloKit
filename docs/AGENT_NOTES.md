@@ -2580,3 +2580,79 @@ D28 baseline note assumed.
 > outside the normal `RunProject`/screenshot path given the toolchain hang — worth reproducing
 > independently once the hang clears, since "I verified it two ways myself" is exactly the kind of
 > claim this project's process says to re-derive rather than trust.
+
+### [PLANNER] 2026-09-04 — Wave 7.2 reviewed: D83/D84 ratified, PARITY activated
+
+**Type:** review + rulings + PARITY activation
+**Phase:** Wave 7.2 — coded and committed (`9a8b328`+`6e76aea`), **not closed**, pending PARITY PASS
+
+**D83 — `displayTileGrid`'s pill/base overlay scope, ratified.** D65's text told 7.2 what to skip
+(fog/`seentiles`) but never said pills/bases must land on the tile grid before `mapimage()` runs —
+a real omission, not a contradiction, and the kind of gap that would have shipped a pillbox
+rendering as bare grass if left unaddressed. The literal port (`tileFor`, matching `tilefor()`
+directly) stays as the fidelity reference; `displayTileGrid`'s O(n) rewrite plus an exhaustive
+equivalence test is exactly this project's established perf-vs-fidelity pattern, not a new one.
+Measuring first (~122ms/call, 6× the tick budget) before writing the fast path is the right order
+of operations.
+
+**D84 — corner-fill Wave 7.0 defect, fix ratified, Wave 7.0 stays closed.** Same shape as D77,
+applied consistently: a real defect (checkerboard transparent corners on any adjacent same-family
+non-wall tiling) that Wave 7.0's own isolated-glyph tests structurally couldn't have caught, found
+because 7.2 is the first wave to ever composite two glyphs edge-to-edge. Fixed promptly rather than
+tracked, gated on the wave that actually depends on it — exactly the "found-late-but-real defects
+get fixed now, not carried as debt" precedent this project has applied every time (D45/D53/D57/D77).
+`.wall`'s exclusion from the corner-inference is correct: it has real diagonal data and 47
+already-tested variants, and inferring over real data would be a regression dressed as a fix.
+
+**Four smaller judgment calls — all accepted, no ruling needed, recording so they aren't re-asked:**
+(1) global/unattributed explosions included in the draw scope despite the pre-brief's "local
+...explosions" phrasing — correct reading, D73's exclusion is about other *players'* content, not
+unattributed mine-chain effects, and the alternative (mines never visibly explode in v1) would be
+a real regression from the pre-brief's own intent. (2) `GameState.ticks` substituting for the
+missing per-player `seq` field in walk-animation alternation — cosmetic only, no gameplay effect,
+correctly flagged rather than silently invented. (3) Dropping the always-1.0 `fraction` parameter
+rather than porting it as permanently-dead code — this is Swift-side rendering, not simulation state
+under differential-testing obligation, so D24-style "port bug-for-bug" doesn't apply; a parameter
+that can never be anything but 1.0 in v1 is correctly omitted, not preserved as decoration. (4) The
+demo `ScrollView` wrapper in `ContentView.swift` — a reasonable stopgap to have something to render
+against the full 4096×4096 map without inventing zoom/scroll (Milestone D's job), correctly flagged
+as not final rather than presented as a considered UX decision.
+
+**No-y-flip claim — verification request satisfied.** Asked last entry for this to be checked
+against real rendered output, not just `Vector.swift`'s doc comment on paper. Got exactly that: two
+independent off-screen-rendering techniques (manual `NSGraphicsContext` swap and the
+`isFlipped`-respecting `NSView.cacheDisplay(in:to:)`, specifically chosen to rule out the first
+technique having its own flip artifact), pixel-identical results, tank rendering as an east-pointing
+triangle at heading 0 matching D70, correct grass/road/forest boundaries. Good verification under a
+real constraint (see below), not a shortcut.
+
+**Toolchain hang — logged as a further instability data point, not a defect, not actionable by any
+role here.** A reproducible hang in the Run Script phase's subprocess launch (stuck in `dyld`/`open()`
+before `main()`, zero CPU, confirmed independent of `BoloGlyphs` itself by running the identical
+binary directly outside Xcode's sandboxed phase) blocked the normal build-and-look verification path
+for most of this session. Handled exactly right: diagnosed with `sample`/`lsof`/`df` rather than
+guessed at, not routed around silently, verification completed through channels that don't depend on
+the hung path (unit tests, direct PNG decode, off-screen rendering against the real built product).
+Adding to the standing toolchain-instability record alongside the two prior crashes, the failed
+reinstall, and the stray `-Xcc` index store — worth keeping in mind for any future session budgeting
+time around Xcode-tool-driven builds on this host.
+
+**Test count 614 → 626 (+12), D28 satisfied.** Noting the parameterized-test counting nuance
+(declared-count ≠ executed-case-count starting now) as informational for future reports comparing
+against this baseline — not a discrepancy, just a new fact about how the number is computed.
+
+[TO: PARITY] **Activated for Wave 7.2's audit at `9a8b328`+`6e76aea`.** Highest-value items, in
+order: (1) `tileFor`/`displayTileGrid` — both the port fidelity against `client.c:6106-6141`'s
+`tilefor()` and the equivalence between the two Swift implementations; (2) the corner-fill fix in
+`GlyphSource.swift` — verify the orthogonal-bit inference for the five affected families and that
+`.wall`'s real `diag`-bit path is genuinely untouched; (3) reproduce the no-y-flip verification
+independently if the toolchain hang permits — Implementer's own report flags this as worth
+independent reproduction, not just accepting "I checked it two ways myself"; (4) spot-check the four
+judgment calls above, especially the global-explosions inclusion since it's the one closest to a
+real scope call rather than a pure implementation detail. The toolchain hang is background context,
+not something to route around blindly — if you hit it too, that's corroborating data, not a new
+problem to solve.
+[TO: IMPLEMENTER] D83/D84 both ratified as delivered, no rework. Good instincts on all four counts
+this report asked about — the global-explosions read in particular is exactly the kind of scope
+interpretation I want flagged rather than silently resolved either way. Nothing further from me
+until PARITY reports back.
