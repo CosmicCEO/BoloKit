@@ -93,3 +93,71 @@ questions, Wave 7.1 row correction).
 
 [TO: IMPLEMENTER] No action needed — both rulings are process/product-identity, not code.
 [TO: PARITY] No action needed.
+
+### [PLANNER] 2026-09-05 — Milestone B/C/D pre-plan (D92), sized but not GO'd
+
+**Type:** sizing/risk pre-plan, no coding GO issued
+**Phase:** post-Wave-7, pre-Milestone-B/C/D
+**Blocks:** nothing — this sizes and sequences, it does not authorize coding on any of B/C/D
+
+Jerod asked for a pre-plan of Milestones B/C/D with help from Implementer/Parity subagents to
+surface risks/gaps, dispatched directly under D91 (no yes/no gate needed). Two subagents ran in
+parallel: an Implementer-lens pass (sizing + sub-wave splits, reading `Reference/c`'s actual
+IBActions/IBOutlets and this project's existing `BoloNet`/`BoloKit` surface) and a Parity-lens pass
+(independently verifying two claims from my own earlier read rather than taking them on faith, plus
+hunting for fidelity gaps). Both came back clean on method — real file:line citations throughout,
+no unverified assertions.
+
+**D92 — closes Q18.** My own earlier read found `Reference/c` is a git submodule, not vendored
+content, and that no copyrighted asset bytes exist anywhere in this project's own git history — the
+Parity-lens agent independently re-derived all three sub-claims with fresh commands and confirmed
+every one. Q18/D61's "git-history rewrite" premise doesn't hold: removing `Reference/c` at
+Milestone D is a plain `git submodule deinit`, not a destructive rewrite. This meaningfully de-risks
+Milestone D. D61's text corrected in place with a dated pointer, not rewritten; Q18 removed from
+the open-questions table.
+
+**Two corrections to my own earlier (unverified) framing, caught by the subagents rather than left
+standing:**
+1. Milestone C's key remap is not "expose already-shipped defaults for editing" — `InputKeymap.swift`
+   is a hardcoded 7-case switch, only 6 of 14 reference bindings wired at all. C.1 must build the
+   remappable model, not just a settings UI.
+2. Milestone C's sound is not procedural synthesis — confirmed sample-based, 24 named `.aiff`
+   effects via round-robin `NSSound` pools, zero DSP code in the reference. Smaller code footprint
+   than I'd guessed, but needs licensed replacement assets (**Q28**, new) since the originals are
+   Stuart Cheshire's copyrighted material.
+
+**One new fidelity risk surfaced, inherited from D65 rather than new in kind:** the alliance system
+and fog-of-war aren't independently scopable — `requestalliance()`/`leavealliance()` call
+`increasevis()`/`decreasevis()` to merge shared vision, never modeled anywhere in this port
+(already disclosed in `SessionLogic.swift`'s own header). Milestone C's alliance panel, built before
+real fog-of-war exists, will functionally diverge from the reference (no vision reveal) — an
+accepted, D65-consistent v1-shape gap the C.2 pre-brief should state explicitly. HUD status icons
+were traced and confirmed independent of this — no equivalent risk there.
+
+**One new gap surfaced for Milestone B:** the reference's `joinprogress()` dispatches 19 distinct
+status codes (6 live progress states + 8 network-error cases) through one callback; `JoinClient.swift`
+only models 6 protocol-rejection cases plus two framing catch-alls and has no progress-callback
+mechanism at all. B.3's pre-brief will need new `JoinClient` surface area to replicate the
+reference's live progress UI and per-failure messaging — not just app-side wiring.
+
+**Sizing, relative to Wave 5 (10 sub-waves)/Wave 6 (11)/Wave 7 (4):** Milestone B (proposed B.0-B.4)
+is closer to Wave 7's UI-wiring character — the hard networking work is done and tested in
+`BoloNet`; the one new axis is this project's first `async`/`await` call across a SwiftUI/AppKit UI
+boundary. Milestone C (proposed C.0-C.6) is the largest of the three by sub-wave count, but most
+sub-waves are bind-existing-model-to-UI; C.1 (key remap) and C.3 (sound) are the two genuinely
+harder pieces, with C.3 being the closest thing to a new engineering axis in either B or C (licensed
+asset sourcing + new tick-loop hook plumbing, echoing Wave 7.0's asset-pipeline problem). Milestone D
+is now the smallest and lowest-risk of the three post-D92, gated mostly on a non-engineering
+dependency (Q29 — an Apple Developer Team ID for signing/notarization) rather than code complexity.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D92 added; Q18 closed/removed;
+Q28 (sound-asset licensing) and Q29 (signing Team ID) added; D61 and Wave 7's row corrected in
+place; three new wave-table rows (Milestone B, C, D) added with proposed sub-wave splits, explicitly
+**not GO'd**.
+
+[TO: IMPLEMENTER] Nothing actionable yet — no coding GO issued on B, C, or D. When Jerod picks one
+to GO, that milestone's first sub-wave gets a real pre-brief same as every prior wave; this entry is
+sizing context, not a substitute for one.
+[TO: PARITY] Nothing actionable yet, same reason. Your fidelity-risk findings (alliance/fog-of-war
+non-independence, join-progress granularity gap) are recorded above for whichever sub-wave's
+pre-brief eventually needs them.
