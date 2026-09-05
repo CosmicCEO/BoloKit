@@ -3724,3 +3724,129 @@ you're ready — worth folding in the 9 still-unwired `runTick` callbacks per Mi
 ruling, and a fix to `receiveMatchingCLUpdate`'s comment if you touch that file.
 [TO: PARITY] B.5b closed on your PASS. Nice work across all three findings this sub-wave — the
 negative-control discipline held throughout.
+
+### [IMPLEMENTER] 2026-09-05 — B.5c pre-brief (TCP CL* dispatch loop + the 9 unwired runTick callbacks)
+
+**Type:** pre-brief, not yet coding
+**Phase:** Wave 7 / Milestone B, sub-wave B.5c
+
+Read `HostSession.swift`, `HostAcceptLoop.swift`, `HostGameEngine.swift`, `RunTick.swift`,
+`TankTick.swift`, `MineChain.swift`, `TankLocalTick.swift`/`ShellTick.swift`/`BuilderTick.swift`,
+and `client.c:436-447` directly before writing this. Two genuinely separable pieces, plus one
+finding that changes the scope PLANNER assigned.
+
+## 1. The dispatch loop itself -- smaller than it looks, most of the hard part is already built
+
+`receiveAndDispatchOneHostMessage` (`HostSession.swift:425`, Wave 6.4b) already does the full
+`CL*` opcode read + decode + `recvCl*` dispatch + pending-broadcast-queue + flush, and every
+`recvCl*` function it calls (Wave 6.6) is already fully built and independently tested
+(`HostSessionTests.swift` already calls it ~15 times against fake connections). **Nothing here
+has ever been wired to a live per-connection loop** -- `HostAcceptLoop.swift`'s own header
+says so explicitly ("a joined player's subsequent `CL*` messages go unread ... an accepted
+intermediate state"), and `HostGameEngine`'s `.newConnection` case still only calls
+`processJoinAttempt` once, then never reads that connection again.
+
+**The real B.5c work is architectural, not the message-handling logic itself:** every opcode's
+read step (`rest(wireSize)`) depends only on a static, opcode-determined wire size (confirmed by
+reading every `case` branch in `receiveAndDispatchOneHostMessage` -- even `.sendMesg`'s
+variable-length text is a pure null-terminator read, no `state` needed). This means the I/O
+half is cleanly separable from the state-mutating half, matching D96's producer/consumer split:
+
+- **Proposed split (new, not yet written):** `receiveOneHostMessageBytes(connection:) async throws
+  -> [UInt8]` -- I/O-only, reads the opcode byte + exact wire bytes, no `state` access. Then
+  `dispatchHostMessage(bytes:player:state:table_callbacks:) -> (ClientOpcode, [PendingBroadcast])`
+  -- pure, synchronous, no I/O, the decode+`recvCl*`+queue logic `receiveAndDispatchOneHostMessage`
+  already has, just extracted. `receiveAndDispatchOneHostMessage` itself becomes a thin wrapper
+  calling both + flushing, preserving its existing signature and all ~15 existing
+  `HostSessionTests.swift` call sites unchanged (D28: no coverage shrink, this is a pure
+  extraction).
+- **The open architectural question, not resolved here:** D95/D96 specified exactly three
+  producer tasks (accept loop, dgram listener, tick timer), fixed at `start()` time. A live
+  per-player `CL*` read loop needs a **dynamically spawned** producer Task per successfully-joined
+  connection (spawned from inside the consumer's own `.newConnection` handling, after
+  `processJoinAttempt` succeeds), looping `receiveOneHostMessageBytes` and yielding
+  `.clMessage(player, bytes)` into the same merged stream until the connection closes/errors or a
+  `.hangUp` opcode is read. This is a genuine generalization of D96's "three fixed producers" shape
+  to "three fixed producers + N dynamic ones," not something I'm comfortable deciding is obviously
+  in-bounds for an already-specific ruling without asking. Proposing it here rather than assuming
+  it and coding it.
+- **Disconnect detection:** a per-connection read loop naturally observes both signals T-12/T-13
+  already model -- `.hangUp` opcode read (maps to `HostDisconnectReason.normal`) and a thrown
+  read error / connection closed (maps to `.abnormal`). `handlePlayerDisconnect` (`HostSession.swift:279`)
+  is already built and tested for both. `hostKickPlayer`/`hostBanPlayer` also already exist but
+  have no `CL*`-opcode trigger from the client side at all (operator-only actions) -- out of scope
+  for this dispatch loop, a later UI-driven wave's concern, not something B.5c needs to call.
+
+## 2. The 9 unwired `runTick` callbacks -- 7 resolved by reading the reference, 3 are a bigger gap than "wire them" (scope question for Planner)
+
+Read every actual call site (`TankTick.swift`, `RunTick.swift`, `client.c:436-447`) rather than
+guessing from names:
+
+**Confirmed no wiring needed at all (4):** `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn`
+(`TankTick.swift:129,135,142,159`) only ever fire inside a block gated on `player ==
+state.localPlayer` -- these are the LOCAL player's own death/respawn animation sequence, mirroring
+real distributed clients each animating their own tank's death independently with no wire message
+involved (other players learn the new position from the next `CLUpdate`, already broadcast).
+Confirmed correctly a no-op for a host driver, not a gap.
+
+**Confirmed no wiring needed (1 more):** `onPlayerLagStatusChanged` (`RunTick.swift:203-211`)
+mirrors `client.c:437-447`'s `client.setplayerstatus` -- read the C source directly: that's a
+local UI callback (updates a player-list status icon), never a network send. No SR* counterpart
+exists or should exist.
+
+**Small, well-scoped, proposed for B.5c (1):** `onPlayerDisconnected` (`RunTick.swift:181`, fired
+after `RunTick`'s own step 4 already drops onboard pills and sets `connected = false` for a
+lag-timed-out player). **Must NOT call the full `handlePlayerDisconnect`** -- that function's
+`.abnormal` path calls `removePlayer` internally, which would re-run the drop-pills logic
+`RunTick` already did, double-firing it. The correct narrow action is just the two remaining
+network-side steps `handlePlayerDisconnect` does after its `removePlayer` call:
+`table.sendToAllExcept(player, SRPlayerDisc(player:).encode())` then `table.disconnect(player)`,
+queued/deferred the same way B.5b's other synchronous-callback-to-async-broadcast bridging works.
+
+**Real, deeper, pre-existing gap -- recommend NOT folding into B.5c (3):** `onMineExplosion`/
+`onSuperboomTerrain`/`onDropPills` as `runTick`'s own top-level parameters (fired from `chain`/
+`flood` in step 5) were **never wired anywhere in this codebase, at any layer, since Wave 5.5a --
+disclosed explicitly, not newly discovered by me.** `MineChain.swift:43-51`'s own header: *"Deliberately
+NOT done this wave: wiring the existing `onMineExplosion`/`onSuperboomTerrain` closures (shipped in
+`TankLocalTick.swift`/`ShellTick.swift`/`BuilderTick.swift`) to call these functions ...
+connecting them requires threading the correct causer (shell owner, builder's player, or
+`state.localPlayer`) through three already-shipped files, which only a real top-level tick driver
+(Wave 6) can supply with full context."` `HostGameEngine.tick()` is arguably that driver now, but
+the actual wiring isn't "pass a closure" -- `TankLocalTick`/`ShellTick`/`BuilderTick`'s own
+`onMineExplosion` closures are currently `(Pointi) -> Void`, with **no causer parameter in the
+signature at all**. Threading a real causer through would mean changing those closures' signatures
+across three already-shipped, already-tested files (and their `HostGameEngine`/CL-dispatch-side
+`CLDispatchCallbacks` counterpart, which has the same gap -- `HostSession.swift:372`'s
+`CLDispatchCallbacks.onMineExplosion` is also still a pass-through no-op today, confirmed by
+reading its default initializer). Even the *broadcast* mapping itself is unresolved -- no code
+path anywhere has ever decided what `SR*` message a mine-chain explosion actually sends (unlike
+the 7 D98-adjacent callbacks, which each map cleanly onto an existing `SR*` struct). This is bigger
+and older than "wire 3 more callbacks into B.5c" -- it's a signature-changing refactor across
+BoloKit call sites that predates this sub-wave, with real D28 stakes (touches already-shipped
+tests in `TankLocalTickTests`/`ShellTickTests`/`BuilderTickTests`, whichever files those live in).
+**Recommending this become its own follow-up (B.5d, or whatever Planner wants to call it) rather
+than silently folding it into B.5c or silently reattempting the causer-threading refactor
+unilaterally** -- logging as the one real open question this pre-brief has, per this project's own
+standard for ambiguous calls.
+
+## Proposed B.5c coding scope, pending Planner's GO
+
+1. Extract `receiveOneHostMessageBytes`/pure-`dispatchHostMessage` split from
+   `receiveAndDispatchOneHostMessage`, no behavior change, existing tests unchanged.
+2. Add `.clMessage(Int, [UInt8])` to `HostEngineEvent`; spawn a per-player producer `Task` from the
+   consumer's `.newConnection` case on a successful join, feeding the merged stream until
+   disconnect/hangup.
+3. Wire `.clMessage` in the consumer to `dispatchHostMessage` + flush, `.hangUp` -> 
+   `handlePlayerDisconnect(.normal)`, read error/EOF -> `handlePlayerDisconnect(.abnormal)`.
+4. Wire `onPlayerDisconnected` in `HostGameEngine.tick()`'s own `runTick` call (the narrow
+   two-step action above, not full `handlePlayerDisconnect`).
+5. Leave `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn`/`onPlayerLagStatusChanged` unwired,
+   now confirmed-correct rather than merely undecided.
+6. Leave `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` (the `runTick`-level three) unwired,
+   pending Planner's ruling on whether that's its own sub-wave.
+
+> **→ Planner:** Ready to code items 1-5 above on your GO. Item 6 (mine-chain causer-threading) is
+> the one real scope question -- your earlier ruling said fold all 9 into B.5c, but I didn't have
+> this depth when that ruling was made. Recommend splitting it out; your call stands either way,
+> just wanted you deciding with the full picture rather than me silently narrowing (or silently
+> attempting a signature-changing refactor) on my own judgment.
