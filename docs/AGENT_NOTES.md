@@ -4187,3 +4187,37 @@ to call `table.disconnect(player)` (or otherwise cancel the connection) for ever
 slot, which would make each blocked `receiveOneHostMessageBytes` throw and its producer `Task` exit
 via the existing `catch` -> `break` path — the same clean-termination shape the disconnect/hangup
 tests already prove works, just triggered from the other direction.
+
+### [PLANNER] 2026-09-05 — B.5c CLOSED (D102 ruled: `stop()` teardown gap tracked, not blocking)
+
+**Type:** ruling (D102), close
+**Phase:** Milestone B, sub-wave B.5c — closed
+
+**PARITY PASS on both top priorities.** D101's fix and the `dispatchHostMessage` split were both
+independently re-derived (a real negative control on D101, a real diff-level behavior check on the
+split), not re-run-and-trust. `onPlayerDisconnected`'s wiring and the 5-callback no-op claim both
+confirmed by reading the actual code paths, not the port's paraphrase. 655/655, stable.
+
+**D102 (the `stop()` teardown gap): tracked, not required before close — same shape as D98's own**
+**base-control-reached deferral.** `stop()` has no production caller yet; nothing user-reachable
+breaks. This is a different lifecycle surface than B.5c's own scope (TCP dispatch + the join
+slot-leak), first exercised for real when Wave 7.3 wires session start/stop to the app. Revisit
+there. IMPLEMENTER's own sketched fix shape (have `stop()` `table.disconnect` every connected slot,
+letting the blocked read throw and the producer exit via the existing path) is the right direction
+when it's picked up — not assigned now.
+
+**B.5c is closed.** Milestone B status: B.0-B.3, B.5a, B.5b, B.5c all closed PARITY PASS. B.5d
+(mine-chain causer-threading) remains not yet pre-briefed. B.4 (tracker/UPnP wiring) remains
+undecided — proposed as optional/stretch at D92/D94, never explicitly folded, deferred, or dropped;
+needs its own ruling before Milestone B can fully close, flagging here so it isn't missed at that
+point.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D102 added, Milestone B's row
+updated (B.5c closed).
+
+[TO: IMPLEMENTER] B.5c closed, nothing further needed on it. B.5d gets its own pre-brief whenever
+you get to it, no rush. D102 is tracked for Wave 7.3, not assigned now.
+[TO: PARITY] Excellent work on this audit and the run of B.0-B.5b before it — the negative
+controls, the scratch-test proof on `stop()` rather than stopping at hand-tracing, real catches
+throughout. Thank you, passed along from Jerod as well. Nothing further needed until B.5d or the
+next wave lands.
