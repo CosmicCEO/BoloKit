@@ -2916,3 +2916,74 @@ assertions and corrected anchor values, and the ten same-`(ortho,diag)` pairs).
 
 Per D85's gating rule: before activating PARITY for this re-audit, asking Jerod for a yes/no rather
 than triggering it myself.
+
+### [PARITY] 2026-09-04 — D86 re-audit (`3e03137`+`e5fccee`): PASS, all four claims independently re-derived and confirmed exact
+
+**Tooling:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint` present. Execution
+throughout: `swift build`/`swift test` at HEAD, plus a fresh from-scratch `swiftc` harness (not
+reused from the prior audit) linking the current built `BoloGlyphsCore`/`BoloKit` objects, computing
+every number below independently rather than checking Implementer's report against itself.
+
+**Scope check first:** `git diff 3dfabff..HEAD --stat` for the code/test surface shows exactly
+`Sources/BoloGlyphsCore/GlyphSource.swift` and `Tests/BoloKitTests/BoloGlyphsTests.swift` touched —
+matches Implementer's own scope claim, nothing else in Wave 7.2's already-PASSed surface disturbed.
+
+**1. Widened exemption, `GlyphSource.swift:91-97` — correct, no overreach.** `tracksOwnDiag = family
+== .wall || family == .road` gates all four corner conditions identically to the old `family ==
+.wall` ternary, just against a wider set; the `nw`/`ne`/`sw`/`se` bit-to-corner geometry is
+byte-for-byte unchanged from the version I verified in the original audit. `TileFamily` has exactly
+seven cases (`wall, river, forest, crater, road, boat, sea`) and only `.wall` has `needsDiag == true`
+in `Autotile.swift`'s ordinary sweep — `.road` is the one case handled by the separate
+`deriveRoadConnectivity()` path, which is the function proving it needs the same treatment. No other
+family was pulled into `tracksOwnDiag`; the five with no real diagonal data (sea/river/forest/crater/
+boat) still get pure ortho-inference, unchanged.
+
+**2. `roadCornerFillStillUsesItsOwnDiagBitsNotInference` — ran it, and independently confirmed its
+anchor values from scratch.** Test passes in isolation (`swift test --filter
+roadCornerFillStillUsesItsOwnDiagBitsNotInference`). Built a fresh harness calling
+`deriveConnectivity(family: .road)` directly (not trusting the test's own hardcoded 81/143 literals):
+got `conn[81] == Connectivity(ortho: 15, diag: 15)` and `conn[143] == Connectivity(ortho: 15, diag:
+0)` — exactly what the test asserts, and exactly what the fix's own doc comment claims.
+
+**3. The 81/143 diag-value swap — verified independently, not taken on trust.** My original `3dfabff`
+audit's illustrative phrasing ("image 81 = diag=0, image 143 = diag=15") was indeed backwards: my own
+fresh re-derivation this session (point 2, above, computed without looking at Implementer's numbers
+first) gives image 81 = diag **15**, image 143 = diag **0** — matching Implementer's correction, not
+my original phrasing. Doesn't change the underlying finding or the fix (the pixel-distinctness
+assertion is symmetric in which image has which diag value), but confirms the correction itself is
+right, not just asserted.
+
+**4. Full 31-image sweep — reproduced exactly, including all ten pairs by exact index.** Fresh
+harness, independent of Implementer's: grouped all 31 `deriveConnectivity(family: .road)` entries by
+their actual `renderGlyph`-produced pixel buffers post-fix.
+- **21 distinct rendered groups** (up from the regression's 9) — matches exactly.
+- **10 pairs of images still share identical pixels**: `(64,67) (65,68) (66,69) (80,83) (82,85)
+  (96,99) (97,100) (98,101) (116,122) (117,123)` — matches Implementer's list exactly, index for
+  index, computed independently rather than diffed against it after the fact.
+- For every one of those ten pairs, I confirmed both images map to a **single, identical**
+  `(ortho, diag)` `Connectivity` value (e.g. `(64,67)` both `(ortho: 6, diag: 15)`) — i.e. these
+  are cases where `deriveConnectivity()`'s own construction (probing `mapimage()` and keying by
+  image index) already collapses two different C-oracle image indices onto one `(ortho,diag)` pair
+  *before* `drawConnective` ever runs, because `drawConnective` only takes `ortho`/`diag` as input and
+  has no way to see the `roadMask`/`waterMask` distinction some C image variants also encode. This is
+  structurally identical to the D64 "no fidelity obligation on generated art" characterization —
+  present before D86's fix, not introduced by it, and outside D86's scope. Second opinion: **agree**,
+  not a residual defect.
+
+Test count confirmed **627** via `swift test list | wc -l` at HEAD (626→627, +1, matching D28).
+
+**Verdict: PASS.** All four of Implementer's own named check-points, plus Planner's fourth ask,
+independently re-derived from a fresh harness rather than checked against the completion report's own
+numbers — every one matches exactly. The `tracksOwnDiag` widening is correct and doesn't overreach.
+D86 is closed on my end; nothing else in Wave 7.2 was touched by this fix, and everything else in
+that wave already had my `3dfabff` PASS. **Wave 7.2 is clear to close from PARITY's side.**
+
+[TO: PLANNER] D86 re-audited at `3e03137`+`e5fccee` — **PASS**, all four of your/Implementer's
+check-points confirmed independently (fresh harness, not a check-against-the-report exercise):
+`tracksOwnDiag` widening correct and non-overreaching, the new test's 81/143 anchors verified against
+my own `deriveConnectivity` call, the diag-value swap confirmed as a real (harmless) correction, and
+the 21-groups/10-pairs sweep reproduced exactly including all ten index pairs and their shared
+`(ortho,diag)` values. Wave 7.2 has nothing outstanding from PARITY — clear to close. No `Q?`.
+[TO: IMPLEMENTER] Nothing further needed on D86 — clean fix, correctly scoped, and your own
+disclosure (the 81/143 swap, the full 31-image sweep with exact pairs) held up under independent
+re-derivation rather than just re-reading. Test count and scope both check out.
