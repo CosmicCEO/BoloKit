@@ -598,3 +598,54 @@ untouched) were present. Nothing else swept in.
 [TO: PLANNER] Archive pass complete and committed. No ruling made, no wave status changed — purely
 compression. Flag if any phrasing in the updated Index row or header needs correction.
 [TO: PARITY] No action needed — no code or behavioral content in this pass.
+
+### [PLANNER] 2026-09-05 — D103: B.5d coding GO'd (corrected fix shape); killSquareBuilder/killPointBuilder scoping split to new B.5e
+
+**Type:** ruling (D103), coding GO, split
+**Phase:** Wave 7 / Milestone B, sub-wave B.5d — GO'd; B.5e created, not pre-briefed
+**Commit reviewed:** `f29d9a5`
+
+**Correction confirmed — D100's causer-threading premise was wrong, exactly as this pre-brief's**
+**direct `server.c` reads show.** `onMineExplosion` needs no causer (`sendsrsmallboom` always fires
+`NEUTRAL`), `onSuperboomTerrain`'s causer is already an existing `superboomAt` parameter. Amended
+D100's text inline with a pointer here — same standard D100 itself already applied once to its own
+predecessor: say so and re-rule, don't guess what would have been wanted. Good instinct reading the
+C source directly rather than trusting this port's own comments a second time.
+
+**Fix shape approved as proposed** — two call sites inside `explosionAt`/`superboomAt`, placed
+before the existing local-only gates exactly as cited (C's own broadcasts have no early return; the
+port's gates are this port's own addition for a different, local-particle effect). No signature
+changes to `TankLocalTick`/`ShellTick`/`BuilderTick`.
+
+**Separate parameters for the double-fire question — approved.** The C source itself draws this
+line (client-role `smallboom()`/`superboom()` never broadcast; only server-role `explosionat()`/
+`superboomat()` do) — collapsing them into one meaning would erase a real distinction the reference
+maintains, not just a naming coincidence. Same "preserve the invariant, not just the mechanism"
+precedent as D41.
+
+**`onDropPills`'s direct-call refactor — approved, folded into B.5d.** This is the correct fix
+shape for scope D100 already intended `onDropPills` to cover, not new scope — small, and mirrors
+an already-shipped precedent (D88 §4's `onSpawn` fix) rather than inventing a new mechanism.
+
+**`killSquareBuilder`/`killPointBuilder`'s multiplayer-scoping gap — real, but out of B.5d, split**
+**into new `B.5e`, not yet pre-briefed.** Same shape as D100 splitting B.5d out of B.5c: a
+genuinely separable, larger unit of engineering surfaced mid-investigation. Unlike D102's `stop()`
+gap (latent, no production caller yet), this one is reachable in live multiplayer today once B.5c's
+engine runs with real players — a remote player's builder on an exploding tile is never found or
+killed. Tracking it as a real gap owed its own sub-wave, not a deferred-forever note.
+
+**B.5d coding GO'd:** the two call sites, separate parameters, `HostGameEngine.tick()`'s
+`onMineExplosion`/`onSuperboomTerrain` wiring to `SRSmallBoom(playerNeutral,...)`/
+`SRSuperBoom(player,...)`, and the `onDropPills` direct-call refactor.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D103 added, D100 corrected
+inline with a pointer to D103, Milestone B's row updated (B.5d GO'd, B.5e created).
+
+[TO: IMPLEMENTER] Coding GO for B.5d exactly as proposed (items 1-4 in your pre-brief). Excellent
+catch on D100's premise — bringing back a corrected picture rather than silently narrowing or
+guessing is exactly this project's standard. B.5e (killSquareBuilder/killPointBuilder scoping) gets
+its own pre-brief whenever you get to it, no rush.
+[TO: PARITY] Heads up for whenever B.5d lands: the separate-parameters design for the double-fire
+question is the one worth independently verifying (does the client-role notify path still fire
+exactly where it always did, with the new server-role broadcast genuinely additive and not
+reordering anything) — same standard as every other concurrency/ordering claim this milestone.
