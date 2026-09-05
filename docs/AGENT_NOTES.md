@@ -1664,3 +1664,122 @@ convenient, no need to wait for B.2's verdict.
 No dependency on B.2's audit — work it whenever fits, in either order relative to anything else
 queued.
 [TO: PARITY] No change to B.2's audit scope.
+
+### [PARITY] 2026-09-05 — B.2 audit (ea089d9+4c9e4ba) — PASS, all claims independently re-derived
+
+**Type:** post-commit audit. **Tooling this session:** `swift`, `xcodebuild`, `codesign`, `plutil`,
+`vtool`, `xmllint` all present (`which` confirmed) — every check below is execution-verified, not
+hand-traced only, except the field-mapping cross-references against `Reference/c` which are
+necessarily hand-traced against source text.
+
+**Verdict: PASS.** Every claim in the pre-brief and completion report that was flagged for
+independent verification holds up under re-derivation, plus two independent full builds/test runs
+and a from-scratch standalone-harness re-check using different input values than Implementer's own
+script (not just replaying it).
+
+**D94 scope boundary (`ea089d9`):** `git show ea089d9 | grep -nE "HostListener|HostDgramListener|
+HostSessionTable|HostSession\b"` → 5 matches, all inside `//` doc comments in `HostGameView.swift`
+and `NewGameView.swift` documenting the *absence* of these calls (e.g. `HostGameView.swift:11`,
+`:210-212`, `:380-381`) — zero actual call sites. Confirmed `git diff --name-only ea089d9~1 ea089d9`
+touches exactly `AppRootView.swift`/`GameView.swift`/`HostGameView.swift`/`NewGameView.swift`, no
+`docs/PLAN.md`, no `Sources/BoloKit`/`Sources/BoloNet`.
+
+**`handleMapPickerResult` control flow, traced directly in `HostGameView.swift` (as shipped in
+`ea089d9`):** `mapState = nil` is set unconditionally at function entry; every `guard`/failure path
+(`.fileImporter` failure, `startAccessingSecurityScopedResource` failure, `Data(contentsOf:)`
+failure, `decodeBMap` failure, and the empty-`starts` guard) returns before the single
+`mapState = decoded` assignment at the function's last line. Confirmed the empty-starts guard fires
+and returns *before* `mapState` is ever non-nil, exactly as claimed — not by re-reading the report's
+description but by reading the actual guard sequence top to bottom.
+
+**`portText` inertness:** `git show ea089d9 | grep -n "portText"` → 2 occurrences total in the whole
+diff (`@State private var portText = "50000"` and the `TextField("Port", text: $portText)` binding).
+Grepped `AppRootView.swift`/`GameView.swift`/`NewGameView.swift` (the other three touched files) —
+zero references. Confirmed genuinely inert, no code path reads it beyond the display binding.
+
+**Real map file, driven independently (not reusing Implementer's script, different values):** built
+a standalone SPM package (`swift-tools-version:6.2`, depending on this repo's `BoloKit` product)
+that (1) `encodeBMap`s a real map (one wall tile at (40,40), one start at `Start(x:77,y:88,dir:2)`),
+writes it to a real file on disk, reads it back via `Data(contentsOf:)` exactly like
+`handleMapPickerResult` does; (2) confirms `decodeBMap` on a **zero-starts** map returns `true` with
+an empty `starts` array (`Spawn.swift:41`'s `state.starts[start]` indexes unconditionally with no
+bounds guard — confirmed by reading `Spawn.swift:20-43` myself — so an empty-starts map reaching
+`spawn(state:)` would crash on the tank's first death; the guard is load-bearing, not defensive dead
+code); (3) replicates `startHosting()`'s merge line-for-line with its own values (`timeLimit=2700`,
+`hiddenMines=true`, `password="s3cr3t"`, `.tournament`, `baseControlThreshold=90`) and confirms every
+field lands correctly, terrain intact; (4) runs one real `runTick(state:ticksSinceLastUpdate:[0])`
+and confirms the host's tank spawns at exactly `(77.5, 88.5)` — the encoded start plus the
+half-tile offset `spawn(state:)` applies (`Spawn.swift:43`) — with `dead` flipping to `false`,
+traced through `TankTick.swift:101-158`'s branch structure (`respawnCounter` preset to
+`respawnTicks - 1` = 149, `+= 1` on tick 1 lands exactly at `respawnTicks` = 150, hitting the
+`>= respawnTicks` branch that calls `spawn(state:)` directly); (5) corrupts the version byte and
+confirms `decodeBMap` rejects it. All five checks passed (`ALL CHECKS PASSED`).
+
+**Field mapping**, `Reference/c/Mac OS X/GSXBoloController.h:28-45` vs `Sources/BoloKit/GameState.swift`:
+`hostTimeLimitSwitch/Slider/Field` → `GameState.timeLimit` (`GameState.swift:56`, seconds — confirmed
+the `Int(timeLimitMinutes) * 60` conversion is correct against that unit doc comment);
+`hostHiddenMinesSwitch` → `.hiddenMines` (`:75`, pure `Bool`, confirming `hostHiddenMinesTextField`'s
+exclusion is correct — no second numeric field exists to bind); `hostPasswordSwitch/Field` →
+`.passwordRequired`/`.serverPassword` (`:81`/`:83`); `hostDominationTypeMatrix` → `DominationType.open/
+.tournament/.strict` (`GameObjects.swift:166-170`, exactly 3 cases); `hostDominationBaseControlSlider/
+Field` → `.baseControlThreshold` (`:61`, seconds, matches the stepper's own units directly, no
+conversion needed). All five map 1:1 as claimed. Cross-checked shipped defaults against
+`Reference/c/en.lproj/DefaultPreferences.plist`: `GSHostDominationBaseControlString` = `00:00:30` →
+matches `baseControlSeconds = 30`; `GSHostDominationTypeNumber` = `0` → matches `.open` default;
+`GSHostTimeLimitBool`/`GSHostHiddenMinesBool`/`GSHostPasswordBool` all `false` → match;
+`GSHostPortNumber` = `50000` → matches `portText = "50000"`. Exact match on every default.
+
+**Citation-drift notes (non-substantive, flagged per house style — not defects):**
+1. The pre-brief's claim "the header's own comment confirms domination is the only supported game
+   type" doesn't hold as cited — `GSXBoloController.h` has no such comment (checked every `//`/`/*`
+   line in the file). The underlying conclusion is still correct, but the actual evidence is in
+   `Reference/c/server.c:1138-1157`: `bolo.h:326-331` declares 5 game types
+   (`kDominationGameType`...`kBodyGameType`), but `server.c`'s `switch (server.gametype)` has exactly
+   one case (`kDominationGameType`) before the switch closes — the other 4 are declared but never
+   implemented in this reference build. Domination-only is the right scope call; the citation
+   pointing at "the header's own comment" is just wrong about where that fact lives.
+2. The pre-brief cites `hostChoose:` at `GSXBoloController.m:762-782`; the method actually starts at
+   line 763 (closing brace ~784) — a trivial 1-2 line offset, content otherwise matches exactly
+   (`types:[..., @"map", NSFileTypeForHFSTypeCode('BMAP')...]` confirmed verbatim).
+3. Minor, purely cosmetic: the reference's actual failure string is `"Incomaptile Map Version"`
+   (a typo in the original xbolo source, confirmed at `GSXBoloController.m:1036`);
+   `HostGameView.swift` uses the corrected spelling `"Incompatible Map Version"`. Not a parity
+   defect — a UI string's spelling isn't gameplay behavior, and D24 governs behavioral bugs, not
+   literal typo transcription.
+
+**Build/test verification, execution-verified, not asserted:**
+- `swift test`: ran myself, full log captured. Two separate swift-testing runs report `156 tests in
+  13 suites` (DifferentialTests target) and `483 tests in 7 suites` (BoloKitTests + others) — sums
+  to exactly **639**, matching the claimed count, 0 failures anywhere in the log (the 8
+  "failure"-string hits are all test names like `recvSrMineAckRefundsMineOnlyOnFailure` or the
+  benign XCTest-bridge "0 failures" lines, not actual failures).
+- `swift build`: exit 0.
+- `ps aux | grep -i "SWBBuildService\|Xcode Service"`: found one `Xcode Service` process, elapsed
+  `10:43` (11 minutes) — not a stale multi-hour hold-over, no kill needed this session.
+- Real `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" build`: **`**
+  BUILD SUCCEEDED **`**, no lock error, no Run Script hang.
+- `codesign -d --entitlements -` on the built `.app`: same 5 entries as B.0/B.1
+  (`app-sandbox`/`files.user-selected.read-only`/`get-task-allow`/`network.client`/
+  `network.server`) — unchanged, confirming no entitlement drift.
+- `nm` on the built debug dylib: 224 `HostGameView`-prefixed symbols present including
+  `handleMapPickerResult` and `portText`'s accessors, confirming the artifact actually contains
+  this sub-wave's code (not just a stale prior build).
+
+**Scope check:** `git status --short` before committing this entry shows only `README.md` (modified,
+Director's own in-progress edit, left untouched) and the three Director-owned untracked artifacts
+(`Resources/`, `docs/XBolo_Role_Deliverable_Matrix.xlsx`, `docs/XBolo_Wave_SubWave_Swimlane.pptx`,
+`docs/notes/XBolo Deliverable Matrix.numbers`) — none touched, none staged.
+
+**Note on sequencing:** by the time this audit ran, `HEAD` had already advanced past `dd96025` to
+`ad92258` (B.5/B.5a pre-briefs) — confirmed via `git log -- <the four B.2 files>` that none of them
+have been touched since `ea089d9`, so this audit's findings stand unaffected by that later work.
+
+[TO: PLANNER] B.2 (`ea089d9`+`4c9e4ba`) is PASS. All three items Implementer flagged for independent
+verification (empty-starts guard ordering, `portText` inertness, decode/merge/spawn correctness)
+confirmed true by direct re-derivation, not by trusting the report. Two non-substantive citation
+drifts noted above (wrong citation location for a true claim; a 1-2 line offset on an otherwise
+correct reference citation) plus one cosmetic typo-vs-corrected-spelling observation — none rise to
+a finding requiring rework.
+[TO: IMPLEMENTER] Nothing to fix. If it's useful for future citations: the "domination is the only
+supported game type" fact is best cited to `Reference/c/server.c:1138-1157`'s single-case switch,
+not to a `GSXBoloController.h` comment that doesn't exist.
