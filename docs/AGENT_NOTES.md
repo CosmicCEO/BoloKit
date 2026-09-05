@@ -1920,3 +1920,114 @@ sub-wave, or issue any coding GO.
 right — naming the precise async gap rather than reaching for a delay, and disclosing it as a
 test-only issue rather than either hiding it or overstating it as a production concern. Go ahead
 with B.3's pre-brief as planned.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.3 pre-brief: join panel
+
+**Type:** pre-brief (no production code yet)
+**Phase:** Milestone B, sub-wave B.3 — proposed split names it "join panel (address/port/password
+fields, progress UI — blocked on the `JoinClient` gap above)." Re-read the exact gap the original
+pre-plan flagged (`Sources/BoloNet/JoinClient.swift`'s progress/error-granularity narrowness) and
+the reference's actual `joinprogress()` dispatch (`bolo.h:240-272`, `GSXBoloController.m:3780-3872`)
+before designing anything, per your suggestion.
+
+## 1. The gap, traced precisely
+
+`joinClient` (`JoinClient.swift:72`) is one `async throws` call with no progress callback,
+returning/throwing only once the whole handshake finishes or fails. `JoinClientError` models
+exactly the 6 protocol-rejection status bytes (`badVersion`/`disallow`/`badPassword`/
+`serverFull`/`serverTimeLimitReached`/`bannedPlayer`) plus two framing catch-alls
+(`serverProtocolError`, `connectionClosedEarly`, `malformedPreamble`) — any lower-level
+`NWConnection` failure (DNS resolution, connection refused, network unreachable, timeout, reset)
+just propagates as whatever raw `NWError`/`POSIXError` Network.framework throws, uncategorized.
+
+The reference's `joinprogress()` dispatches **19** `kJoin*` codes through one callback: 6 live
+progress states (`RESOLVING`/`CONNECTING`/`SENDJOIN`/`RECVPREAMBLE`/`RECVMAP`/`SUCCESS`), 8
+network-error cases (`EHOSTNOTFOUND`/`EHOSTNORECOVERY`/`EHOSTNODATA`/`ETIMEOUT`/`ECONNREFUSED`/
+`ENETUNREACH`/`EHOSTUNREACH`/`ECONNRESET`), plus the 6 protocol-rejection + 1 protocol-catchall
+codes `JoinClientError` already models. **B.3's actual job is smaller than B.5's turned out to
+be** — this is a moderate, self-contained extension to one existing function and its one caller
+type, not an undiscovered engine. Not proposing a further split.
+
+## 2. Proposed `JoinClient.swift` changes
+
+- **New `JoinProgress` enum** mirroring the 6 live states, and an `onProgress: (JoinProgress) ->
+  Void = { _ in }` parameter added to `joinClient`, fired at each of its existing checkpoints —
+  the function already has a distinct code point for each of the 6 (connection establish via
+  `withNetworkConnection`, `connection.send` of the join preamble, the status-byte receive, the
+  `BoloPreamble` receive, the map-bytes receive, and successful return) — this is inserting calls
+  at points that already exist, not restructuring the handshake.
+- **New network-error `JoinClientError` cases** for the 8 reference error kinds, mapped from
+  whatever `NWError`/`POSIXErrorCode` the `catch` block actually receives:
+  `.timedOut ← POSIXErrorCode.ETIMEDOUT`, `.connectionRefused ← .ECONNREFUSED`,
+  `.networkUnreachable ← .ENETUNREACH`, `.hostUnreachable ← .EHOSTUNREACH`,
+  `.connectionReset ← .ECONNRESET` — these five have a clean, direct `POSIXErrorCode` counterpart
+  and I'm confident in the mapping.
+- **Flagging, not guessing: the 3-way DNS split (`EHOSTNOTFOUND`/`EHOSTNORECOVERY`/`EHOSTNODATA`)
+  may not be preservable.** Traced the reference's exact source
+  (`GSXBoloController.m:3809-3818`): those three map to classic BSD resolver codes
+  (`hstrerror(HOST_NOT_FOUND)`/`hstrerror(NO_RECOVERY)`/`hstrerror(NO_DATA)`, the old
+  `gethostbyname`/`h_errno` taxonomy). `NWError`'s DNS case wraps `DNSServiceErrorType`
+  (mDNSResponder's own error codes) — a genuinely different enumeration, not a renamed version of
+  the same one. I don't yet know whether real-world DNS failures (bad hostname, no DNS server
+  reachable, NXDOMAIN) actually surface through `NWConnection` in a way that cleanly separates
+  into 3 distinguishable buckets, or collapse to one. **Proposing to test this empirically during
+  coding** (attempt real joins against a nonexistent hostname, an unreachable resolver, etc., and
+  see what `NWError` cases actually come back) rather than assert a mapping now — and if it
+  collapses, propose a single `.hostNotFound`-shaped case rather than three cases with no way to
+  ever land in two of them. This is within D31/D42's already-granted latitude for this exact
+  function (`JoinClient.swift`'s own header: ported for "the observable byte sequence," explicitly
+  **not** its POSIX mechanics) — not a fresh ruling, just disclosing the specific instance of it.
+
+## 3. App-side: `JoinGameView.swift` (new, replacing `JoinPlaceholderView`)
+
+- Address field, port field (default `"50000"`, the same literal shipped default `HostGameView`
+  already uses for its own port field — `GSJoinPortNumber` in `DefaultPreferences.plist` is the
+  same `50000`), password field, "Join" button.
+- Progress UI bound to the new `onProgress` callback (a progress indicator/label cycling through
+  the 6 states — no percentage value exists anywhere in this port's join path, unlike the pre-plan
+  text's "6 live progress states incl. percentage": traced `joinprogress()`'s call sites and found
+  no percentage argument anywhere in the reference either — `RECVMAP`'s own progress case doesn't
+  report partial bytes-received, just the state transition. Correcting that detail from the
+  original pre-plan text rather than trying to build a percentage that doesn't exist upstream).
+- Error alert bound to `JoinClientError`, one message per case matching the reference's own text
+  where a clear one exists (`GSXBoloController.m`'s per-status `NSBeginAlertSheet` calls, e.g.
+  "Error Resolving Hostname" for DNS failures, "Connection was forcefully rejected" for
+  `.connectionRefused`, "Password rejected" for `.badPassword`, etc. — will cite each exact line
+  when writing the actual strings).
+- On success: `joinClient`'s `(preamble, mapData)` result goes straight into `applyBoloPreamble`
+  (`JoinClientApply.swift:28`, Wave 6.4a/D45-D46, already fully built and tested) — **this
+  function already does everything B.2 had to hand-assemble manually for hosting**: assigns
+  `localPlayer`, decodes the map, applies domination/hidden-mines/base-control settings from the
+  preamble, initializes every player slot, and spawns the local tank. `JoinGameView`'s job is
+  thin: call `joinClient`, then `applyBoloPreamble`, then `onJoinedGame(state)` — mirroring
+  `HostGameView`'s `onStartHosting` shape exactly, wired through `NewGameView`/`AppRootView` the
+  same way.
+
+## 4. The one genuinely new axis, flagged rather than assumed away
+
+This is this project's first `async` network call initiated directly from a SwiftUI view action
+(the Milestone B pre-plan's own framing — `GameSession`'s tick loop deliberately used a
+synchronous timer specifically to avoid this until it was actually needed). The app target builds
+with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` (confirmed in `project.pbxproj`'s build settings
+at B.0/B.1), so `JoinGameView`'s own state is implicitly main-actor-isolated — but `joinClient`
+itself is a plain, non-isolated `async` function, and its `onProgress` closure needs to safely
+update that main-actor state from whatever context Network.framework's callbacks actually run on.
+Proposing to wrap the call in a `Task { @MainActor in ... }` from the view and confirm during
+coding (not asserting up front) exactly how `onProgress` needs to be typed/isolated for that to
+compile and behave correctly under Swift 6 — same "prototype and verify, don't just assert"
+discipline `GameSession`'s own header comment already used for its very similar concern.
+
+## 5. Verification plan
+
+`BoloNet` changes are genuinely testable: `Tests/DifferentialTests/JoinClientTests.swift` already
+exercises `joinClient` against real loopback connections per the D31 precedent noted in other
+`BoloNet` test files; extending it to assert `onProgress` fires the 6 states in the right order
+for a successful join, and that at least the 5 clean-mapping error cases (§2) produce the right
+`JoinClientError` case, is straightforward. The DNS 3-way question
+(§2) will be resolved empirically before finalizing that part of the test plan. App-side: same
+standard as B.2 — a real `xcodebuild`, and (for the actual join-handshake logic, the part with
+real behavioral risk) a standalone harness against a real loopback host, not just "it compiles."
+
+No scope-split question this time. One real open question (§2's DNS granularity) to resolve
+empirically during coding, not before — flagging the uncertainty now rather than presenting a
+guessed mapping as settled. Awaiting your review before a coding GO.
