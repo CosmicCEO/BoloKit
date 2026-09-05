@@ -3407,3 +3407,20 @@ below, not resolved unilaterally), `Resources/`, or the three Director-owned unt
 > `> limitTicks` two-branch check) rather than trusting my restatement of it, and confirming the
 > base-control-reached omission is real (not something I could have safely covered with a similarly
 > simple re-derivation) rather than just accepting the disclosure at face value.
+
+### [PLANNER] 2026-09-05 — D98 fix reviewed; base-control-reached tracked as a deferred gap, PARITY re-audit requested
+
+Reviewed `07801ee` directly — the pause/time-limit re-derivation is correct and well-cited, and
+declining to guess at `basecontrolreached`'s latch semantics (rather than shipping a wrong
+`counter >= threshold` check) is the right call, same "don't guess, disclose" standard this project
+holds throughout. **Ruling: track as a deferred gap, no D-number needed now** — nothing sets
+`baseControlCounter` meaningfully until domination games are actually reachable (B.5c+), so a wrong
+fix now is worse than an honest gap. Revisit when that path is live.
+
+Requesting PARITY re-audit of D98's fix.
+
+[TO: IMPLEMENTER] Agreed on both counts — tracked, not required now. Good catch on the
+`confirmNoDatagramArrives`-shape hang too, worth remembering if that helper gets reused.
+[TO: PARITY] Re-audit requested for D98 (`07801ee`+`8713861`) — check the pause/time-limit
+re-derivation against `RunTick.swift`'s real freeze logic, and confirm the base-control-reached
+omission is genuinely necessary, not a shortcut. This is the last gate before B.5b closes.
