@@ -373,6 +373,37 @@ private func plantMine(at point: Pointi, state: inout GameState) {
     }
 }
 
+// MARK: - layMineOnKeyDown
+
+/// Plants one mine immediately on the LMINE key's down edge, regardless of
+/// tile change — a different mechanism from `enterTile`'s `.lmine`-flag
+/// handling below (which only plants when the tank actually moves to a new
+/// tile). Ported from the LMINE-specific branch of `keyevent()`
+/// (Reference/c/client.c:6456-6516): only takes effect while alive, and
+/// only when the local player's current tile has neither a pill (onboard
+/// pills excluded, matching `findPill`'s own filter) nor a base sitting on
+/// it. Deliberately does **not** duplicate a terrain-minability guard here
+/// -- `plantMine`'s own switch already covers exactly the same terrain set
+/// C's `keyevent()` checks (swamp/crater/road/forest/rubble/grass), so an
+/// unminable tile silently no-ops through `plantMine` itself, same as C's
+/// silent `sendsrmineack(player, 0)` failure ack.
+public func layMineOnKeyDown(state: inout GameState) {
+    let player = state.localPlayer
+    guard !state.players[player].dead else { return }
+
+    let tank = state.players[player].tank
+    let x = Int(tank.x)
+    let y = Int(tank.y)
+
+    guard findPill(x: x, y: y, pills: state.pills) == nil,
+        findBase(x: x, y: y, bases: state.bases) == nil,
+        state.local.mines > 0
+    else { return }
+
+    state.local.mines -= 1
+    plantMine(at: Pointi(x: Int32(x), y: Int32(y)), state: &state)
+}
+
 // MARK: - enterTile
 
 /// Terrain-transition dispatch for the local player moving from `old` to

@@ -6,16 +6,29 @@
 import BoloKit
 import SwiftUI
 
-/// Wave 7.2 demo. `GameRenderView` (own file, D82) needs *something* to render before 7.3's
-/// tick loop exists to drive it -- this hand-builds a small terrain patch (not a real map
-/// loader; that's future scope) plus one spawned local player, purely so the draw loop is
-/// visually verifiable now. Wave 7.3 replaces `demoState` with real tick-driven `GameState`.
+/// Wave 7.3 (D88): closes the loop -- the same hand-built terrain patch Wave 7.2's demo used
+/// (not a real map loader; `decodeBMap` exists but no `.map` asset exists anywhere in this repo
+/// to feed it, and building one is separate scope from input/tick work) is now driven by a real
+/// `GameSession` tick loop instead of a frozen snapshot.
 struct ContentView: View {
+    @State private var session = ContentView.makeSession()
+
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
-            GameRenderRepresentable(state: Self.demoState)
+            GameRenderRepresentable(session: session)
         }
         .frame(minWidth: 480, minHeight: 360)
+        .onAppear { session.start() }
+        .onDisappear { session.stop() }
+    }
+
+    private static func makeSession() -> GameSession {
+        guard let tiles = loadSheetImage(named: "Tiles"),
+            let sprites = loadSheetImage(named: "Sprites")
+        else {
+            fatalError("Tiles.png/Sprites.png missing from the bundle -- D72's Run Script phase should guarantee this")
+        }
+        return GameSession(initialState: Self.demoState, tilesImage: tiles, spritesImage: sprites)
     }
 
     private static var demoState: GameState {
@@ -44,7 +57,13 @@ struct ContentView: View {
         player.connected = true
         player.used = true
 
-        return GameState(terrain: terrain, players: [player], localPlayer: 0)
+        // D88 §4's corollary: `spawn(state:)` is now really wired (from `tankMoveTick`) and
+        // indexes `state.starts` unconditionally -- must be nonempty before the first death,
+        // unlike Wave 7.2's demo, which never needed a respawn to actually succeed.
+        return GameState(
+            terrain: terrain, starts: [Start(x: 130, y: 130, dir: 0)],
+            players: [player], localPlayer: 0
+        )
     }
 }
 

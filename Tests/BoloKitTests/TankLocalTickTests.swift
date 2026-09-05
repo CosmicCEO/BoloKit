@@ -208,6 +208,65 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     #expect(exploded == Pointi(x: 5, y: 5))
 }
 
+// MARK: - layMineOnKeyDown (D88 §3)
+
+@Test func layMineOnKeyDownPlantsImmediatelyWithoutMovement() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .minedGrass)
+    #expect(state.local.mines == 4)
+}
+
+@Test func layMineOnKeyDownNoopsWhenNoMinesAvailable() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 0))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .grass0)
+}
+
+@Test func layMineOnKeyDownNoopsWhileDead() {
+    var state = makeState(player: connectedPlayer(dead: true), local: LocalPlayerState(mines: 5))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .grass0)
+    #expect(state.local.mines == 5)
+}
+
+@Test func layMineOnKeyDownNoopsOnAPillTile() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    state.pills = [Pill(x: 5, y: 5, armour: 10, owner: playerNeutral, speed: 50, counter: 0)]
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .grass0)
+    #expect(state.local.mines == 5)
+}
+
+@Test func layMineOnKeyDownNoopsOnABaseTile() {
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    state.bases = [Base(x: 5, y: 5, armour: 0, owner: playerNeutral, shells: 0, mines: 0)]
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .grass0)
+    #expect(state.local.mines == 5)
+}
+
+@Test func layMineOnKeyDownNoopsOnUnminableTerrain() {
+    // Deliberately no separate terrain-minability guard in `layMineOnKeyDown`
+    // itself -- `plantMine`'s own switch already no-ops on sea, matching this.
+    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .sea
+    layMineOnKeyDown(state: &state)
+    #expect(state.terrain[5, 5] == .sea)
+    #expect(state.local.mines == 4)
+}
+
 // MARK: - grabTile (direct)
 
 @Test func grabTileAllyHandoffTransfersOwnershipWithoutResettingResources() {

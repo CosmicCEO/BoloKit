@@ -279,12 +279,23 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
 }
 
 @Test func tankMoveTickRespawnTicksBoundaryCallsSpawn() {
+    // Wave 7.3 (D88 §4): `onSpawn` used to be a documented no-op pass-through;
+    // `tankMoveTick` now calls the real `spawn(state:)` itself before firing
+    // the notify callback, so this asserts the actual revive, not just that
+    // the callback fired -- and requires a nonempty `starts` array, the
+    // corollary flagged in the same ruling (an empty array would crash
+    // `spawn`'s own unconditional `state.starts[start]` index).
     var player = connectedPlayer(dead: true)
     var state = makeAliveState(player: player)
+    state.starts = [Start(x: 20, y: 30, dir: 4)]
+    state.terrain[20, 30] = .grass0
     state.local.respawnCounter = respawnTicks - 1
     var spawnFired = false
     tankMoveTick(player: 0, state: &state, onSpawn: { spawnFired = true })
     #expect(spawnFired)
+    #expect(state.players[0].dead == false)
+    #expect(state.players[0].tank == Vec2f(x: 20.5, y: 30.5))
+    #expect(state.local.spawned == true)
     _ = player
 }
 

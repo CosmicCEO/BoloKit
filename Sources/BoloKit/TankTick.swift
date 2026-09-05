@@ -148,6 +148,14 @@ public func tankMoveTick(
             }
             // else: neither boom fires, matching C exactly.
         } else if state.local.respawnCounter >= respawnTicks {
+            // Wave 7.3 (D88 §4): `onSpawn` was a documented pass-through with
+            // no wired consequence (see this file's own header) -- `spawn`
+            // must be called directly here, using this function's own
+            // `inout state`, not from an app-level `onSpawn` closure, which
+            // would be a nested exclusive-access violation on the same
+            // `state` `runTick` already holds `inout` for the duration of
+            // this call. Same pattern Wave 5.9 used for the other callbacks.
+            spawn(state: &state)
             onSpawn()
         }
         // respawnCounter in [explodeTicks+1, respawnTicks-1]: no-op, matching
