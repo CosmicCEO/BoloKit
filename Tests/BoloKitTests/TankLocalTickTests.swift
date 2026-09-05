@@ -256,15 +256,19 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     #expect(state.local.mines == 5)
 }
 
-@Test func layMineOnKeyDownNoopsOnUnminableTerrain() {
-    // Deliberately no separate terrain-minability guard in `layMineOnKeyDown`
-    // itself -- `plantMine`'s own switch already no-ops on sea, matching this.
+@Test(arguments: [Terrain.sea, .wall, .river, .boat, .damagedWall0])
+func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
+    // D89: standing on unminable terrain must spend no mine -- `plantMine`'s
+    // `Bool` return gates the decrement in `layMineOnKeyDown`, matching
+    // `keyevent()`'s own terrain switch, which only decrements
+    // `client.mines` inside its 15 matched minable cases (the original D88
+    // §3 landing decremented unconditionally, wasting a mine here).
     var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
-    state.terrain[5, 5] = .sea
+    state.terrain[5, 5] = terrain
     layMineOnKeyDown(state: &state)
-    #expect(state.terrain[5, 5] == .sea)
-    #expect(state.local.mines == 4)
+    #expect(state.terrain[5, 5] == terrain)
+    #expect(state.local.mines == 5)
 }
 
 // MARK: - grabTile (direct)

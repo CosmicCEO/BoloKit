@@ -350,11 +350,16 @@ private func dropBoat(at point: Pointi, state: inout GameState) {
 /// Plants a mine at `point`, turning its terrain into the mined variant of
 /// whatever it currently is (a no-op on terrain that has none, matching C's
 /// silent `sendsrmineack(player, 0)` failure ack). Ported from the
-/// local-effect-free `recvcldropmine()` (server.c:2164).
-private func plantMine(at point: Pointi, state: inout GameState) {
+/// local-effect-free `recvcldropmine()` (server.c:2164). Returns whether a
+/// mine was actually planted -- `@discardableResult` because `enterTile`'s
+/// call site below already gates the decrement itself (its outer switch
+/// only reaches that call from a matched minable case), so it has no need
+/// of the return value; `layMineOnKeyDown` (D89) does.
+@discardableResult
+private func plantMine(at point: Pointi, state: inout GameState) -> Bool {
     let x = Int(point.x)
     let y = Int(point.y)
-    guard let terrain = state.terrain[x, y] else { return }
+    guard let terrain = state.terrain[x, y] else { return false }
     switch terrain {
     case .swamp0, .swamp1, .swamp2, .swamp3:
         state.terrain[x, y] = .minedSwamp
@@ -369,8 +374,9 @@ private func plantMine(at point: Pointi, state: inout GameState) {
     case .grass0, .grass1, .grass2, .grass3:
         state.terrain[x, y] = .minedGrass
     default:
-        break
+        return false
     }
+    return true
 }
 
 // MARK: - layMineOnKeyDown
@@ -382,11 +388,17 @@ private func plantMine(at point: Pointi, state: inout GameState) {
 /// (Reference/c/client.c:6456-6516): only takes effect while alive, and
 /// only when the local player's current tile has neither a pill (onboard
 /// pills excluded, matching `findPill`'s own filter) nor a base sitting on
-/// it. Deliberately does **not** duplicate a terrain-minability guard here
-/// -- `plantMine`'s own switch already covers exactly the same terrain set
-/// C's `keyevent()` checks (swamp/crater/road/forest/rubble/grass), so an
-/// unminable tile silently no-ops through `plantMine` itself, same as C's
-/// silent `sendsrmineack(player, 0)` failure ack.
+/// it.
+///
+/// **D89 fix:** the mine must only be spent when a plant actually happens.
+/// `keyevent()`'s own terrain switch only decrements `client.mines` inside
+/// its 15 matched minable cases -- unminable terrain (sea/wall/river/boat/
+/// damaged-wall) falls to `default: break` with nothing spent. The original
+/// D88 §3 landing decremented `state.local.mines` unconditionally before
+/// calling `plantMine`, wasting a mine on unminable terrain where the C
+/// oracle spends nothing -- gating on `plantMine`'s own return value (does
+/// it match one of the same minable cases `enterTile`'s switch below
+/// checks) fixes that without duplicating the terrain list itself.
 public func layMineOnKeyDown(state: inout GameState) {
     let player = state.localPlayer
     guard !state.players[player].dead else { return }
@@ -400,8 +412,8 @@ public func layMineOnKeyDown(state: inout GameState) {
         state.local.mines > 0
     else { return }
 
+    guard plantMine(at: Pointi(x: Int32(x), y: Int32(y)), state: &state) else { return }
     state.local.mines -= 1
-    plantMine(at: Pointi(x: Int32(x), y: Int32(y)), state: &state)
 }
 
 // MARK: - enterTile
