@@ -787,3 +787,87 @@ Flagging this only so the record is honest about who actually authorized what, a
 closing the wave or issuing the next GO. That boundary holds even under D91's no-gate rule — D91
 removed the checkpoint between Planner and a role it dispatches, not Planner's own closing/GO
 authority.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.1 completion report
+
+**Type:** completion report
+**Phase:** Milestone B — sub-wave B.1 (navigation shell), coding GO'd `c79243f`, both flagged
+questions ruled at `9774d6f`
+**Commit:** `0948f26`
+
+Implemented exactly as GO'd — both approved rulings (§2 single-window mechanism, §3 temporary
+"Play Demo" affordance) landed as proposed, no deviation.
+
+## What landed
+
+- **`AppRootView.swift`** (new): `enum AppScreen { case newGame, playing }` +
+  `@State private var screen`, switching between `NewGameView` and `GameView`. Single-window,
+  state-driven equivalent of `GSXBoloController`'s `newGameWindow`/`boloWindow` round trip —
+  approved mechanism disclosure, not a literal three-`NSWindow` port.
+- **`NewGameView.swift`** (new): `TabView` with **Host**/**Join** tabs, each a private
+  placeholder view (`HostPlaceholderView`/`JoinPlaceholderView`) naming the sub-wave that fills it
+  in (B.2/B.3 respectively) — no `HostSession`/`JoinClient` call anywhere in this file. Below the
+  tab view: the approved temporary **"Play Demo"** button, calling `onPlayDemoTapped` (wired by
+  `AppRootView` to `screen = .playing`) — commented at both the property and the button call site
+  as scaffolding to remove once B.2 or B.3 lands (per Planner's tracking note, carried into the
+  code itself so it's easy to find later, not just recorded in this report).
+- **`ContentView.swift` → `GameView.swift`** (git-tracked rename): struct renamed
+  `ContentView` → `GameView`; behavior otherwise identical (same `GameSession`/`demoState`/
+  rendering). Gained a required `onQuitToMenu: () -> Void` parameter and a "Quit to Menu" button
+  (`.safeAreaInset(edge: .top)`, calls `session.stop()` then `onQuitToMenu()`) — the round-trip
+  completeness proposed in the pre-brief, matching `GSXBoloController`'s own disconnect-then-
+  `newGame:` shape (`GSXBoloController.m:740-760`) even though no real disconnect logic exists yet.
+- **`Bolo_2026App.swift`**: `WindowGroup { AppRootView() }`, replacing the direct
+  `WindowGroup { ContentView() }`.
+
+## Verification
+
+- **`swift build`/`swift test`:** unaffected, as expected — no `BoloKit`/`BoloNet` Swift touched.
+  639 → 639.
+- **`swiftc -typecheck`** against all five touched/new app-target files: clean, before attempting
+  a full build.
+- **Real `xcodebuild -scheme "Bolo 2026" build`: `** BUILD SUCCEEDED **`.** No toolchain hang —
+  third real build in a row (B.0, and now B.1) without the `BoloGlyphs` Run Script issue
+  recurring.
+- **`RenderPreview` (visual check) — attempted, did not succeed, disclosing plainly rather than
+  claiming a confirmation that didn't happen.** Ran against `AppRootView.swift`'s `#Preview`
+  twice (90s then 180s timeout, the second backgrounded and awaited to completion): both attempts
+  failed with `PreviewsFoundationHost...TaskTimeoutError`. This is a different failure surface
+  than the previously-documented `BoloGlyphs` Run Script hang (SwiftUI's live-preview host, not
+  the build-time asset pipeline) but the same category of environmental toolchain instability on
+  this machine's Xcode 27 beta — not attempted against `NewGameView.swift` separately given the
+  first two failures. **Falling back to a structural description instead of a visual one:**
+  `AppRootView`'s `body` is a plain `switch` over two already-typechecked, already-building child
+  views (`NewGameView`, `GameView`), both confirmed to compile and link into the successful
+  `xcodebuild` above; there is no rendering-specific logic in `AppRootView`/`NewGameView` that a
+  compile-and-link pass wouldn't already catch (unlike, say, `GameRenderView`'s pixel-level drawing
+  code in Wave 7.2, which genuinely needed the off-screen-render verification technique because a
+  build could succeed while drawing the wrong pixels). Judgment call: for a pure SwiftUI layout
+  wiring `TabView`/`switch`/buttons with no custom drawing, a real signed build succeeding is
+  reasonably strong evidence the view hierarchy is well-formed, though it is not a substitute for
+  an actual look at the rendered UI — flagging the gap rather than overstating the build's
+  coverage.
+
+## Scope check
+
+Touched exactly the five files named above. No `HostSession`/`JoinClient`/map-picker/preferences/
+toolbar code anywhere (all confirmed out of scope in the pre-brief, unchanged here). Did not touch
+`docs/PLAN.md`, the three Director-owned untracked files, or `Sources/BoloKit`/`Sources/BoloNet`.
+
+Test count: 639 → 639 (unaffected).
+
+> **→ Planner:** B.1 implemented exactly as approved. Real `xcodebuild` succeeded a third
+> consecutive time with no toolchain hang recurrence. `RenderPreview` hit a different
+> (Previews-host) instance of environmental toolchain instability, disclosed above rather than
+> glossed over — no visual confirmation obtained, only compile/link-level verification, which I've
+> stated plainly is a narrower claim than a look at the rendered UI would be. No new open
+> questions. Ready for PARITY's audit whenever you activate it; the "Play Demo" scaffolding is
+> commented in both `NewGameView.swift` (the button) and its doc comment for whichever of B.2/B.3
+> lands second to find and remove.
+> **→ Parity:** straightforward to re-derive — the diff is five files, no BoloKit/BoloNet
+> behavior change, no simulation code to hand-trace against the C oracle this time. Worth
+> independently confirming: (1) the "Play Demo" scaffolding is unambiguously commented as such in
+> the shipped code, not just this report; (2) the round-trip actually closes both ways at the type
+> level (`AppRootView`'s two closures wire to both enum cases, no dead case); (3) whether you want
+> to attempt `RenderPreview` yourself given a possibly-different runtime state, or accept the
+> compile/link-level verification as sufficient for a pure-layout sub-wave like this one.
