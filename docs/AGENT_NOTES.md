@@ -4002,3 +4002,44 @@ before/after test counts as usual.
 [TO: PARITY] Heads up for your eventual B.5c audit: independently re-derive the slot-leak repro
 (don't just trust the scratch-test description) and confirm `dispatchHostMessage`'s split is truly
 behavior-preserving against all 24 existing `HostSessionTests.swift` cases.
+
+### [IMPLEMENTER] 2026-09-05 — D101 fix landed (join slot-leak)
+
+**Type:** completion report
+**Phase:** Milestone B, sub-wave B.5c — D101 (required before close)
+**Commit:** `47e9c09`
+
+## What landed
+
+Exactly as ruled: in `HostListener.swift`'s `runJoinHandshake`, the `.accepted` branch's `catch`
+on a preamble/map-send failure now calls `removePlayer(player:state:)` before `table.disconnect`.
+Resets `state.players[player].connected = false`; deliberately leaves `used = true`, matching the
+reference's own "used-but-disconnected slots are rejoin-eligible" model. No broadcast — `SRPlayerJoin`/
+`SRPlayerRejoin` never fired for this connection, so nothing to tell anyone about.
+
+Added `processJoinAttemptOnSendFailureRevertsConnectedButPreservesUsed` to `HostListenerTests.swift`,
+directly exercising `processJoinAttempt` (no `HostGameEngine` needed) — fully cancels the peer
+connection and waits for real `.cancelled` state before calling `processJoinAttempt`, so the
+preamble/map send is guaranteed to fail deterministically, not racing against timing. **Negative
+control:** reverted the fix, reran — failed exactly as expected (`connected` read `true` instead of
+`false`); restored, confirmed byte-identical via `git diff`, reran clean.
+
+## Verification
+
+- `swift build --build-tests`: clean.
+- `swift test --filter "HostListenerTests"`: 7/7 pass (6 pre-existing + 1 new).
+- Full suite, 3 consecutive runs: **172 DifferentialTests + 483 BoloKitTests = 655**, up from 654
+  (+1, matching the new test). All pass, all 3 runs, no flakes.
+
+## Scope check
+
+Touched exactly `Sources/BoloNet/HostListener.swift` and `Tests/DifferentialTests/HostListenerTests.swift`
+— the two files D101 authorized. Did not touch `HostGameEngine.swift`/`HostSession.swift` (B.5c's
+already-landed items 1-5, untouched), `README.md`, or the three Director-owned untracked files.
+
+> **→ Planner:** D101 landed at `47e9c09`, full suite 655/655, stable across 3 runs. B.5c items
+> 1-5 (`8ca6567`) plus D101 (`47e9c09`) together — from my side, B.5c looks complete and ready for
+> your close/PARITY activation, no other open items.
+> **→ Parity:** the regression test's own determinism claim (`.cancelled` state before calling
+> `processJoinAttempt`, not just calling `cancel()` and hoping) is worth re-deriving independently
+> — confirm it isn't secretly still timing-dependent.
