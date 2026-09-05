@@ -3681,3 +3681,62 @@ request: (1) confirm `plantMine`'s `Bool` return genuinely reflects terrain stat
 happens to look right; (3) spot-check the five parameterized terrain cases
 (`sea`/`wall`/`river`/`boat`/`damagedWall0`) against your own original finding's terrain list. This
 is the last gate before Wave 7.3 — and the whole v1 slice — closes.
+
+### [PARITY] 2026-09-04 — D89 re-audit (`2a53299`+`28b00ee`): PASS, verified exhaustively over every `Terrain` case — Wave 7.3 and the v1 slice clear to close
+
+**Tooling:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint` present. Execution
+throughout: `swift build`/`swift test` at HEAD, plus a temporary scratch test (written, run, then
+deleted before commit — same discipline as prior audits) that goes beyond Implementer's own 5
+sampled terrains to cover **every** `Terrain.allCases` value, not just the ones named in the
+original finding.
+
+**1. `plantMine`'s `Bool` return — PASS, confirmed exhaustively.** Read `TankLocalTick.swift:354-380`
+directly: the `guard let terrain = ... else { return false }` and the switch's `default: return
+false` bracket the six minable-case-groups (`swamp0-3`, `crater`, `road`, `forest`, `rubble0-3`,
+`grass0-3` — 15 individual `Terrain` values) which all fall through to the trailing `return true`.
+Wrote a scratch test (`Tests/BoloKitTests/ZZParityScratchD89.swift`, removed after running) that
+iterates **all** `Terrain.allCases` — not the 5 the shipped test samples — calling the public
+`layMineOnKeyDown` (since `plantMine` itself is `private` and not reachable from a separate test
+file even under `@testable import`) and asserting `mines` decrements *and* terrain changes if and
+only if the terrain is one of the same 15 values `client.c:6490-6516`'s switch lists. All cases
+passed on the first correctly-written attempt — worth noting the first two attempts at this harness
+gave false failures on my own end (`PlayerState`'s memberwise-init argument order, and its `dead`
+parameter defaulting to `true`, which I hadn't set) before I found the actual bug in my own harness
+rather than in the fix — logging that as normal verification hygiene, not a wobble in the fix
+itself.
+
+**2. `layMineOnKeyDown`'s decrement ordering — PASS.** `TankLocalTick.swift:415-416`:
+`guard plantMine(at:, state:) else { return }` runs **before** `state.local.mines -= 1`, so the
+mine is now only ever spent on a `true` return — exactly the structural fix requested, matching
+`keyevent()`'s decrement-inside-the-matched-switch-case shape. No other guard in the function
+changed (dead/pill/base/`mines > 0` all untouched, as expected — those were never the problem).
+
+**3. The five parameterized terrain cases — PASS, matches my original finding's list exactly.**
+`layMineOnKeyDownNoopsOnUnminableTerrain`'s new `@Test(arguments: [.sea, .wall, .river, .boat,
+.damagedWall0])` covers precisely the five example terrains named in my `4eb483f` finding. Ran it
+directly (`swift test --filter layMineOnKeyDownNoopsOnUnminableTerrain`): all 5 cases pass, now
+asserting `mines == 5` (unchanged) rather than the old `mines == 4` (the bug, previously asserted as
+correct). The exhaustive sweep in point 1 subsumes this — confirms it's not just these 5 that are
+fixed, but the other 10 unminable `Terrain` values too (`minedSea`, `minedSwamp`, `minedCrater`,
+`minedRoad`, `minedForest`, `minedRubble`, `minedGrass`, plus the three `damagedWall1-3` variants).
+
+Test count 639 confirmed via `swift test list | wc -l` at HEAD — matches the claimed `639 → 639 (0
+removed)`, and `git show 2a53299 --stat` confirms only `TankLocalTick.swift` and
+`TankLocalTickTests.swift` touched, nothing else in Wave 7.3's or Wave 7.2's already-PASSed surface.
+
+**Verdict: PASS.** All three of Planner's/Implementer's named check-points confirmed, the terrain-
+coverage claim verified beyond what was asked (every `Terrain` case, not just the 5 sampled).
+Nothing outstanding from PARITY on D89, on Wave 7.3, or — since 7.0/7.1/7.2 all already carry my
+PASS — on Wave 7's entire v1 vertical slice (D60). **Clear to close.**
+
+[TO: PLANNER] D89 re-audited at `2a53299`+`28b00ee` — **PASS**. `plantMine`'s `Bool` return and
+`layMineOnKeyDown`'s reordered decrement both verified directly against source, then confirmed
+exhaustively with a scratch test sweeping every `Terrain.allCases` value (not just the 5 in the
+shipped test) — mines are spent if and only if terrain matches one of `keyevent()`'s 15 minable
+cases, in every one of the 30-odd `Terrain` values, including the 10 unminable ones the shipped test
+doesn't sample directly (`minedSea`/`minedSwamp`/etc., `damagedWall1-3`). Test count 639 confirmed,
+scope confirmed to the two files claimed. Nothing outstanding from PARITY — Wave 7.3 and Wave 7's
+entire v1 vertical slice (D60) are clear to close on my end.
+[TO: IMPLEMENTER] Clean fix, nothing further needed. The `Bool`-return approach reads correctly
+against every terrain value, not just the ones exercised — good structural match to `keyevent()`'s
+shape.
