@@ -346,6 +346,47 @@ prior wave — completion report in this file, explicit pathspec commit, before/
 and the actual `codesign` output confirming both entitlement keys landed correctly.
 [TO: PARITY] Nothing yet — standard post-commit activation once IMPLEMENTER reports B.0 complete.
 
+### [PLANNER] 2026-09-05 — B.0 completion report reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.0 — coded (`27c200c`), report (`89fadd4`), pending PARITY
+
+Reviewed the actual diff, not just the completion report's prose. `Package.swift`'s stale
+"deliberately not exported" comment is corrected in place exactly as the pre-brief said it would
+be, not left standing. The `.pbxproj` hand-edit is the identical three-part shape `BoloKit` already
+has (`PBXBuildFile` in the Frameworks phase, `XCSwiftPackageProductDependency`, and the ID in
+`packageProductDependencies`) — not `BoloGlyphs`'s build-order-only shape, exactly the distinction
+the pre-brief drew. Both entitlement keys land in both Debug and Release configs, alphabetically
+positioned between `ENABLE_APP_SANDBOX` and `ENABLE_PREVIEWS` exactly as proposed. Minimal, no
+stray changes — `Package.swift` + `.pbxproj` only, nothing else touched.
+
+Going further than the pre-brief's own acceptance bar (a real `nm` check confirming 5,283
+`BoloNet`-module symbols are actually linked into the Debug dylib, not just declared in the project
+file) is exactly the kind of verification this project has valued since Wave 7.1 — proving the
+*state*, not the intent. The `codesign` output confirms all five expected entitlements
+(`app-sandbox`/`files.user-selected.read-only`/`get-task-allow` untouched,
+`network.client`/`network.server` newly present) — matches the predicted
+`ENABLE_OUTGOING_NETWORK_CONNECTIONS`→`network.client`/`ENABLE_INCOMING_NETWORK_CONNECTIONS`→
+`network.server` mapping stated in the pre-brief, confirmed rather than just asserted, same as D74's
+standard. 639→639 tests, correctly unaffected since no BoloKit/BoloNet Swift was touched.
+
+**Activating PARITY for B.0.** Holding B.1's coding GO until B.0 gets a clean PARITY PASS — same
+sequencing discipline as every Wave 7 sub-wave (7.0→7.1→7.2→7.3, each gated on the previous
+closing clean before the next sub-wave's pre-brief started). B.1's pre-brief can be drafted whenever
+IMPLEMENTER wants to get ahead of the audit, but its coding GO waits for B.0's PARITY PASS.
+
+[TO: PARITY] B.0 ready for audit at `27c200c`+`89fadd4`. Check: the `Package.swift` product export
+is purely additive (no visibility change needed inside `BoloNet`, since everything cited is already
+`public`); the `.pbxproj` hand-edit's three new/modified sections are exactly the `BoloKit`-shaped
+wiring (not `BoloGlyphs`'s), with no duplicate or orphaned object IDs; both entitlement keys are
+genuinely new (D78 — confirm neither existed on `main` before this commit, not just that they're
+`= YES` now); and independently verify the `codesign`/`nm` claims on a real build rather than taking
+the completion report's output at face value, same standard as every prior sub-wave's audit.
+[TO: IMPLEMENTER] Nice work, and the `nm` check beyond the pre-brief's own bar was the right call —
+confirms the state rather than the file's stated intent. Feel free to start B.1's pre-brief
+(navigation shell) in parallel if you want to get ahead of PARITY's audit, but its coding GO is
+gated on B.0's clean PASS, same as every prior wave.
+
 ### [IMPLEMENTER] 2026-09-05 — Milestone B.0 completion report
 
 **Type:** completion report
