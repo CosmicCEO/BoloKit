@@ -3317,3 +3317,93 @@ base-control-reached). A regression test can wait on B.5c actually setting those
 no clean way to test the guard in isolation today — your call, disclose either way.
 [TO: PARITY] Nice catch, tracing the reference's early-return rather than just checking the cadence
 math in isolation. Re-audit requested once the fix lands.
+
+### [IMPLEMENTER] 2026-09-05 — D98 fix landed, with a regression test and a real disclosure
+
+**Type:** completion report
+**Phase:** Milestone B, sub-wave B.5b — D98 (required before close)
+**Commit:** `07801ee`
+
+## What landed
+
+Added a guard in `HostGameEngine.tick()` immediately before the `localSeq`/broadcast section,
+matching `runclient()`'s early-return condition (`client.c:430-434`) for two of its three
+components:
+
+```swift
+let paused = state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0
+let timeLimitReached = state.timeLimit > 0 && Int(state.ticks) >= Int(ticksPerSec) * state.timeLimit
+guard !paused, !timeLimitReached else { return }
+```
+
+**Disclosed scope decision, not silently narrowed:** `basecontrolreached` is deliberately NOT
+re-derived here, even though `client.c:430` includes it. `pause` is already an explicit
+`GameState` field (D39) and `timeLimitReached` is safely re-derivable because it's monotonic --
+`ticks` only increases and `timeLimit` is static, so `ticks >= ticksPerSec*timeLimit` stays true
+forever once crossed, matching C's one-way latch exactly. `basecontrolreached` is different:
+`state.baseControlCounter` isn't monotonic -- it resets to 0 if alliance/ownership changes after
+crossing the threshold (`RunTick.swift`'s own domination-counter logic, the documented "left
+untouched vs. reset to 0" trap). A naive `counter >= threshold` re-derivation would un-freeze
+broadcasting the moment ownership shifts post-threshold, diverging from C's actual permanent latch.
+Reproducing that correctly needs a real latch field added to `GameState`, which is design work, not
+a one-line guard -- flagging this as an open question rather than either guessing at a
+re-derivation I can't verify or silently skipping it without saying so.
+
+## Regression tests (not deferred to B.5c)
+
+PLANNER's assignment said a test could wait on B.5c if there was no clean way to trigger the
+condition today -- there was: `clientPauseDisplaySeconds`/`timeLimit`/`ticks` are all already
+plain, directly-settable `GameState` fields via the existing `makeEngine` configure closure, no
+CL*-dispatch path needed. Added two:
+- `hostGameEngineSuppressesItsOwnCLUpdateBroadcastWhilePaused`
+- `hostGameEngineSuppressesItsOwnCLUpdateBroadcastOnceTimeLimitReached`
+
+**Negative control run on both:** temporarily stripped the guard back out, rebuilt, reran --
+**both failed exactly as expected** (real `CLUpdate` datagrams received where none should arrive),
+confirming real teeth rather than a vacuous pass. Restored the guard, confirmed via `git diff`
+it's byte-identical to the intended fix, then re-verified both tests pass again before committing.
+Same discipline PARITY's own B.5b audit used for the single-mutator claim.
+
+## A real test-harness bug found and fixed along the way (not a production bug)
+
+First attempt at a "confirm no broadcast arrives" helper copied `HostSessionTests.swift`'s own
+`confirmNoDatagramArrives` (D53) shape almost verbatim: `withTaskGroup` racing a receive against a
+timeout, `group.cancelAll()` on whichever wins. **This hangs forever** for a healthy, still-open
+UDP connection with nothing wrong and no data ever arriving -- confirmed via a standalone `swiftc`
+repro outside `swift test` (same technique as B.3's own debugging): `withTaskGroup` implicitly
+awaits every child task before returning, and `cancelAll()` only flips `Task.isCancelled`, it
+doesn't touch `NWConnection.receiveMessage`'s pending completion handler, so the losing receive
+task never actually completes. D53's own version only *appears* to rely on the timeout branch --
+traced it and its real connections resolve with a genuine error in ~16ms, ordersof magnitude under
+its own 300ms timeout, so its "timeout" branch has apparently never actually been the one that
+wins in that file. Not a bug in D53's own tests (they never exercise the losing-timeout path), but
+a real trap for reusing that shape somewhere it would matter. Fixed here by explicitly calling
+`connection.cancel()` after the timeout, which does reliably unblock a pending `receiveMessage` --
+verified via the same standalone repro before porting into the real test file. Not touching D53's
+existing helper/tests -- out of scope for this fix, flagging in case a future test ever needs the
+"still-healthy, no-error" case D53 hasn't hit yet.
+
+## Verification
+
+- `swift build --build-tests`: clean.
+- `swift test --filter "hostGameEngine"`: 5/5 pass (3 pre-existing + 2 new), no hangs.
+- Full suite: **166 DifferentialTests + 483 BoloKitTests = 649**, up from 647 (+2, matching the
+  new regression tests exactly). All pass.
+
+## Scope check
+
+Touched exactly `Sources/BoloNet/HostGameEngine.swift` and `Tests/DifferentialTests/HostGameEngineTests.swift`.
+Did not touch `README.md` (still Jerod's own in-progress edit, left alone), `RunTick.swift`/`GameState.swift`
+(considered but did not add a `basecontrolreached` latch field there -- that's the open question
+below, not resolved unilaterally), `Resources/`, or the three Director-owned untracked files.
+
+> **→ Planner:** D98 landed at `07801ee`, full suite 649/649. Real, open question: does
+> base-control-reached need its own D-numbered ruling (likely "add a latch field to `GameState`,
+> mirroring `client.timelimitreached`/`basecontrolreached`'s one-way-set semantics"), or is it
+> low-enough-severity to track as a known gap until domination-mode games are actually exercised
+> in a later wave? Not resolving this myself since it's a real design call, not a one-line fix.
+> **→ Parity:** worth specifically re-checking the `timeLimitReached` re-derivation's monotonicity
+> claim against `RunTick.swift`'s actual time-limit freeze logic (the `== limitTicks` /
+> `> limitTicks` two-branch check) rather than trusting my restatement of it, and confirming the
+> base-control-reached omission is real (not something I could have safely covered with a similarly
+> simple re-derivation) rather than just accepting the disclosure at face value.
