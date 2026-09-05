@@ -1232,3 +1232,100 @@ worth trying before falling back to the artifact-substitution verification path.
 [TO: PARITY] Nice work — the scope guardrail held exactly as asked this time, and the build.db
 root-cause diagnosis (rather than just reporting "build failed") is a good example of the standard
 this project expects. Nothing further on B.1.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.2 completion report
+
+**Type:** completion report
+**Phase:** Milestone B — sub-wave B.2 (host panel, narrowed per D94), coding GO'd `055baa8`
+**Commit:** `ea089d9`
+
+Implemented exactly as GO'd under D94's narrow reading — zero `HostListener`/`HostDgramListener`/
+`HostSessionTable`/`HostSession` calls anywhere in the diff, confirmed by grep before committing.
+
+## What landed
+
+- **`HostGameView.swift`** (new): map picker via `.fileImporter` (SwiftUI's sandboxed-file-access
+  mechanism — matches the `com.apple.security.files.user-selected.read-only` entitlement D74
+  already established the purpose for), restricted to a `.map` `UTType`. On selection, reads the
+  file's bytes and calls the already-shipped, already-tested `decodeBMap(_:into:)`. Settings form:
+  time limit (switch+stepper), hidden mines (switch), password (switch+`SecureField`), domination
+  type (`Picker` over `DominationType.open`/`.tournament`/`.strict`), base-control threshold
+  (stepper) — all bound 1:1 to the `GameState` fields the reference's own outlets map onto,
+  traced in the pre-brief. Port field present but inert (documented as such, no listener exists
+  yet — B.5's scope). "Start Hosting" merges the form's settings into the decoded map state, adds
+  a single connected local player (`dead: true`, `respawnCounter` preset to `respawnTicks - 1` so
+  the already-wired D88 §4 respawn machinery places the host onto a real start point on the very
+  first tick — no new spawn-position logic invented, reused what's shipped), and calls
+  `onStartHosting(state)`.
+- **New guard, not a literal port:** a map decoding successfully but with zero `Start` entries is
+  explicitly rejected (`"Map Has No Start Points"`) before it ever reaches a session — the exact
+  crash `spawn(state:)`'s unconditional `state.starts[start]` indexing would otherwise hit,
+  already documented as a real risk at D88 §4. Caught at the same "can't use this map" moment as
+  the reference's own two map-failure messages, not deferred to a crash later.
+- **`AppRootView.swift`:** `AppScreen.playing` now carries a `GameState` (dropped the
+  now-unsatisfiable `Equatable` conformance — `GameState` doesn't conform, and nothing actually
+  needed `AppScreen` to be `Equatable`). `demoState` moved here from `GameView` (still exactly the
+  same hand-built terrain, now just relocated next to the "Play Demo" button that's its only
+  caller).
+- **`GameView.swift`:** takes `initialState: GameState` from the caller instead of hardcoding a
+  demo; the B.1 "Play Demo" path and B.2's real hosted-map path both flow through the exact same
+  `GameView`/`GameSession` machinery — no duplicated rendering/tick-loop code for the two cases.
+- **`NewGameView.swift`:** gained `onStartHosting: (GameState) -> Void`, threading `HostGameView`
+  into the Host tab in place of the B.1 placeholder. The "Play Demo" button/scaffolding comment is
+  untouched — B.3 still owns its removal per Planner's ruling, since B.2 lands first in the
+  existing order.
+
+## Verification
+
+- **`swift build`/`swift test`:** unaffected, as predicted (no `BoloKit`/`BoloNet` behavior
+  change). 639 → 639.
+- **`swiftc -typecheck`** against all six touched/new app-target files: clean.
+- **Environmental note, acted on before it could bite:** found the exact stale
+  `SWBBuildService`/`Xcode Service` process pair PARITY's B.1 audit flagged (pids `18328`/`17800`,
+  ~19h elapsed by the time I checked) still running. Killed both *before* attempting a real build,
+  per PARITY's own heads-up, rather than hitting the "database is locked" error myself and
+  diagnosing it from scratch.
+- **Real `xcodebuild -scheme "Bolo 2026" build`: `** BUILD SUCCEEDED **`.** No lock error, no
+  Run Script hang.
+- **`codesign -d --entitlements -`:** unchanged from B.0 — same five entries
+  (`app-sandbox`/`files.user-selected.read-only`/`get-task-allow`/`network.client`/
+  `network.server`), confirming this sub-wave didn't regress or accidentally touch entitlements.
+- **Decode/merge logic verified against real bytes, not just "it compiles":** compiled a
+  standalone script (same technique as Wave 7.3's integration harness) linking the real built
+  `BoloKit`, that: (1) `encodeBMap`'s a real map (terrain/pills/bases/one start) and round-trips
+  it through `decodeBMap`, then applies the *exact* merge `HostGameView.startHosting()` performs
+  (time limit, hidden mines, password, `.tournament` domination, base-control threshold, the
+  `respawnCounter` preset) and confirms every field lands correctly; (2) runs **one real tick**
+  through the actual `runTick` and confirms the host's own tank genuinely spawns (`dead` flips to
+  `false`, tank placed at the encoded start's exact position) — not just that fields were
+  assigned; (3) encodes a map with zero starts and confirms `decodeBMap` itself returns `true`
+  with an empty `starts` array, proving `HostGameView`'s own extra guard is reachable and
+  necessary, not defensive dead code; (4) corrupts the version byte and confirms `decodeBMap`
+  rejects it. All four checks passed. This is the part of the diff with actual behavioral risk;
+  the SwiftUI form wiring itself (button taps, `Picker` bindings, `.fileImporter`) has no
+  custom-drawing/timing risk comparable to Wave 7.2's rendering code, so build success is treated
+  as adequate for that part alone, same judgment call disclosed at B.1.
+
+## Scope check
+
+Grepped the diff for `HostListener`/`HostDgramListener`/`HostSessionTable`/`HostSession` —
+zero matches, confirming D94's boundary held. Touched exactly the four files named above. Did not
+touch `docs/PLAN.md`, `Sources/BoloKit`/`Sources/BoloNet`, the three Director-owned untracked
+files, or `README.md` (currently mid-edit in the working tree with what reads as Jerod's own
+first-person content — left entirely alone, not staged, not touched).
+
+Test count: 639 → 639 (unaffected).
+
+> **→ Planner:** B.2 implemented exactly within D94's narrowed scope. Real `xcodebuild` succeeded
+> after clearing the stale process pair PARITY flagged — worth noting in case it recurs on a
+> future build, the fix is just killing that pair, not a code issue. The decode/merge logic (the
+> real risk in this sub-wave) is verified against real bytes through the actual `runTick`
+> pipeline, not just asserted. No new open questions. Ready for PARITY's audit whenever you
+> activate it — the `HostListener`/etc. absence is trivially greppable if you want to confirm the
+> scope boundary yourself before diving into the field-mapping detail.
+> **→ Parity:** worth independently confirming: (1) the empty-starts guard fires before any
+> session is created, not after (I'd suggest tracing `handleMapPickerResult`'s control flow
+> directly rather than trusting my harness's separate re-derivation of the same logic); (2) the
+> port field is genuinely inert (no code path anywhere reads `portText` for anything beyond
+> display); (3) whether you want your own real map file + `xcodebuild` run rather than relying on
+> my standalone-script verification for the decode path.
