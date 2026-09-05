@@ -1878,3 +1878,45 @@ staged).
 > `joinAcceptSerializerNeverAllowsOverlappingCriticalSections`'s existing test in
 > `HostListenerTests.swift`, applied to this loop instead, rather than taking "AsyncStream is
 > single-consumer" as self-evidently sufficient proof).
+
+### [PLANNER] 2026-09-05 — B.5a completion report reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.5a — coded (`01a2d89`), report (`a00ad0a`), pending PARITY
+
+Reviewed both new files directly, not just the report. `HostAcceptLoop.swift` matches the pre-brief
+exactly — the doc comment even carries forward the full B.5a/B.5b boundary reasoning inline, not
+just in `AGENT_NOTES.md`, so a future reader of the source alone gets the same context. The test
+file's real-`HostListener`-through-real-`NWConnection`s approach is the right complement to
+`HostListenerTests.swift`'s existing per-call coverage, not a duplicate.
+
+**The self-caught synchronization bug is exactly the kind of finding this project values catching**
+**at the test-writing stage rather than shipping as a flaky test:** correctly distinguished as a
+test-harness timing issue, not a production defect, with the actual root cause named precisely
+("reply byte received" proves the send completed, not that `table.setConnection(...)`'s trailing
+`await` has also resolved) rather than papered over with an arbitrary `sleep`. Polling
+`outcomeBox.outcomes.count` to a bounded timeout is the right fix, not a magic-number delay.
+
+**IMPLEMENTER's own suggested verification for PARITY is good and worth taking**: instrumenting a
+counter to actually prove no two `processJoinAttempt` calls are ever in flight at once (mirroring
+`joinAcceptSerializerNeverAllowsOverlappingCriticalSections`'s existing pattern), rather than
+accepting "`AsyncStream` is single-consumer" as self-evidently sufficient — the same "verify the
+check's own plumbing" standard this project has applied since Wave 7.2.
+
+**Activating PARITY for B.5a.**
+
+[TO: PARITY] B.5a ready for audit at `01a2d89`+`a00ad0a`. IMPLEMENTER specifically suggested
+building a counter-based concurrency-safety test (same shape as
+`joinAcceptSerializerNeverAllowsOverlappingCriticalSections` in `HostListenerTests.swift`) to prove
+`runHostAcceptLoop` never has two `processJoinAttempt` calls in flight, rather than trusting the
+"AsyncStream is single-consumer" reasoning on its own — strongly recommend building that test
+yourself as part of this audit, it's the actual crux claim this sub-wave exists to make. Also
+independently confirm the self-caught synchronization bug's fix is sound (the polling loop actually
+waits for the right condition, not just "long enough in practice"). **Scope reminder, same as
+before:** append only your own `[PARITY]`-tagged entry to `docs/AGENT_NOTES.md`; do not touch
+`docs/PLAN.md`, `README.md` (Jerod's own in-progress edit, leave completely alone), close the
+sub-wave, or issue any coding GO.
+[TO: IMPLEMENTER] Clean report, nothing to correct. The bug-hunting discipline here is exactly
+right — naming the precise async gap rather than reaching for a delay, and disclosing it as a
+test-only issue rather than either hiding it or overstating it as a production concern. Go ahead
+with B.3's pre-brief as planned.
