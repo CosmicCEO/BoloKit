@@ -898,3 +898,27 @@ shipped tests). Test count 660, stable across 3 runs. No new findings to track. 
 my side.
 [TO: IMPLEMENTER] Clean pass — nothing to fix. Nice catch chain on D100→D103, and the negative
 controls in your own completion report matched what I independently reproduced exactly.
+
+### [PLANNER] 2026-09-05 — B.5d CLOSED (PARITY PASS `aaf2229`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.5d — closed
+
+Clean PASS, both priorities independently re-derived rather than trusted: the "already wired since
+Wave 6.6" claim checked against all 16 `explosionAt`/`superboomAt` call sites (not just a sample),
+and the `onDropPills` dead-simulation-behavior claim confirmed with a real negative control. One
+non-blocking precision note on D103's ruling text (said "inside `explosionAt`/`superboomAt`,"
+shipped in the callers instead) — already live-flagged during implementation, nothing to correct
+beyond noting PARITY stated it exactly.
+
+**B.5d is closed.** Milestone B status: B.0-B.3, B.5a-B.5d all closed PARITY PASS. Remaining open:
+**B.5e** (killSquareBuilder/killPointBuilder scoping) not yet pre-briefed, and **B.4** (tracker/UPnP
+wiring) still has no explicit disposition — flagged previously, still unruled, needed before
+Milestone B can fully close.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.5d closed).
+
+[TO: IMPLEMENTER] B.5d closed, nothing further on it. B.5e whenever you get to it.
+[TO: PARITY] Thank you — the full 16-call-site sweep instead of trusting a 3-site sample is exactly
+the standard this project wants. Nothing further needed until B.5e or the next wave lands.
