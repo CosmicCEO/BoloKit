@@ -1063,3 +1063,138 @@ self-trigger. When B.5's turn comes, it gets its own pre-brief with the same rig
 sub-wave; no need to sketch its design now.
 [TO: PARITY] No change to B.1's audit scope — this entry is about B.2/B.5, unrelated to what you're
 checking.
+
+### [PARITY] 2026-09-05 — Milestone B.1 audit (`0948f26`+`b116ac3`): PASS, every claim independently re-derived
+
+**Type:** post-commit audit, standard `[TO: PARITY]` activation (`60368bc`)
+**Scope:** `AppRootView.swift` (new), `NewGameView.swift` (new), `ContentView.swift`→`GameView.swift`
+(rename), `Bolo_2026App.swift` (rewired root) — a pure SwiftUI navigation-shell sub-wave with no
+`BoloKit`/`BoloNet` behavior change, so no C-oracle simulation hand-trace applies. What *does* apply
+(D18/D24/D26/D27/D28) is moot here — no `Double`/`CGFloat`/physics/trig code, no ported-bug question,
+no `-ffp-contract` flag, no shared per-tick state, and D28's test count is addressed under
+verification below. Repo moved under me mid-audit (`d8e26ef`/`3a8cb2c`, B.2 pre-brief + D94) — read
+both, confirmed unrelated to B.1 and already flagged in-repo as not changing my scope; not re-checked
+further.
+
+**Verdict: PASS.**
+
+**1. Diff review (`git show 0948f26`)** — confirmed all four files match both the pre-brief and
+completion report exactly, read in full, not summarized:
+- `AppRootView.swift` (new, 36 lines): `enum AppScreen: Equatable { case newGame, playing }` +
+  `struct AppRootView: View` with `@State private var screen: AppScreen = .newGame`, `body` is a
+  plain `switch screen` — exactly the "single window, state-driven" shape claimed, no `NSWindow`
+  anywhere in the file.
+- `NewGameView.swift` (new, 59 lines): `TabView` with `HostPlaceholderView`/`JoinPlaceholderView`
+  tabs (`tabItem { Text("Host") }` / `Text("Join")`), a `Divider()`, and a `Button("Play Demo",
+  action: onPlayDemoTapped)` below it. No `HostSession`/`JoinClient` call — the only occurrences of
+  those two identifiers in the whole diff are inside the file's own header doc-comment (`grep -in
+  "HostSession\|JoinClient" <(git show 0948f26)` → lines 151-152, both prose, zero call sites).
+- `ContentView.swift`→`GameView.swift`: confirmed a real git-tracked rename (`similarity index 65%`
+  in the diff header, not a delete+add), struct renamed, `onQuitToMenu: () -> Void` added as a
+  required param, `.safeAreaInset(edge: .top)` adds a "Quit to Menu" button calling
+  `session.stop()` then `onQuitToMenu()`. Original Wave 7.3/D88 header comment preserved verbatim,
+  B.1 context appended below it, not overwritten — matches Planner's completion-report-review claim.
+- `Bolo_2026App.swift`: one-line diff, `ContentView()` → `AppRootView()` inside `WindowGroup`.
+
+**2. Both ruled questions landed as approved, verified in the actual shipped code, not just
+described:**
+- **(a) Single-window, not multiple `NSWindow`s:** confirmed above — `AppRootView.swift` has zero
+  `NSWindow`/`NSWindowController` references; the round trip is a `@State` enum switch inside one
+  `WindowGroup`.
+- **(b) "Play Demo" genuinely commented as temporary scaffolding, both places, exact text checked**
+  (`Sources`, i.e. `Bolo 2026/Bolo 2026/NewGameView.swift:15-19,34`):
+  - Property doc comment (lines 15-19): *"Scaffolding for the B.1 -> B.2/B.3 gap (approved by
+    Planner, D93-era Milestone B review): without this, Wave 7.3's fully-verified gameplay loop
+    would be unreachable from the shipped UI until a real host/join path exists. **Remove this
+    button** (and `onPlayDemoTapped`, and this doc note) as part of whichever of B.2/B.3 lands
+    second's own completion report — by then a real path into `.playing` exists and this one is
+    redundant."*
+  - Call-site comment (line 34, directly above the `Button(...)`): `// Scaffolding -- see
+    onPlayDemoTapped's doc comment above.`
+  Both confirmed present verbatim in the file on disk (`Read` on `NewGameView.swift`), not just
+  inferred from the diff — matches the completion report's claim exactly, no softening or vague
+  "TODO" standing in for it.
+- **Round-trip closure wiring (Planner's extra ask, §3 of the review-and-activate entry):**
+  `AppRootView.body`'s two cases both wire to the *other* case — `.newGame` constructs
+  `NewGameView(onPlayDemoTapped: { screen = .playing })`, `.playing` constructs `GameView(
+  onQuitToMenu: { screen = .newGame })`. Both of `AppScreen`'s two cases are covered by the switch
+  (compiler-exhaustive, no `default`), and neither closure is a no-op/dead end — confirmed by
+  reading `AppRootView.swift` directly, not inferring from prose.
+
+**3. Scope check** — `git show 0948f26 --stat`: exactly the four files named above, nothing in
+`Sources/BoloKit/` or `Sources/BoloNet/`, no `project.pbxproj` change (confirmed separately — this
+project uses `PBXFileSystemSynchronizedRootGroup`s, `project.pbxproj:18-24,70`, so new/renamed
+source files under a synchronized group need no explicit membership entry; the absence of a
+`.pbxproj` diff is expected here, not a red flag). `docs/PLAN.md` untouched by `0948f26` (confirmed
+via the same `--stat`). No `HostSession`/`JoinClient`/map-picker/preferences code anywhere in the
+diff outside the one prose doc-comment noted in §1. `git status --short` before and after this audit
+shows only the same four Director-owned untracked artifacts (`Resources/`, both `docs/` binary
+files, `docs/notes/XBolo Deliverable Matrix.numbers`) — none touched by me.
+
+**4. Build verification — mixed execution-verified / artifact-substitute, disclosed plainly:**
+- `swift build` → `Build complete!`; `swift test` → **156 tests in 13 suites** (`BoloKitTests`) +
+  **483 tests in 7 suites** (`DifferentialTests`) = **639**, matching the stated 639→639 exactly (no
+  `BoloKit`/`BoloNet` Swift touched this sub-wave).
+- **Real `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration
+  Debug build`, attempted twice myself, both failed** — not with the historical Run Script hang, a
+  different environmental failure: `error: unable to attach DB: ... database is locked. Possibly
+  there are two concurrent builds running in the same filesystem location.` Root-caused, not just
+  reported: `lsof` on the locked `build.db` showed it held by `SWBBuildService` (pid 18328, `ps -p`
+  → `ELAPSED 18:15:26`, started 2026-09-04 16:34:24), itself a child of a long-lived `Xcode
+  Service.app` daemon (pid 17800, started 2026-09-04 16:26:34) — a stale build-service process from
+  roughly the same session as the project's documented Xcode-27-beta toolchain instability, not a
+  concurrent agent session (no live `xcodebuild` process was running at the time, confirmed via
+  `ps aux`). Did not kill the daemon — outside this audit's scope and risked interfering with a
+  concurrent session's tooling.
+  **Fell back to inspecting the pre-existing built artifact instead**, same substitute-verification
+  path this project has used before: `Bolo 2026.debug.dylib` in `DerivedData` (`mtime` 2026-09-05
+  10:40:16, i.e. minutes *before* `0948f26`'s commit timestamp 10:44:20 — consistent with being
+  Implementer's own last successful pre-commit build, not a stale pre-B.1 artifact). `nm -m` on it
+  confirms real compiled symbols for everything claimed: `_$s9Bolo_202611AppRootViewV...`,
+  `_$s9Bolo_202611NewGameViewV16onPlayDemoTappedyycvg`, a `NewGameView.body` symbol whose mangled
+  signature literally embeds `TabD0`/`HostPlaceholderD0`/`JoinPlaceholderD0`/`Divider`/`Button` in
+  sequence (i.e. the compiled view-body graph matches the source's `TabView`→`Divider`→`Button`
+  layout), `_$s9Bolo_20268GameViewV12onQuitToMenuyycvg`, and `AppScreen`'s derived
+  `Equatable`/`Hashable` conformance thunks. **Zero** `ContentView` symbol occurrences (`grep -ci`
+  → 0) confirms the rename is clean, no stale duplicate left behind. This is strong corroboration
+  that the committed code actually compiles and links, but it is *not* the same claim as "I
+  completed a fresh build myself" — stating that distinction plainly rather than overstating it.
+- **`RenderPreview` — attempted once, exactly as invited, not more:** against
+  `AppRootView.swift`'s `#Preview` (90s timeout) → failed with `PreviewsFoundationHost...
+  TaskTimeoutError error 1`, the identical failure signature the completion report described.
+  Independently corroborates the report's disclosure rather than taking it on faith; did not retry
+  further per the one-attempt guidance, and did not need to fall back further given the
+  artifact-level corroboration in the previous bullet already covers the structural claim.
+
+**Citation drift found:** none. Cross-checked the reference citations myself, not just trusted them:
+`GSXBoloController.h:16-20` (`newGameWindow`/`boloWindow`/`joinProgressWindow`/`preferencesWindow`/
+`newGameTabView` `IBOutlet`s) — exact. `GSXBoloController.m`'s `closeGame:` (pre-brief cited
+"740-760"; method actually spans ~735-759, `[boloWindow orderOut:self]` at 738, `[self
+newGame:self]` at 759 — the cited range is a couple of lines loose at the top but the described
+behavior, content, and closing line are exactly right; not flagging as a defect, just noting the
+off-by-a-few for completeness). `newGame:` at `GSXBoloController.m:1208-1209` — exact. The three
+`beginSheet:...modalForWindow:newGameWindow` call sites — exact at 998, 1092, 1119.
+
+[TO: PLANNER] B.1: **PASS.** Both ruled questions (single-window mechanism, temporary "Play Demo"
+scaffolding) landed in the shipped code exactly as approved, verified by reading the files on disk,
+not just the diff prose — including the exact scaffolding-comment text at both the property and
+call site. Round-trip closures cover both `AppScreen` cases, no dead end. Scope held: no
+`Sources/BoloKit`/`Sources/BoloNet` change, no `.pbxproj` change (expected — synchronized group), no
+`docs/PLAN.md` touch, no `HostSession`/`JoinClient`/map-picker code outside one doc-comment mention.
+639→639 tests confirmed myself. Real `xcodebuild` failed twice for me on an environmental issue
+distinct from the known Run Script hang — a stale ~18-hour `SWBBuildService`/`Xcode Service.app`
+process pair holding an exclusive lock on this project's `build.db`, not a defect in `0948f26` — and
+I substituted a direct `nm -m` symbol inspection of Implementer's own last pre-commit build artifact,
+which independently confirms every named type/method actually compiled and linked, plus a clean
+`ContentView`→`GameView` rename with no stale duplicate. `RenderPreview` reproduced the exact same
+`PreviewsFoundationHost` timeout the completion report described. One minor citation looseness noted
+above (a few lines off on `closeGame:`'s cited range) — not a defect, not blocking.
+[TO: IMPLEMENTER] Nothing needed — clean PASS, no fixes required. The scaffolding-comment discipline
+(both the property doc comment and a short call-site pointer back to it) is exactly the kind of
+thing that makes "whichever of B.2/B.3 lands second, remove this" actually findable later; good
+follow-through on Planner's tracking note. Independent note for whoever picks up the pre-existing
+stale `SWBBuildService`/`Xcode Service.app` process pair (pid 18328/17800 at audit time, ~18h old,
+holding `build.db`'s lock): it's a plausible root cause for future real-build flakiness beyond the
+already-documented Run Script hang, worth a `killall` before the next sub-wave's build-verification
+pass if it recurs — not fixed here since it's outside this audit's file-scope and I didn't want to
+disturb a possibly-concurrent session's tooling.
