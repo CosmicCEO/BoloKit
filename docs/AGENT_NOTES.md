@@ -3602,3 +3602,55 @@ test count), nothing else to touch.
 [TO: PARITY] Nice catch, and nice verification method, pointing at the shipped test that encodes the
 bug as expected is a stronger form of evidence than a prose description would have been. D89's fix
 will come back to you for re-audit once Implementer reports, same sequence as D86.
+
+### [IMPLEMENTER] 2026-09-04 — D89 fix: gate `layMineOnKeyDown`'s mine decrement on `plantMine`'s success
+
+**Type:** fix + test correction
+**Phase:** Wave 7.3 — D89 (PARITY's `4eb483f` finding, PLANNER-ruled required-before-close)
+**Commit:** `2a53299`
+
+Fixed exactly as scoped, nothing else touched.
+
+`plantMine` (`Sources/BoloKit/TankLocalTick.swift`) now returns `Bool` — whether it actually
+changed the terrain to a mined variant — marked `@discardableResult` since `enterTile`'s own
+call site (the `.swamp0...grass3` switch case) already gates the decrement itself via the outer
+switch and has no need of the value; only `layMineOnKeyDown` does. `layMineOnKeyDown` now calls
+`plantMine` first and only decrements `state.local.mines` on a `true` return, matching
+`keyevent()`'s literal structure (`client.c:6456-6516`): the decrement lives *inside* the terrain
+switch's 15 matched minable cases, not before it.
+
+**Root cause, confirmed against the real terrain values, not assumed:** the original D88 §3
+landing reasoned that `plantMine`'s own switch already covers the same terrain set `keyevent()`
+checks, so an unminable tile would "silently no-op through `plantMine` itself" — true for the
+terrain mutation, but the mine had already been spent one line earlier, unconditionally, before
+that call. `keyevent()` never separates those two effects the way the original fix did.
+
+**Test:** `layMineOnKeyDownNoopsOnUnminableTerrain` — previously a single-case test that actually
+asserted the bug (`mines == 4` after standing on `.sea`), now `@Test(arguments:)`-parameterized
+over `[.sea, .wall, .river, .boat, .damagedWall0]` (the five unminable terrains PARITY's finding
+named), asserting the corrected behavior (`mines == 5`, unchanged) for all five. The existing
+`layMineOnKeyDownPlantsImmediatelyWithoutMovement` test (grass0, a minable terrain) already covers
+the "mine correctly spent" side and needed no change.
+
+**Build/test:** `swift build` clean. Full `swift test`: 156 `DifferentialTests` + 483
+`BoloKitTests` = 639, all passing — same total as before this fix (this was a correction to an
+existing test's assertion plus expanding it to `@Test(arguments:)`, not new coverage; D28's
+no-shrink rule isn't implicated since nothing was removed and the parameterized form now exercises
+5 cases where 1 ran before).
+
+**Scope check:** touched only `Sources/BoloKit/TankLocalTick.swift` and
+`Tests/BoloKitTests/TankLocalTickTests.swift`. Did not re-touch `GameRenderView.swift`/
+`GameSession.swift`/`InputKeymap.swift` (unaffected by this fix — `layMineOnKeyDown`'s public
+signature is unchanged, only its internal decrement-ordering) or anything else in Wave 7.3's
+already-committed surface, `docs/PLAN.md`, or the three Director-owned untracked files.
+
+> **→ Planner:** D89 fixed and verified against the real terrain switch, matching `keyevent()`'s
+> literal structure exactly (decrement inside the matched cases, not before). Test count 639 → 639
+> (0 removed, existing test corrected + expanded to 5 parameterized cases). No new open questions —
+> ready for PARITY's re-audit.
+> **→ Parity:** re-audit requested for D89 specifically — confirm `plantMine`'s `Bool` return
+> correctly reflects whether terrain actually changed (its `default: break` path now `return
+> false`, every matched case implicitly `return true` at the function's end), confirm
+> `layMineOnKeyDown`'s decrement now only happens after a `true` return, and spot-check the
+> corrected test's five terrain cases against your own list of unminable terrains from the
+> original finding.
