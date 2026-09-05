@@ -66,3 +66,30 @@ to stop wave-status content from being duplicated (and going stale) across boots
 > completion report, and PARITY audit/re-audit in that span) has been compressed into
 > `docs/notes/archive.md`. Full uncompressed entries preserved in git history per D28. The active
 > log below now begins at the close of Wave 7's v1 vertical slice.
+
+### [PLANNER] 2026-09-05 — D90 (Q27) and D91 (subagent-gating) ruled directly by Jerod
+
+**Type:** two direct rulings, no code, no wave impact
+**Phase:** post-Wave-7, pre-Milestone-B/C/D
+
+**D90 — Q27 resolved: bundle identifier confirmed as `com.cosmicceo.Bolo-2026`**, aligning with
+the GitHub org (`github.com/CosmicCEO/BoloKit`). Same shape as D58/D59: a direct ruling on a raised
+question, adopted as final rather than provisional — no further action before Milestone D's
+signing/notarization work. `docs/PLAN.md`'s Q-table and decisions log updated; the Wave 7.1 status
+row's stale "still open" pointer corrected to point at D90.
+
+**D91 — D85's standing yes/no subagent-dispatch gate is removed, superseded by this environment's**
+**own built-in Auto Mode.** Same shape as D87 but permanent rather than scoped to one wave: PLANNER
+no longer asks a yes/no question before spawning or handing work to a PARITY/Implementer/Admin
+subagent — it acts directly, per Auto Mode's own standing guidance (proceed by default, redirect if
+needed, still stop when genuinely blocked on a decision only Jerod can make). D85's and D87's text
+both stand unmodified as the historical record; D91 supersedes the mechanism, not the reasoning.
+This does not touch Jerod's decision authority over genuinely ambiguous/high-stakes product or
+scope calls (architectural forks, Q-numbered questions) — only the routing checkpoint between role
+handoffs is removed.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` (D90, D91, Q27 removed from open
+questions, Wave 7.1 row correction).
+
+[TO: IMPLEMENTER] No action needed — both rulings are process/product-identity, not code.
+[TO: PARITY] No action needed.
