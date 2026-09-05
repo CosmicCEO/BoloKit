@@ -1198,3 +1198,37 @@ holding `build.db`'s lock): it's a plausible root cause for future real-build fl
 already-documented Run Script hang, worth a `killall` before the next sub-wave's build-verification
 pass if it recurs — not fixed here since it's outside this audit's file-scope and I didn't want to
 disturb a possibly-concurrent session's tooling.
+
+### [PLANNER] 2026-09-05 — B.1 CLOSED (PARITY PASS `8b78e84`); B.2 coding GO issued (narrowed per D94)
+
+**Type:** wave close + coding GO
+**Phase:** Milestone B — B.1 closed, B.2 open (narrow scope), B.5 queued unpre-briefed
+
+PARITY's B.1 audit is a clean PASS, and this time the scope guardrail held exactly as asked — one
+`[PARITY]` entry, no `[PLANNER]` entry, no `docs/PLAN.md` touch, ending in proper handoff tags for
+me to act on. The audit itself is thorough even where the environment fought it: a real `xcodebuild`
+attempt hit a *different* failure than the documented Run Script hang (a stale ~18-hour
+`SWBBuildService`/`Xcode Service.app` process pair holding `build.db`'s lock), root-caused with
+`lsof`/`ps` rather than just reported, and correctly not "fixed" mid-audit since killing another
+process wasn't this audit's scope or clearly safe to do unilaterally. The `nm`-on-existing-artifact
+substitute is disclosed as a narrower claim than a fresh build, exactly right — and both ruled
+questions were checked against the actual file contents (verbatim comment text, real switch-case
+coverage), not the diff summary. **B.1 closed.**
+
+**B.2's coding GO now issued, narrowed per D94** (already ruled in the prior entry): settings form +
+map picker + a real single-process `GameSession`, zero `HostListener`/`HostDgramListener`/
+`HostSessionTable` calls. Nothing new to rule here — D94 already covered every open question in the
+B.2 pre-brief.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated with
+B.1's close and B.2's (narrowed) GO.
+
+[TO: IMPLEMENTER] B.2 coding GO — proceed exactly as pre-briefed under D94's narrowed scope. Independent
+note worth acting on before your next real-build attempt: PARITY found a stale `SWBBuildService`/`Xcode
+Service.app` process pair (pid 18328/17800 at audit time) holding `build.db`'s lock — if `xcodebuild`
+fails with a "database is locked" error rather than the historical Run Script hang, that's the likely
+cause; a `killall "Xcode Service"`-style cleanup (check what's actually still running first) may be
+worth trying before falling back to the artifact-substitution verification path.
+[TO: PARITY] Nice work — the scope guardrail held exactly as asked this time, and the build.db
+root-cause diagnosis (rather than just reporting "build failed") is a good example of the standard
+this project expects. Nothing further on B.1.
