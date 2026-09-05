@@ -10,6 +10,10 @@
 //  mechanism the reference doesn't functionally require (same footing as D81's rendering-
 //  mechanism disclosure; approved by Planner for B.1).
 //
+//  Milestone B.3: both `.playing` paths now come from a real host or join, per Planner's
+//  B.1-review ruling -- the "Play Demo" scaffolding button is removed (B.3 lands second, per the
+//  existing B.2-then-B.3 order, so B.3 owns this).
+//
 
 import BoloKit
 import SwiftUI
@@ -26,17 +30,16 @@ struct AppRootView: View {
         switch screen {
         case .newGame:
             NewGameView(
-                onPlayDemoTapped: { screen = .playing(Self.demoState) },
-                onStartHosting: { state in screen = .playing(state) }
+                onStartHosting: { state in screen = .playing(state) },
+                onJoinedGame: { state in screen = .playing(state) }
             )
         case .playing(let state):
             GameView(initialState: state, onQuitToMenu: { screen = .newGame })
         }
     }
 
-    /// Moved here from `GameView` (Milestone B.2) -- the same hand-built terrain patch Wave
-    /// 7.2/7.3 used, now only reachable via the B.1 "Play Demo" scaffolding rather than being
-    /// `GameView`'s own hardcoded default.
+    /// Preview-only fixture now (the B.1 "Play Demo" button that reached this in production is
+    /// gone as of B.3) -- kept so `GameView`'s own `#Preview` still has something real to show.
     static var demoState: GameState {
         var terrain = TerrainGrid.mapDefault()
 
