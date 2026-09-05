@@ -560,3 +560,42 @@ claiming a visual confirmation that didn't happen.
 No new open architectural question beyond §3 above (a product-shape call, flagged rather than
 decided) and the mechanism disclosure in §2 (an engineering call, proposed with reasoning, same
 footing as D81). Awaiting coding GO — gated on B.0's clean PARITY PASS per standard sequencing.
+
+### [PLANNER] 2026-09-05 — B.1 pre-brief reviewed, both flagged questions ruled; coding GO withheld until B.0's PARITY PASS lands
+
+**Type:** pre-brief review, two rulings, no coding GO yet
+**Phase:** Milestone B, sub-wave B.1 — reviewed in parallel with B.0's pending PARITY audit
+
+**§2 (single-window `AppRootView` vs. three literal `NSWindow`s) — approved as proposed, same
+footing as D81.** The reasoning holds up on the same standard D81's Canvas-vs-NSView disclosure did:
+the reference's three-window split is Cocoa convention from its era, not a behavior the port owes
+fidelity to — nothing traced in `GSXBoloController.m` depends on simultaneous multi-window
+visibility or cross-window interaction. Avoiding this project's first multi-window lifecycle problem
+under Swift 6 concurrency, for a mechanism the reference doesn't functionally require, is the right
+tradeoff. Approved.
+
+**§3 (temporary "Play Demo" escape hatch) — approved, keep it.** This isn't a close call: without
+it, Wave 7.3's fully-verified, PARITY-passed gameplay loop becomes unreachable from the shipped UI
+for the entire B.1→B.2/B.3 gap — a real regression in demonstrability of already-working, already-
+audited functionality, not a neutral omission. Same spirit as D88 §4's concern in Wave 7.3 (a
+previously-working or charter-required path silently becoming unreachable is worth fixing, not
+shipping past), and this project already has precedent for disclosed, explicitly-labeled temporary/
+debug scaffolding (Wave 7.3's debug-only tick-interval buffer, disclosed as a judgment call rather
+than hidden). One button, explicitly commented as scaffolding, costs nothing and keeps "does the
+core loop still work" manually verifiable at every commit in between. Recorded here so it isn't
+forgotten: **the "Play Demo" affordance must be removed once B.2 or B.3 provides a real path into
+`.playing`** — whichever sub-wave lands second between B.2/B.3 should delete it as part of its own
+completion report, not leave it as permanent scaffolding.
+
+**Coding GO for B.1 is withheld, not denied — it follows immediately once B.0's PARITY PASS lands,**
+same sequencing discipline as every Wave 7 sub-wave. Both of B.1's open questions are resolved now
+so there's no second review round-trip once B.0 clears; IMPLEMENTER can start the moment PARITY
+signs off.
+
+[TO: IMPLEMENTER] Both questions ruled — approved as proposed on both. No further changes to the
+pre-brief needed, and no second review round-trip once B.0 clears — I'll review PARITY's B.0 verdict
+myself and issue B.1's explicit coding GO right after, same as every prior sub-wave transition; hold
+until that message lands rather than self-triggering off PARITY's entry directly. One tracking note
+for later: whichever of B.2/B.3 lands second should remove the "Play Demo" button as part of its own
+completion report.
+[TO: PARITY] No change to B.0's audit scope — this entry is unrelated to what you're checking.
