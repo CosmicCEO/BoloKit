@@ -1376,3 +1376,129 @@ verdict and stop.
 reusing D88 §4's already-wired spawn machinery instead of inventing new placement logic is exactly
 the kind of reuse this project rewards, and verifying it through one real `runTick` rather than
 asserting the arithmetic is correct discipline. Good call leaving `README.md` alone.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.5 pre-brief: real host-network engine
+
+**Type:** pre-brief (no production code yet), started per Planner's go-ahead — doesn't depend on
+B.2's PARITY audit. This sub-wave's whole reason to exist (D94) is that it's genuinely
+undesigned, so this pre-brief is research-heavy and asks for direction on the one real
+architectural fork before any code, rather than proposing a single settled design outright.
+
+## 1. Inventory — what Wave 6 already built vs. what's actually still missing
+
+Read every relevant file's real implementation (not just signatures) before concluding what's
+missing, since D94 already showed that guessing from names ("wired to `HostSession`") is exactly
+how a large unit of hidden scope gets silently absorbed.
+
+**Already built and unit-tested, real and load-bearing — B.5 should call these, not reinvent
+them:**
+- `HostListener`/`HostDgramListener` (`HostListener.swift:279`, `HostDgramListener.swift:40`):
+  real `NWListener`-backed TCP/UDP accept loops, each exposing an `AsyncStream` of new connections.
+- `JoinAcceptSerializer` + `processJoinAttempt`/`runJoinHandshake` (`HostListener.swift:46/186`):
+  the full TCP join handshake — receive `JoinPreamble`, `evaluateJoinRequest`, accept/reject,
+  `applyJoin`, register in `HostSessionTable`. Already serializes joins one-at-a-time (T-11) —
+  this exact pattern is the precedent for §3 below.
+- `decodeDgramServerRelay` (`DgramServerRelay.swift:103`): the pure per-datagram decision for the
+  UDP relay path — applies **only** `tank.x`/`tank.y` to `GameState` (T-2, deliberately not the
+  richer client-side `applyRemotePlayerUpdate`), decides relay targets, returns the decision:
+  caller still has to actually write the field and call `table.send`.
+- `receiveAndDispatchOneHostMessage`/`CLDispatchCallbacks` (`HostSession.swift:360-413` and
+  beyond): reads one full `CL*` TCP message off a connection, decodes, dispatches to the matching
+  `recvCl*`, queues broadcasts (`PendingBroadcast`), flushes them via `HostSessionTable`'s async
+  send primitives. Fully unit-tested **one call at a time, one connection at a time**
+  (`HostSessionTests.swift` — 19 tests, every one exercises a single dispatch against a single
+  connection in isolation; zero coverage of concurrent connections racing on the same `state`).
+- `HostSessionTable` (`HostSession.swift:106`): actor holding per-player TCP/UDP connections,
+  `seq`/`lastUpdate`, `send`/`sendToAll`/`sendToAllExcept`/`sendToMask`.
+- `handlePlayerDisconnect`/`hostKickPlayer`/`hostBanPlayer`.
+
+**Missing — this is B.5's actual scope, three genuinely new pieces:**
+
+1. **No CLUpdate-assembly function exists for the host's own tank.** `CLUpdate`
+   (`CLUpdateCodec.swift:173`) has a real `encode()`, but grepping every call site
+   (`CLUpdate(header:...)`) shows it is *only ever hand-constructed in test files* — there is no
+   production `assembleCLUpdate(player:, state:) -> CLUpdate`-shaped function anywhere. This
+   matters because of Bolo's actual network model (confirmed by tracing `DgramServerRelay.swift`'s
+   own header comments, not assumed): each client simulates *its own* tank locally and broadcasts
+   its state via UDP; the server/host only relays and bookkeeps `tank.x`/`tank.y`. The host is
+   also a player (playing locally, exactly like `GameSession` already does in single-player) —
+   its own tank movement needs to reach every other connected client the same way a remote
+   client's does, and nothing builds that outbound `CLUpdate` today.
+2. **`runTick`'s remaining pass-through callbacks have no real wire effect once players are
+   actually connected.** `onMineExplosion`/`onSuperboomTerrain`/`onDropPills`/etc. are silently
+   ignored in single-player `GameSession` (correct there — no one to tell). Once B.5 has real
+   connected players, these need to actually broadcast the matching `SR*` message
+   (`SRSmallBoom`/`SRSuperBoom`/`SRDropMine`/`SRDropPill`/`SRDropBoat`, etc. — the wire structs
+   already exist in `ServerMessages.swift`, only the broadcast wiring from `runTick`'s callbacks
+   is missing).
+3. **No orchestrator ties any of the above to one another or to the tick loop — this is the real
+   crux.** Nothing anywhere drains `HostListener.connections`, calls `processJoinAttempt`, spawns
+   a per-connection receive loop calling `receiveAndDispatchOneHostMessage` repeatedly, drains
+   `HostDgramListener`'s packets, runs the 50Hz `runTick` timer (`GameSession`'s own shape), *and*
+   does all of this while keeping `state: inout GameState` single-writer-safe across genuinely
+   concurrent I/O sources — a materially harder version of the exclusivity problem D88 §4 already
+   hit once for a single synchronous closure.
+
+## 2. The one real design fork — asking for direction before writing code
+
+**Tension:** `receiveAndDispatchOneHostMessage` (and the dgram/tick paths) each need `state: inout
+GameState`, but the *I/O-waiting* part of a per-connection TCP receive loop is exactly what has to
+run concurrently across N players (one player's slow/idle connection can't block everyone else's
+message processing) — while the *state-mutating* part must never run concurrently with any other
+mutator. Traced whether `receiveAndDispatchOneHostMessage` itself already separates these two
+phases: it doesn't fully — it `await`s reading raw bytes first (safe, touches no `state`), then
+mutates synchronously with no `await` in between (also safe, in isolation) — but nothing today
+prevents two *different* connections' calls to this function from being in flight at once, each
+past their own read-phase and about to mutate `state` concurrently.
+
+Two directions, not yet chosen:
+
+- **(a) Single serialized consumer of a merged event stream.** Wrap `HostListener.connections`,
+  `HostDgramListener`'s packets, per-connection "a full CL* message is ready" signals, and the
+  tick timer's fire into one `AsyncStream` of a unified event enum; exactly one `Task` drains it,
+  calling into the existing functions one event at a time. Explicit, auditable, closest in spirit
+  to `JoinAcceptSerializer`'s already-established "one at a time" precedent (T-11) — but requires
+  splitting `receiveAndDispatchOneHostMessage`'s read-phase (per-connection, concurrent) from its
+  apply-phase (funneled through the single consumer), which it doesn't do today.
+- **(b) Actor-isolate the engine itself.** Wrap `state`/`table` inside a new `actor
+  HostGameEngine`, calling actor-isolated methods for each event. Simpler to write, but Swift
+  actors are reentrant at `await` points — safe *only* if every actor-isolated method's mutation
+  is fully synchronous with no `await` between "read state" and "write state" (true for
+  `receiveAndDispatchOneHostMessage`'s existing shape, per the trace above, but this needs to
+  stay true for the tick loop and dgram-relay paths too, and needs to stay true under future
+  changes — a standing invariant to document and watch, not just a one-time check).
+
+**→ Planner:** recommending (a) — it makes the serialization explicit and auditable rather than
+relying on a reentrancy invariant that has to be re-verified by inspection every time this code
+changes, and it reuses a pattern (`JoinAcceptSerializer`) this codebase already trusts. But this
+is a real architecture call with real tradeoffs (implementation cost of splitting
+`receiveAndDispatchOneHostMessage`'s phases vs. (b)'s lower upfront cost and higher latent-bug
+risk), on the same footing as D81's rendering-mechanism choice — proposing (a) with reasoning,
+not asserting it's the only option. Would like your read before committing to either, since this
+decision shapes the rest of B.5's design.
+
+## 3. A further split worth considering — flagging, not deciding solo
+
+The accept/join half (§1's first two bullets under "already built") is comparatively simple and
+low-risk: `JoinAcceptSerializer` already serializes it, and it's the same shape of problem D94
+already trusted this codebase's precedent to solve. The tick+relay+CL*-dispatch integration (§1's
+third bullet, §2's tension) is the genuinely hard, novel part. **Options:** (i) one B.5 covering
+both, accepting that it's a bigger sub-wave than B.0-B.2 were; (ii) split into B.5a (accept/join
+wiring — a host can be joined and see players register, no gameplay relay yet) and B.5b (the
+tick+relay+dispatch engine — actual playable multiplayer). Not recommending one over the other
+outright — (ii) gives an earlier, demonstrable milestone ("a friend can join") at the cost of one
+more sub-wave boundary; (i) is more cohesive but larger and riskier to size correctly up front.
+
+## 4. Verification plan (once scope/architecture are confirmed)
+
+This is the first sub-wave with genuine concurrency to verify, not just sequential logic —
+`DifferentialTests` already has real multi-connection test infrastructure (`HostSessionTests.swift`
+sets up fake `NWConnection` pairs per test) to extend rather than invent fresh. Will need at least
+one test exercising N concurrent per-connection message streams landing correctly against a shared
+`GameState` with no lost/interleaved mutations — the concurrency-safety claim this sub-wave exists
+to make, not just that each piece works in isolation (already proven). Will propose the specific
+test shape once §2's direction is settled, since the test design depends on which of (a)/(b) is
+chosen.
+
+No coding GO requested yet — this pre-brief exists to get §2's direction and §3's split question
+answered first, same as B.2's pre-brief did for its own scope question.
