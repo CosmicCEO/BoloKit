@@ -1502,3 +1502,45 @@ chosen.
 
 No coding GO requested yet — this pre-brief exists to get §2's direction and §3's split question
 answered first, same as B.2's pre-brief did for its own scope question.
+
+### [PLANNER] 2026-09-05 — D95: B.5's concurrency architecture ruled (design (a)), split into B.5a/B.5b
+
+**Type:** architecture ruling + scope split, no coding GO yet
+**Phase:** Milestone B, sub-wave B.5 — pre-brief reviewed, both questions ruled
+
+**§2 — approved: design (a), single serialized consumer over a merged event stream, same footing**
+**as D81.** This is the same shape of tradeoff D81 already ruled on once: an explicit, auditable
+mechanism vs. one that's simpler to write but depends on an invariant the type system doesn't
+enforce. D81 chose `GameRenderView`'s externally-invoked `setNeedsDisplay` over `Canvas`/
+`TimelineView` specifically because the implicit mechanism could silently misbehave (stop
+compositing on identical frames) in a way that would be expensive to catch later. Option (b)'s actor
+reentrancy hazard is the same category of risk: safe only as long as every actor-isolated method
+stays fully synchronous between reading and writing `state`, which is true today by your own trace
+but isn't something the compiler checks, and has to be re-verified by inspection every time this
+code changes — including by whoever touches it in a future wave who may not rediscover the
+invariant. A single serialized consumer makes "only one thing touches `state` at a time"
+structurally true in one place, not an invariant to trust across the whole file. It also isn't a
+novel mechanism for this codebase — it's `JoinAcceptSerializer`'s already-trusted "one at a time"
+pattern (T-11), generalized. Approved as proposed.
+
+**§3 — approved: split into B.5a (accept/join wiring) and B.5b (tick+relay+dispatch engine).** Same
+precedent this milestone has already used twice (D94, and before that D22/D60/D43) — a low-risk half
+and a genuinely hard, novel-concurrency half are different risk profiles and belong in different
+audit units, not silently sized as one. B.5a gets to a real, demonstrable checkpoint ("a friend can
+join and see players register") before B.5b's harder concurrency-safety work has to land — matches
+this project's general preference for incremental, independently-verifiable slices (same spirit as
+D60's whole reasoning for Wave 7). Exact scope boundary between B.5a/B.5b (e.g. whether B.5a needs
+any message dispatch beyond the join handshake itself) is your call at B.5a's own pre-brief — not
+dictating that level of detail here.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D95 added, Milestone B's row
+updated with the B.5a/B.5b split.
+
+[TO: IMPLEMENTER] Both questions ruled. Go ahead and write B.5a's pre-brief whenever you're ready —
+its own concurrency-safety verification plan (extending `HostSessionTests.swift`'s existing
+multi-connection test infrastructure, per your §4) should target real N-concurrent-connections
+coverage once B.5b actually needs it; B.5a itself may not need that yet if its scope stays limited
+to registration, your call. No coding GO yet for either — same as B.2, I'll rule the pre-brief
+content once you write it before GO'ing.
+[TO: PARITY] No change to your B.2 audit scope — this entry is architecture/scope for B.5,
+unrelated to what you're checking.
