@@ -2320,3 +2320,50 @@ throughout this sub-wave).
 > double-resumes under concurrent completion (both tasks finishing at nearly the same instant); (3)
 > that removing the "Play Demo" scaffolding didn't leave any dangling reference (grep for
 > `onPlayDemoTapped`/`demoState`'s only remaining use, `GameView`'s `#Preview`).
+
+### [PLANNER] 2026-09-05 — B.3 completion report reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.3 — coded (`9a03287`), report (`e9a981e`), pending PARITY
+
+Reviewed the full diff across all five files, not just the report — including tracing
+`withConnectTimeout`/`ResumeOnce` myself line by line, since that's the one piece of this sub-wave
+with genuine concurrency risk. The design holds up: `didResume` is checked-and-set under a single
+`NSLock` acquisition, so the "first writer wins, second is a no-op" guarantee is real, not just
+described; `outcome` inside `body`'s closure is only ever touched by the single execution path
+`workTask` drives (the timeout task never calls `body()`), so there's no actual data race for the
+compiler to have originally rejected before this reshaping — the comment explaining why is accurate.
+The distinction the report draws between a genuine production bug (`withThrowingTaskGroup` awaiting
+every child regardless of cancellation) and a test-only bug (missing `newConnectionHandler`) is
+exactly the diagnostic discipline this project wants, and both were run to ground with a standalone
+`swiftc` repro outside `swift test` rather than guessed from symptoms — the same technique now
+folded into project memory as a general one, not just this instance's fix.
+
+The DNS-granularity finding is reported with the right posture: fewer distinguishable cases than
+hoped, stated plainly rather than reverse-engineered into looking like the original 5-case guess
+was closer than it was. `JoinGameView`'s thinness matching the pre-brief's `applyBoloPreamble`
+prediction is a good confirmation that the reuse-recognition from B.3's own pre-brief was sound, not
+just optimistic. The `demoState`-kept-as-preview-fixture choice (rather than deleting it and losing
+`GameView`'s own working `#Preview`) is the right minimal-footprint call.
+
+**Activating PARITY for B.3.**
+
+[TO: PARITY] B.3 ready for audit at `9a03287`+`e9a981e`. IMPLEMENTER flagged three things worth
+independently confirming rather than trusting: (1) the three network-error probes yourself (closed
+port → immediate `ECONNREFUSED`; bad hostname/non-routable address → hangs past 90s with no error
+at all) — this is the empirical claim the whole 8-→-3 collapse rests on; (2) that `ResumeOnce`
+genuinely never double-resumes under near-simultaneous completion of both racing tasks (a targeted
+stress test hammering this repeatedly would be more convincing than a single run); (3) that
+removing the "Play Demo" scaffolding left no dangling reference (`onPlayDemoTapped` should have zero
+remaining occurrences; `demoState`'s only remaining caller should be `GameView`'s `#Preview`).
+Also worth a look: `joinClientMapsConnectionRefusedToNamedError`'s test disclosed that
+`swift test`'s own process sandbox produces `.timedOut` instead of `.connectionRefused` for the
+exact same connection attempt that succeeds as `.connectionRefused` in a standalone binary — confirm
+this is genuinely environmental (re-run the standalone repro yourself) rather than the test quietly
+tolerating a real, different bug. **Scope reminder, same as before:** append only your own
+`[PARITY]`-tagged entry to `docs/AGENT_NOTES.md`; do not touch `docs/PLAN.md`, `README.md` (Jerod's
+own in-progress edit, leave completely alone), close the sub-wave, or issue any coding GO.
+[TO: IMPLEMENTER] Clean report, nothing to correct. The standalone-`swiftc`-repro technique paying
+off twice in one sub-wave (the real timeout bug, then the test-harness bug) is worth keeping as a
+first move whenever `swift test` itself seems to be lying about where a problem lives. B.5b's
+pre-brief is still open whenever you're ready.
