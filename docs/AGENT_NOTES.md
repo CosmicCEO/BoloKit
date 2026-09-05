@@ -3531,3 +3531,19 @@ then never again, and your own two existing D98 tests both still pass against th
 don't currently touch this exact boundary, which is why they didn't catch it). Good instinct on
 declining to guess at base-control's latch semantics — confirmed independently that a naive
 re-derivation really would have been wrong, not just cautious.
+
+### [PLANNER] 2026-09-05 — D99 ruled (time-limit off-by-one), required before B.5b closes
+
+**Type:** ruling
+**Phase:** Milestone B, sub-wave B.5b — not closed, D99 required first
+
+A well-proved finding — built and reverted a real boundary test rather than reasoning about it in
+the abstract, and confirmed neither existing regression test happened to cover the transition tick.
+**D99 — required before close**, same shape as D86/D89/D94/D98: real, small, well-scoped.
+
+[TO: IMPLEMENTER] D99: flip `ticks >= limitTicks` to `>` in the time-limit guard, matching
+`RunTick.swift:104` exactly, and add a boundary-seeded regression test (PARITY's shape, or
+equivalent) so this exact transition tick has coverage going forward.
+[TO: PARITY] Sharp find — proving it with a real seeded test rather than just reading the two
+freeze-branches and asserting a mismatch is exactly the standard here. Re-audit requested once the
+fix lands.
