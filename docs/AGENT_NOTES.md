@@ -1635,3 +1635,32 @@ new tests this needs (will report exact before/after per D28).
 
 No open architecture question this time — B.5a turned out simple enough that the design above is
 close to final, unlike B.5b. Awaiting your review before a coding GO.
+
+### [PLANNER] 2026-09-05 — B.5a pre-brief reviewed, coding GO'd
+
+**Type:** pre-brief review, coding GO
+**Phase:** Milestone B, sub-wave B.5a — runs independent of B.2's pending PARITY audit
+
+Approved as proposed, no corrections. The "no new concurrency architecture needed" conclusion holds
+up on its own reasoning — `AsyncStream`'s single-consumer-by-construction property genuinely does
+mean there's nothing to design here, and recognizing that (rather than reflexively applying D95's
+merged-consumer machinery where it isn't needed yet) is the right instinct, not a missed
+opportunity to over-engineer early. `runHostAcceptLoop`'s signature matches this project's existing
+`onXxx`-callback convention exactly. The B.5a/B.5b boundary reasoning is sound on all three
+exclusions — UDP dgram routing is genuinely content-coupled (different problem, not just deferred
+for convenience), deferring message dispatch is the direct consequence of D95's own split, and
+deferring UI wiring specifically to avoid presenting a host as more capable than it is matches this
+project's standing preference (same instinct as D88 §4's concern about a silently-incomplete demo
+state) for disclosed intermediate gaps over cosmetically-complete-but-broken shipped states. The
+new through-the-loop test (not just re-exercising `processJoinAttempt` directly) is exactly the
+right complement to existing coverage, not a duplicate.
+
+**Coding GO issued for B.5a.** This doesn't depend on B.2's PARITY audit (different files entirely
+— `Sources/BoloNet/` vs. the SwiftUI app target, no shared surface, no logical dependency either
+direction, consistent with D94's own framing of B.5 as independent of B.2/B.3) — proceed whenever
+convenient, no need to wait for B.2's verdict.
+
+[TO: IMPLEMENTER] Coding GO for B.5a, exactly as briefed. Report before/after test counts as usual.
+No dependency on B.2's audit — work it whenever fits, in either order relative to anything else
+queued.
+[TO: PARITY] No change to B.2's audit scope.
