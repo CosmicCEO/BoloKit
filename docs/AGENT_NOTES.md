@@ -1544,3 +1544,94 @@ to registration, your call. No coding GO yet for either — same as B.2, I'll ru
 content once you write it before GO'ing.
 [TO: PARITY] No change to your B.2 audit scope — this entry is architecture/scope for B.5,
 unrelated to what you're checking.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.5a pre-brief: accept/join wiring
+
+**Type:** pre-brief (no production code yet)
+**Phase:** Milestone B — sub-wave B.5a (D95's split: accept/join wiring, low-risk half of the
+real host-network engine; B.5b is the tick+relay+dispatch engine where D95 §2's merged-consumer
+design actually gets built).
+
+## 1. Scope, and the good news from tracing it closely
+
+B.5a is: drain `HostListener.connections`, call the already-fully-built `processJoinAttempt` for
+each, register outcomes. Tracing exactly what that requires turned up a genuinely simple design —
+**B.5a needs no new concurrency architecture at all**, unlike B.5b:
+
+- `HostListener.connections` (`HostListener.swift:322`) is an `AsyncStream<NWConnection>`. A
+  single `for await` loop over it, in one `Task`, processes exactly one connection at a time by
+  construction — there is no concurrent access to `state: inout GameState` to reason about,
+  because nothing here ever has more than one join in flight. `JoinAcceptSerializer`'s own
+  internal serialization (T-11) governs a different, narrower race (accept-vs-slot-allocation
+  ordering within `processJoinAttempt` itself), not something this loop needs to add to.
+- `processJoinAttempt` (`HostListener.swift:186`) already handles the full outcome on both paths
+  — a rejection sends the rejection byte and cancels the connection itself
+  (`runJoinHandshake`'s `.rejected` case); an acceptance sends the handshake reply, calls
+  `applyJoin`, and registers the connection in `HostSessionTable`. **The loop body is a single
+  line.** No new state-mutating logic to design.
+
+Proposing exactly this, as a new small function in `Sources/BoloNet/`:
+
+```swift
+public func runHostAcceptLoop(
+    listener: HostListener,
+    state: inout GameState,
+    table: HostSessionTable,
+    onJoinOutcome: (HostJoinOutcome) -> Void = { _ in }
+) async {
+    for await connection in listener.connections {
+        let outcome = await processJoinAttempt(
+            connection: connection, serializer: listener.serializer, state: &state, table: table
+        )
+        onJoinOutcome(outcome)
+    }
+}
+```
+
+`onJoinOutcome` is a plain notify callback (this project's established convention, e.g.
+`runTick`'s own `onXxx` parameters) — a future sub-wave's UI (surfacing "Player X joined" to a
+host's screen) or test can observe outcomes without this function needing to know about either.
+Loop termination is already handled: `listener.cancel()` ends the underlying `NWListener`, which
+ends the `AsyncStream`, which ends the `for await` — no new shutdown logic needed.
+
+## 2. Explicitly out of scope, confirming the B.5a/B.5b boundary
+
+- **No UDP/`HostDgramListener` handling.** Traced why this isn't a B.5a concern: identifying
+  *which player* a raw UDP datagram came from requires decoding its content
+  (`decodeDgramServerRelay` matches by address against already-known player state) — dgram
+  handling is inherently packet-content-coupled, unlike TCP's connection-level accept. Cleanly
+  B.5b's territory.
+- **No per-connection message dispatch after a successful join.** `receiveAndDispatchOneHostMessage`
+  is not called anywhere in this sub-wave. A player who joins via B.5a's loop is registered in
+  `HostSessionTable` (their TCP connection is known, their slot exists) but nothing reads their
+  subsequent `CL*` messages — that's B.5b's merged-consumer design, deliberately not built early
+  and awkwardly here just to "keep the socket busy."
+- **No app-target/UI wiring.** `HostGameView`'s "Start Hosting" still only builds a local
+  `GameState` and starts a `GameSession` (D94's scope) — it does not start a real
+  `HostListener`/`runHostAcceptLoop` yet. Wiring the UI to a real accept loop that can't yet
+  dispatch a joined player's messages would present a host as "ready" when it demonstrably isn't
+  — proposing that UI wiring wait until B.5b lands and a real end-to-end joined-player experience
+  exists to expose, not landing it in two visibly-incomplete steps.
+
+**Disclosed consequence, same shape as the B.1→B.2/B.3 "Play Demo" gap:** after B.5a alone,
+`BoloNet` can accept and register real joins, but a joined player's own TCP receive buffer simply
+accumulates unread bytes until B.5b's dispatch loop exists — not a clean, demo-able end state on
+its own, same as the earlier gap being an accepted, disclosed intermediate state between two
+sub-waves in the same milestone, not a defect to route around.
+
+## 3. Verification plan
+
+`Tests/DifferentialTests/HostListenerTests.swift` already has real loopback-`NWConnection` test
+infrastructure (`makeConnectedPair()`, exercised by `twoSequentialJoinAttemptsResolveToDistinctSlots`
+among others) — but every existing test calls `processJoinAttempt` directly, none go through an
+actual `HostListener` instance end-to-end. Proposing a new test that stands up a real
+`HostListener(port:)`, connects two real client sockets to it, drives them through
+`runHostAcceptLoop` (not calling `processJoinAttempt` directly), and confirms both register in
+`HostSessionTable` with distinct slots — proving the *loop wiring* itself, complementing rather
+than duplicating the existing per-call coverage. Will also cover a rejection case (bad
+password/version) through the loop to confirm the connection is cleanly closed and no slot is
+consumed. No `BoloKit` behavior change expected; `swift test` count should grow by however many
+new tests this needs (will report exact before/after per D28).
+
+No open architecture question this time — B.5a turned out simple enough that the design above is
+close to final, unlike B.5b. Awaiting your review before a coding GO.
