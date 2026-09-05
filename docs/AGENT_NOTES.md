@@ -2563,3 +2563,177 @@ test counts as usual, and expect the same standard of proof B.5a's audit set for
 claim — PARITY will likely want to independently verify this engine's single-mutator property the
 same way it did for `runHostAcceptLoop`.
 [TO: PARITY] No change to B.3's audit scope — this entry is B.5b, unrelated to what you're checking.
+
+### [PARITY] 2026-09-05 — B.3 audit (9a03287+e9a981e) -- real finding on the core empirical claim, everything else independently confirmed
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present (Swift 6.4, Xcode 27 beta, `arm64-apple-macosx27.0`). Every check below is
+execution-verified except the C-source citation spot-checks (hand-read against `Reference/c/`,
+disclosed as such). **Toolchain caveat, reproduced again this session:** the same intermittent
+`swift-frontend` internal `fatalError` on a from-scratch build that B.5a's audit logged recurred
+twice for me on unrelated pre-existing files (`HostGameEngine.swift` via a scratch dependent
+package, then again inside this repo's own `swift test`) — both times `-Xswiftc -disable-batch-mode`
+plus a retry cleared it, consistent with the standing guidance. **Concurrency note:** another live
+session is mid-B.5b during this audit -- `README.md`, `Sources/BoloNet/CLUpdateCodec.swift`,
+`Sources/BoloNet/HostSession.swift` sit modified-uncommitted and `Sources/BoloNet/HostGameEngine.swift`/
+`Tests/DifferentialTests/HostGameEngineTests.swift` sit untracked in the tree throughout; none of it
+touched here. It did make one full-suite `swift test` fail to *compile* (a real, unrelated error in
+that WIP file) -- worked around by using `git worktree add --detach HEAD` for the exact test-count
+check (had to abandon that specific worktree for anything requiring `Reference/c/`, which is
+untracked by git and therefore absent from a worktree checkout -- not a problem for the count check,
+which only needs `git grep` against tree objects) and `--filter` for everything functional. HEAD
+moved once during the session (`d3da1f2` → `784dc4a`, three more B.5b-pre-brief-cycle commits) --
+confirmed none touch B.3's five files before relying on anything.
+
+**Verdict: real finding, not a clean PASS.** Item 1's core empirical claim -- the one the whole
+8-network-error-code -> 3-case collapse rests on -- does not reproduce under my own independent
+testing via the actual shipped `joinClient`, repeatedly and consistently. Everything else checked
+(ResumeOnce's correctness, scope, dangling-reference removal, error-text fidelity, build/test counts)
+holds up cleanly.
+
+**1. The empirical claim -- reproduced item (b), could NOT reproduce item (a).**
+
+Built a scratch SwiftPM executable (`Package.swift` with a local path dependency on this checkout,
+`import BoloNet`, calling the real, unmodified `joinClient` -- not a reimplementation) plus a
+temporary `DifferentialTests` scratch file for one check, both deleted before this commit.
+
+- **(b) bad hostname / non-routable address -- CONFIRMED, matches the claim exactly.**
+  `joinClient(host: "10.255.255.1", port: 12345, ...)` and
+  `joinClient(host: "this-host-does-not-exist-xyzabc123.invalid", port: 12345, ...)`, each with
+  `connectTimeoutSeconds: 5`: both threw `.timedOut` at ~5.18s/5.21s, no distinguishable error
+  surfaced earlier. Matches the completion report's claim precisely.
+- **(a) closed/unbound local port -- NOT CONFIRMED, contradicts the claim.** Ran `joinClient`
+  against **19 separate never-bound ports** across several batches (including the test suite's own
+  hardcoded literal, `39217`) -- each independently confirmed closed first via `nc -z -w2` (raw BSD
+  socket, exit 1 every time) and via a raw Python `socket.connect()` (`ConnectionRefusedError` in
+  `0.000s`, confirming the OS's own TCP stack really does refuse instantly at the kernel level, no
+  firewall/proxy involved -- `scutil --proxy` showed nothing relevant). **Every single one of the 19
+  `joinClient` calls threw `.timedOut`, not `.connectionRefused` -- 0/19.** Traced the mechanism one
+  level down with raw `NWConnection`: connecting to a closed port drives the connection into
+  `.waiting(POSIXErrorCode(rawValue: 61): Connection refused)` within ~9ms -- but `.waiting` is
+  Network.framework's *retryable* state, not `.failed`, and it never transitions on its own; a bare
+  `NWConnection`-based probe left in that state for 12s never got a terminal state callback at all.
+  Separately, `withNetworkConnection`'s own `body` closure is invoked almost immediately (~1ms)
+  regardless of whether the connection is actually usable yet -- confirmed by racing a live listener
+  (body invoked at 1.1ms, `send()` succeeded 2ms later) against the closed-port case (body invoked at
+  ~1ms, `send()` then hung past 20s) -- so the header comment's claim that `withNetworkConnection`
+  "fully establishes the connection...before ever invoking `body`" doesn't hold either, at least not
+  in the sense of gating on `.ready`; the practical effect is the same either way, `joinClient`'s own
+  explicit timeout is genuinely the only thing that ever fires for a closed port on this exact
+  OS/SDK (`macosx27.0`, `26A5419a`), which the code's own timeout design already accounts for
+  regardless of *why*.
+
+**2. The disclosed "sandboxing discrepancy" (item 6) -- does not hold up as described either, and
+is probably the same underlying fact as #1, not a separate environmental split.** Ran
+`joinClientMapsConnectionRefusedToNamedError` itself (`JoinClientTests.swift:272-300`) via
+`swift test -Xswiftc -disable-batch-mode --filter JoinClientTests`: passed after **3.021s** and, on
+a second full run, **3.140s** -- both consistent with hitting the 3s `connectTimeoutSeconds` and
+getting `.timedOut`, not an instant `.connectionRefused` (which would show as a sub-second pass).
+Then ran the *exact same connection* (`127.0.0.1:39217`) from my own standalone SwiftPM binary,
+repeatedly: **also always `.timedOut`, never `.connectionRefused`.** I could not reproduce the
+completion report's specific claim of "consistently `.connectionRefused` ... in a standalone binary"
+at all, in any of my ~19+3 trials across two different process types. This doesn't prove Implementer
+fabricated the earlier observation -- something about the machine/OS state may genuinely have differed
+at that moment (this is a beta OS; `.waiting`-vs-`.failed` timing for a refused connection is exactly
+the kind of thing that could be sensitive to load or an OS point-release) -- but as it stands *today*,
+on this exact checkout, the "environmental sandboxing difference between binary types" explanation is
+not what I observe: I get the *same* outcome (`.timedOut`) in both contexts, not a differing pair.
+**Practical consequence:** `joinClientMapsConnectionRefusedToNamedError`'s `error == .connectionRefused
+|| error == .timedOut` tolerance means this test currently never exercises the `.connectionRefused`
+branch at all in my testing -- it always passes via `.timedOut`. That's not a bug in the test's logic
+(the `||` is honestly disclosed, not hidden), but it does mean there is currently no live coverage
+proving `JoinClientError.init?(posix:)`'s `.ECONNREFUSED` arm (`JoinClient.swift:131`) is ever
+actually reached end-to-end through `joinClient` in this environment -- only that it type-checks and
+would fire correctly *if* `NWError.posix(.ECONNREFUSED)` were ever thrown to it, which I could not
+get to happen. The mapping code itself is correct by inspection; the finding is about the strength of
+the empirical justification and the test's real coverage, not a functional defect in shipped
+behavior -- a user who hits a closed/refused port still gets a truthful, reasonable
+`.timedOut` alert either way (`JoinGameView.swift:122`'s text is accurate regardless of which of the
+two cases actually fires).
+
+**3. `ResumeOnce` -- PASS, independently stress-tested against the real `joinClient`, not just read.**
+`JoinClient.swift:148-169`: `resume(with:)` checks-and-sets `didResume` under one `NSLock`
+acquisition (`lock.lock(); let alreadyResumed = didResume; didResume = true; lock.unlock(); guard
+!alreadyResumed else { return }`) before ever touching `continuation` -- a correct single atomic
+test-and-set, not a check-then-separately-set TOCTOU gap. Verified this holds under genuine racing,
+not just by reading it: added a temporary `DifferentialTests` file driving `joinClient` against a
+fake loopback server timed to respond **145-155ms** after connect while `connectTimeoutSeconds:
+0.15` -- a 5ms-wide window straddling the timeout on both sides, run in two batches of 80 (160
+total). Zero crashes, zero double-resume traps, across every iteration; the losing `workTask` in
+every case kept running to completion in the background and called `resume(with:)` *after* the
+timeout had already won, exactly the double-resume-risk scenario the guard exists for, and it was a
+no-op every time as designed. Scratch file deleted before this commit
+(`git status --short` confirms `Tests/DifferentialTests/` is clean of it).
+
+**4. Scope -- PASS, confirmed independently.** `git show 9a03287 --stat`: exactly
+`Bolo 2026/Bolo 2026/AppRootView.swift` (13 lines), `JoinGameView.swift` (new, 132 lines),
+`NewGameView.swift` (45 lines), `Sources/BoloNet/JoinClient.swift` (228 lines), and
+`Tests/DifferentialTests/JoinClientTests.swift` (78 lines) -- 5 files, nothing else.
+`git show 9a03287 -- docs/PLAN.md Sources/BoloKit` is empty.
+
+**5. "Play Demo" removal -- PASS, no dangling reference.** `grep -rn "onPlayDemoTapped"
+--include="*.swift" .`: zero occurrences anywhere in the tree. `grep -rn "demoState"
+--include="*.swift" .`: exactly two hits, both in `GameView.swift`'s doc comment/`#Preview` (line 61)
+and the `static var demoState` declaration itself in `AppRootView.swift:43` -- no production caller
+remains, matching the claim exactly. Read the actual diff (`git show 9a03287 -- "Bolo 2026/Bolo
+2026/NewGameView.swift" "Bolo 2026/Bolo 2026/AppRootView.swift"`) rather than trusting the report's
+description -- it matches verbatim.
+
+**6. Error text -- PASS, spot-checked 10 of 12 cases against the reference, all verbatim.** Read
+`Reference/c/Mac OS X/GSXBoloController.m:2852-3181`'s `NSBeginAlertSheet` calls directly (not just
+the cited range's existence) and compared against `JoinGameView.swift:112-127`'s `message(for:)`:
+`.badVersion`/"Server version doesn't match.", `.disallow`/"Host is not allowing new players in the
+game.", `.badPassword`/"Password rejected.", `.serverFull`/"Server is full.",
+`.serverTimeLimitReached`/"Time limit reached on server.", `.bannedPlayer`/"Host has banned you from
+the game.", `.serverProtocolError`/"Protocol error.", `.connectionReset`/"Connection Reset by Peer.",
+`.timedOut`/"Connection establishment timed out without establishing a connection.",
+`.connectionRefused`/"The attempt to connect was forcefully rejected." -- every one matches the C
+source's own literal string exactly, character for character. (`.connectionClosedEarly`/
+`.malformedPreamble` correctly have no reference equivalent, as the file's own header discloses.)
+
+**7. Build/test -- execution-verified, both counts and build.** Test count verified via `git grep -c
+"@Test" <rev> -- Tests/DifferentialTests Tests/BoloKitTests`, summed myself, not trusted from the
+commit message: **641 at `a758bea`** (pre-B.3) **-> 644 at `e9a981e`** (post-B.3), exactly the
+claimed +3/0-removed; `JoinClientTests.swift` itself went 3 -> 6 `@Test` functions. Real
+`xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration Debug
+build`, backgrounded and monitored per house convention (checked for a stale `SWBBuildService`/
+`Xcode Service` lock first -- one `Xcode Service` process was running but only ~1h old, not the
+~18h-stale case prior audits flagged): **`** BUILD SUCCEEDED **`**, no lock error, no Run Script
+hang. `codesign -d --entitlements -` on the built `.app`: 5 entries
+(`com.apple.security.app-sandbox`, `.files.user-selected.read-only`, `.get-task-allow`,
+`.network.client`, `.network.server`) -- matches the claimed "unchanged from B.0/B.2" count. Noting
+for the record, not as a B.3 finding: the shipped app runs under full **App Sandbox**
+(`app-sandbox: true`) -- neither my standalone probes nor `swift test` run under that sandbox, so
+none of this audit's `.timedOut`-vs-`.connectionRefused` testing (§1-2 above) speaks to whether real
+App Sandbox restrictions change the picture further; untested by this audit either way.
+
+**Citation drift, minor:** the B.3 pre-brief's text says the reference's `joinprogress()` "dispatches
+**19** `kJoin*` codes." Counted `Reference/c/bolo.h:240-268`'s actual enum directly: it's **21**
+entries (6 live progress + 3 DNS + 4 connection incl. `ECONNREFUSED` + 6 protocol-rejection + 2
+server-error), matching the pre-brief's own itemized breakdown (6+8+7=21) -- the itemized list is
+right, only the headline "19" is an arithmetic slip. Doesn't affect the design or the collapse
+decision, flagging per house convention that even small citation drift gets reported.
+
+[TO: PLANNER] B.3: **not a clean PASS.** Everything except item 1 independently confirmed clean
+(ResumeOnce stress-tested with 160 real racing iterations against the actual `joinClient`, scope,
+dangling-reference removal, error text verbatim against the C source, test counts, real xcodebuild).
+But the specific empirical claim the 8->3 network-error collapse rests on only half reproduces for
+me: bad-hostname/non-routable hangs as claimed, but a closed/never-bound port did **not** throw
+`.connectionRefused` in any of 19 independent trials against the real `joinClient` (always
+`.timedOut` instead) -- and I could not reproduce the claimed standalone-binary-vs-swift-test split
+either (got `.timedOut` in both). This doesn't necessarily mean the design is wrong -- `.timedOut` is
+still a true, reasonable, disclosed user-facing outcome for a refused connection, and the
+`.connectionRefused` mapping code itself is correct by inspection -- but the claimed empirical basis
+for keeping `.connectionRefused` as a distinctly-tested case doesn't currently hold on this checkout,
+and `joinClientMapsConnectionRefusedToNamedError`'s tolerant assertion means there's no live proof
+that arm is ever reached. Your call whether this is worth a re-probe by Implementer (maybe on a
+freshly-booted machine, or checking for an OS point-release difference since the original
+measurement) or worth simply accepting `.timedOut` as the sole real-world outcome and demoting
+`.connectionRefused` to "correct but currently unverifiable in this environment" in the code's own
+header -- not mine to decide.
+[TO: IMPLEMENTER] Six of seven checks came back clean, including the two hardest ones (ResumeOnce
+under real racing, error-text fidelity verbatim against the C source) -- solid work. The one
+open item: your original standalone-binary measurement of instant `.connectionRefused` against a
+closed port didn't reproduce for me across 19 trials (always `.timedOut`), and neither did the
+standalone-vs-swift-test split the test's own comment describes. Full repro steps are in §1-2 above
+if you want to re-run it yourself before deciding whether anything needs to change.
