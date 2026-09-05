@@ -110,17 +110,30 @@ private func waitForCondition(timeout: TimeInterval, _ condition: () async -> Bo
 /// standalone repro outside `swift test`, same technique as B.3's own debugging) -- the first
 /// datagram this test received really was a stray relay of an earlier bootstrap packet, not the
 /// intended one, before this loop replaced a single blind read.
+///
+/// **Timeout enforcement fixed under D99's own negative control** -- the original `Date()`-based
+/// deadline check only runs *between* `receiveOneDatagram` calls, so it never bounds a call that
+/// blocks forever because no datagram arrives at all (exactly what a genuinely-absent broadcast
+/// looks like). Confirmed via a standalone `swiftc` repro outside `swift test`: this hung
+/// indefinitely reproducing D99's own fix as a negative control, same failure shape as
+/// `confirmNoCLUpdateArrives`'s own `withTaskGroup`/`cancelAll()` bug above. Fixed the same way --
+/// an `async let` timeout guard that cancels the connection if the deadline is reached, which
+/// reliably unblocks a pending `receiveMessage`; Swift implicitly cancels-and-awaits the unused
+/// `async let` on the success path, so `connection.cancel()` never runs unless the timeout
+/// actually elapses.
 private func receiveMatchingCLUpdate(
     _ connection: NWConnection, expectedTank: Vec2f, timeout: TimeInterval = 3
 ) async throws -> CLUpdate {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
+    async let timeoutGuard: Void = {
+        try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+        connection.cancel()
+    }()
+    while true {
         let bytes = try await receiveOneDatagram(connection)
         if let decoded = CLUpdate.decode(bytes), decoded.header.tank == expectedTank {
             return decoded
         }
     }
-    throw HarnessError.shortRead
 }
 
 @Test func hostGameEngineRelaysADgramPacketBetweenTwoRegisteredPlayers() async throws {
@@ -383,4 +396,54 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
 
     let absent = await confirmNoCLUpdateArrives(peerClient)
     #expect(absent, "expected no CLUpdate broadcast once time limit is reached (D98)")
+}
+
+/// D99 (PARITY finding): `RunTick.swift:100-105` splits the time-limit freeze into two phases --
+/// `ticks == limitTicks` still runs a real simulated tick and should still broadcast if cadence
+/// allows; only `ticks > limitTicks` is actually frozen. D98's original guard used `>=`, which
+/// collapsed that split and suppressed the broadcast for the *last genuinely-simulated tick* one
+/// tick early. Neither of the two tests above happens to sit on this exact boundary (one seeds
+/// deep past the threshold, the other never sets `timeLimit` at all), which is exactly why they
+/// didn't catch it -- this test seeds `ticks` at `limitTicks - 5` so the boundary tick lands
+/// exactly on a `localSeq % 5 == 0` cadence slot, proving both halves: the boundary tick's
+/// broadcast still arrives, and nothing arrives after it.
+@Test func hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain() async throws {
+    let (engine, _, dgramPort) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[0].tank = Vec2f(x: 107, y: 108)
+        state.localPlayer = 0
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].dead = false
+        state.timeLimit = 1
+        state.ticks = UInt64(ticksPerSec) * UInt64(state.timeLimit) - 5
+    }
+    defer { engine.stop() }
+
+    let fakeTCP = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: dgramPort)!, using: .udp)
+    guard let fakeAddress = peerAddress(from: fakeTCP) else {
+        Issue.record("expected a real loopback address")
+        return
+    }
+    await engine.table.setConnection(fakeTCP, for: 0)
+    await engine.table.setConnection(fakeTCP, for: 1)
+    await engine.table.setDgramAddress(fakeAddress, for: 0)
+    await engine.table.setDgramAddress(fakeAddress, for: 1)
+
+    engine.start()
+
+    let peerClient = makeUDPClient(port: dgramPort)
+    defer { peerClient.cancel() }
+    try await sendCLUpdate(peerClient, player: 1, seq: 1, tank: Vec2f(x: 101, y: 101))
+    try await waitForCondition(timeout: 2) { await engine.table.dgramConnection(for: 1) != nil }
+
+    // The boundary broadcast should still arrive -- the 5th tick timer fire after `engine.start()`.
+    let boundary = try await receiveMatchingCLUpdate(peerClient, expectedTank: Vec2f(x: 107, y: 108))
+    #expect(boundary.header.player == 0)
+
+    // No further broadcast after the boundary -- `ticks` is now permanently `> limitTicks`.
+    let absent = await confirmNoCLUpdateArrives(peerClient)
+    #expect(absent, "expected no further CLUpdate broadcast past the time-limit boundary (D99)")
 }

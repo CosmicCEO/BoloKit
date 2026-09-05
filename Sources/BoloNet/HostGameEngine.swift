@@ -168,8 +168,14 @@ public final class HostGameEngine: @unchecked Sendable {
         // clears. Reproducing that correctly needs an actual latch field in `GameState`, not a
         // one-line guard; flagged for Planner rather than guessed at silently.
         let paused = state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds != 0
+        // D99 (PARITY finding): `RunTick.swift:100-105` is a two-phase split, not one test --
+        // `ticks == limitTicks` still runs a real simulated tick (fires `onTimeLimitWarning(0)`,
+        // increments `ticks`, but does NOT skip this call's own gameplay/broadcast); only
+        // `ticks > limitTicks` is actually frozen. `>=` here collapsed that split and suppressed
+        // the last genuinely-simulated tick's broadcast one tick early. `>` matches
+        // `RunTick.swift:104`'s own freeze condition exactly.
         let timeLimitReached = state.timeLimit > 0
-            && Int(state.ticks) >= Int(ticksPerSec) * state.timeLimit
+            && Int(state.ticks) > Int(ticksPerSec) * state.timeLimit
         guard !paused, !timeLimitReached else { return }
 
         // The host's own outbound `CLUpdate` (`assembleClUpdate`, `CLUpdateCodec.swift`) --
