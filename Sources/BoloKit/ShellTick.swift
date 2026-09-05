@@ -239,7 +239,7 @@ public func shellCollisionTest(
     shell: Shell,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) -> Bool {
     let x = Int(shell.point.x)
     let y = Int(shell.point.y)
@@ -248,7 +248,7 @@ public func shellCollisionTest(
     if let pillIndex = findPill(x: x, y: y, pills: state.pills) {
         guard state.pills[pillIndex].armour > 0 else { return false }
         applyDamage(at: p, boat: shell.boat, state: &state, onMineExplosion: onMineExplosion)
-        killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+        killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         return true
     }
 
@@ -263,15 +263,15 @@ public func shellCollisionTest(
         if shell.boat {
             if hostileAndResourced {
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
-                killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+                killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
                 state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
-                killPointBuilder(at: shell.point, state: &state, onDropPills: onDropPills)
+                killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
             return true
         } else if hostileAndResourced {
             applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
-            killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+            killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         } else {
             return false
@@ -291,10 +291,10 @@ public func shellCollisionTest(
                 && isWaterLikeTerrain(state.terrain[x, y + 1] ?? .wall) != 0
             if waterX || waterY {
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
-                killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+                killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
                 state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
-                killPointBuilder(at: shell.point, state: &state, onDropPills: onDropPills)
+                killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
             return true
         default:
@@ -303,14 +303,14 @@ public func shellCollisionTest(
             // on a boat-shell hit. Verified exhaustive against the 30-case
             // Terrain enum: 4 handled above + this default's 26 = 30.
             applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
-            killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+            killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         }
     } else {
         switch terrain {
         case .wall, .forest, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3, .boat, .minedForest:
             applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
-            killSquareBuilder(at: p, state: &state, onDropPills: onDropPills)
+            killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         default:
             return false
@@ -327,7 +327,7 @@ public func shellCollisionTest(
 /// `explodeTicks + 1`. Ported from `killtank()` (client.c, ~2650).
 public func killTank(
     state: inout GameState,
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let player = state.localPlayer
     guard !state.players[player].dead else { return }
@@ -337,7 +337,11 @@ public func killTank(
         && j != Int(state.local.builderPill) && state.pills[j].armour == pillOnboard {
         pills |= UInt16(truncatingIfNeeded: 1 << j)
     }
-    onDropPills(pills, state.players[player].tank)
+    let tank = state.players[player].tank
+    dropPills(
+        player: player, x: tank.x, y: tank.y, pills: pills, state: &state,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    )
 
     state.local.deaths += 1
     state.players[player].dead = true
@@ -373,7 +377,7 @@ public func shellTick(
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard state.players[player].connected else { return }
 
@@ -387,7 +391,7 @@ public func shellTick(
     while i < state.players[player].shells.count {
         let shell = state.players[player].shells[i]
         if shellCollisionTest(
-            shell: shell, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+            shell: shell, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         ) {
             state.players[player].shells.remove(at: i)
         } else {
@@ -408,7 +412,7 @@ public func shellTick(
                 }
 
                 state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
-                killPointBuilder(at: shell.point, state: &state, onDropPills: onDropPills)
+                killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 state.players[player].kickDir = shell.dir
                 state.players[player].kickSpeed = kickForce
 
@@ -417,7 +421,7 @@ public func shellTick(
                     state.local.armour -= shellDamage
                     if state.local.armour < 0 {
                         state.local.armour = 0
-                        killTank(state: &state, onDropPills: onDropPills)
+                        killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                     }
                 }
 
@@ -432,7 +436,7 @@ public func shellTick(
         if state.players[player].shells[k].range <= 0.0 {
             let shell = state.players[player].shells[k]
             state.players[player].explosions.append(Explosion(point: shell.point))
-            killPointBuilder(at: shell.point, state: &state, onDropPills: onDropPills)
+            killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             touchTile(
                 at: Pointi(x: Int32(shell.point.x), y: Int32(shell.point.y)),
                 state: &state, onMineExplosion: onMineExplosion

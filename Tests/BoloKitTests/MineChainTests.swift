@@ -174,6 +174,27 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
     #expect(state.terrain[50, 50] == .crater)  // explosionAt converted it
 }
 
+// B.5d (D100/D103): the one real mine-chain broadcast gap — `floodAt`/`chainAt`'s own cascading
+// detonations never had a broadcast hook until now, unlike every `RecvCL.swift` call site.
+@Test func floodAtBroadcastsSmallBoomOnDetonationWithNeutralCauser() {
+    var state = makeState(players: [connectedPlayer()])
+    state.terrain[50, 50] = .minedGrass
+    var broadcasts: [(UInt8, Int, Int)] = []
+    floodAt(x: 50, y: 50, state: &state, onShouldBroadcastSmallBoom: { broadcasts.append(($0, $1, $2)) })
+    #expect(broadcasts.count == 1)
+    #expect(broadcasts.first?.0 == playerNeutral)
+    #expect(broadcasts.first?.1 == 50)
+    #expect(broadcasts.first?.2 == 50)
+}
+
+@Test func floodAtDoesNotBroadcastWhenNotDetonating() {
+    var state = makeState(players: [])
+    state.terrain[50, 50] = .crater  // reschedule case, not a detonation
+    var broadcasts: [(UInt8, Int, Int)] = []
+    floodAt(x: 50, y: 50, state: &state, onShouldBroadcastSmallBoom: { broadcasts.append(($0, $1, $2)) })
+    #expect(broadcasts.isEmpty)
+}
+
 // MARK: - chainAt / chain: ring-buffer delay
 
 @Test func chainReactionDetonatesMinedNeighborAfterExactDelay() {
@@ -200,6 +221,25 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
     state.terrain[50, 50] = .grass0
     chainAt(x: 50, y: 50, state: &state)
     #expect(state.terrain[50, 50] == .grass0)
+}
+
+@Test func chainAtBroadcastsSmallBoomOnDetonationWithNeutralCauser() {
+    var state = makeState(players: [connectedPlayer()])
+    state.terrain[50, 50] = .minedGrass
+    var broadcasts: [(UInt8, Int, Int)] = []
+    chainAt(x: 50, y: 50, state: &state, onShouldBroadcastSmallBoom: { broadcasts.append(($0, $1, $2)) })
+    #expect(broadcasts.count == 1)
+    #expect(broadcasts.first?.0 == playerNeutral)
+    #expect(broadcasts.first?.1 == 50)
+    #expect(broadcasts.first?.2 == 50)
+}
+
+@Test func chainAtDoesNotBroadcastForNonMinedTerrain() {
+    var state = makeState(players: [])
+    state.terrain[50, 50] = .grass0
+    var broadcasts: [(UInt8, Int, Int)] = []
+    chainAt(x: 50, y: 50, state: &state, onShouldBroadcastSmallBoom: { broadcasts.append(($0, $1, $2)) })
+    #expect(broadcasts.isEmpty)
 }
 
 // MARK: - explosionAt: terrain switch

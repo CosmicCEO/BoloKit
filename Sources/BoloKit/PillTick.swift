@@ -134,7 +134,7 @@ public func pillTick(
     state: inout GameState,
     oldTankPositions: [Vec2f],
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     for i in state.pills.indices {
         guard state.pills[i].armour != pillOnboard, state.pills[i].armour > 0 else {
@@ -218,7 +218,7 @@ public func pillTick(
             )
 
             if !shellCollisionTest(
-                shell: shell, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+                shell: shell, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
             ) {
                 state.players[player].shells.append(shell)
             }

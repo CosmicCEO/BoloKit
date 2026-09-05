@@ -111,14 +111,14 @@ public func recvClTouch(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else { return }
     switch terrain {
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
     default:
@@ -139,7 +139,7 @@ public func recvClGrabTile(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     if let pill = findPill(x: x, y: y, pills: state.pills) {
         state.pills[pill].owner = UInt8(player)
@@ -178,7 +178,7 @@ public func recvClGrabTile(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
     default:
@@ -197,7 +197,7 @@ public func recvClGrabTrees(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else {
         onShouldBroadcastBuilderAck(player, 0, 0, Int(noPill))
@@ -215,7 +215,7 @@ public func recvClGrabTrees(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, 0, Int(noPill))
@@ -247,7 +247,7 @@ public func recvClBuildRoad(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else {
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -273,7 +273,7 @@ public func recvClBuildRoad(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -293,7 +293,7 @@ public func recvClBuildWall(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else {
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -313,7 +313,7 @@ public func recvClBuildWall(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -335,7 +335,7 @@ public func recvClBuildBoat(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else {
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -349,7 +349,7 @@ public func recvClBuildBoat(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -371,7 +371,7 @@ public func recvClBuildPill(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard findPill(x: x, y: y, pills: state.pills) == nil, findBase(x: x, y: y, bases: state.bases) == nil else {
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -409,7 +409,7 @@ public func recvClBuildPill(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -428,7 +428,7 @@ public func recvClRepairPill(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let pill = findPill(x: x, y: y, pills: state.pills), findBase(x: x, y: y, bases: state.bases) == nil else {
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -458,7 +458,7 @@ public func recvClRepairPill(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, trees, Int(noPill))
@@ -478,7 +478,7 @@ public func recvClPlaceMine(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else {
         onShouldBroadcastBuilderAck(player, 0, 0, Int(noPill))
@@ -500,7 +500,7 @@ public func recvClPlaceMine(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         onShouldBroadcastBuilderAck(player, 0, 0, Int(noPill))
@@ -534,7 +534,7 @@ public func recvClDamage(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let point = Pointi(x: Int32(x), y: Int32(y))
 
@@ -555,7 +555,7 @@ public func recvClDamage(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
         return
@@ -599,7 +599,7 @@ public func recvClSmallBoom(
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else { return }
     let detonated: Bool
@@ -614,7 +614,7 @@ public func recvClSmallBoom(
     }
     explosionAt(
         player: UInt8(player), x: x, y: y, state: &state,
-        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
     )
     if detonated {
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
@@ -632,11 +632,11 @@ public func recvClSuperBoom(
     onShouldBroadcastSuperBoom: (Int, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     superboomAt(
         player: UInt8(player), x: x, y: y, state: &state,
-        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills
+        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
     )
     onShouldBroadcastSuperBoom(player, x, y)
 }

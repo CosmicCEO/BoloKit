@@ -364,24 +364,29 @@ public func hostBanPlayer(player: Int, state: inout GameState, table: HostSessio
 
 // MARK: - CL* dispatch
 
-/// Every `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` a `recvCl*`
-/// call can fire, grouped the same way `SRDispatchCallbacks`
-/// (`TCPSession.swift`, Wave 6.4a) groups the client-side equivalents --
-/// a headless host has no sound/vis layer of its own, but a future
-/// caller (logging, a hosting UI) still needs these hooks.
+/// Every `onMineExplosion`/`onSuperboomTerrain` a `recvCl*` call can fire, grouped the same way
+/// `SRDispatchCallbacks` (`TCPSession.swift`, Wave 6.4a) groups the client-side equivalents -- a
+/// headless host has no sound/vis layer of its own, but a future caller (logging, a hosting UI)
+/// still needs these hooks.
+///
+/// **B.5d (D100/D103):** `onDropPills` used to live here too, as a bare `(UInt16, Vec2f) -> Void`
+/// pass-through -- meaning a builder killed by an explosion during a CL-dispatched action (e.g.
+/// `recvClTouch` detonating a mine under a builder) never actually broadcast its pill drop in
+/// production, since nothing ever configured this struct with a real implementation. Removed:
+/// every `recvCl*` call site below now passes an inline `onShouldBroadcastDropPill` closure
+/// straight to `pending`, the same shape `.dropPills`'s own case already used -- a real broadcast
+/// decision belongs there, not on a struct meant for local-only UI/logging hooks with no `table`
+/// access.
 public struct CLDispatchCallbacks {
     public var onMineExplosion: (Pointi) -> Void = { _ in }
     public var onSuperboomTerrain: (Pointi) -> Void = { _ in }
-    public var onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
 
     public init(
         onMineExplosion: @escaping (Pointi) -> Void = { _ in },
-        onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in },
-        onDropPills: @escaping (UInt16, Vec2f) -> Void = { _, _ in }
+        onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in }
     ) {
         self.onMineExplosion = onMineExplosion
         self.onSuperboomTerrain = onSuperboomTerrain
-        self.onDropPills = onDropPills
     }
 }
 
@@ -525,7 +530,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .grabTile:
@@ -545,7 +552,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .grabTrees:
@@ -565,7 +574,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .buildRoad:
@@ -585,7 +596,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .buildWall:
@@ -605,7 +618,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .buildBoat:
@@ -625,7 +640,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .buildPill:
@@ -645,7 +662,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .repairPill:
@@ -665,7 +684,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .placeMine:
@@ -688,7 +709,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .damage:
@@ -702,7 +725,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .smallBoom:
@@ -713,7 +738,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .superBoom:
@@ -724,7 +751,9 @@ public func dispatchHostMessage(
                 pending.append(.all(SRSuperBoom(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-            onDropPills: callbacks.onDropPills
+            onShouldBroadcastDropPill: { pill, x, y in
+                pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
+            }
         )
 
     case .refuel:

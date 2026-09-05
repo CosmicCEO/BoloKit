@@ -216,6 +216,9 @@ public final class HostGameEngine: @unchecked Sendable {
             onGrow: { x, y in pending.append(SRGrow(x: UInt8(x), y: UInt8(y)).encode()) },
             onShouldBroadcastDropPill: { pill, x, y in
                 pending.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
+            },
+            onShouldBroadcastSmallBoom: { player, x, y in
+                pending.append(SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode())
             }
         )
 

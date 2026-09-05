@@ -91,7 +91,7 @@ public final class UDPSession: @unchecked Sendable {
         onPillShotSound: () -> Void = {},
         onSinkSound: () -> Void = {},
         onBuilderDeathSound: () -> Void = {},
-        onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+        onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
         onMineExplosion: (Pointi) -> Void = { _ in },
         onSuperboomTerrain: (Pointi) -> Void = { _ in },
         onExplosion: (Vec2f) -> Void = { _ in },
@@ -107,7 +107,7 @@ public final class UDPSession: @unchecked Sendable {
             myOwnSeq: myOwnSeq, state: &state,
             onPlayerLagStatusChanged: onPlayerLagStatusChanged, onTankShotSound: onTankShotSound,
             onPillShotSound: onPillShotSound, onSinkSound: onSinkSound, onBuilderDeathSound: onBuilderDeathSound,
-            onDropPills: onDropPills, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
             onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
         )
     }

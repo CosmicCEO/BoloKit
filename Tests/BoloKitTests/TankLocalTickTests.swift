@@ -307,15 +307,20 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
 
 // MARK: - drown / smallboom / superboom
 
+// B.5d (D100/D103): `drown` now calls `dropPills` directly (the `onSpawn`-precedent fix) instead
+// of firing a bare `(UInt16, Vec2f)` pass-through — `onShouldBroadcastDropPill` fires once per
+// pill actually placed, with its real index, not the raw mask.
 @Test func drownKillsAliveTankAndDropsOnboardPills() {
     var state = makeState(player: connectedPlayer(boat: true))
     state.pills = [Pill(x: 0, y: 0, armour: pillOnboard, owner: 0, speed: 0, counter: 0)]
-    var dropped: (UInt16, Vec2f)?
-    drown(state: &state, onDropPills: { dropped = ($0, $1) })
+    var broadcasts: [(Int, Int, Int)] = []
+    drown(state: &state, onShouldBroadcastDropPill: { pill, x, y in broadcasts.append((pill, x, y)) })
     #expect(!state.players[0].boat)
     #expect(state.players[0].dead)
     #expect(state.local.deaths == 1)
-    #expect(dropped?.0 == 1)
+    #expect(broadcasts.count == 1)
+    #expect(broadcasts.first?.0 == 0)
+    #expect(state.pills[0].armour == 0)
 }
 
 @Test func drownAlreadyDeadPastExplodeTicksIsNoOp() {
@@ -384,17 +389,23 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
 
 // MARK: - killBuilder / killSquareBuilder / killPointBuilder
 
+// B.5d (D100/D103): `killBuilder` now calls `dropPills` directly instead of firing a bare
+// `(UInt16, Vec2f)` pass-through — `onShouldBroadcastDropPill` fires once, with the reserved
+// pill's real index, not the raw mask.
 @Test func killBuilderRespawnsAsParachuteAtAStart() {
     var player = connectedPlayer()
     player.builderStatus = .work
     var state = makeState(player: player, local: LocalPlayerState(builderPill: 2))
     state.starts = [Start(x: 10, y: 20, dir: 0)]
-    var dropped: (UInt16, Vec2f)?
-    killBuilder(state: &state, onDropPills: { dropped = ($0, $1) })
+    state.pills = (0..<3).map { _ in Pill(x: 0, y: 0, armour: 0, owner: playerNeutral, speed: 0, counter: 0) }
+    var broadcasts: [(Int, Int, Int)] = []
+    killBuilder(state: &state, onShouldBroadcastDropPill: { pill, x, y in broadcasts.append((pill, x, y)) })
     #expect(state.players[0].builderStatus == .parachute)
     #expect(state.players[0].builder == Vec2f(x: 10.5, y: 20.5))
     #expect(state.local.builderPill == noPill)
-    #expect(dropped?.0 == 1 << 2)
+    #expect(broadcasts.count == 1)
+    #expect(broadcasts.first?.0 == 2)
+    #expect(state.pills[2].armour == 0)
 }
 
 @Test func killSquareBuilderIgnoresReadyAndParachuteStates() {

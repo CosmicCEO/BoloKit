@@ -84,7 +84,7 @@ public func tankCollision(owner: Int, state: GameState) -> (Pointi) -> Bool {
 /// `explodeTicks` boundary now also calls the real `superboom()`/
 /// `smallboom()` (client.c:4008-4013's direct calls, no callback
 /// indirection in the oracle at all here). `onMineExplosion`/
-/// `onSuperboomTerrain`/`onDropPills` thread through to those calls.
+/// `onSuperboomTerrain`/`onShouldBroadcastDropPill` thread through to those calls.
 public func tankMoveTick(
     player: Int,
     state: inout GameState,
@@ -94,7 +94,7 @@ public func tankMoveTick(
     onSpawn: () -> Void = {},
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     guard state.players[player].connected else { return }
 
@@ -127,7 +127,7 @@ public func tankMoveTick(
                 if terrainValue != 16 && terrainValue != 17 {
                     state.players[player].explosions.append(Explosion(point: point, counter: 0))
                     onExplosion(point)
-                    killPointBuilder(at: point, state: &state, onDropPills: onDropPills)
+                    killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 }
             }
         } else if state.local.respawnCounter == explodeTicks {
@@ -136,14 +136,14 @@ public func tankMoveTick(
                 superboom(
                     state: &state,
                     onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
-                    onDropPills: onDropPills
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             } else if state.local.mines > 0 || state.local.shells > 0 {
                 onSmallboom()
                 smallboom(
                     state: &state,
                     onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
-                    onDropPills: onDropPills
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }
             // else: neither boom fires, matching C exactly.

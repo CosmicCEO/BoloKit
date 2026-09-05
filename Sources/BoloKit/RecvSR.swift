@@ -143,7 +143,7 @@ public func recvSrDamage(
     state: inout GameState,
     onPillStatusChanged: (Int) -> Void = { _ in },
     onBaseStatusChanged: (Int) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     if let pill = findPill(x: x, y: y, pills: state.pills) {
         if state.pills[pill].armour > 0 {
@@ -177,7 +177,7 @@ public func recvSrDamage(
 
     if player != UInt8(state.localPlayer) {
         state.explosions.append(Explosion(point: Vec2f(x: Float(x) + 0.5, y: Float(y) + 0.5)))
-        killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onDropPills: onDropPills)
+        killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
     }
 }
 
@@ -279,7 +279,7 @@ public func recvSrCapturePill(
     owner: UInt8,
     state: inout GameState,
     onPillStatusChanged: (Int) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onRequestGrabTile: (Pointi) -> Void = { _ in }
 ) {
     state.pills[pill].owner = owner
@@ -294,14 +294,14 @@ public func recvSrCapturePill(
         switch state.terrain[Int(tank.x), Int(tank.y)] {
         case .sea:
             if !state.players[localPlayer].boat {
-                drown(state: &state, onDropPills: onDropPills)
+                drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
         case .boat:
             onRequestGrabTile(pillPoint)
         case .wall, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
-            superboom(state: &state, onDropPills: onDropPills)
+            superboom(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         case .minedSea:
-            drown(state: &state, onDropPills: onDropPills)
+            drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             onRequestGrabTile(pillPoint)
         case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
             onRequestGrabTile(pillPoint)
@@ -434,7 +434,7 @@ public func recvSrSmallBoom(
     player: UInt8, x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onTankStatusChanged: () -> Void = {}
 ) {
     if state.terrain[x, y] != .sea && state.terrain[x, y] != .minedSea {
@@ -445,7 +445,7 @@ public func recvSrSmallBoom(
 
     if player != UInt8(state.localPlayer) {
         state.explosions.append(Explosion(point: point))
-        killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onDropPills: onDropPills)
+        killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
     }
 
     // Unconditional on `player` — deliberately NOT gated the way
@@ -462,11 +462,11 @@ public func recvSrSmallBoom(
         if state.local.armour < 0 {
             state.local.armour = 0
             if state.local.mines > 32 {
-                superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+                superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else if state.local.mines > 0 || state.local.shells > 0 {
-                smallboom(state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+                smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
-                killTank(state: &state, onDropPills: onDropPills)
+                killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
         }
 
@@ -494,7 +494,7 @@ public func recvSrSuperBoom(
     player: UInt8, x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onTankStatusChanged: () -> Void = {}
 ) {
     for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
@@ -516,7 +516,7 @@ public func recvSrSuperBoom(
         ]
         for (point, square) in corners {
             state.explosions.append(Explosion(point: point))
-            killSquareBuilder(at: square, state: &state, onDropPills: onDropPills)
+            killSquareBuilder(at: square, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         }
 
         let edges: [Vec2f] = [
@@ -528,7 +528,7 @@ public func recvSrSuperBoom(
         ]
         for point in edges {
             state.explosions.append(Explosion(point: point))
-            killPointBuilder(at: point, state: &state, onDropPills: onDropPills)
+            killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         }
 
         let localPlayer = state.localPlayer
@@ -540,11 +540,11 @@ public func recvSrSuperBoom(
             if state.local.armour < 0 {
                 state.local.armour = 0
                 if state.local.mines > 32 {
-                    superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+                    superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 } else if state.local.mines > 0 || state.local.shells > 0 {
-                    smallboom(state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+                    smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 } else {
-                    killTank(state: &state, onDropPills: onDropPills)
+                    killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 }
             }
 
@@ -557,7 +557,7 @@ public func recvSrSuperBoom(
 public func recvSrHitTank(
     dir: Float, state: inout GameState,
     onTankStatusChanged: () -> Void = {},
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let player = state.localPlayer
     state.players[player].boat = false
@@ -567,7 +567,7 @@ public func recvSrHitTank(
     state.local.armour -= 5
     if state.local.armour < 0 {
         state.local.armour = 0
-        killTank(state: &state, onDropPills: onDropPills)
+        killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
     }
 
     onTankStatusChanged()

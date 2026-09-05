@@ -55,7 +55,7 @@ public func applyRemotePlayerUpdate(
     onPillShotSound: () -> Void = {},
     onSinkSound: () -> Void = {},
     onBuilderDeathSound: () -> Void = {},
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onExplosion: (Vec2f) -> Void = { _ in },
@@ -115,7 +115,7 @@ public func applyRemotePlayerUpdate(
         let explosion = Explosion(point: e.point, counter: Int(e.counter))
         newExplosions.append(explosion)
         if explosion.counter < 5 {
-            killPointBuilder(at: explosion.point, state: &state, onDropPills: onDropPills)
+            killPointBuilder(at: explosion.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         }
     }
     state.players[player].explosions = newExplosions
@@ -135,7 +135,7 @@ public func applyRemotePlayerUpdate(
                 onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
             )
             builderTick(player: player, state: &state, onMineExplosion: onMineExplosion)
-            shellTick(player: player, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+            shellTick(player: player, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             // `explosionTick` (Wave 5.5b) only ever drains every
             // connected player's list plus the global one in a single
             // pass -- calling it here, potentially up to

@@ -282,6 +282,40 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(SRMineAck.decode(ack) == SRMineAck(success: 1))
 }
 
+// B.5d (D100/D103): `CLDispatchCallbacks.onDropPills` used to be a bare no-op pass-through here --
+// a builder killed by an explosion during a CL-dispatched action never actually broadcast its
+// pill drop in production. Confirms the fix: player 1's `.touch` detonates a mine under player
+// 0's (the state's `localPlayer`) builder, killing it and really broadcasting `SRDropPill`, not
+// silently dropping the signal.
+@Test func dispatchTouchDetonationKillingABuilderBroadcastsRealDropPill() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.terrain[50, 50] = .minedGrass
+    state.players[0].builderStatus = .work
+    state.players[0].builder = Vec2f(x: 50.5, y: 50.5)
+    state.local.builderPill = 0
+    state.pills = [Pill(x: 0, y: 0, armour: 0, owner: playerNeutral, speed: 0, counter: 0)]
+    state.starts = [Start(x: 5, y: 5, dir: 0)]
+
+    try await sendBytes(links[1].clientEnd, CLTouch(x: 50, y: 50).encode())
+    let opcode = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+    #expect(opcode == .touch)
+    #expect(state.terrain[50, 50] == .crater)
+    #expect(state.players[0].builderStatus == .parachute)
+
+    // Broadcast order matches append order in `dispatchHostMessage`: `killSquareBuilder`'s
+    // `dropPills` call runs inside `explosionAt`, before `recvClTouch`'s own trailing
+    // `onShouldBroadcastSmallBoom` fires.
+    for link in links {
+        let dropPillBytes = try await receiveExactly(link.clientEnd, SRDropPill.wireSize)
+        #expect(SRDropPill.decode(dropPillBytes)?.pill == 0)
+        let smallBoomBytes = try await receiveExactly(link.clientEnd, SRSmallBoom.wireSize)
+        #expect(SRSmallBoom.decode(smallBoomBytes) == SRSmallBoom(player: playerNeutral, x: 50, y: 50))
+    }
+}
+
 @Test func dispatchHitTankUsesWirePlayerFieldNotSenderSlot() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }

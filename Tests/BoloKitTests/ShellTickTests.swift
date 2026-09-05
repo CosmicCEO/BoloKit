@@ -376,6 +376,10 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 
 // MARK: - killTank
 
+// B.5d (D100/D103): `killTank` now calls `dropPills` directly (the `onSpawn`-precedent fix for
+// the nested-`inout`-exclusivity problem `onDropPills` had) — this fires `onShouldBroadcastDropPill`
+// once per pill actually placed, with that pill's real index and landed (x, y), not once with the
+// raw mask and the tank's own scatter-origin point.
 @Test func killTankScattersOnboardPillsAndMarksDead() {
     var state = makeState(players: [connectedPlayer()])
     state.pills = [
@@ -385,16 +389,18 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     ]
     state.local.builderPill = 1  // reserved by the builder — excluded from the scatter mask
 
-    var droppedMask: UInt16?
-    var droppedAt: Vec2f?
-    state.players[0].tank = Vec2f(x: 7, y: 8)
-    killTank(state: &state, onDropPills: { mask, point in
-        droppedMask = mask
-        droppedAt = point
+    var broadcasts: [(Int, Int, Int)] = []
+    state.players[0].tank = Vec2f(x: 50, y: 60)
+    killTank(state: &state, onShouldBroadcastDropPill: { pill, x, y in
+        broadcasts.append((pill, x, y))
     })
 
-    #expect(droppedMask == 0b0001)  // only pill 0
-    #expect(droppedAt == Vec2f(x: 7, y: 8))
+    #expect(broadcasts.count == 1)  // only pill 0
+    #expect(broadcasts.first?.0 == 0)
+    #expect(broadcasts.first?.1 == 50)
+    #expect(broadcasts.first?.2 == 60)
+    #expect(state.pills[0].x == 50)
+    #expect(state.pills[0].y == 60)
     #expect(state.players[0].dead)
     #expect(!state.players[0].boat)
     #expect(state.local.deaths == 1)
@@ -405,7 +411,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer(dead: true)])
     state.local.deaths = 3
     var called = false
-    killTank(state: &state, onDropPills: { _, _ in called = true })
+    killTank(state: &state, onShouldBroadcastDropPill: { _, _, _ in called = true })
     #expect(!called)
     #expect(state.local.deaths == 3)
 }

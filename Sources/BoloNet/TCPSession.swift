@@ -38,7 +38,7 @@ public struct SRDispatchCallbacks {
     public var onPlayerStatusChanged: (Int) -> Void = { _ in }
     public var onPillStatusChanged: (Int) -> Void = { _ in }
     public var onBaseStatusChanged: (Int) -> Void = { _ in }
-    public var onDropPills: (UInt16, Vec2f) -> Void = { _, _ in }
+    public var onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
     public var onRequestGrabTile: (Pointi) -> Void = { _ in }
     public var onShouldLeaveAlliance: (UInt16) -> Void = { _ in }
     public var onMineExplosion: (Pointi) -> Void = { _ in }
@@ -56,7 +56,7 @@ public struct SRDispatchCallbacks {
         onPlayerStatusChanged: @escaping (Int) -> Void = { _ in },
         onPillStatusChanged: @escaping (Int) -> Void = { _ in },
         onBaseStatusChanged: @escaping (Int) -> Void = { _ in },
-        onDropPills: @escaping (UInt16, Vec2f) -> Void = { _, _ in },
+        onShouldBroadcastDropPill: @escaping (Int, Int, Int) -> Void = { _, _, _ in },
         onRequestGrabTile: @escaping (Pointi) -> Void = { _ in },
         onShouldLeaveAlliance: @escaping (UInt16) -> Void = { _ in },
         onMineExplosion: @escaping (Pointi) -> Void = { _ in },
@@ -69,7 +69,7 @@ public struct SRDispatchCallbacks {
         self.onPlayerStatusChanged = onPlayerStatusChanged
         self.onPillStatusChanged = onPillStatusChanged
         self.onBaseStatusChanged = onBaseStatusChanged
-        self.onDropPills = onDropPills
+        self.onShouldBroadcastDropPill = onShouldBroadcastDropPill
         self.onRequestGrabTile = onRequestGrabTile
         self.onShouldLeaveAlliance = onShouldLeaveAlliance
         self.onMineExplosion = onMineExplosion
@@ -214,7 +214,7 @@ public final class TCPSession: @unchecked Sendable {
             recvSrDamage(
                 player: msg.player, x: Int(msg.x), y: Int(msg.y), terrain: terrain, state: &state,
                 onPillStatusChanged: callbacks.onPillStatusChanged, onBaseStatusChanged: callbacks.onBaseStatusChanged,
-                onDropPills: callbacks.onDropPills
+                onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill
             )
         case .grabTrees:
             let bytes = try await rest(SRGrabTrees.wireSize)
@@ -259,7 +259,7 @@ public final class TCPSession: @unchecked Sendable {
             guard let msg = SRCapturePill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrCapturePill(
                 pill: Int(msg.pill), owner: msg.owner, state: &state,
-                onPillStatusChanged: callbacks.onPillStatusChanged, onDropPills: callbacks.onDropPills,
+                onPillStatusChanged: callbacks.onPillStatusChanged, onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill,
                 onRequestGrabTile: callbacks.onRequestGrabTile
             )
         case .buildPill:
@@ -303,7 +303,7 @@ public final class TCPSession: @unchecked Sendable {
             recvSrSmallBoom(
                 player: msg.player, x: Int(msg.x), y: Int(msg.y), state: &state,
                 onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-                onDropPills: callbacks.onDropPills, onTankStatusChanged: callbacks.onTankStatusChanged
+                onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill, onTankStatusChanged: callbacks.onTankStatusChanged
             )
         case .superBoom:
             let bytes = try await rest(SRSuperBoom.wireSize)
@@ -311,12 +311,12 @@ public final class TCPSession: @unchecked Sendable {
             recvSrSuperBoom(
                 player: msg.player, x: Int(msg.x), y: Int(msg.y), state: &state,
                 onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
-                onDropPills: callbacks.onDropPills, onTankStatusChanged: callbacks.onTankStatusChanged
+                onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill, onTankStatusChanged: callbacks.onTankStatusChanged
             )
         case .hitTank:
             let bytes = try await rest(SRHitTank.wireSize)
             guard let msg = SRHitTank.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrHitTank(dir: msg.dir, state: &state, onTankStatusChanged: callbacks.onTankStatusChanged, onDropPills: callbacks.onDropPills)
+            recvSrHitTank(dir: msg.dir, state: &state, onTankStatusChanged: callbacks.onTankStatusChanged, onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill)
         case .setAlliance:
             let bytes = try await rest(SRSetAlliance.wireSize)
             guard let msg = SRSetAlliance.decode(bytes) else { throw TCPSessionError.malformedMessage }

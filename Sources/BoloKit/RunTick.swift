@@ -18,19 +18,23 @@
 // (exactly what `runserver()` itself already does) is equivalent and
 // needs no separate flag.
 //
-// **Scope boundary, flagged in the Wave 6.1 completion report:** every
-// `onMineExplosion`/`onSuperboomTerrain`/`onDropPills`/`onExplosion`/
-// `onSuperboom`/`onSmallboom`/`onSpawn` callback below is a straight
-// pass-through to `runTick`'s own caller — it does **not** wire these
-// into `explosionAt`/`superboomAt`/`spawn`/`killPointBuilder` itself.
-// Every wave from 5.2b through 5.7 left these as documented injection
-// points "for a later wave," and nothing in the shipped codebase calls
-// `explosionAt`/`superboomAt` from anywhere but `chainAt`/`floodAt`
-// internally — confirmed by grep, not assumed. Wiring the full mine-cascade
-// (with correct causer-player attribution at every tank/builder/shell
-// trigger site) is real, undesigned subsystem work in its own right, the
-// same shape of discovery that split Wave 5.5a out of 5.2b (D22) — it does
-// not belong silently inside "orchestration."
+// **Scope boundary, flagged in the Wave 6.1 completion report; updated B.5d
+// (D100/D103):** `onMineExplosion`/`onSuperboomTerrain`/`onExplosion`/
+// `onSuperboom`/`onSmallboom`/`onSpawn` remain straight pass-throughs to
+// `runTick`'s own caller. `onDropPills` (the seventh, originally listed
+// alongside these) is gone — B.5d found every real fire site
+// (`killBuilder`/`drown`/`smallboom`/`superboom`/`killTank`) already runs
+// nested inside this function's own `state: &state` access, so each now
+// calls `dropPills` directly and surfaces `onShouldBroadcastDropPill`
+// instead, the same fix `onSpawn` already got in D88 §4. The mine-chain
+// broadcast gap this file's Wave 6.1 header once described ("nothing in the
+// shipped codebase calls `explosionAt`/`superboomAt` from anywhere but
+// `chainAt`/`floodAt` internally") was already stale by the time it was
+// written — `TankLocalTick.swift`'s `smallboom`/`superboom`/`grabTile` and,
+// later, `RecvCL.swift`'s ~15 call sites all call them too, and all of the
+// latter already broadcast correctly (Wave 6.6). The one real remaining gap
+// — `chain`/`flood`'s own cascading detonations — is fixed above via
+// `onShouldBroadcastSmallBoom`.
 
 /// One combined tick of the unified simulation. `ticksSinceLastUpdate` is
 /// caller-owned, per-player elapsed-tick data (indexed like `state.players`)
@@ -55,16 +59,23 @@ public func runTick(
     onGrow: (Int, Int) -> Void = { _, _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
-    onDropPills: (UInt16, Vec2f) -> Void = { _, _ in },
     onExplosion: (Vec2f) -> Void = { _ in },
     onSuperboom: () -> Void = {},
     onSmallboom: () -> Void = {},
     onSpawn: () -> Void = {},
-    // Wave 6.4c plumbing only -- no live caller wires `runTick` to a
-    // `HostSessionTable` anywhere in this codebase yet (no top-level tick
-    // orchestration driver exists), so this stays a no-op default like
-    // its siblings above until that driver exists to wire it for real.
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    // B.5d (D100/D103): this used to be wired only to the disconnect-triggered `dropPills` call
+    // below (Wave 6.4c). `onDropPills` -- a bare `(UInt16, Vec2f) -> Void` pass-through with no
+    // `state` access, threaded through `tankLocalTick`/`builderTick`/`pillTick`/`shellTick` -- had
+    // the exact nested-`inout`-exclusivity problem `onSpawn` was already fixed for (D88 §4): no
+    // caller-side closure can call `dropPills` itself while `runTick` already holds `state: &state`.
+    // Removed; every real fire site (`killBuilder`/`drown`/`smallboom`/`superboom`/`killTank`) now
+    // calls `dropPills` directly (it already runs nested inside this same `&state` access) and
+    // surfaces this callback instead -- the one that was already correctly shaped for it.
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // B.5d (D100/D103): the one real mine-chain broadcast gap — `chain`/`flood`'s own cascading
+    // `explosionAt(player: playerNeutral, ...)` calls, unlike every `RecvCL.swift` call site
+    // (Wave 6.6, already wired), had no broadcast hook of their own until now.
+    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -197,8 +208,14 @@ public func runTick(
     coolPills(state: &state, onCoolPill: onCoolPill)
     replenishBases(state: &state, onReplenishBase: onReplenishBase)
     growTrees(state: &state, onGrow: onGrow)
-    chain(state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
-    flood(state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onDropPills: onDropPills)
+    chain(
+        state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom
+    )
+    flood(
+        state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom
+    )
 
     // 6. Lagged-player status callback. Mirrors client.c:437-447's two
     // thresholds — mutually exclusive per player per tick, matching C's
@@ -232,24 +249,32 @@ public func runTick(
     for player in state.players.indices {
         tankMoveTick(
             player: player, state: &state,
-            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
+            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }
 
     let localOld = oldTankPositions[state.localPlayer]
     tankLocalTick(
         old: Pointi(x: Int32(localOld.x), y: Int32(localOld.y)), state: &state,
-        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onDropPills: onDropPills
+        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill
     )
 
     for player in state.players.indices {
         builderTick(player: player, state: &state, onMineExplosion: onMineExplosion)
     }
 
-    pillTick(state: &state, oldTankPositions: oldTankPositions, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+    pillTick(
+        state: &state, oldTankPositions: oldTankPositions, onMineExplosion: onMineExplosion,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    )
 
     for player in state.players.indices {
-        shellTick(player: player, state: &state, onMineExplosion: onMineExplosion, onDropPills: onDropPills)
+        shellTick(
+            player: player, state: &state, onMineExplosion: onMineExplosion,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        )
     }
 
     explosionTick(state: &state)
