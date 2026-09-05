@@ -468,3 +468,200 @@ fix→re-audit cycle, including PARITY explicitly re-verifying the regression te
 by hand rather than trusting the commit message. Full uncompressed entries (both pre-briefs, the
 6.5a/6.5b fold-in and simultaneous-execution directive, the full PARITY audit and D57 fix/re-audit
 cycle, and Wave 6's formal close-out ruling) preserved in git history per D28.
+
+## Wave 7 (2026-09-04)
+
+**Pre-wave ruling:** Jerod resolved Q22/Q26 directly before picking Wave 7's direction — **D58**:
+support both in-process hosting and a separate headless Dedicated Host binary; **D59**: no
+self-hosted tracker daemon, manual IP connection only (Wave 6.5a's tracker client code remains
+useful against any third-party tracker). Neither touches shipped Wave 6 code. Separately in this
+span, **D61** ruled Q10: `Reference/c` stays in-tree as an actively-consulted oracle until the port
+is done referencing it (no earlier than Milestone D), not removed now.
+
+Wave 7 (UI/app phase) opened and was initially pre-brief GO'd at full scope (menus, HUD, networking
+UI), but Jerod flagged that as too large a step with no clear ship path. Re-scoped to a
+single-process, single-player **v1 vertical slice** — **D60**: no menus, no networking UI, no HUD,
+split into four coding-GO'd sub-waves (7.0 asset pipeline → 7.1 Xcode app target → 7.2 rendering →
+7.3 input/tick loop); Milestones B (multiplayer UI)/C (HUD/prefs/chat/sound)/D (polish, signing,
+Q18's git-history rewrite) explicitly deferred, not GO'd. An ad hoc pre-code PARITY audit of the
+Wave 7.0/7.2 briefing numbers (retroactively covered) found the brief's own arithmetic wrong before
+any code landed: **D62** corrected `images.h` to two independent index spaces (tiles 177/256
+cells, sprites 113/256 cells), not one 256-cell sheet; **D63** narrowed 7.0's scope to the sheet
+renderer only, since the constants+`mapimage()` parse was already done in
+`Sources/BoloKit/Images.swift`; **D64** settled that sheet row-0 origin has no fidelity obligation
+but 7.0/7.2 must agree on one convention, and `-1` is always a "no image" sentinel; **D65** ruled
+fog-of-war/`seentiles` display out of scope for v1 — every tile renders fully visible, straight
+from `mapimage()`.
+
+- **Wave 7.0 — asset pipeline** (`618bedf`, PARITY PASS `79840b1`). `BoloGlyphsCore` (library,
+  split from a bare `BoloGlyphs` executable per **D68**) derives all tile/sprite glyph semantics by
+  sweeping `mapimage()` across 256 8-neighbor configurations rather than hand-transcribing
+  `images.c`'s case labels — self-checking (fails loudly if the count doesn't land on exactly
+  177/113). **D66**: top-left row-0 sheet origin, binding on 7.0 and 7.2. **D67**: procedural
+  raw-pixel-buffer glyphs, no vendored OFL font — the cleaner-provenance call, shipped even simpler
+  than the "CoreGraphics paths" pre-briefed (pure RGBA buffer manipulation; CoreGraphics/ImageIO
+  only in the thin executable, for PNG encode). Test count 597→605 (+8). PARITY's post-commit audit
+  independently re-derived every per-family variant count (wall 47/river 16/forest 10/crater
+  16/road 31/boat 8/sea 9 = 137, +8 flat +32 pill = 177 tile cells; 113 sprite cells) directly from
+  `images.c`/`images.h` — clean, but surfaced a real mismatch (not a 7.0 defect, a 7.2
+  prerequisite): the shipped `drawTank` pointed heading-0 screen-north, clockwise, while `BoloKit`'s
+  own `dir2vec` has heading-0 = screen-east, counterclockwise — a full mismatch, not an offset.
+  **D70** ruled: fix the generator to match `dir2vec` exactly (call it directly rather than
+  re-deriving an equivalent angle formula), not carry a translation layer forever. Fixed at
+  `dd064dc` (608 tests, +3, three named regression tests including a parametric all-16-heading
+  check), re-audited clean at `c4da9e0`. Wave 7.0 formally closed on the `79840b1` PASS before D70
+  even landed (D70 was scoped as a 7.2 prerequisite, not a 7.0 defect). Separately during this
+  stretch: an out-of-band governance finding (uncommitted `docs/PARITY.md` edits adding self-modify
+  language, plus a "Director" identity — confirmed by Jerod to be himself) was raised, not acted on
+  unilaterally; the self-modify grant was ultimately replaced with a narrower propose-then-adopt
+  model (**D71**, superseded same day) — PARITY drafts proposed rule changes tagged
+  `[TO: PLANNER]`, PLANNER rules on adoption. `CLAUDE.md` was also restructured into an
+  administrative section (durable) plus a PLANNER-editable instructions section.
+
+- **Wave 7.1 — Xcode app target** (`426c6a4`; D75/D76 follow-up `6e060e9`; PARITY final-state audit
+  `a03aa07`; D77/D79/F5 fix `72d880f`; closed on `a03aa07`'s PASS per the D74-D80 rulings). Native
+  Cocoa App target (`Bolo 2026`, per **D73** — corrected from the pre-brief's invented "BoloApp"
+  name, and no `BoloNet` dependency anywhere in 7.1-7.3, matching D73's single-process/no-networking
+  scope) built via `XcodeNewProject` (not the GO'd `XcodeNewTarget`, which cannot target-add to an
+  SPM-synthesized workspace — a disclosed mechanical deviation). Sheet delivery via a build-time Run
+  Script invoking the built `BoloGlyphs` executable, wired as an explicit target dependency (**D72**,
+  approved as proposed) — sheets never committed to git. Placeholder app icon generated (not
+  copied) from `BoloGlyphsCore`'s own glyph primitives, licensing-checked by md5 against every
+  `Reference/c` image file (zero overlap). Entitlements delivered as template-synthesized build
+  settings (App Sandbox on, no network entitlement of any kind) rather than a literal
+  `.entitlements` file. **D74**: all four disclosed deviations (tool substitution, a hard-prerequisite
+  `Package.swift` `products:` block addition, entitlements-as-settings, two hand-edited `.pbxproj`
+  sections since no MCP tool covers package refs/script phases) accepted, no rework. **D75**:
+  `MACOSX_DEPLOYMENT_TARGET` brought down from the template's 27.0 to 26.0 (D16's floor) on the
+  target (project-level default left at 27.0, a disclosed, deliberately-deferred residual). **D76**:
+  a shared `.xcscheme` committed (was previously autocreated/per-user), verified no scheme
+  duplication. Bundle identifier `com.cosmicceo.Bolo-2026` stands provisionally — **Q27**, still
+  open, Jerod's call, not blocking. Test count 608→612 (+4 icon tests); two Xcode crashes and a
+  failed 27.1-beta reinstall were reported mid-wave but confirmed to have left no half-written
+  project state (verified before resuming). PARITY's final-state audit (`a03aa07`) was the project's
+  first fully execution-verified audit (Swift toolchain confirmed present and used throughout —
+  `docs/PARITY.md`'s "no toolchain" claim was stale; **D80** adopted PARITY's proposed amendment
+  requiring a per-session tooling check and execution-vs-hand-trace disclosure) and found: **F1/D77**
+  — a confirmed PNG-premultiply defect inherited from Wave 7.0's own `writePNG` (declared
+  `.premultipliedLast` context fed straight-alpha buffers, so partial-alpha pixels shipped wrong —
+  measured 2,548 mispainted pixels in `Tiles.png`, invisible to any existing test since none decoded
+  an emitted PNG); ruled required before Wave 7.2's coding GO (same precedent as D45/D53/D57), fixed
+  at `72d880f` by premultiplying before the `CGContext` copy, with new tests that decode the emitted
+  PNG and lock in the exact byte values. **F2** — Run Script sandboxing rationale corrected
+  (declared inputs/outputs buy dependency-analysis/incremental correctness, not sandbox legality —
+  tested both ways). **F3/D78** — corrected D74's text: `ENABLE_OUTGOING_NETWORK_CONNECTIONS`/
+  `ENABLE_INCOMING_NETWORK_CONNECTIONS` don't exist as keys at all (absence, not an explicit `NO`);
+  Milestone B will need to add them, not flip them. **F4/D79** — `Bolo 2026`'s Swift language mode
+  was still 5 while `BoloKit` builds under 6; raised to Swift 6 before Wave 7.2's coding GO (fixed
+  at `72d880f` alongside D77/F5, clean build from deleted DerivedData). **F5** — trivial dead-branch
+  comment/behavior mismatch in `AppIcon.swift`, fixed opportunistically (`preconditionFailure` now
+  matches its own comment). Test count 612→614 (+2, the D77 PNG round-trip tests).
+
+- **Wave 7.2 — game rendering** (`9a8b328`+`6e76aea`; PARITY audit `3dfabff`; D86 fix
+  `3e03137`+`e5fccee`; re-audit PASS `07974bd`; closed). Pre-brief measured two disposable
+  prototypes (SwiftUI `Canvas`/`TimelineView` vs. AppKit `NSView`/`NSViewRepresentable`) live
+  against real sheets/`mapimage()`/tank sprites at two viewport sizes; AppKit won at v1's realistic
+  window size (6.7ms/7.3ms p95 vs. 7.8ms/9.3ms) with a real Canvas-favoring crossover only at
+  near-full-map viewports (out of v1's zoom/scroll-less scope). **D81**: AppKit `NSView` via
+  `NSViewRepresentable`, coding GO'd — also chosen for safety under D41's tick-timing discipline,
+  since a `Canvas`+`TimelineView` gotcha was found and documented (SwiftUI silently stops
+  compositing when drawn content is byte-identical frame to frame, no error). **D82**: own file for
+  the view (matches D51's one-concern-per-file precedent), redraw-trigger wiring deferred entirely
+  to 7.3 (7.2 accepts a `GameState` snapshot and redraws on demand only). Confirmed independent of
+  the mechanism choice: `BoloKit`'s own `Vec2f`/grid convention is already +y-down, so no C-style
+  `255-y` flip is needed anywhere in the renderer (`isFlipped = true` on the `NSView`) — verified
+  against real rendered output via two, later three (PARITY's own), independent
+  off-screen-rendering techniques, not just accepted from `Vector.swift`'s doc comment. The
+  implementation needed one piece of scope the pre-brief hadn't named: **D83** ratified
+  `tileFor`/`displayTileGrid` (`BMap.swift`) — pills/bases must overlay terrain before `mapimage()`
+  can autotile correctly, ported faithfully from `client.c`'s `tilefor()`, with an O(n) fast-path
+  rewrite (measured ~122ms/call naive → 8.4ms debug/0.115ms release) locked to the literal port via
+  an exhaustive 256×256-cell equivalence test. Building the actual renderer also surfaced a real
+  Wave 7.0 art defect: **D84** ratified a fix for checkerboard-transparent diagonal corners on any
+  adjacently-tiled non-wall connective family (sea/river/forest/crater/boat never had real diagonal
+  data to begin with, but `drawConnective` left their corners unconditionally transparent) —
+  inferred each corner from its two adjacent orthogonal bits instead, `.wall`'s real diagonal data
+  explicitly left untouched. Test count 614→626 (+12, including the project's first
+  `@Test(arguments:)` parameterized case). PARITY's audit confirmed `tileFor`/`displayTileGrid`
+  line-for-line against `client.c:6106-6141`, independently reproduced the no-y-flip claim with a
+  third technique (self-caught and corrected an inverted first attempt from an unverified
+  raw-buffer-layout assumption before reporting), and confirmed all four smaller judgment calls
+  (global/unattributed explosions drawn; `GameState.ticks` substituting for a missing per-player
+  `seq`; the always-1.0 `fraction` parameter dropped; a `ScrollView` demo wrapper) — but found one
+  real regression in the corner-fill fix itself: `.road` should have gotten the same diagonal-data
+  exemption `.wall` did (its own `deriveRoadConnectivity()` sweeps real diagonal data, confirmed by
+  `mapimage()`'s road branch genuinely disambiguating on diagonals), but the fix lumped it in with
+  the five no-diagonal-data families, silently collapsing 26 of road's 31 autotile images into 9
+  distinct renders. **D86** ruled this a same-wave-introduced regression (not inherited debt like
+  D77/D84), required before Wave 7.2 closes. Fixed at `3e03137`+`e5fccee` (widened the exemption to
+  `.wall || .road`, new regression test, verified against a real decoded `Tiles.png`: 31 road images
+  now resolve to 21 distinct rendered groups, the 10 residual identical pairs confirmed to share the
+  same `(ortho,diag)` value pre-existing under D64's no-fidelity-obligation rule, not a residual
+  defect). Test count 626→627 (+1). Re-audited clean at `07974bd` (independently re-derived all four
+  check-points from a fresh harness, including the exact 10 index pairs).
+
+- **Wave 7.3 — input + tick loop** (pre-brief `70e72b9`; `82d2c08`+`6fa224c`; PARITY audit
+  `4eb483f`; D89 fix `2a53299`+`28b00ee`; re-audit PASS `a2f1779`; closed `8172aa1`). **D87**
+  granted auto-mode for this sub-wave's Implementer→Planner→Parity loop (ended automatically once
+  7.3 hit a clean PASS; D85's standing yes/no subagent-dispatch gate resumed). `GameSession` (new,
+  `@MainActor`) drives `runTick` via a `DispatchSourceTimer` at 50Hz (measured, not assumed, per
+  D41: ~20.05-20.08ms average, 3.4-8.7ms worst-case jitter across three runs), calling
+  `GameRenderView.render(_:)` after each tick. Keyboard capture extends `GameRenderView` itself
+  (reopening the already-PARITY-passed Wave 7.2 file, disclosed openly) mirroring `GSBoloView.m`'s
+  own first-responder architecture, with the literal default keymap ported byte-for-byte from
+  `DefaultPreferences.plist` (including the `autoSlowdownBool==true` default, under which the Brake
+  key is intentionally dead code). Tracing the actual C reference surfaced two real,
+  previously-unnamed gaps, both ruled in-scope under **D88**: **§3** — `keyevent()`'s LMINE branch
+  plants a mine immediately on key-down regardless of tile change, a different mechanism from the
+  existing tile-change-gated `.lmine` flag handling; ported as a new `layMineOnKeyDown` function.
+  **§4** — `onSpawn` was still an unwired pass-through (confirmed by grep: `spawn()` was never
+  called from anywhere), meaning a dead local player could never revive, contradicting the wave's
+  own "driven by the actual physics engine" charter; fixed by calling `spawn(state:)` directly
+  inside `tankMoveTick`'s own `inout` binding (mirroring Wave 5.9's exclusivity-safe callback
+  pattern), plus ensuring the initial demo `GameState` carries a nonempty `starts` array. Test count
+  627→639 (+12). Integration-verified end-to-end via a harness driving real synthesized `NSEvent`s
+  and a live timer against the real compiled `BoloKit`/generated sheets. PARITY's audit confirmed
+  the `spawn()` exclusivity fix, the keyboard-capture architecture, and the byte-for-byte keymap all
+  clean, but found one real, confirmed defect: **D89** — `layMineOnKeyDown` unconditionally
+  decremented `state.local.mines` *before* checking terrain minability, where `keyevent()` only
+  spends a mine inside its terrain switch's 15 matched minable cases — pressing Lay-Mine on
+  sea/wall/river/boat/damaged-wall silently wasted a mine, and the shipped test
+  (`layMineOnKeyDownNoopsOnUnminableTerrain`) had encoded the bug as its own expected value. Ruled
+  required before Wave 7.3 (and the whole v1 slice) closes, same precedent as D86. Fixed at
+  `2a53299`+`28b00ee` — gave `plantMine` a `Bool` "did it actually plant" return, gated the
+  decrement on `true`, corrected and parameterized the regression test over the five named
+  unminable terrains. Test count 639→639 (0 removed — an existing test corrected/expanded, not new
+  coverage). Re-audited clean at `a2f1779`, which went beyond the sampled terrains to exhaustively
+  sweep every `Terrain.allCases` value against the fix.
+
+### Wave 7 close-out
+
+**Wave 7 — the entire v1 vertical slice D60 scoped — is closed** as of `8172aa1`. All four
+sub-waves (7.0 asset pipeline, 7.1 Xcode app target, 7.2 rendering, 7.3 input/tick loop) carry a
+PARITY PASS. D60's literal cut-line is delivered exactly as scoped: a window opens, renders a real
+map from real build-time-generated assets, and lets a player drive a tank via the actual ported
+physics engine, keyboard-controlled, tick-driven at 50Hz, single-process, no networking wired in.
+**Six real regressions/gaps were found and fixed across the wave, every one via the same
+fix→re-audit→close discipline this project has run since Wave 5, none left as unrouted debt**: D70
+(tank-heading convention mismatch vs. `dir2vec`), D77 (PNG premultiply corruption, inherited from
+Wave 7.0, closed out at Wave 7.1), D84/D86 (Wave 7.0's corner-fill art defect, then D86's own
+road-diagonal regression introduced by that very fix), D88 §3/§4 (LMINE immediate-plant and
+dead-player-never-revives gaps found by tracing the actual C source rather than assuming the wave's
+one-line scope text), and D89 (mine-waste on unminable terrain). Test count ran
+597→605→608→612→614→626→627→639 across the wave, every delta an addition or a disclosed, reasoned
+correction (D28 compliant throughout). Explicitly still deferred, not reopened by this close:
+Milestone B (multiplayer Host/Join UI wired to Wave 6's networking, per D58), Milestone C (HUD, key
+remap, alliance/chat panels, sound), Milestone D (zoom/scroll polish, signing/notarization, and
+Q18's git-history rewrite of the original copyrighted assets) — none GO'd, all still gated on a
+fresh PLANNER/Jerod ruling. D87's auto-mode grant for Wave 7.3's workflow ended automatically on
+the clean PASS; D85's standing yes/no gate before dispatching to an Implementer subagent resumed.
+Governance side-notes from this span, recorded for continuity rather than because they're wave
+content: the "Director" identity was confirmed to be Jerod himself; `docs/PARITY.md`'s attempted
+self-modify grant was replaced with a propose-then-adopt model (D71, superseded same day) and later
+amended again (D80) to require a per-session tooling check now that this project's PARITY host is
+confirmed to have a working Swift toolchain; repeated Xcode toolchain instability (two crashes, a
+failed 27.1-beta reinstall, a stray 23MB `-Xcc` index-store artifact, and a reproducible Run Script
+subprocess-launch hang) was logged throughout but never left any actual defect in committed project
+state, each time verified by direct inspection rather than assumed. Full uncompressed entries
+(every pre-brief, completion report, and PARITY audit in this range, plus the ad hoc pre-code
+numeric audit and the governance thread) preserved in git history per D28.
