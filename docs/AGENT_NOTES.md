@@ -2367,3 +2367,89 @@ own in-progress edit, leave completely alone), close the sub-wave, or issue any 
 off twice in one sub-wave (the real timeout bug, then the test-harness bug) is worth keeping as a
 first move whenever `swift test` itself seems to be lying about where a problem lives. B.5b's
 pre-brief is still open whenever you're ready.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.5b pre-brief: tick timer, dgram relay, host's own CLUpdate
+
+**Type:** pre-brief (no production code yet)
+**Phase:** Milestone B, sub-wave B.5b — the "hard crux" half of B.5, per D95's approved
+architecture direction (single serialized consumer of a merged event stream, over
+actor-isolation). Read every relevant function's actual implementation (not just signatures)
+before scoping this, per the same discipline B.5's own pre-brief used.
+
+## 1. A further split, proposed for the same reason D94/D95 already ruled twice
+
+Tracing what the merged-consumer engine actually needs to drive turned up **two genuinely
+different risk profiles inside what was still called "B.5b" in the pre-plan**, the same shape of
+discovery D94 made for B.2 and D95 made for B.5 itself:
+
+- **Tick timer, dgram relay, and the host's own outbound `CLUpdate` — all need only a single
+  linear consumer, no concurrency design at all.** `HostDgramListener.packets` is one
+  `AsyncStream` already; draining it with one `for await` has exactly the same "no more than one
+  thing in flight" property `runHostAcceptLoop` (B.5a) already relies on. `decodeDgramServerRelay`
+  is a pure, synchronous decision function (no `await` inside it) — applying its result to `state`
+  and forwarding bytes is a plain sequential step, not a new design problem.
+- **TCP `CL*` message dispatch for N concurrently-connected players is the one piece that
+  actually needs the merged-consumer split B.5's pre-brief flagged.**
+  `receiveAndDispatchOneHostMessage` (`HostSession.swift:413`) combines "wait for bytes"
+  (per-connection, must run concurrently — one slow player can't block everyone) and "mutate
+  `state`" (must never run concurrently with itself) in one function with no seam between them
+  today. Splitting it safely, and re-verifying the split against `HostSessionTests.swift`'s
+  existing 19-test suite for that function, is real, separate work with real design risk —
+  reopening Wave 6.6-era tested code, not a self-contained addition.
+
+**Proposing B.5b (this pre-brief) cover only the first bullet** — genuinely buildable now with
+known pieces, no reopening of tested dispatch code — **and a new B.5c for the second**, scoped and
+pre-briefed on its own once B.5b lands. Recommending this the same way D94/D95 recommended their
+own splits: not deciding it solo, flagging it because the alternative (silently absorbing the hard
+part into "B.5b") is exactly the failure mode this milestone has now caught twice already.
+
+## 2. Proposed B.5b scope
+
+A new type (naming TBD, e.g. `HostGameEngine`) owning `state: GameState`, a `HostSessionTable`,
+`HostListener`, `HostDgramListener`, and a 50 Hz tick timer (`GameSession`'s own shape, Wave 7.3 —
+reused, not reinvented). Three `for await` consumers plus the timer, all mutating the same
+`state` sequentially (no two ever concurrently, since each is a single linear stream/timer, same
+"no design needed" property as B.5a):
+
+- **Accept loop:** `runHostAcceptLoop` (B.5a), reused verbatim, feeding newly-registered players
+  into this engine's own `state`/`table`.
+- **Tick handling:** call `runTick(state: &state, ticksSinceLastUpdate:, ...)` each timer fire,
+  wiring its remaining pass-through callbacks (`onMineExplosion`/`onSuperboomTerrain`/
+  `onDropPills`/etc. — currently harmless no-ops in single-player `GameSession`) to real `SR*`
+  broadcasts via `table.sendToAll`/`sendToMask` (the wire structs already exist in
+  `ServerMessages.swift`; only the broadcast call is missing).
+- **The host's own outbound `CLUpdate`:** new `assembleClUpdate(player:state:seq:) -> CLUpdate`
+  (naming mirrors `assembleBoloPreamble`'s own convention, `Preambles.swift:235`), called once per
+  tick (or every 5th tick, matching `RunTick.swift`'s own header note on the `seq % 5 == 0`
+  emission cadence being "the caller's job once `seq` is available" — it's available here, from
+  `table`). Broadcasting it needs a **new dgram-send helper on `HostSessionTable`** — traced
+  `send`/`sendToAll`/`sendToAllExcept`/`sendToMask` (`HostSession.swift:211-234`) and confirmed
+  all four operate on `slots[player].connection` (the TCP control socket) exclusively; nothing
+  sends over `slots[player].dgramConnection` anywhere in this codebase yet. This is real, small,
+  missing surface, not an oversight in what B.5b needs to add.
+- **Dgram relay:** drain `HostDgramListener.packets`, call `decodeDgramServerRelay` (pure,
+  already built/tested) against `table.dgramSessionSnapshot(usedFlags:)`, apply the `.applied`
+  case's `tank`/`newSeq`/`portUpdate` fields to `state`/`table`, forward the original bytes
+  verbatim to `relayTo` via the same new dgram-send helper.
+
+## 3. Explicitly out of scope for B.5b
+
+No TCP `CL*` message dispatch (B.5c, per §1). No app-target/UI wiring — same reasoning as B.5a:
+`HostGameView`'s "Start Hosting" stays local-only until a real, dispatchable host loop exists to
+expose (that's B.5c's landing, not B.5b's). No `handlePlayerDisconnect`/kick/ban wiring beyond
+what's already reachable from the accept loop — those are triggered by TCP message dispatch
+outcomes (a hang-up, a malformed message), so they naturally land with B.5c too.
+
+## 4. Verification plan
+
+Same pattern as B.5a: extend the existing real-loopback test infrastructure
+(`HostDgramListenerTests.swift`/`HostListenerTests.swift`'s harness shape) with an end-to-end test
+driving the new engine through a real `HostListener`+`HostDgramListener` pair — confirm a real
+tick fire broadcasts the expected `SR*`/`CLUpdate` bytes to a connected fake client, and confirm a
+relayed dgram packet reaches a second fake client with the right `tank`/`seq` applied. `swift
+test` count will grow by whatever this needs; will report exact before/after per D28. No
+`BoloKit` behavior change expected (`runTick` itself is unmodified — only its caller-side
+callback wiring is new, at the `BoloNet` layer).
+
+No open architecture question this time — §1's split is the main thing to rule on, everything
+else follows mechanically once that's confirmed. Awaiting your review before a coding GO.
