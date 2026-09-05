@@ -345,3 +345,74 @@ confirming a count *didn't* move, not just to counting increases).
 prior wave — completion report in this file, explicit pathspec commit, before/after test counts,
 and the actual `codesign` output confirming both entitlement keys landed correctly.
 [TO: PARITY] Nothing yet — standard post-commit activation once IMPLEMENTER reports B.0 complete.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.0 completion report
+
+**Type:** completion report
+**Phase:** Milestone B — sub-wave B.0 (package/entitlement plumbing), coding GO'd `4519622`
+**Commit:** `27c200c`
+
+Implemented exactly as GO'd, no scope beyond the pre-brief.
+
+## What landed
+
+- **`Package.swift`:** `products:` gained `.library(name: "BoloNet", targets: ["BoloNet"])`. The
+  now-stale "`BoloNet` is deliberately not exported" comment corrected in place. No target-level
+  change needed — every symbol in `Sources/BoloNet/` was already `public`.
+- **`project.pbxproj`:** three-part addition mirroring `BoloKit`'s existing wiring exactly (not
+  `BoloGlyphs`'s build-order-only shape): new `PBXBuildFile` (`"BoloNet in Frameworks"`, object ID
+  `B01A0004304B70C6007A9580`) referencing a new `XCSwiftPackageProductDependency`
+  (`B01A0012304B70C6007A9580`, `productName = BoloNet`), the build-file ID added to
+  `PBXFrameworksBuildPhase`'s `files`, the product-dependency ID added to the target's
+  `packageProductDependencies`. No new `XCLocalSwiftPackageReference` — same local package
+  reference already covers it.
+- **Entitlements:** `ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;` and
+  `ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;` added to both the Debug and Release
+  `XCBuildConfiguration` blocks for the `Bolo 2026` target, positioned alphabetically right after
+  `ENABLE_APP_SANDBOX` to match the file's existing key ordering.
+
+## Verification
+
+- **Structural check on the hand-edit** (same standard as D74, applied before attempting a build):
+  `plutil -lint` clean. Object counts moved by exactly the expected amount and nothing else:
+  `PBXBuildFile` 1→2, `XCSwiftPackageProductDependency` 2→3, `ENABLE_INCOMING_NETWORK_CONNECTIONS`/
+  `ENABLE_OUTGOING_NETWORK_CONNECTIONS` exactly 2 occurrences each (Debug+Release, no dupes).
+  `XCLocalSwiftPackageReference`, `PBXTargetDependency` (the `BoloGlyphs` build-order dependency),
+  and `PBXNativeTarget` counts all unchanged at 1 each — nothing else disturbed.
+- **`swift build`/`swift test`:** clean, 156 + 483 = 639 tests, unaffected (no `BoloKit`/`BoloNet`
+  Swift touched this sub-wave) — same total as Wave 7's close.
+- **Real `xcodebuild -scheme "Bolo 2026" build`: `** BUILD SUCCEEDED **`.** No toolchain hang this
+  run (SPM re-resolved the package graph for the new product with no issue).
+- **`codesign -d --entitlements -` on the signed `Bolo 2026.app`** — full output:
+  ```
+  com.apple.security.app-sandbox = true
+  com.apple.security.files.user-selected.read-only = true
+  com.apple.security.get-task-allow = true
+  com.apple.security.network.client = true
+  com.apple.security.network.server = true
+  ```
+  Confirms the pre-brief's stated mapping (`ENABLE_OUTGOING_NETWORK_CONNECTIONS` →
+  `network.client`, `ENABLE_INCOMING_NETWORK_CONNECTIONS` → `network.server`) against the real
+  signed output, alongside the three pre-existing entitlements untouched.
+- **Confirmed `BoloNet` is actually linked, not just declared:** `nm` on
+  `Bolo 2026.debug.dylib` (the Debug-mode executable's actual code, distinct from the thin
+  `Bolo 2026` launcher binary) shows 5,283 mangled `BoloNet`-module symbols present — the product
+  dependency isn't a no-op declaration, the app binary genuinely contains `BoloNet`'s code.
+
+## Scope check
+
+Touched only `Package.swift` and `Bolo 2026/Bolo 2026.xcodeproj/project.pbxproj`. No Swift source
+written — no `import BoloNet` anywhere yet, matching the pre-brief's confirmed scope boundary (no
+smoke-test import; B.1's navigation shell is the first real call site). Did not touch
+`docs/PLAN.md`, the three Director-owned untracked files, or anything in Wave 7's closed surface.
+
+Test count: 639 → 639 (unaffected, no BoloKit/BoloNet source changed this sub-wave).
+
+> **→ Planner:** B.0 implemented exactly as GO'd. Real `xcodebuild` succeeded (no hang), structural
+> `.pbxproj` check clean, and the `codesign` entitlement output has all five expected entries
+> including both new network entitlements. No new open questions. Ready for PARITY's audit
+> whenever you activate it, and ready for B.1's pre-brief whenever you assign it.
+> **→ Parity:** straightforward to re-derive independently — `plutil -lint` plus the object-count
+> deltas above on `project.pbxproj`, a diff of `Package.swift`'s `products:` array, and your own
+> `codesign -d --entitlements -` run against a fresh build. No behavioral/simulation code changed
+> this sub-wave, so no C-oracle re-derivation applies here.
