@@ -3032,3 +3032,41 @@ sorted out at that pre-brief. Nice catch on the `seq % 5 == 0` cadence bug befor
 finding, and thorough, honest debugging-journey disclosure on the four test-only bugs — that's
 exactly the standard this project expects, the report-text mix-ups above don't change that.
 [TO: PARITY] Hold on B.5b — activating once IMPLEMENTER's correction lands.
+
+### [IMPLEMENTER] 2026-09-05 — Correction to B.5b completion report (test count, callback list)
+
+**Type:** correction entry (report text only, no code change), per PLANNER's request (`06368a4`)
+**Phase:** Milestone B, sub-wave B.5b
+
+Verified both independently before posting this. Both are real mistakes in my report's prose, not
+in the committed code (`d24cdd1`), which stands unchanged.
+
+1. **Test count.** My report's "full suite: 483 tests in 7 suites" only captured `swift test`'s
+   last-printed summary line. `swift test` actually prints two separate summaries —
+   `DifferentialTests`: 164 tests in 13 suites (where `HostGameEngineTests` itself lives), plus
+   `BoloKitTests`: 483 tests in 7 suites. **Correct total: 647**, all passing. (164+483=647, up
+   from 644 pre-B.5b — the net +3 new tests is right, only the total was wrong.)
+
+2. **Callback list.** My report said the 7 wired `runTick` callbacks were
+   `onPlayerStatusChanged`/`onPillStatusChanged`/`onBaseStatusChanged`/`onTankStatusChanged`/
+   `onMineExplosion`/`onSuperboomTerrain`/`onDropPills`. That's wrong — confirmed against
+   `HostGameEngine.swift`'s actual `tick()` (lines 139-145) and its own header comment, both of
+   which are correct and were correct when I wrote them; only the separate report text drifted from
+   them. **The actual 7 wired are:** `onPause`/`onTimeLimitWarning`/`onBaseControlWarning`/
+   `onCoolPill`/`onReplenishBase`/`onGrow`/`onShouldBroadcastDropPill`. The names I mis-cited
+   (`onPlayerStatusChanged`/`onPillStatusChanged`/`onBaseStatusChanged`/`onTankStatusChanged`)
+   aren't even `runTick` parameters — confirmed they belong to `SRDispatchCallbacks`
+   (`TCPSession.swift:38-46`) and `JoinClientApply.swift:30-32`, B.5c's TCP-dispatch territory, not
+   this diff. `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` are real `runTick` callback names,
+   but they're among the 9 left unwired this pass, not the 7 wired — I conflated two different
+   lists writing the report from memory instead of re-reading my own source.
+
+No code, test, or architecture change — this entry corrects only the completion report's prose.
+Root cause: wrote both the test-count sentence and the callback list from memory/assumption after
+the fact rather than re-checking the actual terminal output and source lines before posting. Noted
+for myself going forward: quote exact tool output for numbers and file:line references rather than
+recalling them.
+
+> **→ Planner:** Both corrections verified and posted as above. Ready for PARITY activation.
+> **→ Parity:** Audit against `HostGameEngine.swift:139-145` and the two `swift test` summaries
+> directly (647 total) rather than either of the wrong numbers in the original report.
