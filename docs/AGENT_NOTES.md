@@ -3740,3 +3740,47 @@ entire v1 vertical slice (D60) are clear to close on my end.
 [TO: IMPLEMENTER] Clean fix, nothing further needed. The `Bool`-return approach reads correctly
 against every terrain value, not just the ones exercised — good structural match to `keyevent()`'s
 shape.
+
+### [PLANNER] 2026-09-04 — Wave 7.3 CLOSED; Wave 7's entire v1 vertical slice CLOSED (D60 delivered); D87's auto-mode grant ends, D85's gate resumes
+
+**Type:** wave close (two levels) + process note
+**Phase:** Wave 7 — the whole v1 vertical slice (7.0-7.3) is now CLOSED
+
+PARITY's D89 re-audit (`a2f1779`) is a clean PASS, and went beyond the three named check-points on its
+own initiative: an exhaustive sweep over every `Terrain.allCases` value (not just the five the shipped
+test samples) confirming mines are spent if and only if terrain matches one of `keyevent()`'s 15
+minable cases. Also disclosed, correctly, two self-caught setup mistakes in that scratch harness
+(argument order, an unoverridden `dead` default) fixed before trusting the result — exactly the
+"verify the check's own plumbing, not just run it" discipline this project has valued since PARITY
+caught its own inverted first attempt at the no-y-flip harness back in Wave 7.2.
+
+**Wave 7.3 closes: coded (`82d2c08`) → audited with one real finding (`4eb483f`, D89) → fixed
+(`2a53299`+`28b00ee`) → re-audited clean (`a2f1779`).**
+
+**Wave 7 — the entire v1 vertical slice D60 scoped out — closes with it.** All four sub-waves (7.0
+asset pipeline, 7.1 app target, 7.2 rendering, 7.3 input/tick loop) now carry a PARITY PASS. D60's
+literal cut-line is delivered: a window opens, renders a real map from real generated assets, and lets
+you drive a tank via the actual physics engine, keyboard-controlled, tick-driven, single-process.
+Six real regressions/gaps were found and fixed along the way (D70, D77, D84/D86, D88 §3/§4, D89),
+every one through the same fix→re-audit→close discipline this project has used since Wave 5 — this
+wave didn't get a pass on rigor just because it was UI-layer work rather than simulation code.
+`docs/PLAN.md`'s Wave 7 parent row, Wave 7.3's row, and the wave-table header are all updated to
+reflect the close.
+
+**D87's auto-mode grant ends here, exactly as its own text specified** — it was scoped to "this wave's
+workflow... until Wave 7.3 reaches a clean PARITY PASS," which just happened. D85's standing yes/no
+gate resumes automatically; no new ruling needed to turn it back on. The next pass I trigger (Milestone
+B/C/D scoping, or anything else) goes through Jerod first.
+
+Not yet GO'd: Milestone B (Host/Join panels wired to Wave 6's networking, D58), Milestone C (HUD,
+key remap, alliance/chat panels, sound synthesis, preferences), Milestone D (zoom/scroll polish,
+signing/notarization, and Q18's git-history rewrite of the original copyrighted assets). None of these
+are decided by this close — D60 explicitly deferred all three, and nothing here reopens that.
+
+[TO: IMPLEMENTER] Wave 7 closed, clean, end to end. This was a long wave with real teeth — six
+distinct findings caught and fixed without any of them sitting as unrouted debt — and the discipline
+held the whole way through, including flagging things (like reopening an already-passed file, or the
+`autoSlowdownBool` dead-code default) that would have been easy to just quietly do instead. Nice work.
+[TO: PARITY] Wave 7 closed on your PASS, across all four sub-waves. The D89 re-audit's exhaustive
+terrain sweep — going past the three named check-points on your own initiative, and catching your own
+harness mistakes before trusting the result — is exactly the standard this role exists to provide.
