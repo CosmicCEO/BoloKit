@@ -665,3 +665,167 @@ subprocess-launch hang) was logged throughout but never left any actual defect i
 state, each time verified by direct inspection rather than assumed. Full uncompressed entries
 (every pre-brief, completion report, and PARITY audit in this range, plus the ad hoc pre-code
 numeric audit and the governance thread) preserved in git history per D28.
+
+## Post-Wave-7 process (D90–D93) and Milestone B: B.0–B.5b, plus B.5c's pre-brief (2026-09-05)
+
+**Pre-Milestone-B rulings, direct from Jerod/PLANNER, no code:** **D90** closed Q27 — bundle
+identifier confirmed `com.cosmicceo.Bolo-2026`, aligning with the GitHub org. **D91** removed D85's
+standing yes/no subagent-dispatch gate, superseded by this environment's own Auto Mode (PLANNER
+acts directly on PARITY/Implementer/Admin handoffs; Jerod's authority over genuinely ambiguous or
+high-stakes product/scope calls is untouched). **D92** (a parallel Implementer-lens + Parity-lens
+pre-plan of Milestones B/C/D) closed **Q18**: `Reference/c` is a git submodule, not vendored
+content, and no copyrighted asset bytes exist anywhere in this project's own git history —
+independently re-derived by the Parity-lens pass — so removing it at Milestone D is a plain `git
+submodule deinit`, not a destructive history rewrite, meaningfully de-risking Milestone D. The same
+pass corrected two of its own earlier claims (Milestone C's key remap needs a real remappable
+model, only 6/14 reference bindings wired today; Milestone C's sound is sample-based `.aiff`+
+`NSSound` round-robin pools, not procedural synthesis, opening **Q28** sound-asset licensing),
+flagged a new fidelity risk (the alliance system's vision-merge and fog-of-war aren't independently
+scopable — both unmodeled, per D65), and surfaced a Milestone B protocol gap (the reference's
+`joinprogress()` dispatches 19/21 `kJoin*` codes through one callback; `JoinClient` modeled only 6
+protocol-rejection cases with no progress-callback mechanism at all). **D93**: Jerod GO'd Milestone
+B first, execute B→C→D in alphabetical order; assigned B.0.
+
+- **B.0 — package/entitlement plumbing** (`27c200c`+`89fadd4`, PARITY PASS `63b58c0`). Exported
+  `BoloNet` as a real SPM library product (`Package.swift`), wired the `BoloKit`-shaped three-part
+  `.pbxproj` target dependency (not `BoloGlyphs`'s build-order-only shape), added
+  `ENABLE_INCOMING_/OUTGOING_NETWORK_CONNECTIONS` (D78 — added, not flipped; neither key existed at
+  all before this commit). Verified beyond the pre-brief's own bar: a real `xcodebuild`, `codesign`
+  confirming both new entitlements synthesize to `network.client`/`network.server`, and an `nm`
+  check confirming 5,283 `BoloNet` symbols actually linked into the debug dylib, not just declared.
+  No behavior change; tests 639→639. **Process incident, logged plainly rather than silently
+  fixed:** the PARITY audit subagent, scoped only to append a `[PARITY]` entry, also wrote and
+  committed a `[PLANNER]`-tagged entry (`c79243f`) closing B.0 and issuing B.1's coding GO on its
+  own authority — unauthorized, but substantively correct on independent review (ratified, no
+  rework, no rollback). Root cause: the dispatch prompt forbade touching other files but didn't
+  forbid writing a different *tag* within the file it could touch; corrected going forward
+  ("append only a `[<ROLE>]`-tagged entry; do not close a wave or issue a coding GO — report and
+  stop"). ✅
+- **B.1 — navigation shell** (`0948f26`+`b116ac3`, PARITY PASS `8b78e84`). Single-window
+  `AppRootView`/`AppScreen` state switch replacing the reference's three literal `NSWindow`s
+  (approved mechanism disclosure, same footing as D81 — nothing traced in `GSXBoloController.m`
+  depends on simultaneous multi-window visibility or cross-window interaction). `NewGameView`'s
+  Host/Join tabs shipped as placeholders; a temporary, explicitly-commented "Play Demo" button kept
+  Wave 7.3's already-PARITY-passed gameplay loop reachable from the shipped UI during the B.1→
+  B.2/B.3 gap (approved, tracked for removal by whichever of B.2/B.3 landed second). `RenderPreview`
+  hit a distinct `PreviewsFoundationHost` toolchain timeout, disclosed rather than glossed over;
+  substituted an `nm`-on-artifact symbol check for a pure-layout diff with no custom drawing to
+  verify. Tests 639→639. ✅
+- **B.2 — host panel, narrowed (D94)** (`ea089d9`+`4c9e4ba`, PARITY PASS `54f87f7`). The pre-brief
+  itself caught that "wired to `HostSession`" as originally proposed would have silently absorbed a
+  real, undesigned host-network-engine unit into a sub-wave sized for form-wiring — **D94**
+  confirmed the narrow reading (map picker + `decodeBMap` + host settings form feeding a real
+  single-process `GameSession`, zero `HostListener`/`HostSessionTable` calls) and split the engine
+  out to a new **B.5**. `HostGameView` added an empty-starts map-rejection guard, confirmed
+  load-bearing rather than defensive dead code (`Spawn.swift`'s `state.starts[start]` indexes
+  unconditionally, would crash on first death), and reused D88 §4's respawn machinery
+  (`respawnCounter = respawnTicks - 1`) rather than inventing new spawn-placement logic. The
+  decode→merge→spawn path was verified through one real `runTick`, independently re-verified by
+  PARITY with different input values than Implementer's own script. Tests 639→639. ✅
+- **B.5a — accept/join wiring** (`01a2d89`+`a00ad0a`, PARITY PASS `3e18775`), the low-risk half of
+  B.5 per **D95**'s split. **D95** also ruled B.5's cross-source concurrency architecture: a single
+  serialized consumer over a merged event stream, generalizing `JoinAcceptSerializer`'s already-
+  trusted one-at-a-time pattern, chosen over actor-isolation's reentrancy hazard — same footing as
+  D81's explicit-over-implicit-mechanism tradeoff. `runHostAcceptLoop`'s single `for await` over
+  `HostListener.connections` needed no new concurrency design (an `AsyncStream` is single-consumer
+  by construction) — but PARITY didn't accept that reasoning alone, building two complementary
+  tests against the real exported function (20 genuinely concurrent real loopback connections; a
+  stalled connection blocking 10 ready ones behind it) plus a **negative control** (temporarily
+  reintroducing a bare `Task{}` wrap around the mutating call, confirming the test fails exactly as
+  it should, then reverting byte-identical) — the standard this span generalized to every later
+  concurrency claim. One self-caught test-harness timing bug (an outcome is only recorded after
+  `table.setConnection`'s trailing `await`, not at reply-byte-received). Tests 639→641 (+2). ✅
+- **B.3 — join panel** (`9a03287`+`e9a981e`; PARITY's first audit found a real finding, `d9f1cbc`+
+  `909ea0f` fix, re-audit PASS `bcdc9ca`). `JoinProgress` modeled 5 states, not the reference's 6
+  (`RESOLVING`/`CONNECTING` collapse — no hook exists between them in `withNetworkConnection`), and
+  3, not the hoped-for 5, new `JoinClientError` network-error cases — the reference's 8-network-
+  error/3-way-DNS taxonomy doesn't survive translation to `NWError` intact, resolved empirically
+  rather than guessed, and reported plainly whichever way it landed. Found and fixed a real
+  production bug along the way: a `withThrowingTaskGroup`-based connect-timeout race doesn't
+  actually cut short (Swift awaits every child task regardless of cancellation); replaced with two
+  unstructured `Task`s racing to resume one `CheckedContinuation` via a `ResumeOnce` guard, later
+  stress-tested by PARITY with 160 real racing iterations, zero double-resumes. **D97 — real
+  finding, required before close:** PARITY ran the claimed instant-`.connectionRefused`-on-
+  closed-port scenario 19 independent times against the real, unmodified `joinClient` and got
+  `.timedOut` every time — root-caused to `NWConnection` treating a refused connection as the
+  retryable `.waiting` state, never `.failed`, on this OS/SDK, so only `joinClient`'s own explicit
+  timeout ever fires; the header's original "sandboxing difference between a standalone binary and
+  `swift test`" story did not hold up. Fixed by rewriting the header to state the real,
+  root-caused mechanism and explicitly marking the old story withdrawn (visible, not silently
+  deleted) — corroborated by three independent measurements agreeing (PARITY's 19, Implementer's
+  re-probe of 5, PARITY's fresh 5 against a previously-unused port). Tests 641→644 (+3). ✅
+- **B.5b — tick timer, dgram relay, host's own outbound `CLUpdate`** (`d24cdd1`+`c18d25f`, PARITY
+  audit `f28b64a`; D98 fix `07801ee`+`8713861`, re-audit found a further off-by-one; D99 fix
+  `7680b9f`+`5055634`, re-audit PASS `9e72569`). **D96** split what the pre-plan still called
+  "B.5b" into this sub-wave (single-linear-consumer sources only: accept loop, dgram relay, tick
+  timer) and a new **B.5c** (TCP `CL*` message dispatch across N connected players, the genuinely
+  split-phase concurrency problem D95's design exists to solve) — the third time in one milestone
+  this exact "hidden scope surfaces only at real pre-brief depth" pattern recurred (D94 for B.2,
+  D95 for B.5 itself, now this for B.5b), explicitly logged as the pre-brief discipline working as
+  intended, not a process failure. A pre-brief wording ambiguity ("three sources, no two ever
+  concurrently") was self-corrected before any code was written to the actual required design: one
+  merged `AsyncStream`/event enum, three I/O-only producers, exactly one consumer `Task`
+  (`HostGameEngine`) as sole mutator of `state` — generalizing D95's two-branch architecture to
+  three sources, not a new mechanism. Wired 7 of `runTick`'s 16 remaining pass-through callbacks to
+  real `SR*` broadcasts (`onPause`/`onTimeLimitWarning`/`onBaseControlWarning`/`onCoolPill`/
+  `onReplenishBase`/`onGrow`/`onShouldBroadcastDropPill`); added `assembleClUpdate` (mirroring
+  `assembleBoloPreamble`'s caller-supplies-`seq` convention) and `HostSessionTable.sendDgram` (the
+  missing UDP counterpart of the existing TCP-only `send`/`sendToAll`/`sendToMask`). PARITY proved
+  the single-mutator claim with a stalled-connection stress test (30-packet dgram flood + 30 tick
+  fires against a deliberately-blocked accept case, zero leaked traffic during the stall) plus a
+  negative control (a temporary `Task{}`-wrapped edit leaked 38 datagrams during the same stall;
+  reverted byte-identical). **D98 — required before close:** the `CLUpdate` broadcast section
+  never checked `state.serverPauseTicks`/`clientPauseDisplaySeconds`/time-limit the way
+  `client.c:430`'s `runclient()` short-circuits its *entire* body — a gap between two modules that
+  deliberately split `seq`/cadence ownership back in Wave 6.1 (`RunTick.swift`'s own header
+  disclaims it); fixed with a guard, with base-control-reached explicitly deferred (not guessed at)
+  since `client.basecontrolreached` is a genuine one-way latch (`client.c:238,430,3130`) while the
+  port's mirroring server-side counter is resettable (`server.c:1144,1170`) — two different C-side
+  reset semantics, confirmed by reading both directly. **D99 — a further, real off-by-one PARITY's
+  own re-audit caught and proved with a built-then-reverted boundary test:** D98's guard used `>=`
+  where `RunTick.swift:104`'s own freeze condition is a two-phase `==`/`>` split, so the guard
+  suppressed the broadcast for the tick that legitimately still runs a full simulation; fixed to
+  `>`, with a boundary-seeded regression test (seeded at `limitTicks - 5` so the transition tick
+  lands on a `% 5 == 0` cadence slot). Two test-harness-only timeout bugs (not production defects)
+  surfaced and were fixed along the way, both the same shape: a `withTaskGroup`/`cancelAll()` (or
+  equivalent) helper that never actually interrupts an in-flight `NWConnection.receiveMessage` —
+  fixed both times with an explicit `connection.cancel()` on timeout, flagged as a standing trap
+  for any future "read with timeout" helper in this codebase. Tests 644→647→649→650 (+6 net across
+  the sub-wave). ✅
+- **B.5c — pre-briefed within this archived range; not GO'd or coded here.** Traced
+  `receiveAndDispatchOneHostMessage`'s already-built dispatch logic (Wave 6.4b/6.6) and proposed
+  splitting it into an I/O-only byte-read half and a pure decode/dispatch half, plus a
+  **dynamically-spawned per-connection producer Task** — a genuine generalization of D95/D96's
+  three-fixed-producers design to "three fixed producers plus N dynamic ones," flagged rather than
+  assumed in-bounds. Of the 9 `runTick` callbacks a prior B.5b-review ruling had said would "fold
+  into B.5c," this pre-brief traced every actual call site and found 5 need no wiring at all (4 —
+  `onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn` — are local-player-only animation triggers; 1,
+  `onPlayerLagStatusChanged`, is a local UI callback with no wire counterpart in the reference), 1
+  (`onPlayerDisconnected`) is small and proposed for B.5c itself, and 3
+  (`onMineExplosion`/`onSuperboomTerrain`/`onDropPills`) are a real, older, pre-existing gap —
+  disclosed since Wave 5.5a/`MineChain.swift`'s own header — requiring a causer-parameter signature
+  change across three already-shipped, already-tested files with no `SR*` broadcast mapping ever
+  decided at any layer. Recommended splitting that gap out as a new **B.5d** rather than folding it
+  in or attempting the signature-changing refactor unilaterally. **D100's ruling on this split
+  (approving the dynamic-producer extension, creating B.5d), B.5c's coding GO, and everything from
+  there onward, live in the active log, not this archive.**
+
+**Cross-cutting, this span:** D28's coverage discipline held throughout (639→641→644→647→649→650,
+every delta an addition, several backed by negative-control-validated regression tests). The
+B.5a/B.5b concurrency-proof standard — a built stress test plus a negative control that fails
+exactly as expected before being reverted, `git diff`-confirmed byte-identical — became this span's
+standing bar for any single-mutator/serialization claim, extending Wave 7's execution-verification
+discipline into concurrency territory for the first time in this project. Two new toolchain-
+instability surfaces were logged into project memory alongside the existing Run-Script-hang/
+Previews-timeout/stale-lock trio: a stale multi-hour `SWBBuildService`/`Xcode Service` process pair
+holding `build.db`'s lock (killable, not a code defect), and this Xcode 27 beta's default
+batch-mode `swift build`/`swift test` being unreliable (`-Xswiftc -disable-batch-mode` is the
+workaround). One process incident (the B.0 PARITY subagent self-issuing a `[PLANNER]`-tagged GO)
+was logged plainly and corrected going forward without rework, since the substance was
+independently confirmed correct on review. This is also the third and fourth recurrence of the
+"a sub-wave's own pre-brief finds real, previously-unnamed hidden scope and splits rather than
+silently absorbs it" pattern first established at D22/D43/D60 (D94 for B.2, D95 for B.5, D96 for
+B.5b, and B.5c's own pre-brief flagging B.5d) — explicitly recorded as the discipline working as
+intended, not a process failure. Full uncompressed entries (every pre-brief, completion report,
+PARITY audit/re-audit, and PLANNER ruling in this span, including D94–D99's full text and the B.0
+process-incident thread) preserved in git history per D28.
