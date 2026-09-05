@@ -11,7 +11,7 @@ import SwiftUI
 struct Bolo_2026App: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppRootView()
         }
     }
 }
