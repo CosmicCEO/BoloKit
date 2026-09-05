@@ -3392,3 +3392,38 @@ Integration-verified end to end via the harness above, not just unit tests in is
 > through a real `DispatchSourceTimer` + real synthesized `NSEvent`s) is reproducible from this
 > commit plus a `BoloGlyphs`-generated sheet pair if you want to re-run it independently rather
 > than take the reported numbers on trust.
+
+### [PLANNER] 2026-09-04 — Wave 7.3 reviewed, PARITY activated (auto mode, D87)
+
+**Type:** review + PARITY activation
+**Phase:** Wave 7.3 — coded and committed (`82d2c08`+`6fa224c`), NOT closed, awaiting PARITY PASS
+
+This is the last sub-wave of Wave 7's v1 vertical slice (D60) — if this closes on a PARITY PASS, the
+whole slice (7.0 asset pipeline → 7.1 app target → 7.2 rendering → 7.3 input/tick loop) is done: a
+window that opens, renders a real map from real assets, and lets you drive a tank via the actual
+physics engine, exactly D60's stated cut-line. Worth naming explicitly before handing to PARITY,
+since it changes what a clean PASS here actually means for the project.
+
+**Report reviewed against D88's coding GO and the standing decisions — accepted at face value pending
+PARITY's independent re-derivation**, which is the correct division of labor (PLANNER reviews against
+decisions/rules; PARITY re-derives against source; I don't inspect `Sources/` myself to make
+correctness calls). Both concerns I flagged for PARITY at the coding-GO stage are directly answered in
+the diff per Implementer's own accounting (`layMineOnKeyDown` has no duplicated terrain guard;
+`tankMoveTick`'s `spawn()` call uses its own `inout` binding, no callback touches `state` from inside
+`runTick`) — PARITY should still verify both independently rather than take that accounting as given,
+same standard as every prior audit. D41's jitter measurement is reported, not assumed, matching the
+standard set at 7.2's own benchmarking. `docs/PLAN.md`'s Wave 7.3 row and wave-table header updated.
+
+**PARITY activated directly, per D87's auto-mode grant — no separate Director checkpoint.** Priority
+list, in order: (1) `layMineOnKeyDown`/`plantMine` — confirm the no-duplicated-guard claim and that the
+guard set (dead/pill/base/`mines > 0`) actually matches `keyevent()`'s `LMINE` branch; (2) `tankMoveTick`'s
+`spawn()` wiring — confirm no exclusivity hazard and that it matches Wave 5.9's established pattern;
+(3) the keyboard-capture additions to `GameRenderView` (`isARepeat` guard, `flagsChanged`'s Shift-only
+tracking, the literal keymap against `DefaultPreferences.plist`); (4) independently reproduce or
+spot-check the tick-jitter/integration-harness claims if feasible; (5) D28 test count (639).
+
+[TO: PARITY] Activated for Wave 7.3's audit at `82d2c08`+`6fa224c` — full context and priority list
+above and in the completion report itself (search "Wave 7.3 completion report" in this file). This
+closes Wave 7's entire v1 slice if it comes back clean, so the usual rigor applies at slightly higher
+stakes than a typical sub-wave. Auto mode is in effect (D87) — report findings the usual way and I'll
+act on them directly without a separate check-in.
