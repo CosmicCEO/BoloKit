@@ -1329,3 +1329,50 @@ Test count: 639 → 639 (unaffected).
 > port field is genuinely inert (no code path anywhere reads `portText` for anything beyond
 > display); (3) whether you want your own real map file + `xcodebuild` run rather than relying on
 > my standalone-script verification for the decode path.
+
+### [PLANNER] 2026-09-05 — B.2 completion report reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.2 — coded (`ea089d9`), report (`4c9e4ba`), pending PARITY
+
+Reviewed the actual diff for all four files, not just the report. `HostGameView.swift` matches the
+D94-narrowed scope exactly — confirmed zero `HostListener`/`HostDgramListener`/`HostSessionTable`/
+`HostSession` identifiers anywhere in the new file myself, not just trusting the stated grep. The
+`AppScreen.playing(GameState)` refactor is clean — dropping `Equatable` since nothing needed it
+rather than contorting `GameState` to conform is the right call, and `demoState` relocating to
+`AppRootView` (next to its only remaining caller, the "Play Demo" button) instead of staying in
+`GameView` is a sensible tidy, not scope creep. `GameView` now taking `initialState:` from the
+caller is exactly the "B.1's demo path and B.2's real path share one machinery" design the pre-brief
+implied without over-stating it as a formal requirement.
+
+The empty-starts guard is a good catch and — more importantly — verified as load-bearing rather
+than assumed: confirming `decodeBMap` itself returns `true` with zero starts (so this isn't dead
+defensive code protecting against something already impossible) is exactly the "verify the check's
+own plumbing" discipline this project has valued since PARITY caught its own inverted first
+no-y-flip attempt back in Wave 7.2. The standalone-harness verification of the decode→merge→spawn
+path through a real `runTick` (not just field assignment) is the correct proportional response to
+"this diff's SwiftUI wiring is low-risk, its behavioral merge logic is not" — same judgment
+structure as B.1's build-vs-visual distinction, applied to a different risk axis.
+
+Correctly left `README.md` alone — confirmed myself it's Jerod's own in-progress edit (first-person
+narrative content), not agent output; good instinct not to sweep it into a commit or comment on its
+content.
+
+**Activating PARITY for B.2.** B.5's pre-brief (the real host-network engine, D94) can start whenever
+IMPLEMENTER is ready, independent of this audit — B.3's coding GO, if IMPLEMENTER reaches it next
+instead, waits for B.2's clean PASS same as every prior transition.
+
+[TO: PARITY] B.2 ready for audit at `ea089d9`+`4c9e4ba`. IMPLEMENTER specifically flagged three
+things worth independently confirming rather than trusting: (1) the empty-starts guard fires before
+any `GameSession`/`GameState` gets used further, trace `handleMapPickerResult`'s actual control flow
+yourself; (2) the port field (`portText`) is genuinely read nowhere except the text field's own
+display binding; (3) your call whether to build a real map file and drive `HostGameView` through a
+real `xcodebuild`/`RenderPreview` pass rather than relying on the completion report's standalone
+harness for the decode path. **Scope reminder, same as B.1's audit:** append only your own
+`[PARITY]`-tagged entry to `docs/AGENT_NOTES.md`, nothing else — no `[PLANNER]` entry, no
+`docs/PLAN.md` edit, no closing the sub-wave, no issuing B.3's or B.5's coding GO. Report your
+verdict and stop.
+[TO: IMPLEMENTER] Clean report, nothing to correct. The `respawnCounter = respawnTicks - 1` trick
+reusing D88 §4's already-wired spawn machinery instead of inventing new placement logic is exactly
+the kind of reuse this project rewards, and verifying it through one real `runTick` rather than
+asserting the arithmetic is correct discipline. Good call leaving `README.md` alone.
