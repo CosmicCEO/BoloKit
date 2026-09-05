@@ -196,3 +196,118 @@ surface yourself rather than taking this pre-plan's summary as a substitute for 
 any open question (e.g. how you want to structure the `BoloNet` dependency wiring, or anything the
 pre-plan's Implementer-lens research pass didn't cover) same as always.
 [TO: PARITY] Nothing yet — standard post-commit activation once IMPLEMENTER reports B.0 complete.
+
+### [IMPLEMENTER] 2026-09-05 — Milestone B.0 pre-brief: package/entitlement plumbing
+
+**Type:** pre-brief (no production code yet)
+**Phase:** Milestone B (D93's coding GO), sub-wave B.0 — package export + entitlements + target
+dependency wiring, first of Milestone B's proposed B.0-B.4 split.
+
+Read `Package.swift`, `Bolo 2026/Bolo 2026.xcodeproj/project.pbxproj`, and `Sources/BoloNet/`'s
+directory/public-surface myself rather than taking D92/D93's summary as a substitute, per the
+assignment. Confirms both cited gaps exactly as described, with the concrete mechanics below.
+
+## 1. `Package.swift` — export `BoloNet` as a real library product
+
+Current `products:` array (lines 9-15) has exactly two entries — `BoloKit` and the `BoloGlyphs`
+executable — with a comment reading "`BoloNet` is deliberately not exported — the v1 slice is
+single-process (D73); revisit at Milestone B." That revisit is now. Proposing:
+
+```swift
+products: [
+    // Consumed by the `Bolo 2026` app target (Wave 7.1).
+    .library(name: "BoloKit", targets: ["BoloKit"]),
+    // Host/Join panels, Milestone B (D93) — exported now that the app target needs it.
+    .library(name: "BoloNet", targets: ["BoloNet"]),
+    // Build-time sheet generator, invoked from the app's Run Script phase (D72).
+    .executable(name: "BoloGlyphs", targets: ["BoloGlyphs"]),
+],
+```
+
+The stale "deliberately not exported" comment gets corrected in place (not left standing now that
+it's wrong), same convention this project already uses for outdated notes elsewhere (D74's own
+"recorded so a future session doesn't fix it" pattern, applied in reverse here — a note that would
+otherwise mislead a future session into thinking the omission is still deliberate).
+
+`BoloNet`'s own target declaration (`.target(name: "BoloNet", dependencies: ["BoloKit"])`) needs no
+change — every symbol I can find in `Sources/BoloNet/` (126 `public` declarations across 18 files,
+spot-checked, not exhaustively counted by hand) is already `public`; SPM's product export is purely
+an availability change for consumers outside the package, not a visibility change inside it.
+`DifferentialTests`' existing in-package dependency on `BoloNet` (`Package.swift:30`) is a target-to-
+target reference and is unaffected by whether `BoloNet` is also exported as a product.
+
+## 2. `project.pbxproj` — wire the target dependency
+
+Read the actual object graph rather than assuming its shape. `Bolo 2026`'s existing `BoloKit`
+wiring is exactly three parts, all under the single already-present `XCLocalSwiftPackageReference
+".."` (no second package reference needed — same local package, one more product):
+
+1. A `PBXBuildFile` entry (`"BoloKit in Frameworks"`, `productRef` → the product dependency below),
+   listed in `PBXFrameworksBuildPhase`'s `files`.
+2. An `XCSwiftPackageProductDependency` object (`productName = BoloKit`).
+3. That dependency's ID listed in the target's own `packageProductDependencies`.
+
+(Contrast `BoloGlyphs`, which has its own `XCSwiftPackageProductDependency` object but is wired
+via a plain `PBXTargetDependency` for build-order only — never added to `packageProductDependencies`
+or the Frameworks phase, since it's a build-time executable, never linked. `BoloNet` needs the
+`BoloKit`-shaped wiring, not the `BoloGlyphs`-shaped one — the app will link and `import BoloNet`.)
+
+Proposing the identical three-part addition for `BoloNet`: a new `PBXBuildFile` ("BoloNet in
+Frameworks"), a new `XCSwiftPackageProductDependency` (`productName = BoloNet`), and both IDs added
+to the Frameworks-phase `files` list and the target's `packageProductDependencies` list respectively.
+Mechanical, same shape as the existing `BoloKit` entries, new object IDs only.
+
+This is a hand-edit to `project.pbxproj`, against the MCP tools' standing "do NOT modify
+`project.pbxproj` directly" warning — same situation D74 already hit and PLANNER accepted (no MCP
+tool exists for adding a Swift package product dependency to an existing target; the alternative is
+not doing the assigned work). Will verify structurally afterward the same way D74's edit was
+verified: confirm the file stays `plutil`-parseable and that the object counts move by exactly the
+expected amount (one new `PBXBuildFile`, one new `XCSwiftPackageProductDependency`, both IDs
+referenced exactly once each in the expected lists) — no duplicates, no orphans.
+
+## 3. Entitlement keys — add, not flip (D78)
+
+Confirmed independently: neither `ENABLE_OUTGOING_NETWORK_CONNECTIONS` nor
+`ENABLE_INCOMING_NETWORK_CONNECTIONS` appears anywhere in `project.pbxproj` today.
+`ENABLE_APP_SANDBOX = YES;` is present in both the target's Debug and Release `XCBuildConfiguration`
+blocks (`project.pbxproj:290`, `:321`) — the two build settings' keys sort alphabetically right
+after it (`APP_SANDBOX` < `INCOMING` < `OUTGOING` < `PREVIEWS`), matching this file's existing
+alphabetical key ordering within each `buildSettings` block. Proposing both keys, `= YES`, added to
+both configs at that position — hosting (B.2) needs incoming, joining (B.3) needs outgoing, and
+D93's own text asks for both now rather than staggering one per sub-wave.
+
+**Verification, same standard as D74:** `codesign -d --entitlements -` on the signed product,
+confirming the *synthesized entitlement keys* appear (Xcode maps `ENABLE_OUTGOING_NETWORK_CONNECTIONS`
+→ `com.apple.security.network.client` and `ENABLE_INCOMING_NETWORK_CONNECTIONS` →
+`com.apple.security.network.server` in the generated entitlements — stating the expected mapping
+here but confirming it against the real signed output rather than asserting it, same discipline
+D74 used for `app-sandbox`/`files.user-selected.read-only`/`get-task-allow`) alongside the existing
+`app-sandbox` entitlement, not just that the build settings exist in the project file.
+
+## 4. Build/test verification plan
+
+`swift build`/`swift test` first (BoloKit/BoloNet/BoloGlyphs side — unaffected by this sub-wave's
+changes, should stay exactly at the current count, no BoloKit/BoloNet Swift is touched). Then a
+real `xcodebuild` for the `Bolo 2026` scheme — the known Run Script toolchain hang (Wave 7.1/7.2)
+did *not* recur on Wave 7.3's build, so attempting it directly rather than pre-emptively assuming a
+hang; will fall back to the established substitute-verification path (kill the stuck process,
+verify via direct inspection of the built artifacts) if it does recur, and will say so plainly if it
+does. `codesign -d --entitlements -` on the resulting `.app` is the actual acceptance check per §3.
+
+## 5. Judgment calls / open questions
+
+1. **No `import BoloNet` anywhere yet.** B.0 wires the dependency structurally (product export +
+   `.pbxproj` link + entitlements) but has nothing to use it *for* — B.1 (navigation shell) doesn't
+   exist yet, so there's no call site. An unused linked product doesn't fail the build or the
+   entitlement check, so I'm treating "wire the target dependency" as the structural link, not a
+   requirement to add a smoke-test `import` somewhere. Flagging this reading explicitly in case
+   you intended a minimal proof-of-import as part of B.0's acceptance bar rather than deferring
+   that proof to B.1's first real usage.
+2. **Scope boundary against B.1-B.4:** confirming (not re-deciding) that B.0 stops at "the app *can*
+   link and import `BoloNet`, and *can* legally make network connections once sandboxed" — no
+   navigation shell, no Host/Join UI, no actual `HostSession`/`JoinClient` call anywhere in this
+   sub-wave. Matches D93's own text; stating it here so the completion report has an explicit line
+   to check against.
+
+No Jerod-level product/architecture question identified — everything above is mechanical plumbing
+within the already-GO'd scope. Awaiting coding GO.
