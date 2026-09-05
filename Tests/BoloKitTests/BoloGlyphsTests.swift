@@ -153,6 +153,32 @@ struct BoloGlyphsTests {
         #expect(isFullyOpaque(fullDiag))
     }
 
+    @Test("D86: road's real diagonal tracking is unaffected by the corner-inference fix, and images 81/143 render distinctly")
+    func roadCornerFillStillUsesItsOwnDiagBitsNotInference() {
+        // Orthogonally connected on all 4 sides but explicitly no diagonal neighbors -- like
+        // wall, road has real diagonal data (`deriveRoadConnectivity()`) to trust instead of
+        // inferring corners from ortho pairs, so it must still leave all four corners
+        // transparent here, unlike the inferred families above.
+        let noDiag = renderGlyph(.connective(family: .road, ortho: 0b1111, diag: 0))
+        #expect(!isFullyOpaque(noDiag), "road must not infer corners from ortho pairs -- it tracks real diag bits")
+
+        // Fully connected on every side, including diagonals -- must be solid.
+        let fullDiag = renderGlyph(.connective(family: .road, ortho: 0b1111, diag: 0b1111))
+        #expect(isFullyOpaque(fullDiag))
+
+        // PARITY's D86 finding, reproduced directly: with ortho=15 fully connected, the
+        // diag=0 and diag=15 configurations -- images 143 and 81 respectively, per
+        // `deriveConnectivity(family: .road)` -- must render as visually distinct patches,
+        // not the pixel-identical collapse the regression produced.
+        #expect(noDiag.pixels != fullDiag.pixels, "road's diag=0 and diag=15 variants at ortho=15 (images 143/81) must render differently")
+
+        // Confirm those two connectivities really do correspond to images 81 and 143, so this
+        // test is anchored to the actual regression PARITY measured, not just a generic shape.
+        let roadConnectivity = deriveConnectivity(family: .road)
+        #expect(roadConnectivity[81]?.ortho == 0b1111 && roadConnectivity[81]?.diag == 0b1111)
+        #expect(roadConnectivity[143]?.ortho == 0b1111 && roadConnectivity[143]?.diag == 0)
+    }
+
     // MARK: - Tank heading convention (D70)
 
     /// Centroid of every non-transparent pixel in a 16x16 patch, relative
