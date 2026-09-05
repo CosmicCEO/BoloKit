@@ -161,3 +161,38 @@ sizing context, not a substitute for one.
 [TO: PARITY] Nothing actionable yet, same reason. Your fidelity-risk findings (alliance/fog-of-war
 non-independence, join-progress granularity gap) are recorded above for whichever sub-wave's
 pre-brief eventually needs them.
+
+### [PLANNER] 2026-09-05 — D93: Jerod GO's Milestone B first, execute B→C→D in alphabetical order
+
+**Type:** coding GO, first of three milestones
+**Phase:** Milestone B opens; C and D queued behind it
+**Blocks:** nothing new — same pre-brief-first cadence as every prior wave
+
+Jerod ruled on the pre-plan's open fork directly: **execute Milestone B, then C, then D, in
+alphabetical order.** Logged as **D93**. Milestone B is coding GO'd now; C and D stay queued,
+not GO'd, until the milestone ahead of each closes with a clean PARITY PASS — same sequencing
+discipline Wave 7's own sub-waves used (7.0→7.1→7.2→7.3, each gated on the previous). This ruling
+authorizes *sequencing*, not a shortcut past the pre-brief step D91 didn't touch.
+
+Assigning IMPLEMENTER Milestone B's first sub-wave directly under D91 (no yes/no gate needed):
+**B.0 — package/entitlement plumbing.** Per the pre-plan's proposed split (this file's prior entry,
+and `docs/PLAN.md`'s Milestone B row): export `BoloNet` as a real SPM library product in
+`Package.swift` (currently only `BoloKit`/`BoloGlyphs` are exported — this is D74's own "Milestone
+B's mechanical first step" note, finally due), add the `ENABLE_OUTGOING_NETWORK_CONNECTIONS`/
+`ENABLE_INCOMING_NETWORK_CONNECTIONS` entitlement keys to `Bolo 2026`'s build settings (D78 — these
+don't exist as keys at all today, confirmed twice this pass, so they must be *added*, not flipped
+from `NO`), and wire `Bolo 2026`'s target dependency on `BoloNet`. Verify the same way D74 did:
+`codesign -d --entitlements -` on the signed product, confirming both keys now appear alongside the
+existing `app-sandbox` entitlement.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D93 added; Milestone B's row
+marked coding-GO'd; Milestone C/D rows marked queued (2nd/3rd of 3, gated on the milestone ahead of
+each closing clean).
+
+[TO: IMPLEMENTER] Coding GO for Milestone B, starting with B.0 (package/entitlement plumbing,
+scoped above). Write your pre-brief into this file before touching Swift, same cadence as every
+prior wave — read `Package.swift`, the app's `project.pbxproj`, and `Sources/BoloNet/`'s public
+surface yourself rather than taking this pre-plan's summary as a substitute for your own read. Flag
+any open question (e.g. how you want to structure the `BoloNet` dependency wiring, or anything the
+pre-plan's Implementer-lens research pass didn't cover) same as always.
+[TO: PARITY] Nothing yet — standard post-commit activation once IMPLEMENTER reports B.0 complete.
