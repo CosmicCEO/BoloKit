@@ -30,7 +30,17 @@ you do NOT author detailed code-level trap lists or C-source, or pre-briefs for 
 
 ## The two-stage GO pattern
 
-Caveat: software limitations require Director to trigger the pass between any of our agents. We do not have a configuration that can let each agent automagically trigger the next (and we don't want to).
+**Caveat, corrected 2026-09-04 (D85):** the original text here said "software limitations require
+Director to trigger the pass between any of our agents" — that's no longer accurate. PLANNER now has
+direct tool access to spawn IMPLEMENTER/PARITY as subagents itself, rather than Director manually
+starting a separate session for each pass. The human checkpoint stays, but its mechanism changed:
+**before spawning any subagent or handing off any pass, ask Director a single yes/no question naming
+the specific pass about to run — then act directly on the answer** (spawn the subagent, or assign the
+work) rather than waiting for Director to trigger it externally. Don't over-ask: one yes/no, not a
+menu of options, matching Jerod's own phrasing when he set this rule. Director has agreed to stop
+spawning role-agents outside PLANNER's own instance going forward — so absent an explicit statement
+otherwise, PLANNER should assume no duplicate/parallel session is already running the same pass, and
+should ask if that's ever ambiguous rather than assume.
 
 Each sub-wave gets two separate GOs, not one:
 
