@@ -3882,3 +3882,101 @@ you get to it, no rush.
 [TO: PARITY] Heads up for whenever B.5c lands: the dynamic-producer extension to D95/D96's
 architecture is approved but worth its own verification (does a producer genuinely stop cleanly on
 disconnect/hangup, no leaked Task) — same standard as B.5a/B.5b's concurrency claims.
+
+### [IMPLEMENTER] 2026-09-05 — B.5c items 1-5 landed; one real pre-existing bug found (not fixed yet)
+
+**Type:** completion report + one flagged finding, held out of this commit
+**Phase:** Wave 7 / Milestone B, sub-wave B.5c
+**Commit:** `8ca6567`
+
+## What landed
+
+1. **`receiveAndDispatchOneHostMessage` split** (`HostSession.swift`) into `receiveOneHostMessageBytes`
+   (I/O-only) and `dispatchHostMessage` (pure decode+dispatch, `await`s only into `table` at the
+   end). `receiveAndDispatchOneHostMessage` itself is now a thin wrapper — verified all 24 existing
+   `HostSessionTests.swift` call sites pass unchanged, confirming the extraction is behavior-preserving.
+2. **Dynamic per-player producer `Task`** (`HostGameEngine.swift`), spawned from `.newConnection`'s
+   handling once `processJoinAttempt` returns `.accepted` — generalizes D96's three-fixed-producers
+   shape per your approval (`1b85dab`). Loops `receiveOneHostMessageBytes`, yields `.clMessage`/
+   `.clConnectionEnded` into the same merged stream.
+3. **`.clMessage`/`.clConnectionEnded` wired** in the consumer: dispatch + flush, `.hangUp` ->
+   `handlePlayerDisconnect(.normal)`, a thrown decode/read error -> `.abnormal`. A dispatch-level
+   decode failure (framing-correct bytes, logically invalid) is treated the same as a dead
+   connection rather than silently ignored.
+4. **`onPlayerDisconnected` wired** in `tick()` — the narrow two-step action (`sendToAllExcept`
+   `SRPlayerDisc` + `table.disconnect`), deliberately NOT a call to `handlePlayerDisconnect` itself
+   (would double-fire `removePlayer`'s drop-pills logic, since `RunTick.swift`'s own step 4 already
+   ran it).
+5. **5 callbacks confirmed correctly unwired** (`onExplosion`/`onSuperboom`/`onSmallboom`/`onSpawn`/
+   `onPlayerLagStatusChanged`) — no code change, just settled per the pre-brief's source-reading.
+
+**4 new regression tests**, each confirmed via negative control (disabled the relevant wiring,
+confirmed the test fails; restored, confirmed byte-identical via `git diff`, confirmed passing
+again): a real dispatched `CL*` message mutating state, hang-up disconnect, connection-close
+disconnect, and lag-timeout disconnect via the tick timer.
+
+## A real, pre-existing bug found (not part of this commit, not fixed yet)
+
+While stabilizing the connection-close disconnect test, hit real flakiness — not in any of my new
+code, traced to a genuine, disclosed-nowhere-until-now defect in `HostListener.swift`'s
+`runJoinHandshake` (Wave 6.3/B.5a, well before B.5c): the `.accepted` branch's own `catch` (lines
+245-248) on a preamble/map-send failure calls `table.disconnect(player)` but **never undoes
+`applyJoin`'s `state.players[player].used/connected = true`**. Confirmed deterministically with a
+standalone scratch test (cancel the client connection immediately after sending the join preamble,
+no wait): result was `table.isConnected(1) == false` but `state.players[1].used == true,
+connected == true` — **permanently** (nothing before B.5c ever read a connection this table had
+already forgotten, so the leak was real but unreachable until my dynamic producer existed to
+expose it). In production this would permanently occupy a `GameState` slot as
+used-and-supposedly-connected with no real connection ever attached to it again — `runTick` keeps
+simulating a tank nobody controls, and (per `evaluateJoinRequest`'s own rejoin logic) the slot
+would need to be `used && !connected` to ever become rejoin-eligible again, which it never
+reaches.
+
+**Not something I'm fixing solo** — this is already-closed B.5a-era code, and the right fix
+depends on a call I don't think is mine to make unilaterally: `removePlayer(player:state:)`
+resets `connected` but deliberately leaves `used` (matching the C reference's own "used-but-
+disconnected slots are rejoin-eligible" model) — calling it in that `catch` branch looks like the
+right shape, but I have not found any real C-side precedent for "preamble/map send fails mid-
+handshake" to transcribe from (the C reference's own async buffered-I/O model doesn't have an
+equivalent synchronous failure point) — this port's own synthesis, not a transcription, same as
+`RunTick.swift`'s own header discloses for its server/client interleaving order. Also: no
+`SRPlayerDisc`/`SRPlayerExit` broadcast should fire here — `SRPlayerJoin`/`SRPlayerRejoin` is only
+sent *after* a successful map send, so no other player has learned this slot exists yet;
+`handlePlayerDisconnect` itself would be the wrong tool for that reason alone even before the
+`used`-reset question.
+
+My own affected test (`hostGameEngineDisconnectsAPlayerAbnormallyWhenConnectionCloses`) was
+actually just carrying a wrong assumption of its own -- I fixed that separately, not by touching
+the bug: it was cancelling the connection right after `table.isConnected(1)` became true, but that
+signal fires (`HostListener.swift:230`) *before* the preamble/map send this bug lives in, and
+before `.accepted` is even returned / my own producer spawned. Waiting for a real dispatched `CL*`
+message's effect first (proving the join fully completed and my producer is actually running)
+before testing *my own* disconnect handling avoids the unrelated join-handshake failure window
+entirely -- confirmed stable across 10 repeated runs of the full `hostGameEngine` filter plus 3
+full-suite runs after this fix, zero flakes.
+
+## Verification
+
+- `swift build --build-tests`: clean.
+- `swift test --filter "hostGameEngine"`: 10/10 pass, 10 consecutive full runs, zero flakes.
+- Full suite, 3 consecutive runs: **171 DifferentialTests + 483 BoloKitTests = 654**, up from 650
+  (+4, matching the new tests). All pass, all 3 runs.
+
+## Scope check
+
+Touched exactly `Sources/BoloNet/HostSession.swift`, `Sources/BoloNet/HostGameEngine.swift`,
+`Tests/DifferentialTests/HostGameEngineTests.swift`. Did not touch `HostListener.swift` (where the
+found bug lives — deliberately left alone pending your ruling), `RunTick.swift`/`MineChain.swift`
+(B.5d's territory), `README.md`, or the three Director-owned untracked files.
+
+> **→ Planner:** B.5c items 1-5 landed clean at `8ca6567`, full suite 654/654, stable across
+> repeated runs. One real bug found in already-closed B.5a-era code (`HostListener.swift`'s join
+> slot-leak on send failure, detailed above) — proposing `removePlayer` in that `catch` branch
+> (resets `connected`, deliberately leaves `used` for rejoin-eligibility) as the likely fix shape,
+> but not touching it myself since it's outside this sub-wave's file scope and touches join-
+> handshake semantics from a different, already-closed wave. Your call on whether this needs its
+> own D-number/ruling or a quick go-ahead to fix in a follow-up commit.
+> **→ Parity:** worth specifically re-deriving the join slot-leak independently (the scratch-test
+> repro shape is in the report) before trusting my read, and confirming the `dispatchHostMessage`
+> split is truly behavior-preserving against all 24 `HostSessionTests.swift` cases, not just that
+> they still pass.
