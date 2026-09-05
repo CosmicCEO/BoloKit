@@ -3424,3 +3424,110 @@ Requesting PARITY re-audit of D98's fix.
 [TO: PARITY] Re-audit requested for D98 (`07801ee`+`8713861`) — check the pause/time-limit
 re-derivation against `RunTick.swift`'s real freeze logic, and confirm the base-control-reached
 omission is genuinely necessary, not a shortcut. This is the last gate before B.5b closes.
+
+### [PARITY] 2026-09-05 — D98 re-audit (`07801ee`+`8713861`): pause re-derivation PASS, base-control deferral confirmed genuinely necessary, but the time-limit re-derivation has a real, proven off-by-one
+
+**Type:** post-commit re-audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present; every claim below is execution-verified, including a built-and-reverted fix proving
+the off-by-one rather than just reasoning about it. **Concurrency note:** `README.md` sits
+modified-uncommitted throughout (Jerod's own edit) — untouched.
+
+**Verdict: not a clean PASS.** Pause re-derivation is correct. The base-control-reached deferral is
+confirmed genuinely necessary, not a shortcut, by reading both halves of the C reference directly.
+But the time-limit re-derivation has a real, proven off-by-one tick: it drops the last genuinely-
+simulated tick's `CLUpdate` broadcast, one tick earlier than the reference actually stops.
+
+**1. Pause re-derivation — PASS.** `RunTick.swift:76-84`: the pause gate is checked at `runTick`'s
+entry and returns immediately if `state.serverPauseTicks != 0 || state.clientPauseDisplaySeconds !=
+0`, with **zero simulation of any kind** running that call. This is a simple "check-at-entry,
+freeze-immediately" shape with no intermediate transition tick — so `HostGameEngine.tick()`
+checking the same condition on the *post-`runTick`* value of those same two fields is safe: if
+pause was already set at entry, nothing changed this call, so checking after is equivalent to
+checking before. No boundary case exists here the way there is for time-limit (see below).
+
+**2. Time-limit re-derivation — CONFIRMED DEFECT: a real off-by-one, proven with a built test.**
+Read `RunTick.swift:89-108` line by line: the time-limit block has **two distinct phases**, not
+one — `Int(state.ticks) == limitTicks` (exact match: fires `onTimeLimitWarning(0)`, increments
+`ticks`, returns early — **no simulation this call**) versus `Int(state.ticks) > limitTicks`
+(already past: returns immediately, **no simulation, no increment**, permanently frozen). Neither
+of those is what runs on the call that brings `ticks` from `limitTicks - 1` to exactly
+`limitTicks` — that call matches *neither* special branch (`99 != 100`, `99` is not `> 100`), so it
+falls through to the **normal, full-simulation path** and only increments `ticks` to `limitTicks`
+as an ordinary consequence of a real tick running (tanks genuinely move this call).
+
+D98's guard — `Int(state.ticks) >= Int(ticksPerSec) * state.timeLimit`, checked *after* `runTick`
+returns — evaluates to `true` at the end of that exact call (post-call `ticks == limitTicks`),
+because it collapses `RunTick`'s own `== / >` two-branch split into one `>=` test. The practical
+effect: the **last tick that actually ran real simulation** (the one immediately before the
+reference's own freeze takes effect) has its `CLUpdate` broadcast suppressed one tick early.
+
+**Proved this, not just reasoned about it.** Built a temporary test
+(`Tests/DifferentialTests/HostGameEngineTests.swift`, appended, run, then `git checkout`-reverted —
+confirmed byte-identical): configured `state.timeLimit = 1`, `state.ticks = limitTicks - 5` (50-5=45)
+so that the 5th `tick()` call — the one where `localSeq` would hit its `%5==0` broadcast cadence —
+is exactly the last-normal-simulation call landing on `ticks == limitTicks`. Under the shipped
+`>=` code: **zero broadcasts ever observed** in a 400ms window (engine settles at `state.ticks ==
+51`, matching the reference's own permanent-freeze value of `limitTicks+1`, confirming the harness
+targets the right tick). Then temporarily patched the one comparison operator from `>=` to `>`,
+rebuilt, reran the identical test: **the broadcast now arrives correctly**, and `state.ticks` still
+settles at `51` afterward (confirming the fix doesn't touch the *actual* freeze point, only the
+broadcast-suppression boundary). Reverted the patch — `diff` against a pre-edit copy confirmed
+byte-identical restoration — then re-ran both of Implementer's own existing regression tests
+(`hostGameEngineSuppressesItsOwnCLUpdateBroadcastWhilePaused`/`OnceTimeLimitReached`) against the
+corrected `>` to confirm the fix doesn't regress either (both still pass — neither test's own
+setup happens to sit on this exact boundary, which is exactly why neither caught the off-by-one in
+the first place: both start deep past the threshold, never exercising the transition tick).
+
+**Fix direction only (I don't write fixes):** change `Int(state.ticks) >= Int(ticksPerSec) *
+state.timeLimit` to `>` in `HostGameEngine.swift`'s D98 guard, matching `RunTick.swift:104`'s own
+`> limitTicks` freeze condition exactly (the `==` branch's tick is *not* frozen — it still
+simulates and should still broadcast if cadence allows; only ticks strictly *after* it are frozen).
+Worth a regression test in the shipped suite for this exact boundary (my scratch test's shape —
+seed `ticks` at `limitTicks - N` for `N` a multiple of 5, confirm the boundary tick's broadcast
+still arrives, confirm nothing arrives after) since neither existing D98 test currently covers it.
+
+**3. Base-control-reached omission — confirmed genuinely necessary, not a shortcut, by reading
+both halves of the reference.** Two different C-side concepts are in play, and conflating them is
+exactly the mistake the disclosed deferral avoids:
+- **Client-side `client.basecontrolreached`** (`client.h:42`, referenced at `client.c:430`): set
+  to `0` once at reset (`client.c:238`) and to `1` exactly once, at `client.c:3130` — grepped every
+  occurrence in `client.c`, there is no other write to it anywhere. A genuine one-way latch.
+- **Server-side `server.basecontrol`** (`server.c:1140-1176`, the counter this port's
+  `state.baseControlCounter` mirrors): `server.basecontrol++` runs every tick all bases stay
+  allied (line 1144), but `server.basecontrol = 0` (line 1170) fires in the sibling `else` branch
+  the instant that alliance check fails — a genuinely resettable counter, not a latch, confirmed by
+  reading the exact branch structure directly rather than trusting the port's own comment about it.
+
+These are two different fields with two different reset semantics in the reference itself — the
+one-way latch a naive `counter >= threshold` re-derivation would need to reproduce belongs to the
+*client* side and has no server-side counterpart to derive it from safely (unlike time-limit, where
+`ticks`/`timeLimit` genuinely are monotonic/static and the derivation is sound). Implementer's and
+Planner's shared reasoning holds up under independent verification of both source files, not just
+the port's own comment describing it — correctly deferred, not a shortcut.
+
+**Test count.** `swift test list | wc -l` at HEAD: **649**, split **483 `BoloKitTests`** + **166
+`DifferentialTests`**, matching the claimed `647 → 649 (+2)` exactly.
+
+[TO: PLANNER] D98 re-audited at `07801ee`+`8713861`. Pause re-derivation: **PASS**. Base-control-
+reached deferral: **confirmed genuinely necessary**, verified by reading both `client.basecontrolreached`
+(one-way latch, `client.c:238,430,3130`) and `server.basecontrol` (resettable, `server.c:1144,1170`)
+directly — two different reset semantics in the reference itself, not a shortcut dressed up as a
+principled deferral. **Time-limit re-derivation has a real, proven off-by-one**: `HostGameEngine.swift`'s
+guard uses `>=` where `RunTick.swift`'s own logic uses a two-phase `==`/`>` split, causing the
+guard to suppress the broadcast for the last genuinely-simulated tick, one tick before the
+reference's own freeze actually takes effect. Proved this with a built-and-reverted test
+(byte-identical diffs confirmed both for the scratch test and a temporary one-character fix I used
+to verify the correction). Recommend the same shape as D86/D89/D98 itself: small, one-operator fix
+(`>=` → `>`), plus a regression test seeded at the exact boundary since neither of D98's own two
+tests happens to sit on it. Your call on whether this needs its own D-number or rides as a
+same-commit correction to D98.
+[TO: IMPLEMENTER] One real fix needed: `HostGameEngine.swift`'s D98 guard's `Int(state.ticks) >=
+Int(ticksPerSec) * state.timeLimit` should be `>`, matching `RunTick.swift:104`'s own freeze
+condition — the tick where `ticks` first reaches `limitTicks` via normal simulation still runs and
+should still broadcast; only ticks strictly past it are frozen. Confirmed with a test seeded at
+`limitTicks - 5` (so the boundary tick lands on a `localSeq % 5 == 0` cadence slot): shipped `>=`
+code never broadcasts in that scenario, corrected `>` code broadcasts exactly once at the boundary
+then never again, and your own two existing D98 tests both still pass against the correction (they
+don't currently touch this exact boundary, which is why they didn't catch it). Good instinct on
+declining to guess at base-control's latch semantics — confirmed independently that a naive
+re-derivation really would have been wrong, not just cautious.
