@@ -3613,3 +3613,93 @@ timeout fix). Did not touch `RunTick.swift` (read-only reference for this fix), 
 > and independently checking that `receiveMatchingCLUpdate`'s fix doesn't change any of the
 > *existing* three tests' actual pass/fail semantics, only their robustness under a hypothetical
 > future regression.
+
+### [PARITY] 2026-09-05 — D99 re-audit (`7680b9f`+`5055634`): fix and test both PASS; one comment-accuracy finding on the second harness fix's own mechanism claim
+
+**Type:** post-commit re-audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present; every claim below is execution-verified, including direct instrumentation of the
+harness code to check a mechanism claim empirically rather than accept it. **Concurrency note:**
+`README.md` sits modified-uncommitted throughout (Jerod's own edit) — untouched.
+
+**Verdict: PASS on both the fix and the boundary test.** The `>=`→`>` flip matches
+`RunTick.swift:104` exactly, and the boundary test's seed math is sound (re-traced independently,
+not restated). One finding, comment-accuracy only, not functional: the second harness-timeout
+fix's own doc comment makes a mechanism claim that's empirically false, even though the actual test
+behavior it produces is correct and stable across repeated runs.
+
+**1. `>=` → `>` flip — confirmed exact match to `RunTick.swift:104`.** Read both files at current
+HEAD: `HostGameEngine.swift:177-178`'s `Int(state.ticks) > Int(ticksPerSec) * state.timeLimit` and
+`RunTick.swift:100-105`'s `} else if Int(state.ticks) > limitTicks { return }` — same comparison,
+same operator, same threshold construction (`ticksPerSec * timeLimit` vs. `limitTicks`, identical
+values under the hood). This is exactly the fix I recommended in my `923d393` audit, applied
+correctly.
+
+**2. Boundary test — re-traced independently, math is sound.** `state.ticks = ticksPerSec(50) *
+timeLimit(1) - 5 = 45` at engine start. Walking `runTick`'s own tick-by-tick behavior from there
+(same trace as my `923d393` audit, redone against the actual shipped test's numbers rather than
+reused verbatim): calls 1-4 fall through normally (`ticks` 45→46→...→49), call 5 is the one where
+`ticks` goes from 49 to exactly 50 (`limitTicks`) via the ordinary fall-through path (matches
+neither `RunTick`'s `==`/`>` special branches at entry) — a real, fully-simulated tick. Since
+`localSeq` increments once per non-suppressed `tick()` call starting at 0, call 5 is exactly where
+`localSeq` reaches `5`, satisfying `% 5 == 0` and attempting a broadcast — which the corrected `>`
+guard now allows (`50 > 50` is false). Call 6 (`ticks`: 50→51 via `RunTick`'s exact-match branch,
+no simulation) and every call after are correctly suppressed (`51 > 50` is true, and `ticks` stays
+at 51 forever per `RunTick`'s own permanent-freeze branch). Ran the test 5 consecutive times
+(`swift test -Xswiftc -disable-batch-mode --filter
+hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`): passed every time,
+~0.4s each, no flakiness.
+
+**3. `receiveMatchingCLUpdate`'s timeout fix — behavior is correct and stable, but its own doc
+comment's mechanism claim is wrong, checked by instrumenting it directly rather than trusting the
+prose.** The comment states *"Swift implicitly cancels-and-awaits the unused `async let` on the
+success path, so `connection.cancel()` never runs unless the timeout actually elapses."*
+Temporarily instrumented the real function (reverted after, `git diff` confirmed byte-identical)
+to print at each step of the `timeoutGuard` closure. **Result: `connection.cancel()` runs on
+*every* call, including the success path** — `try?` swallows the `CancellationError` from the
+interrupted `Task.sleep` and execution falls through unconditionally to the next line
+(`connection.cancel()`), regardless of whether the sleep completed or was cancelled. Confirmed with
+an isolated standalone repro first (bare `async let` + `try?`, no `NWConnection` involved) to rule
+out anything `NWConnection`-specific, then confirmed the exact same pattern in the real
+`receiveMatchingCLUpdate` via direct instrumentation — cancellation happens and is visibly logged
+before the function returns to its caller, on the boundary test's own successful first
+`receiveMatchingCLUpdate` call.
+
+**This does not currently corrupt any test**, and I checked specifically for the failure mode this
+would create: the boundary test calls `receiveMatchingCLUpdate` and then reuses the *same*
+`peerClient` connection immediately afterward for `confirmNoCLUpdateArrives`, which would trivially
+(and wrongly) report "absent" near-instantly if the connection were already dead
+(`NWConnection.receiveMessage` on an already-cancelled connection fails in ~1ms, confirmed with a
+separate isolated repro). Checked `peerClient.state` immediately after `receiveMatchingCLUpdate`
+returns: still `.ready`, not `.cancelled` — `NWConnection.cancel()` is itself asynchronous and its
+effect hadn't propagated by the time the next `receiveMessage` call registers. Timed
+`confirmNoCLUpdateArrives`'s subsequent call across 5 repeated runs: consistently ~300-320ms
+(the real configured timeout), never the ~1ms vacuous-fail signature. **The test's result is
+genuine, not a lucky accident of test logic, but it currently relies on `NWConnection.cancel()`'s
+propagation being slower than the next `receiveMessage` registration** — true on this host today,
+not something the code enforces. Same shape as this project's own precedent for "the mechanism
+described isn't what's actually happening, even though the practical outcome is fine" (Wave 7.1's
+Run-Script-sandboxing finding) — a report/comment-accuracy issue, not a functional defect, and not
+something I'd block B.5b's close over.
+
+**4. Test count.** `swift test list | wc -l` at HEAD: **650**, split **483 `BoloKitTests`** + **167
+`DifferentialTests`**, matching the claimed `649 → 650 (+1)` exactly. Also ran the full `hostGameEngine`
+filter (6 tests, including the two pre-existing callers of `receiveMatchingCLUpdate`): all 6 pass.
+
+[TO: PLANNER] D99 re-audited at `7680b9f`+`5055634` — **PASS** on the fix and the boundary test,
+both confirmed by independent re-derivation (line-for-line comparison against `RunTick.swift:104`,
+and a from-scratch tick-by-tick trace of the boundary test's seed math, not a restatement of
+Implementer's own). One finding, **comment-accuracy only, not functional**: `receiveMatchingCLUpdate`'s
+doc comment claims `connection.cancel()` "never runs unless the timeout actually elapses" — false,
+confirmed by direct instrumentation; it runs unconditionally on every call, success path included.
+The test behavior it produces is nonetheless correct and stable (5/5 runs, ~300ms elapsed each
+time, no vacuous fast-pass) because `NWConnection.cancel()`'s effect doesn't propagate fast enough
+to interfere with the next `receiveMessage` registration on this host — true today, not guaranteed
+by anything in the code. Not blocking — recommend correcting the comment whenever this file is
+next touched, same "wrong reasoning, right outcome, still worth fixing the words" standard as
+Wave 7.1's Run-Script finding. **B.5b is ready to close from my side** — D97/D98/D99 all now PASS,
+and everything from my original `5336604` audit not touched by these three fixes still stands.
+[TO: IMPLEMENTER] Nothing functionally wrong — the `>`/boundary-test fix is exactly right, confirmed
+independently. Minor: `receiveMatchingCLUpdate`'s new doc comment overstates what actually happens
+(`connection.cancel()` runs every time, not just on timeout) — harmless in practice today, but
+worth a wording fix next time this file is touched so a future reader doesn't rely on a guarantee
+the code doesn't actually make.
