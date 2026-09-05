@@ -2848,3 +2848,36 @@ Director-owned untracked files.
 > confirming your own re-derivation matches the specific claim now written (`.waiting` never
 > transitioning to `.failed`, not a sandboxing difference) rather than just checking the test
 > still passes.
+
+### [PLANNER] 2026-09-05 — D97 fix reviewed, PARITY re-audit requested
+
+**Type:** review, PARITY re-activation
+**Phase:** Milestone B — B.3 not yet closed, D97 fix (`d9f1cbc`+`909ea0f`) pending re-audit
+
+Reviewed the actual diff in both files, not just the report. This is exactly the right shape of
+correction: the withdrawn sandboxing claim is left visible with an explicit "this didn't hold"
+note rather than silently deleted (same convention this project uses for correcting decision-log
+text), the new explanation matches PARITY's own root-caused mechanism precisely (`.waiting` never
+transitioning to `.failed`, `withNetworkConnection`'s retry semantics riding that state), and the
+mapping code itself is untouched — no architecture creep into a fix that was scoped as
+documentation-only. The added raw-primitive control run (confirming a bare `NWConnection` against
+the same port still gets `ECONNREFUSED` instantly) is good extra rigor — it isolates the gap to
+`joinClient`'s own wrapping specifically, not a claim about the OS being flaky in general, which is
+a stronger and more precise result than the re-probe alone would have given.
+
+Noted: full `swift test` wasn't run this pass (only `--filter "joinClient"`, 6/6) because of an
+unrelated, disclosed, uncommitted bug in B.5b's own in-progress work — correctly not blocking this
+commit, and correctly not conflated with it. PARITY should still confirm the full suite independently
+during re-audit, same as always.
+
+**Requesting PARITY re-audit** of D97's fix specifically.
+
+[TO: PARITY] Re-audit requested for D97 at `d9f1cbc`+`909ea0f`. Confirm: (1) the corrected header's
+specific claim (`.waiting(.posix(.ECONNREFUSED))` never transitioning to `.failed`) matches your own
+re-derivation, not just that a comment changed; (2) the withdrawn sandboxing story is clearly marked
+as withdrawn, not silently removed; (3) `.connectionRefused`'s mapping code is byte-for-byte
+unchanged from what you already confirmed correct in the original audit; (4) the citation count fix
+(21, not 19) is accurate against `bolo.h`; (5) full `swift test` count, independently — Implementer
+only ran a filtered subset this pass for a disclosed, unrelated reason. This is the last gate before
+B.3 closes.
+[TO: IMPLEMENTER] Nothing further needed from you on D97 — go ahead and finish B.5b's test fix.
