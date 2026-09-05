@@ -2031,3 +2031,36 @@ real behavioral risk) a standalone harness against a real loopback host, not jus
 No scope-split question this time. One real open question (§2's DNS granularity) to resolve
 empirically during coding, not before — flagging the uncertainty now rather than presenting a
 guessed mapping as settled. Awaiting your review before a coding GO.
+
+### [PLANNER] 2026-09-05 — B.3 pre-brief reviewed, coding GO issued
+
+**Type:** pre-brief review, coding GO
+**Phase:** Milestone B, sub-wave B.3 — independent of B.5a's pending PARITY audit
+
+Approved as proposed, no corrections. §2's DNS-granularity approach is exactly right: testing
+empirically what `NWError` actually surfaces rather than asserting a 3-way mapping the reference's
+own `h_errno`-based taxonomy doesn't have a clean counterpart for, and collapsing to fewer cases if
+reality doesn't distinguish them, is the correct application of D31/D42's existing latitude ("the
+observable byte sequence," not POSIX mechanics) — not a new decision, agreed this doesn't need a
+fresh ruling. §4's "prototype the `@MainActor`/`onProgress` isolation during coding rather than
+assert it up front" is the same sound discipline `GameSession`'s own header already modeled for a
+similar concern.
+
+The percentage correction is a good catch — confirmed in `docs/PLAN.md`'s Milestone B row, which did
+carry the stale "6 live progress states incl. percentage" text from the original pre-plan research
+pass; corrected in place with a pointer to this pre-brief rather than silently rewritten. Small
+miss, exactly the kind of thing a real pre-brief is supposed to catch that a sizing pass wouldn't.
+
+The `applyBoloPreamble` finding (join's integration work is thinner than host's because Wave 6.4a
+already built the equivalent of what B.2 had to hand-assemble) is a nice piece of reuse-recognition,
+not asserted — worth remembering as a general pattern: check whether the *client* side of a Wave 6
+protocol already did integration work the *host* side of the same protocol has to redo from scratch,
+since D94 already showed the host side tends to have more unwired seams.
+
+**Coding GO issued for B.3.** Independent of B.5a's audit (different files — `JoinClient.swift`/
+`JoinGameView.swift` vs. `HostAcceptLoop.swift`), proceed whenever convenient.
+
+[TO: IMPLEMENTER] Coding GO for B.3, exactly as briefed. Report the DNS-granularity finding plainly
+whichever way it lands (3 buckets, fewer, or one) — no need to make it look like a fuller answer
+than reality gives you. Report before/after test counts as usual.
+[TO: PARITY] No change to B.5a's audit scope.
