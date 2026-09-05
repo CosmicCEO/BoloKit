@@ -243,6 +243,16 @@ private func runJoinHandshake(
             try await sendBytes(preamble.encode(), over: connection)
             try await sendBytes(mapBytes, over: connection)
         } catch {
+            // D101 (PARITY finding, PLANNER-approved `53c9d3c`): `applyJoin` above already set
+            // `state.players[player].used/connected = true` -- `table.disconnect` alone leaves
+            // `GameState` and the table permanently out of sync (a real slot leak, only reachable
+            // once a live per-connection reader exists to expose it, B.5c). `removePlayer` is the
+            // right undo, not a full revert: it resets `connected` but deliberately leaves `used`
+            // set, matching the reference's own "used-but-disconnected slots are rejoin-eligible"
+            // model (`evaluateJoinRequest`'s own rejoin detection). No broadcast here, unlike
+            // `handlePlayerDisconnect` -- `SRPlayerJoin`/`SRPlayerRejoin` (below) never fired for
+            // this connection, so no other player has any notion of this slot to be told about.
+            removePlayer(player: player, state: &state)
             await table.disconnect(player)
             return .malformedOrClosed
         }

@@ -343,3 +343,43 @@ private let loopbackIPv4AsUInt32: UInt32 = {
     #expect(playerA != playerB)
     #expect(Set([playerA, playerB]) == Set([0, 1]))
 }
+
+/// D101 (PARITY finding, PLANNER-approved `53c9d3c`): forces the preamble/map send inside the
+/// `.accepted` branch to fail (by fully cancelling the peer -- waiting for real `.cancelled` state
+/// first, not just calling `cancel()` and hoping the timing lines up) and confirms the fix keeps
+/// `GameState` and `table` in sync, rather than leaking a permanently used+connected slot with no
+/// real connection ever attached to it again.
+@Test func processJoinAttemptOnSendFailureRevertsConnectedButPreservesUsed() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel() }
+
+    var state = makeState()
+    let table = HostSessionTable()
+    let serializer = JoinAcceptSerializer()
+
+    try await sendBytes(link.clientEnd, JoinPreamble(name: "Ghost", pass: "").encode())
+
+    // Wait for the peer to actually reach `.cancelled` -- not just calling `cancel()` and hoping
+    // the timing works out -- so the subsequent send inside `processJoinAttempt` is guaranteed to
+    // fail, not racing against it.
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        nonisolated(unsafe) var resumed = false
+        link.clientEnd.stateUpdateHandler = { state in
+            guard !resumed, case .cancelled = state else { return }
+            resumed = true
+            continuation.resume()
+        }
+        link.clientEnd.cancel()
+    }
+
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table)
+    #expect(outcome == .malformedOrClosed)
+
+    // The real bug (found via B.5c's own dynamic producer exposing it, not previously reachable):
+    // `applyJoin` already set both fields `true` before the send failed -- without D101, `used`
+    // and `connected` would both still read `true` here, forever, with no real connection able to
+    // reach this slot again.
+    #expect(state.players[0].used, "used should stay true -- matches the reference's rejoin-eligible-slot model, not a full revert")
+    #expect(state.players[0].connected == false, "connected must be reset, or this slot leaks permanently")
+    #expect(await table.isConnected(0) == false)
+}
