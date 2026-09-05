@@ -274,21 +274,21 @@ private final class ProgressBox: @unchecked Sendable {
     // first (learn a real free port, close it immediately, connect to it) and confirmed by
     // direct measurement that it does NOT produce a fast, distinguishable failure: a cancelled
     // `NWListener`'s port doesn't refuse a subsequent connection attempt promptly, it just hangs
-    // until `joinClient`'s own connect-phase timeout eventually fires. A port nothing has ever
-    // bound to does throw `.posix(.ECONNREFUSED)` immediately and reliably -- confirmed directly
-    // with a standalone compiled binary outside `swift test` entirely. Accepting the small,
+    // until `joinClient`'s own connect-phase timeout eventually fires. Accepting the small,
     // standard risk of a hardcoded port already colliding with something else on the test
     // machine, same tradeoff every literal-port test elsewhere in this file already accepts
     // implicitly by using `.any` + a listener instead.
     //
-    // **Still asserting `.timedOut` as an acceptable outcome too, disclosed rather than hidden:**
-    // running the exact same connection attempt *inside* `swift test`'s own process consistently
-    // produced `.timedOut` instead of the immediate `.connectionRefused` the standalone binary
-    // got -- some sandboxing/execution difference specific to the test harness on this machine,
-    // not `joinClient`'s own behavior (same code, same port, different outer process). Rather
-    // than assert a specific outcome that's held up outside this harness but not reliably inside
-    // it, this accepts either -- both are real, already-modeled `JoinClientError` cases, and the
-    // one thing this test must still rule out is silent success or a protocol-level error.
+    // **Asserting `.timedOut` as the expected outcome, per D97 (PARITY's B.3 re-audit,
+    // `cc10f29`), not `.connectionRefused` -- see `JoinClient.swift`'s own header for the actual
+    // mechanism.** A raw `NWConnection` against this exact port does receive `ECONNREFUSED`
+    // immediately (confirmed independently more than once), but `NWConnection` treats that as
+    // the retryable `.waiting` state rather than `.failed`, and `withNetworkConnection` never
+    // surfaces it -- only this test's own `connectTimeoutSeconds` override ever fires, giving
+    // `.timedOut`. Still accepting `.connectionRefused` too rather than asserting only one exact
+    // case, in case a future OS/SDK point release ever does surface `.failed` promptly here --
+    // both are real, already-modeled `JoinClientError` cases either way, and the one thing this
+    // test must still rule out is silent success or a protocol-level error.
     do {
         _ = try await joinClient(
             host: "127.0.0.1", port: 39217, name: "Dave", pass: "", connectTimeoutSeconds: 3

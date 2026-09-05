@@ -16,11 +16,12 @@ import BoloKit
 // requirement) means there's no reason to duplicate that logic.
 //
 // Milestone B.3 (D95-era): added `onProgress` and a real connect-phase
-// timeout, ported from tracing `joinprogress()`'s 19-status dispatch
-// (`bolo.h:240-272`, `GSXBoloController.m:3780-3872`) against what
-// `withNetworkConnection`'s API surface -- and real empirical behavior in
-// this environment -- can actually distinguish. Two disclosed
-// simplifications, not guesses:
+// timeout, ported from tracing `joinprogress()`'s 21-status dispatch
+// (`bolo.h:240-272`, `GSXBoloController.m:3780-3872` -- 21 `kJoin*` codes
+// total, corrected per D97's citation-drift finding; the pre-brief had
+// miscounted 19) against what `withNetworkConnection`'s API surface --
+// and real empirical behavior in this environment -- can actually
+// distinguish. Two disclosed simplifications, not guesses:
 //
 // 1. **`RESOLVING`/`CONNECTING` collapse to one `.connecting` progress
 //    case.** `withNetworkConnection(to:using:body:)` fully establishes the
@@ -30,29 +31,47 @@ import BoloKit
 //    reference's join path either (traced every `joinprogress()` call
 //    site) -- corrects the original Milestone B pre-plan's "6 progress
 //    states incl. percentage" claim.
-// 2. **The reference's 8 network-error codes collapse to 3 cases, not 5,
-//    confirmed by direct measurement, not assumption.** Three real probes
-//    against this exact API (`withNetworkConnection`/`TCP()`, one-shot
-//    receive) on this machine: a closed local port threw
-//    `NWError.posix(.ECONNREFUSED)` in well under a second, every time --
-//    confidently mapped to `.connectionRefused`. A bad hostname and a
-//    non-routable address both produced **no error at all** even after
-//    waiting 90 seconds -- not `ETIMEDOUT`, not a DNS-specific error,
-//    nothing. That rules out ever constructing the reference's 3-way DNS
-//    split (`EHOSTNOTFOUND`/`EHOSTNORECOVERY`/`EHOSTNODATA` -- classic
+// 2. **The reference's 8 network-error codes collapse to 3 cases, not 5.**
+//    `.connectionRefused` maps `NWError.posix(.ECONNREFUSED)`, a clean,
+//    confident 1:1 -- but per D97 (PARITY's B.3 re-audit, `cc10f29`),
+//    **that case is currently unreachable through `joinClient` itself in
+//    this environment**, not merely hard to trigger. A raw `NWConnection`
+//    against a port nothing has ever bound to *does* receive `ECONNREFUSED`
+//    immediately (confirmed independently, both by this file's original
+//    author and by PARITY's own re-derivation) -- but `NWConnection`
+//    treats that as the retryable `.waiting(.posix(.ECONNREFUSED))` state,
+//    not `.failed`, and never transitions out of it on its own on this
+//    OS/SDK. `withNetworkConnection`'s own retry semantics ride that
+//    `.waiting` state rather than surfacing it, so only `joinClient`'s
+//    explicit connect-phase timeout ever fires -- `.timedOut`, not
+//    `.connectionRefused`, 19/19 times for PARITY and 5/5 on a fresh
+//    re-probe here. (The original version of this comment attributed the
+//    gap to a sandboxing difference between a standalone binary and
+//    `swift test`'s own process -- PARITY couldn't reproduce that
+//    framing, and neither could a fresh re-probe; withdrawn, replaced with
+//    the mechanism above, which both re-derivations agree on.) The
+//    mapping itself is still correct-by-construction and stays as
+//    written, in case a future OS/SDK (or a lower-level rewrite bypassing
+//    `withNetworkConnection`) ever does surface `.failed` promptly for
+//    this case. A bad hostname and a non-routable address both produced
+//    **no error at all** even after waiting 90 seconds -- not
+//    `ETIMEDOUT`, not a DNS-specific error, nothing. That rules out ever
+//    constructing the reference's 3-way DNS split
+//    (`EHOSTNOTFOUND`/`EHOSTNORECOVERY`/`EHOSTNODATA` -- classic
 //    `hstrerror()`/`h_errno` codes, a genuinely different taxonomy from
 //    `NWError`'s own `DNSServiceErrorType`-based DNS case) or a distinct
 //    `ENETUNREACH`/`EHOSTUNREACH` -- both manifest identically to "the
-//    connection attempt just hangs," which is why `joinClient` now needs
-//    its *own* explicit connect-phase timeout (unlike the reference,
+//    connection attempt just hangs," which is why `joinClient` needs its
+//    *own* explicit connect-phase timeout at all (unlike the reference,
 //    whose `ETIMEDOUT` is the OS's own `connect()` timeout, which this
-//    environment's DNS-failure path evidently never reaches on its own).
-//    `.timedOut` is therefore the single case covering all of: DNS
-//    failure, network-unreachable, host-unreachable, and a genuinely slow
-//    connect. `.connectionReset` (`ECONNRESET`) is kept as its own case
-//    despite not being empirically triggered -- a clean, confident 1:1
+//    environment's DNS-failure path evidently never reaches on its own
+//    either). `.timedOut` is therefore the case that actually fires for
+//    all of: DNS failure, network-unreachable, host-unreachable,
+//    connection-refused (per above), and a genuinely slow connect.
+//    `.connectionReset` (`ECONNRESET`) is kept as its own case despite not
+//    being empirically triggered -- a clean, confident 1:1
 //    `POSIXErrorCode` mapping, same shape of derived-not-guessed
-//    confidence as `.connectionRefused`'s tested one.
+//    reasoning as the others.
 
 /// `bolo.h:190-198`'s join-message enum, wire values 0-6 -- the status
 /// byte the server sends immediately after receiving a `JoinPreamble`.
