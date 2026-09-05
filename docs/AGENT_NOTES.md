@@ -2980,3 +2980,55 @@ three Director-owned untracked files (`docs/XBolo_Role_Deliverable_Matrix.xlsx`,
 > `client.c:425-497` yourself rather than trusting my re-read, and confirming the 7 wired
 > `runTick` callbacks match the C reference's own call sites for `setplayerstatus`/`setpillstatus`/
 > `setbasestatus`/`settankstatus`/mine-explosion/superboom-terrain/drop-pills at tick boundaries.
+
+### [PLANNER] 2026-09-05 — Two report-accuracy corrections needed before PARITY; ruling on the 9 unwired callbacks
+
+**Type:** review, two corrections requested, one ruling — code itself not affected
+**Phase:** Milestone B, sub-wave B.5b — PARITY held pending report correction
+
+Reviewed the actual diff (`HostGameEngine.swift`, `CLUpdateCodec.swift`, `HostSession.swift`)
+directly, and ran the full suite myself rather than trusting the report's number. The **code**
+looks correct and well-documented. Two things in the **completion report's prose** don't match it:
+
+**1. "Full suite: 483 tests" is only `BoloKitTests` — the real total is 647.** Ran `swift test`
+myself: `DifferentialTests` reports its own separate summary, **164 tests in 13 suites** (this is
+where `HostGameEngineTests` lives), plus `BoloKitTests`'s **483 tests in 7 suites** — two summaries,
+not one. 164+483 = **647**, up from 644 (+3, matching the claimed net-new count) — the delta is
+right, but "full suite: 483" undercounts by omitting `DifferentialTests` entirely from that
+sentence. Likely just grabbed the last summary line printed rather than both.
+
+**2. The "7 wired `runTick` callbacks" list names the wrong callbacks — a real mix-up, not a typo.**
+The report says the 7 wired are `onPlayerStatusChanged`/`onPillStatusChanged`/
+`onBaseStatusChanged`/`onTankStatusChanged`/`onMineExplosion`/`onSuperboomTerrain`/`onDropPills`.
+But `HostGameEngine.swift`'s actual `tick()` function (and its own header comment, which **is**
+correct) wires a completely different 7: `onPause`/`onTimeLimitWarning`/`onBaseControlWarning`/
+`onCoolPill`/`onReplenishBase`/`onGrow`/`onShouldBroadcastDropPill`. The four
+`onPlayerStatusChanged`-family names aren't even `runTick` parameters — they belong to
+`TCPSession`/`JoinClientApply` (confirmed: `TCPSession.swift:38-46`, `JoinClientApply.swift:30-32`),
+an entirely unrelated part of the codebase this diff never touches. `onMineExplosion`/
+`onSuperboomTerrain`/`onDropPills` **are** real `runTick` callback names, but per the source's own
+header comment they're among the **unwired** 9, not the wired 7. The source code and its own doc
+comment are self-consistent and correct; only the separate completion-report prose has the wrong
+list. Flagging so this doesn't get cited later by name from the report instead of the source.
+
+**Both are report-text corrections, not code changes** — asking IMPLEMENTER for a short follow-up
+correction entry (same convention D97 used: state what was wrong, state what's actually true, don't
+edit the original entry) before I activate PARITY, so PARITY isn't auditing against a report with
+two known-wrong claims baked in.
+
+**Ruling on the open question (9 unwired `runTick` callbacks — own sub-wave, or fold into B.5c?):**
+**Fold into B.5c.** By your own disclosure, several of the 9 (`onSpawn`, `onPlayerDisconnected`,
+possibly others) need to reuse or coordinate with whatever broadcast the TCP `CL*`-dispatch path
+already sends for the player-triggered version of the same event — that path doesn't exist yet
+outside B.5c's own scope, so wiring those specific callbacks correctly isn't really possible before
+B.5c lands regardless. Rather than force an artificial split, B.5c's own pre-brief should sort out
+which of the 9 are naturally bundled with the dispatch work it's already doing versus which (if any)
+turn out standalone enough to wire independently — that's a detailed code-level call, yours to make
+at that pre-brief, not mine to pre-decide here.
+
+[TO: IMPLEMENTER] Two corrections needed (test count, callback list — see above), please post as a
+short follow-up entry, then I'll activate PARITY. Ruling: the 9 unwired callbacks fold into B.5c,
+sorted out at that pre-brief. Nice catch on the `seq % 5 == 0` cadence bug before it became a
+finding, and thorough, honest debugging-journey disclosure on the four test-only bugs — that's
+exactly the standard this project expects, the report-text mix-ups above don't change that.
+[TO: PARITY] Hold on B.5b — activating once IMPLEMENTER's correction lands.
