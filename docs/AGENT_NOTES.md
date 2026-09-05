@@ -2064,3 +2064,115 @@ since D94 already showed the host side tends to have more unwired seams.
 whichever way it lands (3 buckets, fewer, or one) — no need to make it look like a fuller answer
 than reality gives you. Report before/after test counts as usual.
 [TO: PARITY] No change to B.5a's audit scope.
+
+### [PARITY] 2026-09-05 — B.5a audit (01a2d89+a00ad0a) -- PASS, crux concurrency claim independently proven with a built test
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present (Swift 6.4, Xcode 27 beta, `arm64-apple-macosx27.0`) — every check below is
+execution-verified, not hand-traced, except the scope-boundary check (`git show --stat`/`grep`).
+**Toolchain caveat, worth logging:** default batch-mode `swift build`/`swift test` on this exact
+Xcode 27 beta was unreliable during this session — intermittent internal `swift-frontend`
+`fatalError`s and one reproducible false-positive Swift 6 strict-concurrency diagnostic
+(`JoinClient.swift`, unrelated pre-existing Wave 6.4a code, not B.5a) on a from-scratch `swift
+build`. `-Xswiftc -disable-batch-mode` reliably avoided both and is what every run below used.
+Separately, another session was concurrently committing to `main` and rebuilding the same
+`.build/out` directory during this audit (HEAD moved `2b06746` → `a758bea`, B.3 pre-brief/GO landed
+mid-audit; `Sources/BoloNet/JoinClient.swift`/`Tests/DifferentialTests/JoinClientTests.swift` sit
+modified-uncommitted in the tree right now — that's the other session's own WIP, not touched here,
+not part of this audit). Two full-suite runs stalled at 0% CPU under that contention and were
+killed rather than trusted; every number below comes from runs where I confirmed no contending
+`swift`/`swift-frontend`/`swiftpm-testing-helper` process was active.
+
+**Verdict: PASS.** Every claim in the pre-brief, the code, and the completion report holds up,
+including the crux concurrency claim, which I did not accept on the stated reasoning — I built and
+ran an independent instrumented test against it, per Implementer's and Planner's explicit request,
+and validated with a negative control that the test actually has teeth.
+
+**1. The crux claim — independently re-derived, not accepted on reasoning.**
+`Sources/BoloNet/HostAcceptLoop.swift:23-31`: `runHostAcceptLoop`'s entire body is a single `for
+await connection in listener.connections { let outcome = await processJoinAttempt(...); onJoinOutcome(outcome) }`
+— confirmed by reading the file directly, no `Task {}` wrapping the call. A literal port of
+`joinAcceptSerializerNeverAllowsOverlappingCriticalSections`'s technique (`HostListenerTests.swift:146-177`)
+can't be aimed at the exported `runHostAcceptLoop` as a black box: its only externally observable
+signal is `onJoinOutcome`, fired *after* the call returns — there's no entry hook, and approximating
+entry via client send-time is unsound under real concurrent load (most connections legitimately
+queue behind the one being processed, which would misreport ordinary queueing as false "overlap").
+I built two complementary tests instead (temporary file, `Tests/DifferentialTests/PARITYAuditB5aConcurrencyTest.swift`,
+deleted before this commit per house convention — full design below in case Implementer wants to
+promote an equivalent to permanent coverage):
+- **Test A** re-stated `runHostAcceptLoop`'s one-line loop body verbatim (diffed in a doc comment
+  against `HostAcceptLoop.swift` to prove it's not different logic), wrapping the real
+  `processJoinAttempt` call in an actor `Counter.enter()`/`exit()` (identical shape to the
+  referenced test) to get a *true* entry/exit signal, then drove 20 genuinely concurrent real
+  loopback `NWConnection`s at a real `HostListener` via `withTaskGroup`. Result:
+  `counter.maxObservedActive == 1`, `completed == 20`, all 20 outcomes recorded — **11 consecutive
+  clean runs**, timings stable (~0.064s each).
+- **Test B** called the actual exported `runHostAcceptLoop` (not a restatement): held connection
+  A's `JoinPreamble` one byte short of complete (`receiveExactly`'s `minimumIncompleteLength`
+  forces the server to keep waiting — confirmed at `HostListener.swift:99-112`), then fired 10 more
+  fully-ready real connections concurrently and polled for 600ms confirming **zero** outcomes
+  recorded despite that ready work, before releasing A's final byte and confirming all 11 outcomes
+  land. This is the test that would actually catch the realistic failure mode (a `Task{}`
+  spawned per connection instead of a direct `await`) — **11 consecutive clean runs**.
+- **Negative control (the check I'd flag as most valuable to log as a standing technique):** I
+  temporarily reintroduced exactly the bug class the doc comment warns against — wrapped Test A's
+  `processJoinAttempt` call in a bare `Task { ... }` instead of a direct `await` — and reran. It
+  failed immediately and correctly: `Expectation failed: await counter.maxObservedActive == 1`.
+  This proves the test isn't vacuously passing; it would have caught a real regression. Reverted
+  before any further runs (`diff` against the pre-edit copy confirmed byte-identical revert).
+
+**2. `waitForOutcomeCount`'s polling condition — confirmed correct, and it covers more than described.**
+Read `runJoinHandshake` in full, `HostListener.swift:196-253`. The completion report frames the gap
+as "outcome recorded only after the trailing `await table.setConnection(...)`" — true, but the
+accepted path actually has substantially *more* work after that before returning: `table.setDgramAddress`
+(line 236), `table.allSeqsAsUInt32` (238), `encodeBMap`/`assembleBoloPreamble` (239-240), two more
+`sendBytes` calls sending the preamble and full map (243-244), and `table.sendToAll` (250) — all
+before `return .accepted(...)`. `onJoinOutcome` (and therefore `HostAcceptLoopTests.swift`'s
+`OutcomeBox.outcomes`) only fires once every one of those has completed
+(`HostAcceptLoop.swift`'s `let outcome = await processJoinAttempt(...)` is a blocking `await`, so
+`onJoinOutcome` cannot run until it returns). `waitForOutcomeCount` (`HostAcceptLoopTests.swift:67-73`)
+polls exactly that array's count on a 5ms cadence up to a 2s timeout — it is polling the right
+condition, and correctly so, not "long enough in practice." (The test's own client only reads the
+first status byte and never drains the subsequent preamble+map bytes the server sends — confirmed
+this can't stall the server: `encodeBMap`'s RLE output for the test's near-empty default `GameState`
+is small, well under default loopback socket buffer sizes, so the extra `sendBytes` calls complete
+without needing the client to read them. Noted for completeness, not a defect.)
+
+**3. Scope boundary — confirmed exactly as claimed.**
+`git show 01a2d89 --stat`: exactly `Sources/BoloNet/HostAcceptLoop.swift` and
+`Tests/DifferentialTests/HostAcceptLoopTests.swift`, 193 insertions, 0 deletions, nothing else.
+`git show 01a2d89 | grep -n "HostDgramListener\|receiveAndDispatchOneHostMessage"` matches only the
+two doc-comment lines *explaining* why they're out of scope — no actual call anywhere. `git show
+01a2d89 -- Sources/BoloKit docs/PLAN.md` is empty. No app-target/UI file touched.
+
+**4. Build/test counts — execution-verified, matching exactly.**
+Early in this session, before the concurrent-session contention noted above began, `swift test
+-Xswiftc -disable-batch-mode` (uncontended) reported `Test run with 158 tests in 13 suites passed`
+(DifferentialTests) + `Test run with 483 tests in 7 suites passed` (BoloKitTests) = **641, 0
+failures** — exactly the claimed 639→641 (+2, 0 removed; 483 BoloKit unaffected). Ran
+`HostAcceptLoopTests` alone **5 additional consecutive clean runs** (`--filter HostAcceptLoopTests`,
+uncontended) at stable ~0.012s/~0.025-0.028s — corroborates Implementer's own 3-clean-runs claim
+with more repetitions, no flakiness observed.
+
+**Citation drift:** none found — every `file:line` I checked (pre-brief, completion report, both
+Planner reviews) matched what's actually there.
+
+**Recommendation for Implementer, not a coding GO (not mine to give):** Test A and B above are, in
+my assessment, valuable enough to be worth promoting into permanent `DifferentialTests` coverage —
+they're the only tests in the suite that empirically pressure-test `runHostAcceptLoop`'s
+serialization claim under genuine concurrent connection load rather than a single sequential pair,
+and Test A's negative-control result demonstrates the technique has real teeth. I deleted my copy
+per this project's standing "scratch verification file" convention rather than commit it myself
+(outside my role's remit this session) — full design is above if it's useful as a starting point.
+
+[TO: PLANNER] B.5a: PASS. Every claim (pre-brief, code, completion report) independently confirmed,
+including the crux concurrency claim via a built, negative-control-validated test — not accepted on
+"AsyncStream is single-consumer" reasoning alone, per your and Implementer's request. Also flagging,
+outside B.5a's own scope: this Xcode 27 beta's default batch-mode `swift build` is unreliable
+(intermittent frontend crashes + one reproducible false-positive strict-concurrency diagnostic on
+unrelated pre-existing code) — `-Xswiftc -disable-batch-mode` is a clean workaround worth carrying
+forward as standing guidance for future sessions on this host, alongside the existing
+Xcode-app-target-hang note.
+[TO: IMPLEMENTER] No defects found. See §2 above (waitForOutcomeCount's coverage is broader than
+your report described, in your favor) and the closing recommendation on promoting Test A/B (or
+equivalent) to permanent coverage — your call, not a directive.
