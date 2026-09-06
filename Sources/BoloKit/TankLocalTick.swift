@@ -600,6 +600,114 @@ public func enterTile(
     }
 }
 
+// MARK: - Join client outbound CL* detection (B.10, D127) — READ-ONLY SECTION
+//
+// Everything below this line is a detect-and-send analogue of `enter()`'s
+// (client.c:5785) pill/base/mined-terrain/lmine-key branches, for the join
+// client's own local tank only. It NEVER mutates `state` — it only inspects
+// it and returns what message(s) the reference's own `sendcl*()` calls would
+// have fired. The actual mutation stays `enterTile`/`grabTile`/`plantMine`/
+// `layMineOnKeyDown` above, which are the correct authoritative-mutation path
+// for the host/single-process paths (via `tankLocalTick`, which the join
+// path never calls) and must not be touched by this section.
+//
+// Scope, per D127/D116: pill/base tile-entry (`.grabTile`), the boat-drop
+// that piggybacks on both of those plus the plain-terrain group
+// (`.dropBoat`), and the mined-terrain plant-mine branch reachable either by
+// walking onto minable terrain with the LMINE input flag held, or by the
+// separate LMINE key-down edge (`.dropMine`). Explicitly excluded (D127):
+// wall/sea/river/forest-death/boat-terrain branches (superboom/drown/damage)
+// — shell-impact/collision sends, a separate, larger, out-of-scope gap since
+// the join path doesn't run `shellTick` at all today.
+
+/// The small handful of outbound `CL*` message shapes reachable from tile
+/// entry or the LMINE key, per `enter()`'s pill/base/mined-terrain/lmine-key
+/// branches. Deliberately not the `CL*` wire structs themselves (`BoloKit`
+/// doesn't depend on `BoloNet`) — the caller (`GameSession`, which imports
+/// both) converts each case to its matching `CLGrabTile`/`CLDropBoat`/
+/// `CLDropMine` and sends it.
+public enum JoinOutboundCL: Equatable, Sendable {
+    case grabTile(x: Int, y: Int)
+    case dropBoat(x: Int, y: Int)
+    case dropMine(x: Int, y: Int)
+}
+
+/// Read-only analogue of `enterTile`'s pill/base/mined-terrain branches
+/// above, for the join client's own local tank moving from `old` to `new`.
+/// Returns every message `enter()` (client.c:5785) would have sent for this
+/// transition — zero, one, or (pill/base entry with a boat) two.
+///
+/// `state.players[state.localPlayer].dead` gates every branch exactly as it
+/// does in `enterTile`; armed pills (`armour > 0`) are skipped entirely here
+/// (that's `superboom()`'s branch — shell-impact scope, out per D127), same
+/// as `enterTile`'s own `else if !dead` structuring.
+public func detectJoinTileEntry(new: Pointi, old: Pointi, state: GameState) -> [JoinOutboundCL] {
+    let player = state.localPlayer
+    let x = Int(new.x)
+    let y = Int(new.y)
+
+    if let pill = findPill(x: x, y: y, pills: state.pills) {
+        guard state.pills[pill].armour == 0, !state.players[player].dead else { return [] }
+        var out: [JoinOutboundCL] = []
+        if new != old {
+            out.append(.grabTile(x: x, y: y))
+        }
+        if let terrain = state.terrain[x, y], isWalkableNonWater(terrain) {
+            if state.players[player].boat, new != old {
+                out.append(.dropBoat(x: Int(old.x), y: Int(old.y)))
+            }
+        }
+        return out
+    }
+
+    if let base = findBase(x: x, y: y, bases: state.bases) {
+        guard !state.players[player].dead, new != old else { return [] }
+        var out: [JoinOutboundCL] = []
+        let owner = state.bases[base].owner
+        if owner == playerNeutral || !testAlliance(Int(owner), player, players: state.players) {
+            out.append(.grabTile(x: x, y: y))
+        }
+        if state.players[player].boat {
+            out.append(.dropBoat(x: Int(old.x), y: Int(old.y)))
+        }
+        return out
+    }
+
+    guard let terrain = state.terrain[x, y], isWalkableNonWater(terrain) else { return [] }
+    guard !state.players[player].dead else { return [] }
+
+    var out: [JoinOutboundCL] = []
+    if state.players[player].boat, new != old {
+        out.append(.dropBoat(x: Int(old.x), y: Int(old.y)))
+    }
+    if state.players[player].inputFlags.contains(.lmine), state.players[player].mines > 0, new != old {
+        out.append(.dropMine(x: x, y: y))
+    }
+    return out
+}
+
+/// Read-only analogue of `layMineOnKeyDown` above (the LMINE key's down
+/// edge, client.c:6509) — detects whether pressing the key right now would
+/// plant a mine, without mutating `state`/spending a mine. Reuses
+/// `layMineOnKeyDown`'s own guard shape (alive, no pill/base underfoot,
+/// mines remaining, minable terrain) exactly, since it is already read-mostly.
+public func detectJoinLMineKeyDown(state: GameState) -> JoinOutboundCL? {
+    let player = state.localPlayer
+    guard !state.players[player].dead else { return nil }
+
+    let tank = state.players[player].tank
+    let x = Int(tank.x)
+    let y = Int(tank.y)
+
+    guard findPill(x: x, y: y, pills: state.pills) == nil,
+        findBase(x: x, y: y, bases: state.bases) == nil,
+        state.players[player].mines > 0
+    else { return nil }
+
+    guard let terrain = state.terrain[x, y], isWalkableNonWater(terrain) else { return nil }
+    return .dropMine(x: x, y: y)
+}
+
 /// True for the terrain set that triggers a boat-drop-on-entry in both the
 /// pill branch of `enter()` and the plain-terrain switch's shared block.
 private func isWalkableNonWater(_ terrain: Terrain) -> Bool {

@@ -176,6 +176,15 @@ public final class GameSession {
             self.state.players[player].inputFlags.formUnion(change.set)
             self.state.players[player].inputFlags.subtract(change.clear)
         }
+        // B.10 (D127): the LMINE key's own separate down-edge path — read-only detection only
+        // (`detectJoinLMineKeyDown`, TankLocalTick.swift), no local mutation (`state.pills`/
+        // `state.bases`/mine count stay exactly as the host's own SR* broadcast last set them).
+        view.onLayMineKeyDown = { [weak self] in
+            guard let self, let tcpSession = self.tcpSession else { return }
+            guard case .dropMine(let x, let y) = detectJoinLMineKeyDown(state: self.state) else { return }
+            let message = CLDropMine(x: UInt8(x), y: UInt8(y))
+            Task { try? await tcpSession.send(message.encode()) }
+        }
     }
 
     /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no
@@ -323,7 +332,37 @@ public final class GameSession {
             }
             lastTickTime = now
 
-            tankMoveTick(player: state.localPlayer, state: &state)
+            let localPlayer = state.localPlayer
+            let oldTank = state.players[localPlayer].tank
+            let old = Pointi(x: Int32(oldTank.x), y: Int32(oldTank.y))
+
+            tankMoveTick(player: localPlayer, state: &state)
+
+            // B.10 (D127): read-only detect-and-send analogue of `enter()`'s pill/base/
+            // mined-terrain branches (`detectJoinTileEntry`, TankLocalTick.swift) — never
+            // mutates `state`; the eventual mutation arrives later via the host's own SR*
+            // broadcast (`.tcpMessage` case below), same protocol latency the reference has.
+            let newTank = state.players[localPlayer].tank
+            let new = Pointi(x: Int32(newTank.x), y: Int32(newTank.y))
+            let outbound = detectJoinTileEntry(new: new, old: old, state: state)
+            if !outbound.isEmpty, let tcpSession {
+                let bytes = outbound.map { message -> [UInt8] in
+                    switch message {
+                    case .grabTile(let x, let y):
+                        return CLGrabTile(x: UInt8(x), y: UInt8(y)).encode()
+                    case .dropBoat(let x, let y):
+                        return CLDropBoat(x: UInt8(x), y: UInt8(y)).encode()
+                    case .dropMine(let x, let y):
+                        return CLDropMine(x: UInt8(x), y: UInt8(y)).encode()
+                    }
+                }
+                Task {
+                    for message in bytes {
+                        try? await tcpSession.send(message)
+                    }
+                }
+            }
+
             sendLocalUpdateIfDue(udpSession)
             renderView.render(state)
 

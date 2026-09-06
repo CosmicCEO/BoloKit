@@ -684,3 +684,115 @@ private func safeStationaryState(player: PlayerState, local: LocalPlayerState) -
     #expect(state.players[0].shells.isEmpty)
     #expect(state.local.shellCounter == 100)
 }
+
+// MARK: - detectJoinTileEntry / detectJoinLMineKeyDown (B.10, D127)
+//
+// These test the READ-ONLY detection function only: given a `GameState` and a
+// tile transition, does it return the right message(s) without mutating
+// `state`? Negative controls (asserting `state` is byte-for-byte unmutated)
+// double as the read-only-ness proof the pre-brief called for.
+
+@Test func detectJoinTileEntryUnownedPillReturnsGrabTile() {
+    var state = makeState(player: connectedPlayer())
+    state.pills = [Pill(x: 5, y: 5, armour: 0, owner: playerNeutral, speed: 0, counter: 0)]
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result == [.grabTile(x: 5, y: 5)])
+    // Read-only: the pill itself must be untouched (mutation is the host's SR* job).
+    #expect(state.pills[0].owner == playerNeutral)
+}
+
+@Test func detectJoinTileEntryArmedPillReturnsNothing() {
+    // Negative control: armed pills are `superboom()`'s branch (out of B.10 scope) — if the
+    // armour gate were missing/wrong, this would wrongly return `.grabTile`.
+    var state = makeState(player: connectedPlayer())
+    state.pills = [Pill(x: 5, y: 5, armour: 10, owner: playerNeutral, speed: 50, counter: 0)]
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result.isEmpty)
+}
+
+@Test func detectJoinTileEntryHostileBaseReturnsGrabTile() {
+    var state = makeState(player: connectedPlayer())
+    state.bases = [Base(x: 5, y: 5, armour: 50, owner: 1, shells: 50, mines: 50)]
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result == [.grabTile(x: 5, y: 5)])
+    // Read-only: base ownership/resources must be untouched.
+    #expect(state.bases[0].owner == 1)
+    #expect(state.bases[0].armour == 50)
+}
+
+@Test func detectJoinTileEntryAlliedBaseReturnsNothing() {
+    var state = makeState(player: connectedPlayer())
+    state.players.append(connectedPlayer())
+    state.players[0].used = true
+    state.players[1].used = true
+    state.players[0].alliance = 1 << 1
+    state.players[1].alliance = 1 << 0
+    state.bases = [Base(x: 5, y: 5, armour: 50, owner: 1, shells: 50, mines: 50)]
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result.isEmpty)
+}
+
+@Test func detectJoinTileEntryPillEntryWithBoatAlsoReturnsDropBoat() {
+    var state = makeState(player: connectedPlayer(boat: true))
+    state.pills = [Pill(x: 5, y: 5, armour: 0, owner: playerNeutral, speed: 0, counter: 0)]
+    state.terrain[5, 5] = .grass0
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result == [.grabTile(x: 5, y: 5), .dropBoat(x: 4, y: 5)])
+    // Read-only: `boat` flag itself must be untouched (only `enterTile`'s real mutation clears it).
+    #expect(state.players[0].boat)
+}
+
+@Test func detectJoinTileEntryGrassExitWithBoatReturnsDropBoatOnly() {
+    var state = makeState(player: connectedPlayer(boat: true))
+    state.terrain[5, 5] = .grass0
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result == [.dropBoat(x: 4, y: 5)])
+}
+
+@Test func detectJoinTileEntryMinePlantOnMovedGrassWithLmineFlag() {
+    var player = connectedPlayer()
+    player.inputFlags = [.lmine]
+    player.mines = 5
+    var state = makeState(player: player)
+    state.terrain[5, 5] = .grass0
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: state)
+    #expect(result == [.dropMine(x: 5, y: 5)])
+    // Read-only: terrain and mine count must be untouched.
+    #expect(state.terrain[5, 5] == .grass0)
+    #expect(state.players[0].mines == 5)
+}
+
+@Test func detectJoinTileEntryMinePlantSkippedWhenStationary() {
+    // Negative control: `enter()` gates the mine-plant branch on `new != old` — without that
+    // guard this would wrongly fire every tick while the LMINE flag is held stationary.
+    var player = connectedPlayer()
+    player.inputFlags = [.lmine]
+    player.mines = 5
+    var state = makeState(player: player)
+    state.terrain[5, 5] = .grass0
+    let result = detectJoinTileEntry(new: Pointi(x: 5, y: 5), old: Pointi(x: 5, y: 5), state: state)
+    #expect(result.isEmpty)
+}
+
+@Test func detectJoinLMineKeyDownReturnsDropMineOnMinableTerrain() {
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    let result = detectJoinLMineKeyDown(state: state)
+    #expect(result == .dropMine(x: 5, y: 5))
+    // Read-only: terrain/mine count untouched (unlike `layMineOnKeyDown`, which spends a mine).
+    #expect(state.terrain[5, 5] == .grass0)
+    #expect(state.players[0].mines == 5)
+}
+
+@Test func detectJoinLMineKeyDownNoopsOnAPillTile() {
+    // Negative control: matches `layMineOnKeyDown`'s own pill guard.
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    state.pills = [Pill(x: 5, y: 5, armour: 10, owner: playerNeutral, speed: 50, counter: 0)]
+    let result = detectJoinLMineKeyDown(state: state)
+    #expect(result == nil)
+}
