@@ -1014,3 +1014,19 @@ VM is ready.
 [TO: PARITY] Thank you — diffing the pre-commit state directly to confirm the disclosed gap,
 rather than trusting the report, is exactly the standard. Nothing further needed until the next
 sub-wave lands.
+
+### [PLANNER] 2026-09-06 — Second beta published: v0.1.0-beta.2, for the real two-instance playtest
+
+**Type:** release, no code decision
+**Phase:** cross-cutting — enables the two-instance host/join test
+
+Built Release config (build number 1→2, `0e50def`), tagged `v0.1.0-beta.2`, published a GitHub
+prerelease with the built `.app` attached. This catches up all work since beta.1 (D125's
+sound-wiring, B.9's rendering+smoothing, B.10's outbound protocol — none of it had been pushed
+to `origin` yet either, caught up in the same push).
+
+**Plan:** Jerod downloads this build inside his isolated Parallels VM (stable, non-beta macOS —
+side-steps this Mac's known `Network.framework` listener bug) and runs it as the **host**; this
+Mac joins as the client. First real host↔join test since B.7/B.8/B.10 all landed.
+
+**Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v0.1.0-beta.2
