@@ -58,6 +58,12 @@ public final class GameRenderView: NSView {
     private let tilesImage: CGImage
     private let spritesImage: CGImage
 
+    /// B.9's smoothing half (D114) -- one `RemotePositionSmoother` per remote player index,
+    /// keyed by index into `state.players` (stable across ticks). View-layer only; see
+    /// `RemotePositionSmoother.swift`'s own header for why. Builder/shell positions are
+    /// deliberately NOT smoothed this pass (disclosed scope, not an oversight).
+    private var remoteTankSmoothers: [Int: RemotePositionSmoother] = [:]
+
     /// Set by `GameSession` -- applies a key transition's `InputFlags` change to the session's
     /// own owned `GameState`. Never called from inside a `runTick`/tick-timer call (§2 above).
     public var onInputFlagsChange: ((KeyInputChange) -> Void)?
@@ -88,6 +94,11 @@ public final class GameRenderView: NSView {
     public func render(_ newState: GameState) {
         state = newState
         tileGrid = displayTileGrid(for: newState)
+        for i in newState.players.indices
+        where newState.players[i].connected && i != newState.localPlayer {
+            remoteTankSmoothers[i, default: RemotePositionSmoother()]
+                .update(rawPosition: newState.players[i].tank, tick: newState.ticks)
+        }
         needsDisplay = true
     }
 
@@ -216,7 +227,10 @@ public final class GameRenderView: NSView {
     // player color), other players' tanks friendly/enemy-colored via the same mutual-alliance
     // `testAlliance` check `PlayerStatusView.swift` (C.0) already uses, the local player's own
     // tank last (always player-colored, unconditional), then shells/explosions for every
-    // connected player (one shared sprite, no per-player color needed for either).
+    // connected player (one shared sprite, no per-player color needed for either). Remote tanks
+    // are drawn at `remoteTankSmoothers`' delayed/interpolated position (B.9's smoothing half,
+    // D114), not the raw one -- builders/shells still draw raw, disclosed remaining scope, not
+    // an oversight.
     private func drawSprites(_ ctx: CGContext) {
         for explosion in state.explosions {
             drawExplosion(explosion, ctx)
@@ -236,7 +250,12 @@ public final class GameRenderView: NSView {
             } else {
                 base = other.boat ? ETKB00IMAGE : ETNK00IMAGE
             }
-            drawSprite(base + headingColumn(other.dir), at: other.tank, ctx)
+            // B.9 smoothing (D114): draw the delayed/interpolated position, not the raw
+            // (jerky, ~10Hz-relay-frozen) one -- see `remoteTankSmoothers`'s own doc comment.
+            // Falls back to the raw position only if `render(_:)` hasn't run yet for this index,
+            // which shouldn't happen since it always runs immediately before `draw(_:)`.
+            let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
+            drawSprite(base + headingColumn(other.dir), at: smoothed, ctx)
         }
 
         if state.players.indices.contains(state.localPlayer) {
