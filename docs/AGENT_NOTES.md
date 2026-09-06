@@ -939,3 +939,57 @@ urgent tonight.
 `TCPSession`/`UDPSession` (both already reviewed once), worth confirming the split is genuinely
 behavior-preserving for every existing caller/test, same standard as B.5c's `dispatchHostMessage`
 split audit.
+
+### [IMPLEMENTER] 2026-09-06 — B.8 completion report (D113/D114/D115/D116/D117)
+
+**Commit:** `4b309e6` (code) — the D117 transport split landed separately in `106946c` just
+before this. 671 tests passing (was 668 before D117's own +2). App target builds clean
+(`mcp__xcode__BuildProject`); `JoinGameView`/`AppRootView` previews re-rendered, no errors.
+
+**`GameSession`'s third mode**, built exactly on D117's split: a proper merged-event-stream single
+consumer (`AsyncStream<JoinEvent>`, `.tick`/`.tcpMessage`/`.tcpEnded`/`.udpDatagram`/`.udpEnded`),
+mirroring `HostGameEngine`'s own D95/D96 architecture — three I/O-only producers (the tick timer,
+`tcpSession.receiveOneRawMessage`, `udpSession.receiveOneRawDatagram`), exactly one consumer
+`Task` that ever touches `state`. This is the direct replacement for the earlier, self-caught,
+never-committed attempt that tried to rely on `@MainActor` isolation alone (logged two entries
+back) — isolation alone doesn't protect an `inout state` mutation spanning a long network-wait
+`await`, which is exactly what three independently-awaiting sources sharing one `state` need
+guarding against.
+
+Per tick: `tankMoveTick(player: state.localPlayer, ...)` only (D114/D116's scope — no
+`tankLocalTick`/`shellTick`/`builderTick`), then a ~10Hz outbound `CLUpdate` via
+`UDPSession.sendLocalUpdate` (mirrors `HostGameEngine.tick()`'s own `seq % 5 == 0` cadence exactly,
+including a new `UDPSession.allRemoteSeqsAsUInt32()` accessor for `assembleClUpdate`'s `seq:`
+parameter — the wire format embeds this session's belief about *every* player's latest seq, not
+just its own, mirroring `HostSessionTable`'s identical role host-side).
+
+**App wiring, end to end:** `JoinGameView.startJoining()` now calls `TCPSession.join` directly
+(keeping the handshake's own connection alive) plus dials a second `UDPSession` on the same
+host/port (matching `HostDgramListener.swift`'s own precedent — no handshake of its own, the host
+registers it on first receipt). Both live sessions thread up through `NewGameView`/`AppRootView`
+(`AppScreen.playing` now carries the pair, not a bare snapshot) into `GameView`'s new third `init`.
+
+**Disclosed, not fixed, both already flagged in-code where they occur, not new tonight:**
+1. `tankMoveTick` itself calls `superboom()`/`smallboom()` on the local player's own death timer
+   boundary, which drop onboard pills onto the map — a `state.pills` mutation the host never
+   learns about. Narrow (fires once, only on this client's own death), not fixable without B.10's
+   same CL*-outbound protocol.
+2. `space`/`shift` (shoot/lay-mine) are functionally dead on this path — `inputFlags` records them
+   harmlessly, nothing reads those two bits yet.
+
+**Not live-tested end-to-end against a real second peer tonight.** Every component this mode
+calls (`TCPSession.dispatch`, `UDPSession.apply`, `tankMoveTick`, `assembleClUpdate`) is
+independently tested at the `BoloKit`/`BoloNet` level; `GameSession` itself has no test
+infrastructure to call into directly, matching this project's own established "network logic
+tested at `BoloNet` level, not the view layer" precedent (`B.6`'s completion report said the same
+for `JoinGameView`'s existing `joinClient` call). A real join against a real host is the one thing
+only Jerod's own hands-on test can actually confirm — flagging clearly rather than claiming
+end-to-end verification that didn't happen.
+
+> **→ Planner:** B.8 done as narrowed (D113–D117). Five real findings across this whole thread,
+> each held and routed rather than guessed past — genuinely proud of how this one went given the
+> hour. Ready for PARITY whenever convenient; the one thing worth flagging for that pass
+> specifically is the same thing I can't verify myself: does the merged-stream consumer actually
+> behave correctly against a REAL host (not just build-clean), since nothing in this session tested
+> that live. B.10 (shared-object CL*-outbound protocol) is still unassigned, own pre-brief needed
+> whenever it's picked up.
