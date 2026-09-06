@@ -14,13 +14,20 @@
 //  B.1-review ruling -- the "Play Demo" scaffolding button is removed (B.3 lands second, per the
 //  existing B.2-then-B.3 order, so B.3 owns this).
 //
+//  Milestone B.7 (D108): `.playing` splits into two cases -- hosting now hands over a live
+//  `HostGameEngine`, not a `GameState` snapshot, so `GameView` can render off the engine's own
+//  running state instead of freezing the moment `NewGameView` handed control here. The join path
+//  is unchanged (still a `GameState` snapshot) -- its own symmetric gap is B.8, not assigned yet.
+//
 
 import BoloKit
+import BoloNet
 import SwiftUI
 
 enum AppScreen {
     case newGame
     case playing(GameState)
+    case hosting(HostGameEngine)
 }
 
 struct AppRootView: View {
@@ -30,11 +37,13 @@ struct AppRootView: View {
         switch screen {
         case .newGame:
             NewGameView(
-                onStartHosting: { state in screen = .playing(state) },
+                onStartHosting: { engine in screen = .hosting(engine) },
                 onJoinedGame: { state in screen = .playing(state) }
             )
         case .playing(let state):
             GameView(initialState: state, onQuitToMenu: { screen = .newGame })
+        case .hosting(let engine):
+            GameView(hostEngine: engine, onQuitToMenu: { screen = .newGame })
         }
     }
 

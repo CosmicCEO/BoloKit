@@ -14,27 +14,44 @@
 //  either `AppRootView.demoState` (the B.1 "Play Demo" scaffolding) or a real map decoded by
 //  `HostGameView`. This view has no opinion on where its state came from.
 //
+//  Milestone B.7 (D108): a second init now exists for the host path, taking an already-`start()`ed
+//  `HostGameEngine` instead of a bare `GameState` -- see `GameSession`'s own header for why that
+//  class needs to know which path it's on. `session.stop()` is `async` now (both paths go through
+//  it), so its two call sites below hop into a `Task`.
+//
 
 import BoloKit
+import BoloNet
 import SwiftUI
 
 struct GameView: View {
-    let initialState: GameState
     let onQuitToMenu: () -> Void
 
     @State private var session: GameSession
 
     init(initialState: GameState, onQuitToMenu: @escaping () -> Void) {
-        self.initialState = initialState
         self.onQuitToMenu = onQuitToMenu
+        let (tiles, sprites) = Self.loadSheets()
+        _session = State(
+            initialValue: GameSession(initialState: initialState, tilesImage: tiles, spritesImage: sprites)
+        )
+    }
+
+    init(hostEngine: HostGameEngine, onQuitToMenu: @escaping () -> Void) {
+        self.onQuitToMenu = onQuitToMenu
+        let (tiles, sprites) = Self.loadSheets()
+        _session = State(
+            initialValue: GameSession(hostEngine: hostEngine, tilesImage: tiles, spritesImage: sprites)
+        )
+    }
+
+    private static func loadSheets() -> (tiles: CGImage, sprites: CGImage) {
         guard let tiles = loadSheetImage(named: "Tiles"),
             let sprites = loadSheetImage(named: "Sprites")
         else {
             fatalError("Tiles.png/Sprites.png missing from the bundle -- D72's Run Script phase should guarantee this")
         }
-        _session = State(
-            initialValue: GameSession(initialState: initialState, tilesImage: tiles, spritesImage: sprites)
-        )
+        return (tiles, sprites)
     }
 
     var body: some View {
@@ -43,13 +60,15 @@ struct GameView: View {
         }
         .frame(minWidth: 480, minHeight: 360)
         .onAppear { session.start() }
-        .onDisappear { session.stop() }
+        .onDisappear { Task { @MainActor in await session.stop() } }
         .safeAreaInset(edge: .top) {
             HStack {
                 Spacer()
                 Button("Quit to Menu") {
-                    session.stop()
-                    onQuitToMenu()
+                    Task { @MainActor in
+                        await session.stop()
+                        onQuitToMenu()
+                    }
                 }
             }
             .padding(8)

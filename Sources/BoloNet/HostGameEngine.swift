@@ -59,6 +59,13 @@ enum HostEngineEvent {
     /// The connection for an already-joined player ended abnormally (read error/EOF) rather than
     /// via a clean `.hangUp` opcode -- T-13's "abnormal" disconnect path.
     case clConnectionEnded(player: Int)
+    /// **B.7 (D108):** the host's own local keyboard input, submitted from the app's main-thread
+    /// key handler via `submitLocalInputChange` -- routed through the merged stream rather than
+    /// mutating `state` directly from that thread, since the consumer `Task` mutating `state`
+    /// concurrently is exactly the race this type's whole architecture exists to avoid (see header).
+    case localInputChanged(set: InputFlags, clear: InputFlags)
+    /// Same reasoning as `localInputChanged` above, for `layMineOnKeyDown`'s separate call.
+    case localLayMineKeyDown
     case tick
 }
 
@@ -83,6 +90,15 @@ public final class HostGameEngine: @unchecked Sendable {
     /// single-process-per-role model reuses one struct across roles; this port keeps them
     /// separate, matching D39's precedent for exactly this class of C-side conflation.
     private var localSeq: Int32 = 0
+
+    /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
+    /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
+    /// only the consumer `Task` may ever touch). Hopped onto the main actor here, at the single
+    /// call site, rather than leaving that to each caller -- the app's render target
+    /// (`GameRenderView`, an `NSView`) must be touched from the main thread, and this is the one
+    /// place that knows the callback fires from off-main (the consumer `Task` has no actor
+    /// isolation of its own).
+    public var onTickRendered: (@MainActor (GameState) -> Void)?
 
     public init(initialState: GameState, listener: HostListener, dgramListener: HostDgramListener) {
         self.state = initialState
@@ -137,6 +153,40 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation = nil
     }
 
+    /// **B.7 (D102/D108):** the fix for the teardown gap PARITY found -- `stop()` alone cancels
+    /// `listener`/`dgramListener` (no more *new* connections accepted) and the consumer task, but
+    /// never touched a player already registered in `table`, so their `NWConnection`s and the
+    /// dynamic per-player producer `Task`s spawned in `handle(_:)`'s `.newConnection` case (above)
+    /// kept running indefinitely after `stop()` returned. `table.disconnect(player)` closes the
+    /// connection, which makes each producer's own blocked `receiveOneHostMessageBytes` throw --
+    /// landing in the existing, already-tested `catch { ...; break }` path, not a new termination
+    /// mechanism.
+    ///
+    /// A separate `async` method, not folded into `stop()` itself, because `table` is an actor and
+    /// every existing test call site uses `defer { engine.stop() }` -- `defer` bodies can't
+    /// `await`. This is the real, full-teardown entry point a live caller (B.7's "Stop Hosting")
+    /// must use; `stop()` alone is only sufficient when leaked connections don't matter (e.g. a
+    /// test process about to tear down its whole harness anyway).
+    public func shutdown() async {
+        for player in 0..<maxPlayers where await table.isConnected(player) {
+            await table.disconnect(player)
+        }
+        stop()
+    }
+
+    /// **B.7 (D108):** the host's own local input, safely threaded onto the single consumer --
+    /// see `HostEngineEvent.localInputChanged`'s own doc comment. Callable from any thread (the
+    /// app's main-thread key handler); a plain `Continuation.yield`, not `async`, matching the
+    /// three static producers' own non-blocking yield.
+    public func submitLocalInputChange(set: InputFlags, clear: InputFlags) {
+        continuation?.yield(.localInputChanged(set: set, clear: clear))
+    }
+
+    /// Same reasoning as `submitLocalInputChange` above, for `layMineOnKeyDown`'s separate call.
+    public func submitLocalLayMineKeyDown() {
+        continuation?.yield(.localLayMineKeyDown)
+    }
+
     /// The single consumer -- the only place in this type that ever mutates `state`.
     private func handle(_ event: HostEngineEvent) async {
         switch event {
@@ -188,6 +238,13 @@ public final class HostGameEngine: @unchecked Sendable {
         case .clConnectionEnded(let player):
             await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
 
+        case .localInputChanged(let set, let clear):
+            state.players[state.localPlayer].inputFlags.formUnion(set)
+            state.players[state.localPlayer].inputFlags.subtract(clear)
+
+        case .localLayMineKeyDown:
+            layMineOnKeyDown(state: &state)
+
         case .tick:
             await tick()
         }
@@ -231,6 +288,14 @@ public final class HostGameEngine: @unchecked Sendable {
             // (`HostSession.swift:310,312`) -- NOT a call to that function itself, see above.
             await table.sendToAllExcept(player, SRPlayerDisc(player: UInt8(player)).encode())
             await table.disconnect(player)
+        }
+
+        // B.7 (D108): fires every tick, including paused/time-limit-reached ticks (the guard
+        // below returns *after* this) -- the app should keep rendering a paused game, not freeze
+        // on its last pre-pause frame.
+        if let onTickRendered {
+            let snapshot = state
+            await MainActor.run { onTickRendered(snapshot) }
         }
 
         // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,

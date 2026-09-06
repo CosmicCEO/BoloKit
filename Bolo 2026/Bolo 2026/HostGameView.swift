@@ -22,13 +22,21 @@
 //  Milestone B.6 (D105 Part 2, split from B.4): Tracker/UPnP toggles added, same "no live
 //  listener to bind to yet" treatment as `portText` -- see that field's own comment below.
 //
+//  Milestone B.7 (D108): "Start Hosting" now builds a real `HostListener`/`HostDgramListener`/
+//  `HostGameEngine` and calls `engine.start()` before handing it to the caller -- `portText`'s own
+//  "not connected to a real listener yet" disclosure above no longer applies to the port field
+//  itself (it now binds the real listener), though Tracker/UPnP still do (B.8's own separate gap,
+//  not this one -- registering with a tracker/mapping a port needs a reachable public address,
+//  which this milestone doesn't add).
+//
 
 import BoloKit
+import BoloNet
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct HostGameView: View {
-    let onStartHosting: (GameState) -> Void
+    let onStartHosting: (HostGameEngine) -> Void
 
     @State private var mapURL: URL?
     /// Decoded from `mapURL`'s bytes via `decodeBMap` -- terrain/pills/bases/starts only; the
@@ -54,6 +62,8 @@ struct HostGameView: View {
     /// in the form now so it doesn't need rework once real host-network wiring lands.
     @State private var trackerEnabled = false
     @State private var upnpEnabled = false
+    @State private var hostErrorMessage: String?
+    @State private var isStartingHost = false
 
     private let mapContentType = UTType(filenameExtension: "map") ?? .data
 
@@ -84,11 +94,10 @@ struct HostGameView: View {
                     SecureField("Password", text: $passwordText)
                 }
                 TextField("Port", text: $portText)
-                    .help("Not connected to a real listener yet -- Milestone B.5")
                 Toggle("Announce on Tracker", isOn: $trackerEnabled)
-                    .help("Not connected to a real listener yet -- Milestone B.5")
+                    .help("Not wired to hosting yet")
                 Toggle("UPnP Port Mapping", isOn: $upnpEnabled)
-                    .help("Not connected to a real listener yet -- Milestone B.5")
+                    .help("Not wired to hosting yet")
             }
 
             Section("Domination") {
@@ -102,8 +111,11 @@ struct HostGameView: View {
                 )
             }
 
-            Button("Start Hosting", action: startHosting)
-                .disabled(mapState == nil)
+            if let hostErrorMessage {
+                Text(hostErrorMessage).foregroundStyle(.red)
+            }
+            Button("Start Hosting") { Task { await startHosting() } }
+                .disabled(mapState == nil || isStartingHost)
         }
         .padding()
         .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: [mapContentType]) { result in
@@ -147,8 +159,13 @@ struct HostGameView: View {
         mapState = decoded
     }
 
-    private func startHosting() {
+    private func startHosting() async {
         guard var state = mapState else { return }
+
+        guard let port = UInt16(portText) else {
+            hostErrorMessage = "Invalid Port"
+            return
+        }
 
         state.timeLimit = timeLimitEnabled ? Int(timeLimitMinutes) * 60 : 0
         state.hiddenMines = hiddenMinesEnabled
@@ -165,10 +182,22 @@ struct HostGameView: View {
         state.players = [player]
         state.localPlayer = 0
 
-        onStartHosting(state)
+        hostErrorMessage = nil
+        isStartingHost = true
+        defer { isStartingHost = false }
+
+        do {
+            let listener = try await HostListener(port: port)
+            let dgramListener = try await HostDgramListener(port: port)
+            let engine = HostGameEngine(initialState: state, listener: listener, dgramListener: dgramListener)
+            engine.start()
+            onStartHosting(engine)
+        } catch {
+            hostErrorMessage = "Unable to Start Hosting on Port \(port) -- \(error.localizedDescription)"
+        }
     }
 }
 
 #Preview {
-    HostGameView(onStartHosting: { _ in })
+    HostGameView(onStartHosting: { (_: HostGameEngine) in })
 }

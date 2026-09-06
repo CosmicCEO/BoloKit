@@ -27,9 +27,23 @@
 //  lag-detection input, meant to track elapsed ticks since a remote update -- with no network at
 //  all in this slice, it stays a fixed all-zero array for the lone local player for the entire
 //  session, which correctly means "never lagged," not a stubbed-out gap.
+//
+//  **B.7 (D108):** a second path -- hosting -- now exists alongside the single-process one above.
+//  `HostGameEngine` (`BoloNet`) drives its *own* tick timer against the *one* `GameState` it owns;
+//  running this class's timer too, against a second copy, would be two tickers racing to be the
+//  truth for what's supposedly one game (PLANNER's own words at the D108 ruling) -- so on the host
+//  path, `start()`/`stop()` delegate entirely to the engine and this class's own `timer` is never
+//  created. `state` is set once at `init` from the engine's snapshot and never updated again on
+//  this path -- nothing reads it afterward (rendering goes through `onTickRendered` below,
+//  straight to `renderView`, not through `self.state`); if that stops being true, `state` needs
+//  to become the engine's live copy, not a one-time snapshot. Local input can't touch `state`
+//  directly on this path either, for the identical reason `HostGameEngine` itself never lets any
+//  thread but its own consumer touch it -- `submitLocalInputChange`/`submitLocalLayMineKeyDown`
+//  route it through the engine's merged event stream instead.
 
 import AppKit
 import BoloKit
+import BoloNet
 
 @MainActor
 public final class GameSession {
@@ -38,16 +52,20 @@ public final class GameSession {
 
     private let ticksSinceLastUpdate: [UInt64]
     private var timer: DispatchSourceTimer?
+    private let hostEngine: HostGameEngine?
 
     /// Measured tick-to-tick interval, most recent first, capped to a rolling window -- surfaced
     /// so the completion report can state real jitter instead of asserting the nominal 20ms holds
     /// (D41: "worth measuring, not assumed," same standard as Wave 7.2's rendering benchmark).
+    /// Only ever populated on the single-process path -- the host path's cadence is `HostGameEngine`'s
+    /// own tick timer, not this class's, so there is nothing of this class's own to measure there.
     public private(set) var recentTickIntervals: [TimeInterval] = []
     private var lastTickTime: DispatchTime?
 
     public init(initialState: GameState, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = initialState
         self.ticksSinceLastUpdate = Array(repeating: 0, count: initialState.players.count)
+        self.hostEngine = nil
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
         view.render(initialState)
@@ -64,7 +82,32 @@ public final class GameSession {
         }
     }
 
+    /// B.7 (D108): the host path -- renders live off `hostEngine`'s own running state instead of
+    /// driving a second, competing tick loop against a second copy of it.
+    public init(hostEngine: HostGameEngine, tilesImage: CGImage, spritesImage: CGImage) {
+        self.state = hostEngine.state
+        self.ticksSinceLastUpdate = []
+        self.hostEngine = hostEngine
+        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
+        self.renderView = view
+        view.render(self.state)
+
+        view.onInputFlagsChange = { change in
+            hostEngine.submitLocalInputChange(set: change.set, clear: change.clear)
+        }
+        view.onLayMineKeyDown = {
+            hostEngine.submitLocalLayMineKeyDown()
+        }
+        hostEngine.onTickRendered = { [weak view] renderedState in
+            view?.render(renderedState)
+        }
+    }
+
     public func start() {
+        if let hostEngine {
+            hostEngine.start()
+            return
+        }
         guard timer == nil else { return }
         let source = DispatchSource.makeTimerSource(queue: .main)
         source.schedule(deadline: .now(), repeating: 1.0 / Double(ticksPerSec), leeway: .milliseconds(0))
@@ -73,7 +116,14 @@ public final class GameSession {
         timer = source
     }
 
-    public func stop() {
+    /// `async` (unlike `start()`) because the host path's real teardown, `HostGameEngine.shutdown()`,
+    /// has to disconnect every already-joined player's connection (D102) -- an `await`, so this
+    /// can't stay the synchronous call the single-process path alone would need.
+    public func stop() async {
+        if let hostEngine {
+            await hostEngine.shutdown()
+            return
+        }
         timer?.cancel()
         timer = nil
     }

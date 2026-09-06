@@ -16,12 +16,13 @@
 //
 
 import BoloKit
+import BoloNet
 import SwiftUI
 
 struct NewGameView: View {
-    /// Milestone B.2 -- fires with the fully-assembled `GameState` (decoded map + form settings)
-    /// once the host form's "Start Hosting" succeeds.
-    let onStartHosting: (GameState) -> Void
+    /// Milestone B.2 -- fires once the host form's "Start Hosting" succeeds. Carries a real,
+    /// already-`start()`ed `HostGameEngine` as of Milestone B.7 (D108), not a bare `GameState`.
+    let onStartHosting: (HostGameEngine) -> Void
     /// Milestone B.3 -- fires with the fully-assembled `GameState` (`applyBoloPreamble`'s result)
     /// once the join form successfully completes a handshake.
     let onJoinedGame: (GameState) -> Void
@@ -38,5 +39,5 @@ struct NewGameView: View {
 }
 
 #Preview {
-    NewGameView(onStartHosting: { _ in }, onJoinedGame: { _ in })
+    NewGameView(onStartHosting: { (_: HostGameEngine) in }, onJoinedGame: { _ in })
 }

@@ -546,6 +546,85 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
     #expect(engine.state.players[1].connected == false)
 }
 
+// B.7 (D102/D108): `stop()` alone never disconnected already-joined players -- their `NWConnection`s
+// and dynamic producer `Task`s kept running indefinitely. `shutdown()` is the real fix, closing
+// every connected slot before the synchronous teardown `stop()` still does.
+@Test func hostGameEngineShutdownDisconnectsAlreadyJoinedPlayers() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Stayer", pass: "").encode())
+    // Wait for a real dispatched effect, not just `isConnected` -- see the abnormal-disconnect
+    // test above for why that alone doesn't prove the join fully completed.
+    try await sendDatagram(joinClient, CLSetAlliance(alliance: 1).encode())
+    try await waitForCondition(timeout: 3) { engine.state.players[1].alliance == 1 }
+
+    await engine.shutdown()
+
+    #expect(await engine.table.isConnected(1) == false)
+}
+
+// B.7 (D108): the host's own local keyboard input has to reach `state` without any thread but the
+// consumer `Task` ever touching it -- `submitLocalInputChange`/`submitLocalLayMineKeyDown` route
+// through the merged event stream rather than mutating `engine.state` directly. This proves both
+// actually land on `state.players[state.localPlayer]`.
+@Test func hostGameEngineAppliesSubmittedLocalInputOnTheNextTick() async throws {
+    let (engine, _, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+
+    engine.start()
+
+    engine.submitLocalInputChange(set: [.accel, .turnL], clear: [])
+    try await waitForCondition(timeout: 2) {
+        engine.state.players[0].inputFlags.contains(.accel) && engine.state.players[0].inputFlags.contains(.turnL)
+    }
+    #expect(engine.state.players[0].inputFlags.contains(.accel))
+    #expect(engine.state.players[0].inputFlags.contains(.turnL))
+
+    engine.submitLocalInputChange(set: [], clear: [.accel])
+    try await waitForCondition(timeout: 2) { !engine.state.players[0].inputFlags.contains(.accel) }
+    #expect(!engine.state.players[0].inputFlags.contains(.accel))
+    #expect(engine.state.players[0].inputFlags.contains(.turnL))
+}
+
+// B.7 (D108): `onTickRendered` is the app's only sanctioned way to read a live `state` snapshot
+// off the engine -- fired every tick with a value-type copy, never the live `state` itself.
+@Test func hostGameEngineFiresOnTickRenderedEveryTick() async throws {
+    let (engine, _, _) = try await makeEngine()
+    defer { engine.stop() }
+
+    let renderedTicks = HostRenderedTicksBox()
+    engine.onTickRendered = { state in
+        Task { await renderedTicks.record(state.ticks) }
+    }
+
+    engine.start()
+
+    try await waitForCondition(timeout: 2) { await renderedTicks.count >= 3 }
+    #expect(await renderedTicks.count >= 3)
+}
+
+/// `onTickRendered` is `@MainActor`-isolated (matching the app's real render target, an `NSView`);
+/// this box lets the test observe it from an `async` context without touching `engine.state`.
+private actor HostRenderedTicksBox {
+    private var ticks: [UInt64] = []
+    var count: Int { ticks.count }
+    func record(_ tick: UInt64) { ticks.append(tick) }
+}
+
 /// `onPlayerDisconnected`'s own wiring (`HostGameEngine.tick()`) -- distinct from the two tests
 /// above, which exercise the dynamic per-connection producer's disconnect paths. This one exercises
 /// `RunTick.swift`'s own step-4 lag-timeout path instead: a player whose `HostSessionTable`
