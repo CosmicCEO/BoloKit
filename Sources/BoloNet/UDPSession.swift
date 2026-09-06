@@ -30,6 +30,16 @@ public enum UDPSessionError: Error {
 public final class UDPSession: @unchecked Sendable {
     private let connection: NWConnection
 
+    /// **B.8 (D115):** `receiveAndApply` used to take the caller's stored `previousRemoteSeq`/
+    /// `previousRemoteLastUpdate` as plain per-call scalars -- fine for a test that already
+    /// constructs its own header and knows which player it's for, impossible for a real caller
+    /// receiving relayed updates for arbitrary players over one shared socket (exactly the join
+    /// client's situation, and the first real caller this type has ever had). `UDPSession` now
+    /// owns this table itself, the same "the type owning the one shared socket owns the
+    /// demultiplexing state" principle already applied to `HostSessionTable`.
+    private var remoteSeqs = [Int32](repeating: 0, count: maxPlayers)
+    private var remoteLastUpdates = [Int32](repeating: 0, count: maxPlayers)
+
     public init(host: String, port: UInt16) async throws {
         let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: .udp)
         self.connection = connection
@@ -77,15 +87,17 @@ public final class UDPSession: @unchecked Sendable {
         }
     }
 
-    /// Receives one datagram and, if it decodes to a valid `CLUpdate`,
-    /// applies it via `applyRemotePlayerUpdate` (Wave 6.4a). Returns the
-    /// new `(seq, lastUpdate)` pair for the caller's own seq table on a
-    /// successful apply, or `nil` if the datagram was malformed or the
-    /// update was rejected (self-echo/stale/disconnected -- the same
-    /// no-op conditions `applyRemotePlayerUpdate` itself already covers).
+    /// Receives one datagram and, if it decodes to a valid `CLUpdate`, applies it via
+    /// `applyRemotePlayerUpdate` (Wave 6.4a), looking up and updating this session's own
+    /// per-player `seq`/`lastUpdate` table for whichever player the datagram turns out to be for
+    /// (`header.player`, only known after decoding -- see this type's own `remoteSeqs`/
+    /// `remoteLastUpdates` doc comment). Returns `(player, seq, lastUpdate)` on a successful
+    /// apply, or `nil` if the datagram was malformed, the player index was out of range, or the
+    /// update was rejected (self-echo/stale/disconnected -- the same no-op conditions
+    /// `applyRemotePlayerUpdate` itself already covers).
     @discardableResult
     public func receiveAndApply(
-        previousRemoteSeq: Int32, previousRemoteLastUpdate: Int32, myOwnSeq: Int32, state: inout GameState,
+        myOwnSeq: Int32, state: inout GameState,
         onPlayerLagStatusChanged: (Int) -> Void = { _ in },
         onTankShotSound: () -> Void = {},
         onPillShotSound: () -> Void = {},
@@ -98,18 +110,27 @@ public final class UDPSession: @unchecked Sendable {
         onSuperboom: () -> Void = {},
         onSmallboom: () -> Void = {},
         onSpawn: () -> Void = {}
-    ) async throws -> (seq: Int32, lastUpdate: Int32)? {
+    ) async throws -> (player: Int, seq: Int32, lastUpdate: Int32)? {
         let data = try await receiveOneDatagram()
         guard let update = CLUpdate.decode(Array(data)) else { return nil }
-        return applyRemotePlayerUpdate(
+        let player = Int(update.header.player)
+        // `applyRemotePlayerUpdate` itself already bounds-checks `player` against
+        // `state.players.indices` -- this guard is only to keep this session's OWN
+        // `remoteSeqs`/`remoteLastUpdates` (sized `maxPlayers`, not `state.players.count`) from
+        // ever being indexed out of range, the same class of trap D111 fixed elsewhere tonight.
+        guard state.players.indices.contains(player), player < maxPlayers else { return nil }
+        guard let result = applyRemotePlayerUpdate(
             header: update.header, shells: update.shells, explosions: update.explosions,
-            previousRemoteSeq: previousRemoteSeq, previousRemoteLastUpdate: previousRemoteLastUpdate,
+            previousRemoteSeq: remoteSeqs[player], previousRemoteLastUpdate: remoteLastUpdates[player],
             myOwnSeq: myOwnSeq, state: &state,
             onPlayerLagStatusChanged: onPlayerLagStatusChanged, onTankShotSound: onTankShotSound,
             onPillShotSound: onPillShotSound, onSinkSound: onSinkSound, onBuilderDeathSound: onBuilderDeathSound,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
             onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
-        )
+        ) else { return nil }
+        remoteSeqs[player] = result.seq
+        remoteLastUpdates[player] = result.lastUpdate
+        return (player, result.seq, result.lastUpdate)
     }
 
     private func receiveOneDatagram() async throws -> Data {

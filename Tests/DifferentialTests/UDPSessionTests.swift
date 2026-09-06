@@ -165,11 +165,66 @@ private func sampleHeader(player: UInt8, remoteSeqForLocal: Int32) -> CLUpdateHe
         PlayerState(connected: i == 1, used: i == 1)
     }
 
-    let result = try await session.receiveAndApply(
-        previousRemoteSeq: 0, previousRemoteLastUpdate: 0, myOwnSeq: 0, state: &state
-    )
+    let result = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
 
+    #expect(result?.player == 1)
     #expect(result?.seq == 5)
     #expect(state.players[1].tank.x == 100)
     #expect(state.players[1].tank.y == 200)
+}
+
+// B.8 (D115): `receiveAndApply` used to take the caller's stored seq/lastUpdate for a specific
+// player as plain scalars, passed in *before* the datagram revealing which player it's for gets
+// decoded -- impossible for a real caller receiving relayed updates for arbitrary players over
+// one shared socket. Proves the fix: two different players' updates arrive back to back over the
+// SAME session, each correctly tracked against its own slot, no cross-player bleed.
+@Test func udpSessionTracksSeqPerPlayerIndependentlyAcrossReceives() async throws {
+    let (listener, port, waiter) = try await startLoopbackUDPListener()
+    defer { listener.cancel() }
+
+    let session = try await UDPSession(host: "127.0.0.1", port: port)
+    defer { session.cancel() }
+
+    try await session.sendLocalUpdate(CLUpdate(header: sampleHeader(player: 0, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    let harnessConnection = await waiter.wait()
+    _ = try await receiveOneDatagram(harnessConnection)
+
+    var state = GameState()
+    state.localPlayer = 0
+    state.players = (0..<maxPlayers).map { i in PlayerState(connected: i == 1 || i == 2, used: i == 1 || i == 2) }
+
+    var seqForPlayer1 = [Int32](repeating: 0, count: maxPlayers)
+    seqForPlayer1[1] = 3
+    let headerForPlayer1 = CLUpdateHeader(
+        player: 1, seq: seqForPlayer1, dead: false, boat: false, dir: 0, tank: Vec2f(x: 11, y: 22),
+        speed: 0, turnSpeed: 0, kickDir: 0, kickSpeed: 0, builderStatus: 0, builder: Vec2f(x: 0, y: 0),
+        builderTargetX: 0, builderTargetY: 0, builderWait: 0, inputFlags: 0,
+        tankShotSound: false, pillShotSound: false, sinkSound: false, builderDeathSound: false
+    )
+    try await sendDatagram(harnessConnection, CLUpdate(header: headerForPlayer1, shells: [], explosions: []).encode())
+    let resultForPlayer1 = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
+    #expect(resultForPlayer1?.player == 1)
+    #expect(resultForPlayer1?.seq == 3)
+    #expect(state.players[1].tank == Vec2f(x: 11, y: 22))
+
+    var seqForPlayer2 = [Int32](repeating: 0, count: maxPlayers)
+    seqForPlayer2[2] = 1
+    let headerForPlayer2 = CLUpdateHeader(
+        player: 2, seq: seqForPlayer2, dead: false, boat: false, dir: 0, tank: Vec2f(x: 33, y: 44),
+        speed: 0, turnSpeed: 0, kickDir: 0, kickSpeed: 0, builderStatus: 0, builder: Vec2f(x: 0, y: 0),
+        builderTargetX: 0, builderTargetY: 0, builderWait: 0, inputFlags: 0,
+        tankShotSound: false, pillShotSound: false, sinkSound: false, builderDeathSound: false
+    )
+    try await sendDatagram(harnessConnection, CLUpdate(header: headerForPlayer2, shells: [], explosions: []).encode())
+    let resultForPlayer2 = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
+    #expect(resultForPlayer2?.player == 2)
+    #expect(resultForPlayer2?.seq == 1)
+    #expect(state.players[2].tank == Vec2f(x: 33, y: 44))
+
+    // Player 1's own tracked slot is untouched by player 2's update in between -- a STALE resend
+    // of player 1's own seq (3, not newer) is correctly rejected, proving the table really is
+    // keyed per player, not a single shared "last seq seen" scalar.
+    try await sendDatagram(harnessConnection, CLUpdate(header: headerForPlayer1, shells: [], explosions: []).encode())
+    let staleResendResult = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
+    #expect(staleResendResult == nil)
 }
