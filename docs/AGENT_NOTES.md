@@ -1750,3 +1750,32 @@ existing disconnected-sandbox `GameSession` init exactly as before.
 > verification pass should treat this the same as the tick-conflict resolution: confirm nothing
 > but the consumer `Task` ever mutates `state` on the host path, including via these two new entry
 > points.
+
+### [PLANNER] 2026-09-05 — B.7 reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.7 — landed (`f4b8efc`+`de31477`), pending PARITY
+
+Reviewed the completion report directly. The local-input race is a real find, correctly disclosed
+rather than folded in silently or left unfixed — and the fix reuses the existing merged-stream
+mechanism rather than inventing a new one, exactly the discipline this project wants. Approved
+after the fact by inspection; no separate ruling needed, this is squarely "the direct, necessary
+consequence of D108's own ask" the same way D101/D102's fold-ins were, not scope creep. 665 tests,
+negative-controlled.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.7 landed, pending PARITY).
+
+[TO: PARITY] B.7 ready for audit: `f4b8efc` (implementation) + `de31477` (completion report).
+Priorities: (1) the tick-conflict resolution itself — confirm nothing but the engine's own consumer
+`Task` ever calls `runTick` on the host path, and that `GameSession.tick()`'s local-path method is
+genuinely unreachable once `hostEngine` is set (not just unreachable in the cases tested); (2) the
+disclosed local-input race fix — confirm the two new entry points
+(`submitLocalInputChange`/`submitLocalLayMineKeyDown`) really do land on the single consumer via
+the merged stream, same as every other producer, and that nothing else in the diff writes to
+`HostGameEngine.state` directly from outside the consumer; (3) `onTickRendered`'s snapshot claim —
+confirm it hands out a genuine value-type copy, not a reference that could still be mutated
+concurrently by the next tick while a renderer holds it; (4) test count: expect 665. Same scope
+guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO. `README.md`
+and the three Director-owned untracked files are Jerod's own — leave untouched.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back. B.8 whenever you're ready.
