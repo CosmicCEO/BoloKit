@@ -422,3 +422,18 @@ status changed in `PLAN.md` itself — purely compression + doc sync. D125 onwar
 still owing PARITY audits on the sound-wiring and B.9's smoothing work — flagging clearly so this
 isn't mistaken for closed.
 [TO: PARITY] No action needed on this pass — no code or behavioral content touched.
+
+### [PLANNER] 2026-09-06 — First beta release published: v0.1.0-beta.1
+
+**Type:** release, no code decision
+**Phase:** cross-cutting — public artifact, not a wave/sub-wave
+
+Built the app in Release configuration, bumped `MARKETING_VERSION` 1.0→0.1.0 (`8790be0`), tagged
+`v0.1.0-beta.1`, and published a GitHub prerelease with the built `.app` (zipped) attached, notes
+summarizing current status/known gaps.
+
+**Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v0.1.0-beta.1
+
+Semver pre-release naming, per Jerod's own choice — room to increment `beta.2`/`beta.3` etc. as
+more builds land. Not a wave/sub-wave decision, just a project-management artifact; no D-number
+assigned.
