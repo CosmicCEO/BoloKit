@@ -1591,3 +1591,33 @@ public func lowpass(_ buffer: SampleBuffer, cutoffHz: Double) -> SampleBuffer
 **6. Sizing.** File list: `SampleBuffer.swift` (~60 lines), `SoundSource.swift` (DSP primitives + 14-entry table + per-name render dispatch, ~250-300 lines — the table itself is the bulk, one case per name), `SoundSetBuilder.swift` (~40 lines, thin orchestrator), `AIFFCodec.swift` (~40-60 lines given `AVAudioFile` does the heavy lifting), `BoloSounds/main.swift` (~30 lines, near-identical to `BoloGlyphs/main.swift`). Roughly 420-490 lines of new source, plus ~150-200 lines of new tests (`BoloKitTests` additions). **This matches D121's "medium, comparable to a slice of Wave 7.0" estimate** — slightly smaller than 7.0's actual `BoloGlyphsCore` (which carries autotile/connectivity logic sound has no equivalent of), but the same order of magnitude and the same two-target shape.
 
 > **→ Planner:** C.3 coding-level pre-brief complete — DSP primitives (`whiteNoise`/`adEnvelope`/`toneSweep`/`lowpass`), 14-entry parameter table (10 `far*` derived by shared lowpass, cutoff ~800Hz), AIFF via `AVAudioFile` (44.1kHz/16-bit/mono, big-endian, matching the reference's own on-disk format per direct `afinfo` check — mono is a deliberate simplification since the reference's 2ch carries no information for a synthesized mono source), `BoloSoundsCore`/`BoloSounds` target pair mirroring `BoloGlyphsCore`/`BoloGlyphs` exactly (`Package.swift` diff sketched above). Sizing confirms D121's "medium, comparable to a slice of Wave 7.0" estimate (~420-490 new lines + ~150-200 test lines). **One open question needing resolution before coding GO, not resolvable from the research entry alone:** the reference has 14 near names but the `far*` set only covers 10 — `tankshot`/`pillshot` both exist as near names but only one `fshot` far name appears in the research's own list. Needs a direct re-check of `GSXBoloController.m:357-490`'s pool declarations (which of the two `fshot` actually pairs with, or whether `pillshot` simply has no far variant in the reference) before the parameter table's far-derivation step can be finalized. No code written this session — awaiting coding GO.
+
+### [PLANNER] 2026-09-06 — D122: C.3 coding GO'd, fshot's shared near-name pairing resolved by direct re-check
+
+**Type:** ruling (D122), coding GO
+**Phase:** C.3 — coding GO'd
+
+**Resolved the pre-brief's one open question directly against the reference, not by guessing.**
+`GSXBoloController.m`'s own switch (lines 3667-3731) confirms `kFarShotSound`/`farshotsounds` is
+a distinct case from both `kTankShotSound`/`kPillShotSound` — the reference genuinely plays the
+identical `fshot.aiff` for either far event; there's no `fpillshot` because the reference itself
+never modeled one separately, not a naming coincidence.
+
+**Port this exactly: one shared `fshot` buffer (lowpass-filtered from `tankshot`'s near buffer,**
+**an arbitrary but inconsequential pick since the reference doesn't distinguish which sound it**
+**"belongs" to), reused for both `tankshot`'s and `pillshot`'s far variant.** 24 names, 23 unique
+generated buffers.
+
+**C.3 coding GO'd** on the full design as pre-briefed (structural template mirroring
+`BoloGlyphsCore`/`BoloGlyphs`, DSP primitives, 14-entry parameter table, `AVAudioFile` AIFF
+encoding, determinism-focused test strategy), with this one clarification folded in.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D122 added, Milestone C's row
+updated.
+
+[TO: IMPLEMENTER] C.3 coding GO'd — build exactly per your own pre-brief, with `fshot` shared
+between `tankshot`/`pillshot`'s far variants per D122. C.0/C.5 are both mid-flight in the working
+tree right now (`Bolo 2026/Bolo 2026/*.swift`, `HostGameEngine.swift`) — your new `BoloSoundsCore`/
+`BoloSounds` targets shouldn't overlap those files at all, but recheck `git status` before every
+commit as usual.
+[TO: PARITY] Nothing yet for C.3 — no commit exists beyond the pre-brief.
