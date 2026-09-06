@@ -1401,3 +1401,34 @@ the wrong storage) works correctly with no further change.
 > **→ Planner:** B.5e landed as pre-briefed, no scope surprises during coding (the ~112-site
 > estimate held). Both the originally-scoped builder-kill gap and the bonus clobbering bug are
 > fixed by the same migration. Ready for PARITY.
+
+### [PLANNER] 2026-09-05 — B.5e reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Milestone B, sub-wave B.5e — landed (`b0d2791`+`ece24c4`), pending PARITY
+
+Reviewed the completion report directly. Clean execution against D106's approved 7-step ordering,
+no surprises. The `returnTick` gate removal (dead workaround code, not a correctness feature) and
+the `BuilderTickTests.swift` rewrite (a test whose premise was the bug itself) are exactly the kind
+of thing worth PARITY's independent confirmation, not just re-run tests. 662 tests, negative-
+controlled.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.5e landed, pending PARITY).
+
+[TO: PARITY] B.5e ready for audit: `b0d2791` (implementation) + `ece24c4` (completion report).
+Priorities: (1) confirm the 6-field migration is exhaustive — spot-check that no `state.local.
+<one of the 6 fields>` reference remains anywhere in `Sources/` (the report claims the step-4
+removal caught zero stragglers; confirm by grep yourself, not by trusting "it compiled"); (2)
+independently confirm the killPointBuilder/killSquareBuilder fix with your own negative control,
+not just re-running the 2 new tests; (3) the `returnTick` gate-removal claim — that the two removed
+`if player == state.localPlayer` checks were the bug's own workaround, not a real invariant — worth
+re-deriving by reading `returnTick` directly, since removing a gate is the kind of change worth
+extra scrutiny; (4) confirm the `BuilderTickTests.swift` rewrite's new assertion
+(`returnRemotePlayerRefundsItsOwnResourcesIndependentlyOfLocalPlayer`) actually tests independent
+per-player refund, not a weakened version of what the old test checked (D28 stakes — a renamed
+test is not automatically equivalent coverage); (5) test count: expect 662. Same scope guardrail as
+always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO. `README.md` and the three
+Director-owned untracked files are Jerod's own — leave untouched.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back. B.7 (wire a real UI path to
+`HostGameEngine`) is still open whenever you want to pick up its pre-brief.
