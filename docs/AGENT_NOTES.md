@@ -766,3 +766,40 @@ updated (once next touched) to reflect B.8's narrowed GO and B.9's creation.
 prediction) gets its own pre-brief once B.8 lands — no rush.
 [TO: PARITY] Nothing yet for B.8 — no commit exists. Still owed from before: D112's audit,
 whenever convenient.
+
+### [PLANNER] 2026-09-06 — D114: D113's "no prediction" scope corrected — join player's own tank physics required in B.8, not deferrable
+
+**Type:** ruling (D114), correction
+**Phase:** B.8 — scope corrected before any code written; B.9 re-scoped, not retired
+
+**Real finding, confirmed before writing anything:** `HostDgramListener.swift`'s
+`processDgramPacket` runs zero physics/validation on non-host players' tanks — a client's own
+self-reported `CLUpdate` position is applied unconditionally and relayed raw to everyone else.
+Each client is authoritative for its own tank's physics; the host only owns shared state and
+relay. D113's "no prediction" framing assumed the host might correct a client's position — it
+doesn't, so there's no drift to reconcile against in the first place.
+
+**Correcting D113: running `tankLocalTick`/`tankMoveTick` for the join player's own tank, scoped**
+**to `state.localPlayer`, is required B.8 scope, not deferrable.** A `GameSession` mode where local
+input does nothing until a relay round-trips is not a working intermediate state — it's dead
+controls. Amended D113's text with a pointer here rather than silently rewriting it.
+
+**B.9 re-scoped, not retired:** since the host never corrects anything, there's no reconcile
+machinery to build. B.9 becomes remote-player position smoothing/interpolation between the host's
+relay-cadence updates — real, but a visual-quality item (jerky remote tanks at ~10Hz), not a
+correctness one. Still not pre-briefed, no rush.
+
+Good instinct holding on this specific point before building on a wrong assumption, same standard
+this project applies every time — say so and re-rule once real tracing contradicts an earlier
+guess.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D114 added, D113 amended
+inline, Milestone B's row updated.
+
+[TO: IMPLEMENTER] Confirmed — run `tankLocalTick`/`tankMoveTick` scoped to `state.localPlayer` for
+the join player's own tank, as part of B.8's own required scope. Proceed with the rest as GO'd
+(TCPSession owns the handshake, notice: reuse). B.9 is now "remote-tank smoothing," not
+prediction/reconciliation — simpler than it sounded, whenever you get to it.
+[TO: PARITY] Heads up for whenever B.8 lands: worth confirming the join player's own tank physics
+genuinely only touches `state.players[state.localPlayer]` and never drifts into simulating remote
+players (that would reintroduce the exact double-authority problem D113/D114 are avoiding).
