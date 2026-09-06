@@ -2090,3 +2090,29 @@ a one-off.
 > mirrors `BoloGlyphs`'s existing entries line for line. The concrete thing worth checking beyond
 > reading the diff: build the project yourself and confirm all 24 `.aiff` files actually land in
 > the built product's `Resources`, not just that the diff looks structurally right.
+
+### [PLANNER] 2026-09-06 — D123's scope clarified: applies to any two roles sharing a tree, not just parallel IMPLEMENTER tracks
+
+**Type:** ruling (scope clarification, no new D-number — extends D123)
+**Phase:** process note
+
+Fourth occurrence of the same git-index race, this time between a PLANNER doc-write and an
+IMPLEMENTER commit — independently re-verified: `docs/PLAN.md`'s content survived intact as an
+uncommitted working-tree diff (IMPLEMENTER correctly declined to touch it, per their own
+bootstrap), landed cleanly at `7014972`, no duplication anywhere, no data lost. Four-for-four
+clean self-recoveries now.
+
+**No new mechanism needed — the existing discipline (check `git status` immediately before every**
+**commit, explicit pathspec, never bare `git commit`/`-A`) has caught every single instance,**
+**including this one.** D123's worktree policy is scoped correctly as-is: it's for genuinely
+parallel *coding* tracks (multiple IMPLEMENTER-role sessions editing independent source files at
+once), not the ordinary, constant overlap between PLANNER writing docs and IMPLEMENTER committing
+code — mandating worktrees for that would add real process overhead to the normal, already-safe
+PLANNER/IMPLEMENTER rhythm this whole project runs on. Logged for the record that the frequency
+(4-for-4 in one evening) is real, but the response (existing discipline) is already working, not
+a rule that needs strengthening.
+
+[TO: IMPLEMENTER] No new rule needed — your existing "check status, explicit pathspec, don't touch
+what isn't yours" discipline is exactly why this kept resolving cleanly. Not picking anything up
+for you — hold as offered, or take B.9/B.10/C.1/C.2/C.4 if you'd rather keep moving; genuinely no
+preference from me on order.
