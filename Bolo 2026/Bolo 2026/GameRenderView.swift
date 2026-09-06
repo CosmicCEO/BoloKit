@@ -206,26 +206,54 @@ public final class GameRenderView: NSView {
         }
     }
 
-    // MARK: - Sprites (local player only -- v1 is single-process, D73)
-
+    // MARK: - Sprites (every connected player -- B.9, generalized beyond the local-only D73 scope)
+    //
+    // D73's original v1 framing ("there are never any other connected players") is stale as of
+    // B.7/B.8's real hosting/joining -- other players are real and connected now, and drawing
+    // only the local one left them invisible on screen even though the simulation already tracks
+    // them correctly. Generalized to match `GSBoloView.m:293-360`'s own draw order and per-player
+    // scope exactly: builders for every connected player (shared BUILD0/BUILD1 sprite, no per-
+    // player color), other players' tanks friendly/enemy-colored via the same mutual-alliance
+    // `testAlliance` check `PlayerStatusView.swift` (C.0) already uses, the local player's own
+    // tank last (always player-colored, unconditional), then shells/explosions for every
+    // connected player (one shared sprite, no per-player color needed for either).
     private func drawSprites(_ ctx: CGContext) {
         for explosion in state.explosions {
             drawExplosion(explosion, ctx)
         }
 
-        guard state.players.indices.contains(state.localPlayer) else { return }
-        let player = state.players[state.localPlayer]
+        for player in state.players where player.connected {
+            drawBuilder(player, ctx)
+        }
 
-        drawBuilder(player, ctx)
-        for shell in player.shells {
-            drawSprite(SHELL0IMAGE + headingColumn(shell.dir), at: shell.point, ctx)
+        for i in state.players.indices
+        where state.players[i].connected && i != state.localPlayer && !state.players[i].dead {
+            let other = state.players[i]
+            let friendly = testAlliance(state.localPlayer, i, players: state.players)
+            let base: Int32
+            if friendly {
+                base = other.boat ? FTKB00IMAGE : FTNK00IMAGE
+            } else {
+                base = other.boat ? ETKB00IMAGE : ETNK00IMAGE
+            }
+            drawSprite(base + headingColumn(other.dir), at: other.tank, ctx)
         }
-        for explosion in player.explosions {
-            drawExplosion(explosion, ctx)
+
+        if state.players.indices.contains(state.localPlayer) {
+            let player = state.players[state.localPlayer]
+            if !player.dead {
+                let base = player.boat ? PTKB00IMAGE : PTNK00IMAGE
+                drawSprite(base + headingColumn(player.dir), at: player.tank, ctx)
+            }
         }
-        if !player.dead {
-            let base = player.boat ? PTKB00IMAGE : PTNK00IMAGE
-            drawSprite(base + headingColumn(player.dir), at: player.tank, ctx)
+
+        for player in state.players where player.connected {
+            for shell in player.shells {
+                drawSprite(SHELL0IMAGE + headingColumn(shell.dir), at: shell.point, ctx)
+            }
+            for explosion in player.explosions {
+                drawExplosion(explosion, ctx)
+            }
         }
     }
 
