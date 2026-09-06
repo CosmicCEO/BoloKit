@@ -13,5 +13,10 @@ struct Bolo_2026App: App {
         WindowGroup {
             AppRootView()
         }
+        // Milestone C.5 (D120): SwiftUI's native preferences-window idiom -- opens on Cmd+,
+        // automatically, no hand-rolled window/menu-item wiring needed.
+        Settings {
+            PreferencesView()
+        }
     }
 }

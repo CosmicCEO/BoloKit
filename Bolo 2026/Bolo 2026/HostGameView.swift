@@ -79,6 +79,21 @@ struct HostGameView: View {
 
     private let mapContentType = UTType(filenameExtension: "map") ?? .data
 
+    /// Milestone C.5 (D120): `portText`'s initial value now reads the same `"GSHostPortNumber"`
+    /// key `PreferencesView`'s `@AppStorage` writes to (both back onto `UserDefaults.standard`,
+    /// the same store) -- reading it directly here, rather than via a second `@AppStorage`
+    /// property, avoids a `String`/`Int` type mismatch against this view's own text-field-bound
+    /// `String` state with no extra conversion property.
+    init(
+        onStartHosting: @escaping (HostGameEngine) -> Void,
+        onStartHostingLocalOnly: @escaping (GameState) -> Void
+    ) {
+        self.onStartHosting = onStartHosting
+        self.onStartHostingLocalOnly = onStartHostingLocalOnly
+        let storedPort = UserDefaults.standard.object(forKey: "GSHostPortNumber") as? Int
+        _portText = State(initialValue: String(storedPort ?? 50000))
+    }
+
     var body: some View {
         Form {
             Section("Map") {

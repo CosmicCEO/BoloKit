@@ -59,6 +59,21 @@ struct JoinGameView: View {
     @State private var trackerGames: [TrackerHostList] = []
     @State private var trackerErrorMessage: String?
 
+    /// Milestone C.5 (D120): `nameText`/`trackerHostnameText`'s initial values now read the same
+    /// `"GSPlayerNameString"`/`"GSTrackerString"` keys `PreferencesView`'s `@AppStorage` writes to
+    /// (both back onto `UserDefaults.standard`, the same store) -- `portText` deliberately does
+    /// NOT read `"GSHostPortNumber"` here, since that preference is the *host's own* default
+    /// listening port (`HostGameView`'s own field), not this view's join-target port, which the
+    /// reference's own `GSJoinPortNumber` keeps as a genuinely separate default (also 50000, but a
+    /// different key, never wired to a preference in this v1 slice).
+    init(onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void) {
+        self.onJoinedGame = onJoinedGame
+        let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
+        _nameText = State(initialValue: storedName ?? "Newbie")
+        let storedTracker = UserDefaults.standard.string(forKey: "GSTrackerString")
+        _trackerHostnameText = State(initialValue: storedTracker ?? "tracker.xbolo.org")
+    }
+
     var body: some View {
         Form {
             Section("Server") {
