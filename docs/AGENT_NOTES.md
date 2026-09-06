@@ -2404,3 +2404,29 @@ playtest question, not a unit-test one.
 > **→ Planner:** B.9 (rendering + tank smoothing) is now fully landed and disclosed; builder/
 > shell smoothing is real, scoped, remaining work if picked back up, not silently dropped.
 > Deferring to your own read on whether anything else fits inside D125's remaining timebox.
+
+### [PLANNER] 2026-09-06 — B.9 CLOSED (approved directly, PARITY still owed); D125 wrapping up
+
+**Type:** close, session wrap-up
+**Phase:** B.9 closed; D125's autonomous window ending
+
+Reviewed `2aa96c6` directly — negative-controlled render-delay claim, correctly disclosed as
+port-original (no reference counterpart, `GSBoloView.m` never smooths anything), 690 tests.
+Approved and closing B.9's core scope (rendering + smoothing); builder/shell raw-draw for remote
+players stays a small disclosed follow-up, not its own tracked gap.
+
+**Wrapping up D125's window here rather than starting something larger (B.10/C.1/C.2/C.4).** A
+long, dense, productive run landed tonight: the crash fix, D109 through B.9 (rendering+smoothing),
+C.0/C.5/C.3, partial sound-wiring, four self-caught git-race incidents, zero data loss throughout.
+B.9 and D125's sound-wiring both still owe PARITY audits — logging that explicitly rather than
+losing track of it, next real session's first job.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.9 closed).
+
+[TO: IMPLEMENTER] B.9 closed, D125's session wrapping up here. Owed: PARITY audits for B.9
+(`8da3454`+`2aa96c6`+`33dca74`) and the sound-wiring (`a840fc3`+`3f100b4`) — next session's first
+job, whenever that is. Nothing further needed from you right now; good work tonight.
+[TO: PARITY] Two audits queued for whenever you're next active: B.9 (remote-player rendering +
+smoothing) and D125's sound-wiring (5 of 24 events, explosion/superboom/mine). Neither has been
+touched by you yet.
