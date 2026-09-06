@@ -2301,3 +2301,71 @@ own uncommitted `HostGameEngineTests.swift` work.
 [TO: PARITY] Thank you — re-deriving against the full draw block rather than just the cited lines
 on D111, and flagging the dead-code consequence unasked, is exactly the standard. Nothing further
 needed until B.8 lands.
+
+### [IMPLEMENTER] 2026-09-06 — fourth live-found fix: crash on any neutral pillbox hit (commit `78df7a8`, not yet numbered)
+
+**Note on B.8:** the "IMPLEMENTER's own uncommitted `HostGameEngineTests.swift` work" mentioned in
+the previous entry was scratch diagnostic code (a fuzzed-input crash repro, described below), not
+B.8 progress — reverted before committing anything real. B.8 itself hasn't been started.
+
+**What happened:** Jerod hit a real crash live, twice, while playtesting D109's local-play
+fallback with a real map. Console log: `Swift/ContiguousArrayBuffer.swift:708: Fatal error: Index
+out of range`, timestamped right after normal driving. Reproduced deterministically in an isolated
+test — no GUI needed — by decoding the real `docs/U.S.A.map` fixture, constructing the exact
+`GameState` `HostGameView.startHosting()`'s fallback path builds, and running `runTick` for 20,000
+ticks with a seeded-random mix of accel/turn/shoot/mine input: crashed in 4 of 5 tried seeds,
+usually within the first 1,500-6,000 ticks (30-120 real seconds of play — not a rare edge case).
+
+**Root cause, confirmed directly against `client.c:5423`, not guessed:** `ShellTick.swift`'s
+tank-hit test indexed `state.players[Int(shell.owner)]` to attribute the hit-explosion.
+`Shell.owner`'s own doc comment already says it can be `playerNeutral` (0xff) for an unowned
+pill's return fire (`PillTick.swift` sets `owner: state.pills[i].owner`) — `state.players[0xff]`
+traps instantly the first time such a shot actually connects. The C reference attributes the
+hit-explosion to `client.players[client.player]` — the local client's own list, always a real
+index — never to the shooter. Two more `shell.owner`-indexed sites inside `shellCollisionTest`
+had the identical bug; fixed all three the same way, by threading each call's own already-in-scope
+`player` through instead (`shellCollisionTest` gained a `player: Int` parameter; both call sites —
+`ShellTick.swift` step 2, `PillTick.swift`'s pillbox-fire path — already had it in scope).
+
+**The file's own header comment was actively wrong** ("the gate's `client.player` always equals
+the shell's owner at every call site that reaches it") — corrected in place rather than left as a
+trap for the next reader, rather than just silently fixing the code under it.
+
+**Test fallout:** `shellTickHitsRemoteTankSetsKickWithoutLocalArmourChange` was asserting
+`state.players[0].explosions.count == 1` (the shooter) — this had been *coincidentally* passing
+under the old, wrong code because that specific test's shell owner (0) happened to equal the
+shooter's own index, never exposing the real bug. Corrected to `state.players[1]` (the target,
+matching `player` — the ticked player, i.e., who's being hit). Added
+`shellTickNeutralOwnedShellHittingATankDoesNotCrashAndAttributesToTheTarget`, negative-controlled
+(reverting the fix reproduces the identical trap, confirmed before restoring).
+
+**666 tests passing** (was 665). App target and BoloKit both rebuilt/retested clean.
+
+**Not yet numbered — deliberately.** My first attempt at this report used "D111," not realizing
+Planner had already assigned that number to the boat-sprite fix earlier tonight while I was deep
+in the crash investigation. Caught it before it left my own commit history uncorrected (amended
+the commit message and the two in-code comments that had copied it) — flagging here so it's not
+quietly wrong in two places. Left unnumbered for Planner to assign on review, rather than guessing
+a second time.
+
+**Not yet investigated tonight, by Jerod's own explicit instruction to keep working within a**
+**bounded effort budget rather than chase everything:** two more things Jerod reported live before
+signing off —
+1. "The rotation is counter-intuitive, A vs D" (turning felt backwards).
+2. "At some point the acceleration was not in the direction of the triangle's tip" (movement
+   didn't visually match the heading the sprite was pointing).
+
+I traced both against the code (turnL/turnR's sign convention vs. `dir2vec`'s already-tested
+counterclockwise-on-screen sweep, D70's own regression coverage) and found nothing that looks
+wrong on paper — turning left (A) increases `dir`, which the existing passing test confirms sweeps
+counterclockwise on screen, consistent with "turning left" regardless of current heading. I'm
+flagging both as **unconfirmed, not fixed** rather than either dismissing them or guessing at a
+change with no repro — they may be real, or first-time-player disorientation (the boat's
+shore-push mechanic can visibly shove a boat sideways near land in a way that isn't obviously
+input-driven if you don't know it exists, which could easily read as "acceleration not matching
+the tip"). Needs Jerod's own confirmation/repro steps once awake before either of us spends more
+time on it.
+
+> **→ Planner:** Fourth live-found fix ready for your number + PARITY, same standard as the other
+> three. The two open, unconfirmed reports above are NOT part of this fix and shouldn't block
+> closing it — recommend they wait for Jerod's own input rather than either of us guessing blind.
