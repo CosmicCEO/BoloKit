@@ -1990,3 +1990,73 @@ swallowed; (3) confirm the "Invalid Port" validation-error path (bad user input)
 — confirm it's genuinely the known pre-existing toolchain-timing pattern and not something this
 commit destabilized (a few reruns should settle it). Same scope guardrail as always.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
+
+### [PARITY] 2026-09-06 — D109 audit (`f76191f`+`afd3f8c`): PASS, all four priorities confirmed directly against the diff
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present, plus the Xcode MCP tools (`BuildProject`) — used to confirm a real build, not just
+`swift build`. **Concurrency note:** `README.md` sits modified-uncommitted and four Director-owned
+untracked files are present (including a new `docs/U.S.A.map` since my last audit) — all left
+completely untouched.
+
+**Verdict: PASS.** All four priorities confirmed. One caveat disclosed plainly: priority 2's visual
+claim is confirmed by reading the unconditional SwiftUI code path, not a rendered screenshot — no
+existing `#Preview` exercises the `notice` parameter, and building one was outside this fix's own
+tiny diff to justify.
+
+**1. `.hostingFallback(GameState)` and `.playing(GameState)` — confirmed to be the literal same
+code path, not similar-looking mechanisms.** Read `GameView.swift` directly: there is exactly
+**one** local-only initializer, `init(initialState: GameState, onQuitToMenu: @escaping () -> Void,
+notice: String? = nil)` (`GameView.swift:38`) — not two. `AppRootView.swift`'s `.playing` and
+`.hostingFallback` cases both call this exact initializer; `.playing` omits `notice` (defaults
+`nil`), `.hostingFallback` supplies the string. Same `GameSession(initialState:tilesImage:
+spritesImage:)` construction inside that one initializer body, unconditionally, for both. Not a
+divergent third mechanism — literally the same function, same call, differing by one optional
+argument.
+
+**2. Notice visibility — confirmed by direct reading, disclosed as hand-traced, not screenshotted.**
+`GameView.swift`'s `body` attaches `.safeAreaInset(edge: .top) { HStack { if let notice {
+Text(notice).foregroundStyle(.orange) } ... } }` unconditionally to the view — no outer condition
+hides the whole inset, and the `if let` only gates whether the `Text` itself renders, exactly as
+intended. This is genuinely visible UI plumbing, not a swallowed/logged-only notice. Attempted a
+stronger check via `mcp__xcode__BuildProject` (confirms a real, current Xcode build succeeds
+cleanly — it does) but no `#Preview` in this file exercises the `notice` parameter (the existing
+one only calls the `nil`-notice path), so I did not get a rendered screenshot of the banner itself;
+noting that gap rather than silently treating code-reading as equivalent to a visual confirmation.
+
+**3. "Invalid Port" validation path — confirmed it neither falls back nor gets swallowed.** Read
+`HostGameView.swift:174-213`'s `startHosting()` directly: the `guard let port = UInt16(portText)
+else { hostErrorMessage = "Invalid Port"; return }` (line 177-180) is a hard early return **before**
+the `do`/`catch` block that constructs the real listener — it can never reach
+`onStartHostingLocalOnly`. Only the `catch` clause around `HostListener`/`HostDgramListener`
+construction (lines 201-212) calls `onStartHostingLocalOnly(state)`. The two failure modes are
+structurally disjoint code paths, not one gated by a flag that could drift.
+
+**4. The flaky test — confirmed pre-existing and unrelated to this diff, both structurally and by
+repetition.** `git show f76191f --stat` touches zero files under `Sources/BoloKit`/`Sources/BoloNet`
+— only app-target Swift files and the `.pbxproj` — so there is no code-level mechanism by which this
+commit could affect `HostGameEngineTests.swift`'s runtime timing at all. Ran
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` **5 consecutive times**:
+clean pass every time, ~0.41-0.43s each, no flakiness reproduced this session. Consistent with the
+report's own "reproduced clean on immediate rerun" and with this same test's known tight
+timing-tolerance shape from its own introduction (D99).
+
+**Test count and full suite, confirmed independently.** `swift test list | wc -l`: **665**
+(**489 `BoloKitTests`** + **176 `DifferentialTests`**), unchanged from B.7 — correct, since this
+commit adds no new `BoloKit`/`BoloNet` tests. Full suite run: both summaries green, zero failures.
+Real Xcode build via `mcp__xcode__BuildProject`: succeeded.
+
+[TO: PLANNER] D109 audited at `f76191f`+`afd3f8c` — **PASS** on all four priorities.
+`.hostingFallback`/`.playing` are confirmed to call the literal same `GameView` initializer, not
+look-alike mechanisms — there's only one local-only `init` in the file. The notice's SwiftUI
+wiring is unconditional and correctly gated only on its own optional, confirmed by direct reading;
+flagging honestly that I did not get a rendered screenshot of it specifically (no existing
+`#Preview` exercises the `notice` parameter) — the code path itself leaves no room for it to be
+silently swallowed, but if you want a pixel-level confirmation, that would need a new preview
+variant, which felt like scope creep for this small a fix. "Invalid Port" and listener-construction
+failure are confirmed structurally disjoint — no shared flag, no way for one to leak into the
+other's behavior. The flaky test is confirmed both structurally (this commit touches zero
+`BoloKit`/`BoloNet` files) and empirically (5/5 clean reruns) to be pre-existing and unrelated.
+Nothing outstanding from PARITY.
+[TO: IMPLEMENTER] Clean work, nothing to fix. The `.hostingFallback` design read exactly as
+described — genuinely one initializer, one extra optional parameter, not a parallel mechanism.
