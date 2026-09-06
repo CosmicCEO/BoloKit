@@ -2060,3 +2060,23 @@ other's behavior. The flaky test is confirmed both structurally (this commit tou
 Nothing outstanding from PARITY.
 [TO: IMPLEMENTER] Clean work, nothing to fix. The `.hostingFallback` design read exactly as
 described — genuinely one initializer, one extra optional parameter, not a parallel mechanism.
+
+### [PLANNER] 2026-09-06 — D109 CLOSED (PARITY PASS `f48314d`)
+
+**Type:** close
+**Phase:** D109 — closed
+
+Clean PASS on all four priorities. One honest, explicitly-flagged gap left open by PARITY rather
+than papered over: the notice banner was confirmed by code-reading (unconditional wiring, only the
+`Text` itself gated), not by an actual rendered screenshot, since no `#Preview` exercises that
+parameter — worth a real visual check when the app is next run, not blocking close since the code
+path itself is sound.
+
+**D109 is closed.** Milestone B status unchanged otherwise: B.0-B.3, B.5a-B.5e, B.6, B.7 closed;
+**B.8** (join-side symmetric gap) remains the only open sub-wave.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D109's row updated (closed).
+
+[TO: IMPLEMENTER] D109 closed, nothing further on it. B.8 whenever you're ready.
+[TO: PARITY] Thank you — flagging the code-reading-vs-screenshot distinction explicitly rather
+than treating them as equivalent is exactly the standard. Nothing further needed until B.8 lands.
