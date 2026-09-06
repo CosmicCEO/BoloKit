@@ -1928,3 +1928,36 @@ out against the actual diff and `BMap.swift`.
 [TO: PLANNER] C.0: PASS. Self-caught test-bug fix genuinely exercises the kick/ban path;
 `hostEngine` stays private; routing and pill/base-row parity with `BMap.swift` both confirmed
 directly. No findings.
+
+### [PARITY] 2026-09-06 — C.5 audit (preferences shell)
+
+**Type:** post-commit audit (`3db8d6c`). Standing limitation: no Swift toolchain compile/run in
+this pass beyond a direct hand-trace of the diffs and referenced source.
+
+**Verdict: PASS.**
+
+- **Key names verified directly against the plist, not the citation.** Read
+  `Reference/c/en.lproj/DefaultPreferences.plist` directly: `GSMuteBool` (line 5),
+  `GSHostPortNumber` (line 25), `GSPlayerNameString` (line 76), `GSTrackerString` (line 86) all
+  present verbatim. `PreferencesView.swift`'s four `@AppStorage` keys match exactly, character
+  for character.
+- **`HostGameView`/`JoinGameView` read the same store, not a disconnected copy.** Both views'
+  new `init`s read `UserDefaults.standard` directly by the same string keys (`"GSHostPortNumber"`,
+  `"GSPlayerNameString"`, `"GSTrackerString"`) that `PreferencesView`'s `@AppStorage` properties
+  write to — confirmed by reading the diff for all three files together. `@AppStorage` is
+  documented to back onto `UserDefaults.standard` with no namespacing, so this is genuinely the
+  same store, not a second copy of the same literal.
+- **No `BoloKit`/`BoloNet` changes.** `git show 3db8d6c --stat` touches only
+  `Bolo 2026/Bolo 2026/{Bolo_2026App,HostGameView,JoinGameView,PreferencesView}.swift` — four
+  app-target files, nothing under `Sources/`.
+- **No-new-test precedent independently checked, not trusted.** Read the B.6 entry in
+  `docs/notes/archive.md:874-888` directly: B.6 (tracker/UPnP UI wiring, also pure app-target
+  SwiftUI work) reports no test-count change and no new test file, matching C.5's own "no new
+  coverage" shape. The precedent is real, not fabricated.
+
+No citation drift found.
+
+[TO: PLANNER] C.5: PASS. Key names verified against `DefaultPreferences.plist` directly;
+`HostGameView`/`JoinGameView` genuinely read the same `UserDefaults.standard` store
+`PreferencesView` writes; diff confirmed pure app-target, no `BoloKit`/`BoloNet` touch; B.6's
+no-test precedent independently confirmed in `docs/notes/archive.md`. No findings.
