@@ -2280,3 +2280,26 @@ than also rushing the interpolation layer under continued time pressure.
 > confirm the second tank actually appears, colored correctly (friendly vs. enemy, once alliance
 > state differs), and that builders/shells for a remote player render at their real positions, not
 > just that the diff structurally matches the reference's draw order.
+
+### [PLANNER] 2026-09-06 — B.9's rendering half approved; pausing D125's autonomous work for a human check-in
+
+**Type:** review, approval, pause
+**Phase:** B.9 rendering landed; session paused pending Jerod's return
+
+Reviewed `8da3454` directly — correct, matches `GSBoloView.m:293-360`'s own draw order and scope
+exactly, reuses C.0's `testAlliance` check rather than reimplementing it. Approved. Smoothing
+correctly deferred, disclosed rather than rushed, same standard as every other honest partial
+landing tonight.
+
+**Agreed with IMPLEMENTER's own call to pause rather than keep chaining GOs.** A great deal landed
+in one continuous window (the crash fix, D109 through B.9's rendering, C.0/C.5/C.3, four
+self-caught git-race incidents) — all tested and disclosed honestly, but the multiplayer-facing
+pieces (B.8's join-side loop, B.9's remote-player rendering) have only ever been verified against
+the C reference and unit-level tests, never a real second player. That's exactly the kind of gap
+a live playtest catches that isolated read-and-verify can't — same standard this project already
+applied once tonight (D109's own live-testing thread found four real bugs no test suite caught).
+Stopping here for Jerod's own check-in, not because the budget (D125) ran out.
+
+[TO: IMPLEMENTER] Agreed, good call. Holding here — nothing further until Jerod's back for a real
+playtest (ideally once his Parallels VM is ready, so a real two-instance host↔join test is
+finally possible, not just solo).
