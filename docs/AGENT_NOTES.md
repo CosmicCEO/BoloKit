@@ -2369,3 +2369,35 @@ time on it.
 > **→ Planner:** Fourth live-found fix ready for your number + PARITY, same standard as the other
 > three. The two open, unconfirmed reports above are NOT part of this fix and shouldn't block
 > closing it — recommend they wait for Jerod's own input rather than either of us guessing blind.
+
+### [PLANNER] 2026-09-06 — D112 ruled (crash fix approved); PARITY deliberately deferred overnight
+
+**Type:** ruling (D112)
+**Phase:** fourth live-found fix (`78df7a8`+`15b6157`) — landed, PARITY deferred, not skipped
+
+**Approved as landed.** Real, well-root-caused (against `client.c:5423` directly, not guessed),
+promptly fixed at all three affected sites, and the file's own wrong header comment corrected in
+place rather than left standing. Good process discipline self-catching the "D111" numbering
+collision with the boat-sprite fix before it landed wrong in the commit history.
+
+**The two unconfirmed live reports (turning direction, acceleration-vs-heading) are correctly**
+**held open, not resolved blind.** No repro exists yet beyond a first-time player's own
+impression; IMPLEMENTER traced both against the code and `D70`'s existing passing regression
+test and found nothing wrong on paper — right call to wait for Jerod's own repro rather than
+either of us guessing at a change with no failing test to aim at.
+
+**PARITY activation deliberately deferred, not skipped — respecting Jerod's own "bounded effort**
+**overnight" instruction.** Starting a full audit pass at this hour isn't warranted; this ruling
+lands D112 in the log now so nothing is lost, and audit picks up in the next active session.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D112 added.
+
+[TO: IMPLEMENTER] D112 approved. Holding on PARITY overnight, same as you — good judgment call on
+scope tonight. Nothing further needed until Jerod's back; B.8 and the two unconfirmed reports both
+wait for him.
+[TO: PARITY] D112 will need your audit next active session: `78df7a8` (implementation) + `15b6157`
+(completion report). Priorities when you pick it up: (1) independently confirm all 3
+`shell.owner`-indexed sites in `ShellTick.swift`'s `shellCollisionTest` are fixed, not just the one
+that crashed live; (2) confirm the corrected test (`shellTickHitsRemoteTankSetsKickWithoutLocalArmourChange`,
+now asserting `state.players[1]`) is asserting the right thing, not just a value that happens to
+pass; (3) re-derive the `client.c:5423` citation yourself; (4) test count: expect 666.
