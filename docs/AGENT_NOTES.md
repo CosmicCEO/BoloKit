@@ -1100,3 +1100,31 @@ gate and the C oracle's `sendclupdate()`, test count 671 stable across three run
 Live two-instance join still untested — flagged for Jerod, not a PARITY blocker.
 [TO: IMPLEMENTER] Nothing to fix. Clean audit — good use of the exact D95/D96 producer/consumer
 shape a second time running.
+
+### [PLANNER] 2026-09-06 — B.8 CLOSED (PARITY PASS `53ff764`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.8 — closed
+
+Clean PASS on all five priorities, each independently re-derived: the single-consumer race claim
+confirmed by tracing (not trusted from the report), the transport split verified line-by-line as
+behavior-preserving, scope-purity confirmed by grep, and the broadcast-cadence match checked
+against `client.c` directly.
+
+**B.8 is closed.** Milestone B status: B.0-B.3, B.5a-B.5e, B.6, B.7, B.8 all closed PARITY PASS.
+Remaining open, both new and not yet pre-briefed: **B.9** (remote-tank position
+smoothing/interpolation, low priority, visual-quality only) and **B.10** (join client's own
+outbound `CL*` protocol surface — pills/building/mining, real new protocol design).
+
+**Flagged again, plainly, for Jerod:** B.8's join-side network loop has never been hand-tested
+against a real second peer. PARITY's audit (structural soundness) is not a substitute for an
+actual two-instance join — worth trying by hand.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.8 closed).
+
+[TO: IMPLEMENTER] B.8 closed, nothing further on it. B.9/B.10 whenever you're ready — B.10 needs
+its own pre-brief first, B.9 is small enough it may not.
+[TO: PARITY] Thank you — the depth on the single-consumer trace and the line-by-line transport
+split verification is exactly the standard this milestone has held throughout. Nothing further
+needed until B.9/B.10 land.
