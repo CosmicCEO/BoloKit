@@ -360,12 +360,12 @@ private func applySplashDamage(
 
     if state.local.armour < 0 {
         state.local.armour = 0
-        if state.local.mines > 32 {
+        if state.players[player].mines > 32 {
             superboom(
                 state: &state,
                 onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
-        } else if state.local.mines > 0 || state.local.shells > 0 {
+        } else if state.players[player].mines > 0 || state.local.shells > 0 {
             smallboom(
                 state: &state,
                 onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill

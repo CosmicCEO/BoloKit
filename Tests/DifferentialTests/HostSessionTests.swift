@@ -295,7 +295,7 @@ private func makeState(playerCount: Int) -> GameState {
     state.terrain[50, 50] = .minedGrass
     state.players[0].builderStatus = .work
     state.players[0].builder = Vec2f(x: 50.5, y: 50.5)
-    state.local.builderPill = 0
+    state.players[0].builderPill = 0
     state.pills = [Pill(x: 0, y: 0, armour: 0, owner: playerNeutral, speed: 0, counter: 0)]
     state.starts = [Start(x: 5, y: 5, dir: 0)]
 

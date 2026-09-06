@@ -200,6 +200,22 @@ public struct PlayerState: Sendable {
     public var builderTarget: Pointi
     public var builderStatus: BuilderStatus
     public var builderWait: Int
+    // B.5e (D105/D106): moved off `LocalPlayerState` -- `builderTick` (`BuilderTick.swift`) is
+    // called once per connected player, unlike `tankLocalTick`'s single `state.localPlayer`-only
+    // call, so these 6 fields need a real per-player home to avoid one player's in-progress
+    // builder/resource state clobbering another's every tick. The other 11 `LocalPlayerState`
+    // fields stay a true singleton -- confirmed exclusively touched by `state.localPlayer`-gated
+    // paths (`tankLocalTick`'s own body, `tankMoveTick`'s gated dead-tank branch). `mines`/`trees`
+    // are the general tank resource counts the builder also spends from, not new concepts --
+    // `builderMines`/`builderTrees` remain the builder's own separate sub-counters, matching
+    // `LocalPlayerState`'s prior naming exactly.
+    public var mines: Int
+    public var trees: Int
+    public var builderTask: BuilderTask
+    public var builderMines: Int
+    public var builderTrees: Int
+    /// Index into `GameState.pills`, or `noPill` (0xff) if none reserved.
+    public var builderPill: UInt8
     // Status
     public var dead: Bool
     public var boat: Bool
@@ -236,6 +252,12 @@ public struct PlayerState: Sendable {
         builderTarget: Pointi = Pointi(x: 0, y: 0),
         builderStatus: BuilderStatus = .ready,
         builderWait: Int = 0,
+        mines: Int = 0,
+        trees: Int = 0,
+        builderTask: BuilderTask = .doNothing,
+        builderMines: Int = 0,
+        builderTrees: Int = 0,
+        builderPill: UInt8 = noPill,
         dead: Bool = true,
         boat: Bool = false,
         connected: Bool = false,
@@ -258,6 +280,12 @@ public struct PlayerState: Sendable {
         self.builderTarget = builderTarget
         self.builderStatus = builderStatus
         self.builderWait = builderWait
+        self.mines = mines
+        self.trees = trees
+        self.builderTask = builderTask
+        self.builderMines = builderMines
+        self.builderTrees = builderTrees
+        self.builderPill = builderPill
         self.dead = dead
         self.boat = boat
         self.connected = connected
@@ -294,20 +322,21 @@ public struct BannedPlayer: Sendable, Hashable {
 // Fields from the C `client` struct itself, not `client.players[]` — i.e.
 // resources and per-tick bookkeeping that only exist for the locally
 // simulated player.
+//
+// **B.5e (D104/D105/D106):** `mines`/`trees`/`builderTask`/`builderMines`/`builderTrees`/
+// `builderPill` moved to `PlayerState` this sub-wave — `builderTick` (`BuilderTick.swift`) calls
+// once per *connected* player, unlike every function below (which only ever runs for
+// `state.localPlayer`), so those 6 needed a real per-player home to avoid one player's
+// in-progress builder/resource state clobbering another's every tick. The remaining 11 fields
+// here are confirmed exclusively touched by `state.localPlayer`-gated call paths — genuinely
+// singleton, not an oversight.
 
 public struct LocalPlayerState: Sendable {
     public var armour: Int
     public var shells: Int
-    public var mines: Int
-    public var trees: Int
     /// Remaining shell range for the next shot fired.
     public var range: Float
     public var respawnCounter: Int
-    public var builderTask: BuilderTask
-    public var builderMines: Int
-    public var builderTrees: Int
-    /// Index into `GameState.pills`, or `noPill` (0xff) if none reserved.
-    public var builderPill: UInt8
     public var spawned: Bool
     public var drainCounter: Int
     public var refueling: Bool
@@ -323,14 +352,8 @@ public struct LocalPlayerState: Sendable {
     public init(
         armour: Int = 0,
         shells: Int = 0,
-        mines: Int = 0,
-        trees: Int = 0,
         range: Float = maxShellRange,
         respawnCounter: Int = 0,
-        builderTask: BuilderTask = .doNothing,
-        builderMines: Int = 0,
-        builderTrees: Int = 0,
-        builderPill: UInt8 = noPill,
         spawned: Bool = false,
         drainCounter: Int = 0,
         refueling: Bool = false,
@@ -341,14 +364,8 @@ public struct LocalPlayerState: Sendable {
     ) {
         self.armour = armour
         self.shells = shells
-        self.mines = mines
-        self.trees = trees
         self.range = range
         self.respawnCounter = respawnCounter
-        self.builderTask = builderTask
-        self.builderMines = builderMines
-        self.builderTrees = builderTrees
-        self.builderPill = builderPill
         self.spawned = spawned
         self.drainCounter = drainCounter
         self.refueling = refueling

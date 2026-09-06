@@ -334,7 +334,7 @@ public func killTank(
 
     var pills: UInt16 = 0
     for j in state.pills.indices where state.pills[j].owner == UInt8(player)
-        && j != Int(state.local.builderPill) && state.pills[j].armour == pillOnboard {
+        && j != Int(state.players[player].builderPill) && state.pills[j].armour == pillOnboard {
         pills |= UInt16(truncatingIfNeeded: 1 << j)
     }
     let tank = state.players[player].tank

@@ -384,7 +384,7 @@ public func recvSrGrabBoat(player: Int, x: Int, y: Int, state: inout GameState) 
 /// broadcast about another player.
 public func recvSrMineAck(success: Bool, state: inout GameState, onTankStatusChanged: () -> Void = {}) {
     if !success {
-        state.local.mines += 1
+        state.players[state.localPlayer].mines += 1
     }
     onTankStatusChanged()
 }
@@ -398,18 +398,18 @@ public func recvSrBuilderAck(mines: UInt8, trees: UInt8, pill: UInt8, state: ino
     let player = state.localPlayer
     guard state.players[player].builderStatus == .work else { return }
 
-    switch state.local.builderTask {
+    switch state.players[player].builderTask {
     case .getTree, .buildRoad, .buildWall, .buildBoat, .repairPill:
-        state.local.builderTrees = Int(trees)
+        state.players[player].builderTrees = Int(trees)
         state.players[player].builderStatus = .wait
         state.players[player].builderWait = 0
     case .buildPill:
-        state.local.builderTrees = Int(trees)
-        state.local.builderPill = pill
+        state.players[player].builderTrees = Int(trees)
+        state.players[player].builderPill = pill
         state.players[player].builderStatus = .wait
         state.players[player].builderWait = 0
     case .placeMine:
-        state.local.builderMines = Int(mines)
+        state.players[player].builderMines = Int(mines)
         state.players[player].builderStatus = .wait
         state.players[player].builderWait = 0
     case .doNothing:
@@ -461,9 +461,9 @@ public func recvSrSmallBoom(
 
         if state.local.armour < 0 {
             state.local.armour = 0
-            if state.local.mines > 32 {
+            if state.players[localPlayer].mines > 32 {
                 superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
-            } else if state.local.mines > 0 || state.local.shells > 0 {
+            } else if state.players[localPlayer].mines > 0 || state.local.shells > 0 {
                 smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
                 killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
@@ -539,9 +539,9 @@ public func recvSrSuperBoom(
 
             if state.local.armour < 0 {
                 state.local.armour = 0
-                if state.local.mines > 32 {
+                if state.players[localPlayer].mines > 32 {
                     superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
-                } else if state.local.mines > 0 || state.local.shells > 0 {
+                } else if state.players[localPlayer].mines > 0 || state.local.shells > 0 {
                     smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 } else {
                     killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)

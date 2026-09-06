@@ -55,9 +55,9 @@ private func makeState(
     spawn(state: &state)
 
     #expect(state.local.shells == maxShells)
-    #expect(state.local.mines == maxMines)
+    #expect(state.players[0].mines == maxMines)
     #expect(state.local.armour == maxArmour)
-    #expect(state.local.trees == maxTrees)
+    #expect(state.players[0].trees == maxTrees)
 }
 
 @Test func spawnTournamentGameShellsCountTwicePerNeutralBase() {
@@ -75,9 +75,9 @@ private func makeState(
     spawn(state: &state)
 
     #expect(state.local.shells == 6)
-    #expect(state.local.mines == 0)
+    #expect(state.players[0].mines == 0)
     #expect(state.local.armour == maxArmour)
-    #expect(state.local.trees == 0)
+    #expect(state.players[0].trees == 0)
 }
 
 @Test func spawnStrictGameZeroesEverythingButArmour() {
@@ -86,9 +86,9 @@ private func makeState(
     spawn(state: &state)
 
     #expect(state.local.shells == 0)
-    #expect(state.local.mines == 0)
+    #expect(state.players[0].mines == 0)
     #expect(state.local.armour == maxArmour)
-    #expect(state.local.trees == 0)
+    #expect(state.players[0].trees == 0)
 }
 
 // MARK: - Weighted selection

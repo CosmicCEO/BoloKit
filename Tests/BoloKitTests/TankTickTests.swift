@@ -171,7 +171,7 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     var player = connectedPlayer(dead: true)
     var state = makeAliveState(player: player)
     state.local.respawnCounter = explodeTicks - 1  // next tick == explodeTicks exactly
-    state.local.mines = 32
+    state.players[0].mines = 32
     var superboomFired = false
     tankMoveTick(player: 0, state: &state, onSuperboom: { superboomFired = true })
     #expect(superboomFired)
@@ -185,7 +185,7 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     player.tank = Vec2f(x: 50.6, y: 50.6)  // frac >= 0.5, origin stays (50, 50)
     var state = makeAliveState(player: player)
     state.local.respawnCounter = explodeTicks - 1
-    state.local.mines = 32
+    state.players[0].mines = 32
     state.terrain[50, 50] = .grass0
     state.terrain[51, 50] = .grass0
     state.terrain[50, 51] = .grass0
@@ -203,7 +203,7 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     var player = connectedPlayer(dead: true)
     var state = makeAliveState(player: player)
     state.local.respawnCounter = explodeTicks - 1
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 1
     var smallboomFired = false
     var superboomFired = false
@@ -219,7 +219,7 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     player.tank = Vec2f(x: 50.5, y: 50.5)
     var state = makeAliveState(player: player)
     state.local.respawnCounter = explodeTicks - 1
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 1
     state.terrain[50, 50] = .minedGrass
 
@@ -250,7 +250,7 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     var player = connectedPlayer(dead: true)
     var state = makeAliveState(player: player)
     state.local.respawnCounter = explodeTicks - 1
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 0
     var anyBoomFired = false
     tankMoveTick(

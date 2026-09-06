@@ -31,13 +31,13 @@ import Darwin
 // not itself simulation state, and BoloKit's simulation core has no
 // fog-of-war (same category of omission as Wave 5.2b's `testhiddenmine`/
 // `increasevis`/`decreasevis`). `builderTick`'s `.ready` case instead reads
-// `state.local.builderTask` + `state.players[player].builderTarget`
+// `state.players[player].builderTask` + `state.players[player].builderTarget`
 // directly as an already-resolved, one-shot order — exactly the same
 // contract `InputFlags` already has with `tankMoveTick`. On failure (not
 // enough resources, no free pill), C discards the *queued command*
 // (`nextbuildercommand`/`nextbuildertarget`, reset to nil); since those
 // don't exist here, this port discards the *resolved* one-shot order
-// instead (`state.local.builderTask = .doNothing`), leaving
+// instead (`state.players[player].builderTask = .doNothing`), leaving
 // `builderTarget` untouched — the closest faithful equivalent.
 //
 // **`repairPill`'s "trees needed" is derived from ground-truth
@@ -259,7 +259,7 @@ private func buildRoad(at point: Pointi, trees: Int, state: inout GameState, onM
         .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
         // D24: `if (trees >= trees)` in the C source compares a value to
         // itself — always true. Not a real sufficiency check (the READY-
-        // state check, `state.local.trees >= roadTrees`, is what actually
+        // state check, `state.players[player].trees >= roadTrees`, is what actually
         // gates entry here); replicated verbatim per PLANNER's ruling.
         if trees >= trees {
             state.terrain[x, y] = .road
@@ -318,7 +318,7 @@ private func buildBoat(at point: Pointi, trees: Int, state: inout GameState, onM
 }
 
 /// Ported from `recvclbuildpill()` (server.c:2528). `pillIndex` is the pill
-/// slot reserved at READY time (`state.local.builderPill`); on success this
+/// slot reserved at READY time (`state.players[player].builderPill`); on success this
 /// places it at `point` for `owner`, with armour = `trees * 4` clamped to
 /// `maxPillArmour` (excess trees refunded). `speed`/`counter` are
 /// deliberately left untouched — C only ever sets `x`/`y`/`owner`/`armour`
@@ -418,7 +418,7 @@ private func placeMineWork(at point: Pointi, state: inout GameState, onMineExplo
 
 // MARK: - readyTick
 
-/// `.ready` case: reads `state.local.builderTask` as an already-resolved,
+/// `.ready` case: reads `state.players[player].builderTask` as an already-resolved,
 /// one-shot order (see file header — `getbuildertaskforcommand` is out of
 /// scope). On success: computes the launch position, transitions to
 /// `.goto`, and deducts/reserves resources exactly as C's per-task branch
@@ -426,7 +426,7 @@ private func placeMineWork(at point: Pointi, state: inout GameState, onMineExplo
 /// order (`builderTask = .doNothing`) and leaves everything else
 /// untouched. Ported from the `kBuilderReady` case (client.c:4543-4787).
 private func readyTick(player: Int, state: inout GameState) {
-    let task = state.local.builderTask
+    let task = state.players[player].builderTask
     guard task != .doNothing else { return }
 
     let target = state.players[player].builderTarget
@@ -439,80 +439,80 @@ private func readyTick(player: Int, state: inout GameState) {
     case .getTree:
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
-        state.local.builderTrees = 0
-        state.local.builderPill = noPill
+        state.players[player].builderMines = 0
+        state.players[player].builderTrees = 0
+        state.players[player].builderPill = noPill
 
     case .buildRoad:
-        guard state.local.trees >= roadTrees else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].trees >= roadTrees else {
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
-        state.local.builderTrees = roadTrees
-        state.local.trees -= roadTrees
-        state.local.builderPill = noPill
+        state.players[player].builderMines = 0
+        state.players[player].builderTrees = roadTrees
+        state.players[player].trees -= roadTrees
+        state.players[player].builderPill = noPill
 
     case .buildWall:
-        guard state.local.trees >= wallTrees else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].trees >= wallTrees else {
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
-        state.local.builderTrees = wallTrees
-        state.local.trees -= wallTrees
-        state.local.builderPill = noPill
+        state.players[player].builderMines = 0
+        state.players[player].builderTrees = wallTrees
+        state.players[player].trees -= wallTrees
+        state.players[player].builderPill = noPill
 
     case .buildBoat:
-        guard state.local.trees >= boatTrees else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].trees >= boatTrees else {
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
-        state.local.builderTrees = boatTrees
-        state.local.trees -= boatTrees
-        state.local.builderPill = noPill
+        state.players[player].builderMines = 0
+        state.players[player].builderTrees = boatTrees
+        state.players[player].trees -= boatTrees
+        state.players[player].builderPill = noPill
 
     case .buildPill:
-        guard state.local.trees >= pillTrees else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].trees >= pillTrees else {
+            state.players[player].builderTask = .doNothing
             return
         }
         guard let pillIndex = state.pills.indices.first(where: {
             state.pills[$0].owner == UInt8(player) && state.pills[$0].armour == pillOnboard
         }) else {
-            state.local.builderTask = .doNothing
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
-        if state.local.trees >= pillTrees {
-            state.local.builderTrees = pillTrees
-            state.local.trees -= pillTrees
+        state.players[player].builderMines = 0
+        if state.players[player].trees >= pillTrees {
+            state.players[player].builderTrees = pillTrees
+            state.players[player].trees -= pillTrees
         } else {
             // Unreachable given the outer guard above already confirmed
             // `trees >= pillTrees` — kept for structural fidelity with
             // C's identically-shaped (and identically redundant) branch.
-            state.local.builderTrees = state.local.trees
-            state.local.trees = 0
+            state.players[player].builderTrees = state.players[player].trees
+            state.players[player].trees = 0
         }
-        state.local.builderPill = UInt8(pillIndex)
+        state.players[player].builderPill = UInt8(pillIndex)
 
     case .repairPill:
-        guard state.local.trees > 0 else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].trees > 0 else {
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 0
+        state.players[player].builderMines = 0
 
         let needed: Int
         if let pillIndex = findPill(x: Int(target.x), y: Int(target.y), pills: state.pills) {
@@ -521,31 +521,31 @@ private func readyTick(player: Int, state: inout GameState) {
             needed = 0
         }
 
-        if state.local.trees > needed {
-            state.local.builderTrees += needed
-            state.local.trees -= needed
+        if state.players[player].trees > needed {
+            state.players[player].builderTrees += needed
+            state.players[player].trees -= needed
         } else {
-            state.local.builderTrees += state.local.trees
-            state.local.trees = 0
+            state.players[player].builderTrees += state.players[player].trees
+            state.players[player].trees = 0
         }
-        state.local.builderPill = noPill
+        state.players[player].builderPill = noPill
 
     case .placeMine:
-        guard state.local.mines > 0 else {
-            state.local.builderTask = .doNothing
+        guard state.players[player].mines > 0 else {
+            state.players[player].builderTask = .doNothing
             return
         }
         state.players[player].builder = launch
         state.players[player].builderStatus = .goto
-        state.local.builderMines = 1
-        state.local.mines -= 1
-        state.local.builderPill = noPill
+        state.players[player].builderMines = 1
+        state.players[player].mines -= 1
+        state.players[player].builderPill = noPill
     }
 }
 
 // MARK: - arriveAtTarget
 
-/// Dispatches to the work handler for `state.local.builderTask` once the
+/// Dispatches to the work handler for `state.players[player].builderTask` once the
 /// builder has arrived at its target (`gotoTick`'s `mag2f(diff) < 0.00001`
 /// branch), then transitions to `.wait` unconditionally — matching C
 /// exactly: `kBuilderWork` always follows, whether the work succeeded, was
@@ -553,49 +553,49 @@ private func readyTick(player: Int, state: inout GameState) {
 private func arriveAtTarget(player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) {
     let target = state.players[player].builderTarget
 
-    switch state.local.builderTask {
+    switch state.players[player].builderTask {
     case .getTree:
-        state.local.builderTrees = grabTrees(at: target, state: &state, onMineExplosion: onMineExplosion)
+        state.players[player].builderTrees = grabTrees(at: target, state: &state, onMineExplosion: onMineExplosion)
 
     case .buildRoad:
         if !tankOnABoatTest(x: Int(target.x), y: Int(target.y), state: state) {
-            state.local.builderTrees = buildRoad(
-                at: target, trees: state.local.builderTrees, state: &state, onMineExplosion: onMineExplosion
+            state.players[player].builderTrees = buildRoad(
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
             )
         }
 
     case .buildWall:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
-            state.local.builderTrees = buildWall(
-                at: target, trees: state.local.builderTrees, state: &state, onMineExplosion: onMineExplosion
+            state.players[player].builderTrees = buildWall(
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
             )
         }
 
     case .buildBoat:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
-            state.local.builderTrees = buildBoat(
-                at: target, trees: state.local.builderTrees, state: &state, onMineExplosion: onMineExplosion
+            state.players[player].builderTrees = buildBoat(
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
             )
         }
 
     case .buildPill:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
-            state.local.builderTrees = buildPill(
-                at: target, trees: state.local.builderTrees, pillIndex: Int(state.local.builderPill),
+            state.players[player].builderTrees = buildPill(
+                at: target, trees: state.players[player].builderTrees, pillIndex: Int(state.players[player].builderPill),
                 owner: player, state: &state, onMineExplosion: onMineExplosion
             )
         }
 
     case .repairPill:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
-            state.local.builderTrees = repairPill(
-                at: target, trees: state.local.builderTrees, state: &state, onMineExplosion: onMineExplosion
+            state.players[player].builderTrees = repairPill(
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
             )
         }
 
     case .placeMine:
         placeMineWork(at: target, state: &state, onMineExplosion: onMineExplosion)
-        state.local.builderMines = 0
+        state.players[player].builderMines = 0
 
     case .doNothing:
         break
@@ -647,7 +647,7 @@ private func gotoTick(player: Int, state: inout GameState, onMineExplosion: (Poi
 
     diff = diff * (speed / (ticksPerSec * mag2f(diff)))
 
-    let collision = builderCollision(target: target, task: state.local.builderTask, owner: player, state: state)
+    let collision = builderCollision(target: target, task: state.players[player].builderTask, owner: player, state: state)
     let moved = collisionDetect(builder + diff, radius: builderRadius, isSolid: collision) - builder
 
     if mag2f(moved) <= 0.00128 * speed {
@@ -665,13 +665,20 @@ private func gotoTick(player: Int, state: inout GameState, onMineExplosion: (Poi
 /// `1.5 * (tankRadius + builderRadius)` of the tank; otherwise the same
 /// speed selection and collision handling as `gotoTick`. Re-entering the
 /// tank (`mag2f(tank - builder) <= tankRadius - builderRadius`) resets to
-/// `.ready` and — for the LOCAL player only, since mines/trees/task live in
-/// singular `LocalPlayerState` (same boundary as `tankMoveTick`'s
-/// dead-tumble sequence, Wave 5.2a) — refunds `builderMines`/`builderTrees`
-/// into the main pools, capped at `maxMines`/`maxTrees`. Drifting off the
-/// target square while still returning cancels the task (local player
-/// only, same reason). Ported from the `kBuilderReturn` case
+/// `.ready` and refunds `builderMines`/`builderTrees` into the main pools,
+/// capped at `maxMines`/`maxTrees`. Drifting off the target square while
+/// still returning cancels the task. Ported from the `kBuilderReturn` case
 /// (client.c:4931-4998).
+///
+/// **B.5e (D105/D106):** both of these were previously gated to `player ==
+/// state.localPlayer` -- `mines`/`trees`/`builderTask`/`builderMines`/
+/// `builderTrees`/`builderPill` lived on singular `LocalPlayerState`, so
+/// touching them for any other player would have clobbered the local
+/// player's own in-progress state. Now that all 6 are `PlayerState` members
+/// (migrated this sub-wave), the gate is gone -- it was never correct for
+/// multiplayer in the first place: a non-local player's builder returning
+/// to its tank never refunded resources or reset its task before this fix,
+/// leaving it permanently stuck.
 private func returnTick(player: Int, state: inout GameState) {
     guard !state.players[player].dead else { return }
 
@@ -705,23 +712,21 @@ private func returnTick(player: Int, state: inout GameState) {
         state.players[player].builderStatus = .ready
         state.players[player].builderTarget = Pointi(x: 0, y: 0)
 
-        if player == state.localPlayer {
-            state.local.builderTask = .doNothing
-            state.local.mines += state.local.builderMines
-            state.local.trees += state.local.builderTrees
-            state.local.builderMines = 0
-            state.local.builderTrees = 0
-            state.local.builderPill = noPill
-            if state.local.mines > maxMines { state.local.mines = maxMines }
-            if state.local.trees > maxTrees { state.local.trees = maxTrees }
-        }
+        state.players[player].builderTask = .doNothing
+        state.players[player].mines += state.players[player].builderMines
+        state.players[player].trees += state.players[player].builderTrees
+        state.players[player].builderMines = 0
+        state.players[player].builderTrees = 0
+        state.players[player].builderPill = noPill
+        if state.players[player].mines > maxMines { state.players[player].mines = maxMines }
+        if state.players[player].trees > maxTrees { state.players[player].trees = maxTrees }
         return
     }
 
     diff = diff * (speed / (ticksPerSec * mag2f(diff)))
 
     if collides {
-        let collision = builderCollision(target: target, task: state.local.builderTask, owner: player, state: state)
+        let collision = builderCollision(target: target, task: state.players[player].builderTask, owner: player, state: state)
         let moved = collisionDetect(builder + diff, radius: builderRadius, isSolid: collision) - builder
         if mag2f(moved) >= 0.00001 {
             state.players[player].builder = collisionDetect(
@@ -732,9 +737,8 @@ private func returnTick(player: Int, state: inout GameState) {
         state.players[player].builder = builder + diff
     }
 
-    if player == state.localPlayer,
-        !circleSquare(point: state.players[player].builder, radius: builderRadius, square: target) {
-        state.local.builderTask = .doNothing
+    if !circleSquare(point: state.players[player].builder, radius: builderRadius, square: target) {
+        state.players[player].builderTask = .doNothing
     }
 }
 

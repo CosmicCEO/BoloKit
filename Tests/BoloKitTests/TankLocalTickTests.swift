@@ -154,24 +154,26 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
 @Test func enterTileForestFallsThroughToBoatDropAndMinePlant() {
     var player = connectedPlayer(boat: true)
     player.inputFlags = [.lmine]
-    var state = makeState(player: player, local: LocalPlayerState(mines: 5))
+    player.mines = 5
+    var state = makeState(player: player)
     state.terrain[5, 5] = .forest
     state.terrain[4, 5] = .river
     enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: &state)
     #expect(!state.players[0].boat)
     #expect(state.terrain[4, 5] == .boat)
     #expect(state.terrain[5, 5] == .minedForest)
-    #expect(state.local.mines == 4)
+    #expect(state.players[0].mines == 4)
 }
 
 @Test func enterTileGrassPlantsMineOnlyWhenMoved() {
     var player = connectedPlayer()
     player.inputFlags = [.lmine]
-    var state = makeState(player: player, local: LocalPlayerState(mines: 5))
+    player.mines = 5
+    var state = makeState(player: player)
     state.terrain[5, 5] = .grass0
     enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 5, y: 5), state: &state)
     #expect(state.terrain[5, 5] == .grass0)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 }
 
 @Test func enterTileBoatTerrainRamWithBoatExplodesAndKillsBuilder() {
@@ -211,16 +213,18 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
 // MARK: - layMineOnKeyDown (D88 §3)
 
 @Test func layMineOnKeyDownPlantsImmediatelyWithoutMovement() {
-    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = .grass0
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == .minedGrass)
-    #expect(state.local.mines == 4)
+    #expect(state.players[0].mines == 4)
 }
 
 @Test func layMineOnKeyDownNoopsWhenNoMinesAvailable() {
-    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 0))
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 0
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = .grass0
     layMineOnKeyDown(state: &state)
@@ -228,32 +232,35 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
 }
 
 @Test func layMineOnKeyDownNoopsWhileDead() {
-    var state = makeState(player: connectedPlayer(dead: true), local: LocalPlayerState(mines: 5))
+    var state = makeState(player: connectedPlayer(dead: true))
+    state.players[0].mines = 5
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = .grass0
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == .grass0)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 }
 
 @Test func layMineOnKeyDownNoopsOnAPillTile() {
-    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = .grass0
     state.pills = [Pill(x: 5, y: 5, armour: 10, owner: playerNeutral, speed: 50, counter: 0)]
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == .grass0)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 }
 
 @Test func layMineOnKeyDownNoopsOnABaseTile() {
-    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = .grass0
     state.bases = [Base(x: 5, y: 5, armour: 0, owner: playerNeutral, shells: 0, mines: 0)]
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == .grass0)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 }
 
 @Test(arguments: [Terrain.sea, .wall, .river, .boat, .damagedWall0])
@@ -263,12 +270,13 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     // `keyevent()`'s own terrain switch, which only decrements
     // `client.mines` inside its 15 matched minable cases (the original D88
     // §3 landing decremented unconditionally, wasting a mine here).
-    var state = makeState(player: connectedPlayer(), local: LocalPlayerState(mines: 5))
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
     state.terrain[5, 5] = terrain
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == terrain)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 }
 
 // MARK: - grabTile (direct)
@@ -395,14 +403,15 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
 @Test func killBuilderRespawnsAsParachuteAtAStart() {
     var player = connectedPlayer()
     player.builderStatus = .work
-    var state = makeState(player: player, local: LocalPlayerState(builderPill: 2))
+    player.builderPill = 2
+    var state = makeState(player: player)
     state.starts = [Start(x: 10, y: 20, dir: 0)]
     state.pills = (0..<3).map { _ in Pill(x: 0, y: 0, armour: 0, owner: playerNeutral, speed: 0, counter: 0) }
     var broadcasts: [(Int, Int, Int)] = []
-    killBuilder(state: &state, onShouldBroadcastDropPill: { pill, x, y in broadcasts.append((pill, x, y)) })
+    killBuilder(player: 0, state: &state, onShouldBroadcastDropPill: { pill, x, y in broadcasts.append((pill, x, y)) })
     #expect(state.players[0].builderStatus == .parachute)
     #expect(state.players[0].builder == Vec2f(x: 10.5, y: 20.5))
-    #expect(state.local.builderPill == noPill)
+    #expect(state.players[0].builderPill == noPill)
     #expect(broadcasts.count == 1)
     #expect(broadcasts.first?.0 == 2)
     #expect(state.pills[2].armour == 0)
@@ -438,6 +447,45 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     #expect(state.players[0].builderStatus == .wait)
     killPointBuilder(at: Vec2f(x: 5.0 + explosionRadius - 0.1, y: 5.0), state: &state)
     #expect(state.players[0].builderStatus == .parachute)
+}
+
+// B.5e (D104/D105/D106): the real fix this sub-wave exists for — `killSquareBuilder`/
+// `killPointBuilder` used to only ever check `state.localPlayer`'s own builder, even for an
+// explosion caused by (and checked against) any player. A remote player's builder sitting on an
+// exploding tile was never identified or killed at all before this fix.
+@Test func killSquareBuilderKillsARemotePlayersBuilderNotJustLocalPlayers() {
+    var localPlayer = connectedPlayer()
+    localPlayer.builderStatus = .ready  // not on the exploding tile at all
+    var remote = connectedPlayer()
+    remote.builderStatus = .goto
+    remote.builder = Vec2f(x: 5.5, y: 5.5)
+    var state = GameState()
+    state.players = [localPlayer, remote]
+    state.localPlayer = 0
+    state.starts = [Start(x: 0, y: 0, dir: 0)]
+
+    killSquareBuilder(at: Pointi(x: 5, y: 5), state: &state)
+
+    #expect(state.players[1].builderStatus == .parachute)
+    #expect(state.players[0].builderStatus == .ready)  // untouched — was never on the tile
+}
+
+@Test func killPointBuilderKillsEveryConnectedPlayersBuilderWithinRadiusInOnePass() {
+    var localPlayer = connectedPlayer()
+    localPlayer.builderStatus = .wait
+    localPlayer.builder = Vec2f(x: 5.0, y: 5.0)
+    var remote = connectedPlayer()
+    remote.builderStatus = .goto
+    remote.builder = Vec2f(x: 5.2, y: 5.0)
+    var state = GameState()
+    state.players = [localPlayer, remote]
+    state.localPlayer = 0
+    state.starts = [Start(x: 0, y: 0, dir: 0)]
+
+    killPointBuilder(at: Vec2f(x: 5.0, y: 5.0), state: &state)
+
+    #expect(state.players[0].builderStatus == .parachute)
+    #expect(state.players[1].builderStatus == .parachute)
 }
 
 // MARK: - tankLocalTick: collision push
@@ -477,12 +525,13 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     var player = connectedPlayer()
     player.speed = 0.1
     player.tank = Vec2f(x: 5.5, y: 5.5)
-    var state = makeState(player: player, local: LocalPlayerState(shells: 10, mines: 10, drainCounter: drainTicks - 1))
+    player.mines = 10
+    var state = makeState(player: player, local: LocalPlayerState(shells: 10, drainCounter: drainTicks - 1))
     state.terrain[5, 5] = .river
     tankLocalTick(old: Pointi(x: 5, y: 5), state: &state)
     #expect(state.local.drainCounter == 0)
     #expect(state.local.shells == 9)
-    #expect(state.local.mines == 9)
+    #expect(state.players[0].mines == 9)
 }
 
 @Test func tankLocalTickDrainResetsWhenFast() {

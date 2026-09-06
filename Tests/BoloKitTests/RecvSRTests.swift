@@ -318,22 +318,22 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 
 @Test func recvSrMineAckRefundsMineOnlyOnFailure() {
     var state = makeState(players: [connectedPlayer()])
-    state.local.mines = 5
+    state.players[0].mines = 5
     recvSrMineAck(success: true, state: &state)
-    #expect(state.local.mines == 5)
+    #expect(state.players[0].mines == 5)
 
     recvSrMineAck(success: false, state: &state)
-    #expect(state.local.mines == 6)
+    #expect(state.players[0].mines == 6)
 }
 
 @Test func recvSrBuilderAckRoutesEachTaskToItsOwnResourceFieldAndTransitionsToWait() {
     var state = makeState(players: [connectedPlayer()])
     state.players[0].builderStatus = .work
-    state.local.builderTask = .buildPill
+    state.players[0].builderTask = .buildPill
     state.players[0].builderWait = 99
     recvSrBuilderAck(mines: 7, trees: 3, pill: 2, state: &state)
-    #expect(state.local.builderTrees == 3)
-    #expect(state.local.builderPill == 2)
+    #expect(state.players[0].builderTrees == 3)
+    #expect(state.players[0].builderPill == 2)
     #expect(state.players[0].builderStatus == .wait)
     #expect(state.players[0].builderWait == 0)
 }
@@ -341,16 +341,16 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func recvSrBuilderAckPlaceMineRoutesToBuilderMinesNotTrees() {
     var state = makeState(players: [connectedPlayer()])
     state.players[0].builderStatus = .work
-    state.local.builderTask = .placeMine
+    state.players[0].builderTask = .placeMine
     recvSrBuilderAck(mines: 7, trees: 3, pill: 2, state: &state)
-    #expect(state.local.builderMines == 7)
+    #expect(state.players[0].builderMines == 7)
     #expect(state.players[0].builderStatus == .wait)
 }
 
 @Test func recvSrBuilderAckIgnoredOutsideWorkStatus() {
     var state = makeState(players: [connectedPlayer()])
     state.players[0].builderStatus = .goto
-    state.local.builderTask = .buildPill
+    state.players[0].builderTask = .buildPill
     recvSrBuilderAck(mines: 7, trees: 3, pill: 2, state: &state)
     #expect(state.players[0].builderStatus == .goto)  // untouched
 }
@@ -385,7 +385,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     state.terrain[50, 50] = .grass0
     state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
     state.local.armour = 5
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 0
     recvSrSmallBoom(player: 1, x: 50, y: 50, state: &state)
     #expect(state.local.armour == 0)
@@ -423,7 +423,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     state.terrain[51, 51] = .grass0
     state.players[0].tank = Vec2f(x: 51.0, y: 51.0)
     state.local.armour = 5
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 0
     recvSrSuperBoom(player: 1, x: 50, y: 50, state: &state)
     #expect(state.local.armour == 0)

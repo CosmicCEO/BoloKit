@@ -343,7 +343,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
 @Test func explosionAtSplashLethalWithMinesEscalatesToSuperboom() {
     var state = makeState(players: [connectedPlayer()], localPlayer: 0)
     state.local.armour = 5  // will go negative from 10 damage
-    state.local.mines = 33  // > 32
+    state.players[0].mines = 33  // > 32
     state.terrain[50, 50] = .grass0
     state.terrain[51, 50] = .grass0
     state.terrain[50, 51] = .grass0
@@ -368,7 +368,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
 @Test func explosionAtSplashLethalWithFewerMinesEscalatesToSmallboom() {
     var state = makeState(players: [connectedPlayer()], localPlayer: 0)
     state.local.armour = 5
-    state.local.mines = 10  // > 0 but not > 32
+    state.players[0].mines = 10  // > 0 but not > 32
     state.terrain[50, 50] = .grass0
     state.players[0].tank = Vec2f(x: 50.5, y: 50.5)
 
@@ -381,7 +381,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
 @Test func explosionAtSplashLethalWithNoMinesOrShellsCallsKillTank() {
     var state = makeState(players: [connectedPlayer()], localPlayer: 0)
     state.local.armour = 5
-    state.local.mines = 0
+    state.players[0].mines = 0
     state.local.shells = 0
     state.terrain[50, 50] = .grass0
     state.players[0].tank = Vec2f(x: 50.5, y: 50.5)

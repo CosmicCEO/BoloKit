@@ -52,19 +52,19 @@ public func spawn(state: inout GameState) {
     switch state.dominationType {
     case .open:
         state.local.shells = maxShells
-        state.local.mines = maxMines
+        state.players[player].mines = maxMines
         state.local.armour = maxArmour
-        state.local.trees = maxTrees
+        state.players[player].trees = maxTrees
     case .tournament:
         state.local.shells = 2 * state.bases.filter { $0.owner == playerNeutral }.count
-        state.local.mines = 0
+        state.players[player].mines = 0
         state.local.armour = maxArmour
-        state.local.trees = 0
+        state.players[player].trees = 0
     case .strict:
         state.local.shells = 0
-        state.local.mines = 0
+        state.players[player].mines = 0
         state.local.armour = maxArmour
-        state.local.trees = 0
+        state.players[player].trees = 0
     }
 
     state.local.spawned = true

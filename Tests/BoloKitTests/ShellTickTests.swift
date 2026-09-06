@@ -387,7 +387,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
         Pill(x: 2, y: 2, armour: pillOnboard, owner: 0, speed: 40, counter: 0),
         Pill(x: 3, y: 3, armour: 10, owner: 0, speed: 40, counter: 0),  // placed, not onboard
     ]
-    state.local.builderPill = 1  // reserved by the builder — excluded from the scatter mask
+    state.players[0].builderPill = 1  // reserved by the builder — excluded from the scatter mask
 
     var broadcasts: [(Int, Int, Int)] = []
     state.players[0].tank = Vec2f(x: 50, y: 60)

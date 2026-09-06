@@ -37,47 +37,58 @@ import Darwin
 
 // MARK: - killPointBuilder / killSquareBuilder / killBuilder
 
-/// Kills the local player's builder if it is within `explosionRadius` of
+/// Kills every connected player's builder that is within `explosionRadius` of
 /// `point` and in an active state (goto/work/wait/return — not ready or
 /// mid-parachute). Ported from `killpointbuilder()` (client.c:7023).
+///
+/// **B.5e (D104/D105/D106):** generalized from `state.localPlayer`-only to
+/// every connected player -- the reference only ever calls this against
+/// `client.player` because each real client independently runs its own
+/// local copy of the check; this port's single unified `GameState` needs to
+/// do that work for every player itself, in one pass, since there is no
+/// second process to do it for anyone else.
 public func killPointBuilder(
     at point: Vec2f,
     state: inout GameState,
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
-    let player = state.localPlayer
-    switch state.players[player].builderStatus {
-    case .goto, .work, .wait, .return:
-        if mag2f(state.players[player].builder - point) < explosionRadius {
-            killBuilder(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+    for player in state.players.indices where state.players[player].connected {
+        switch state.players[player].builderStatus {
+        case .goto, .work, .wait, .return:
+            if mag2f(state.players[player].builder - point) < explosionRadius {
+                killBuilder(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            }
+        case .ready, .parachute:
+            break
         }
-    case .ready, .parachute:
-        break
     }
 }
 
-/// Kills the local player's builder if its tile matches `point` and it is in
-/// an active state. Ported from `killsquarebuilder()` (client.c:6999).
+/// Kills every connected player's builder whose tile matches `point` and is
+/// in an active state. Ported from `killsquarebuilder()` (client.c:6999).
+/// See `killPointBuilder`'s doc comment for why this loops over every
+/// connected player rather than checking `state.localPlayer` alone.
 public func killSquareBuilder(
     at point: Pointi,
     state: inout GameState,
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
-    let player = state.localPlayer
-    switch state.players[player].builderStatus {
-    case .goto, .work, .wait, .return:
-        let builderTile = Pointi(
-            x: Int32(state.players[player].builder.x), y: Int32(state.players[player].builder.y)
-        )
-        if builderTile == point {
-            killBuilder(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+    for player in state.players.indices where state.players[player].connected {
+        switch state.players[player].builderStatus {
+        case .goto, .work, .wait, .return:
+            let builderTile = Pointi(
+                x: Int32(state.players[player].builder.x), y: Int32(state.players[player].builder.y)
+            )
+            if builderTile == point {
+                killBuilder(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            }
+        case .ready, .parachute:
+            break
         }
-    case .ready, .parachute:
-        break
     }
 }
 
-/// Kills the local player's builder outright: drops its reserved pill (if
+/// Kills `player`'s builder outright: drops its reserved pill (if
 /// any) and respawns it as a parachute at a uniformly random start.
 ///
 /// Ported from `killbuilder()` (client.c:7047). C's `client.nextbuildercommand`/
@@ -91,20 +102,27 @@ public func killSquareBuilder(
 /// closure can't touch `state` itself while `runTick` already holds `state:
 /// &state` for this call's whole duration, so only code already running
 /// nested inside that access (this function) can call `dropPills` safely.
+///
+/// **B.5e (D104/D105/D106):** `player` is now an explicit parameter, not
+/// derived from `state.localPlayer` internally -- `killPointBuilder`/
+/// `killSquareBuilder` need to kill any connected player's builder, not just
+/// the local one, now that the 6 fields this function touches
+/// (`builderPill`/`builderTask`/`builderMines`/`builderTrees` plus the
+/// `dropPills` call's own `player`) live on `PlayerState`, not the
+/// `state.localPlayer`-only `LocalPlayerState` singleton.
 public func killBuilder(
+    player: Int,
     state: inout GameState,
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
-    let player = state.localPlayer
-
-    if state.local.builderPill != noPill {
+    if state.players[player].builderPill != noPill {
         let builder = state.players[player].builder
         dropPills(
             player: player, x: builder.x, y: builder.y,
-            pills: UInt16(truncatingIfNeeded: 1 << Int(state.local.builderPill)), state: &state,
+            pills: UInt16(truncatingIfNeeded: 1 << Int(state.players[player].builderPill)), state: &state,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
-        state.local.builderPill = noPill
+        state.players[player].builderPill = noPill
     }
 
     // C: `start = random() % client.nstarts;` — no C oracle can be
@@ -116,9 +134,9 @@ public func killBuilder(
     state.players[player].builder = Vec2f(
         x: Float(state.starts[start].x) + 0.5, y: Float(state.starts[start].y) + 0.5
     )
-    state.local.builderTask = .doNothing
-    state.local.builderMines = 0
-    state.local.builderTrees = 0
+    state.players[player].builderTask = .doNothing
+    state.players[player].builderMines = 0
+    state.players[player].builderTrees = 0
     state.players[player].builderTarget = Pointi(
         x: Int32(state.players[player].tank.x), y: Int32(state.players[player].tank.y)
     )
@@ -134,7 +152,7 @@ private func onboardPillMask(state: GameState) -> UInt16 {
     let player = state.localPlayer
     var pills: UInt16 = 0
     for j in state.pills.indices where state.pills[j].owner == UInt8(player)
-        && j != Int(state.local.builderPill) && state.pills[j].armour == pillOnboard {
+        && j != Int(state.players[player].builderPill) && state.pills[j].armour == pillOnboard {
         pills |= UInt16(truncatingIfNeeded: 1 << j)
     }
     return pills
@@ -434,11 +452,11 @@ public func layMineOnKeyDown(state: inout GameState) {
 
     guard findPill(x: x, y: y, pills: state.pills) == nil,
         findBase(x: x, y: y, bases: state.bases) == nil,
-        state.local.mines > 0
+        state.players[player].mines > 0
     else { return }
 
     guard plantMine(at: Pointi(x: Int32(x), y: Int32(y)), state: &state) else { return }
-    state.local.mines -= 1
+    state.players[player].mines -= 1
 }
 
 // MARK: - enterTile
@@ -537,8 +555,8 @@ public func enterTile(
             dropBoat(at: old, state: &state)
         }
         if !state.players[player].dead, state.players[player].inputFlags.contains(.lmine),
-            state.local.mines > 0, new != old {
-            state.local.mines -= 1
+            state.players[player].mines > 0, new != old {
+            state.players[player].mines -= 1
             plantMine(at: new, state: &state)
         }
 
@@ -662,8 +680,8 @@ public func tankLocalTick(
             state.local.drainCounter = 0
             state.local.shells -= 1
             if state.local.shells < 0 { state.local.shells = 0 }
-            state.local.mines -= 1
-            if state.local.mines < 0 { state.local.mines = 0 }
+            state.players[player].mines -= 1
+            if state.players[player].mines < 0 { state.players[player].mines = 0 }
         }
     } else {
         state.local.drainCounter = 0
@@ -700,12 +718,12 @@ public func tankLocalTick(
                 state.local.shells += transfer
                 state.local.refuelingCounter = 0
             }
-        } else if state.local.mines < maxMines, Int(state.bases[refuelingBase].mines) >= minBaseMines {
+        } else if state.players[player].mines < maxMines, Int(state.bases[refuelingBase].mines) >= minBaseMines {
             if state.local.refuelingCounter >= refuelMinesTicks {
-                let transfer = state.local.mines > maxMines - minBaseMines
-                    ? maxMines - state.local.mines : minBaseMines
+                let transfer = state.players[player].mines > maxMines - minBaseMines
+                    ? maxMines - state.players[player].mines : minBaseMines
                 state.bases[refuelingBase].mines -= UInt8(transfer)
-                state.local.mines += transfer
+                state.players[player].mines += transfer
                 state.local.refuelingCounter = 0
             }
         }

@@ -131,14 +131,14 @@ public func tankMoveTick(
                 }
             }
         } else if state.local.respawnCounter == explodeTicks {
-            if state.local.mines >= 32 {
+            if state.players[player].mines >= 32 {
                 onSuperboom()
                 superboom(
                     state: &state,
                     onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
-            } else if state.local.mines > 0 || state.local.shells > 0 {
+            } else if state.players[player].mines > 0 || state.local.shells > 0 {
                 onSmallboom()
                 smallboom(
                     state: &state,
