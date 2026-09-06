@@ -1031,3 +1031,72 @@ no closing, no GO. Note in your entry, for Jerod's benefit, that a real two-inst
 been hand-tested yet — that's not something your audit can substitute for, just flag it clearly.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back. B.9/B.10 whenever you're
 ready, no rush.
+
+### [PARITY] 2026-09-06 — B.8 audit: join-side live network loop (`106946c`+`4b309e6`+`058d23f`)
+
+**Type:** post-commit audit. Standing limitation restated: no Swift toolchain issue here — `swift
+test` ran directly this session, so this audit combines a hand-trace against the C oracle with a
+real green build/test run, not just the former.
+
+**Verdict: PASS.**
+
+- **Single-consumer claim, re-derived, not re-read.** `Bolo 2026/Bolo 2026/GameSession.swift:240-282`
+  (`startJoinConsumer`): the tick timer's handler (`continuation.yield(.tick)`, line 248) and both
+  producer `Task`s (lines 252-274, `tcpSession.receiveOneRawMessage`/`udpSession.
+  receiveOneRawDatagram`) touch only `continuation`/local values — no `self.state` reference in
+  either producer body. `handleJoinEvent` (lines 285-313) is the only place `state` is read or
+  mutated on this path (`tankMoveTick(... state: &state)` line 297, `TCPSession.dispatch(...,
+  state: &state)` line 302, `udpSession.apply(..., state: &state)` line 305), and it's called only
+  from the single `joinConsumerTask` (line 276-281) draining the merged `AsyncStream`. The race the
+  self-caught finding (`38d0a0f`) described — an `inout` copy spanning a network `await` — cannot
+  recur here because neither producer ever holds `state` across its `await` at all. Confirmed fixed,
+  not just compiling.
+- **`TCPSession` split, `Sources/BoloNet/TCPSession.swift:154-233`.** `receiveAndDispatchOne` (155-161)
+  is now `receiveOneRawMessage()` + `Self.dispatch(...)` — same signature, same `@discardableResult
+  ... throws -> ServerOpcode`, identical wire-reading logic moved verbatim into `receiveOneRawMessage`
+  (opcode byte + per-opcode `wireSize`/NUL-terminated `sendMesg` tail, unchanged). `dispatch` (240-380)
+  is the original switch body byte-for-byte, only made `static` and taking a `RawMessage` instead of
+  reading the socket inline. No caller-visible behavior change; existing tests keep passing (`swift
+  test`, below).
+- **`UDPSession` split, `Sources/BoloNet/UDPSession.swift:102-186`.** Same shape: `receiveAndApply`
+  is now `receiveOneRawDatagram()` + `apply(...)`, `apply` reads/writes `remoteSeqs`/
+  `remoteLastUpdates` exactly as `receiveAndApply` did inline (decode → bounds-check `player` against
+  both `state.players.indices` and `maxPlayers` → `applyRemotePlayerUpdate` → write back seq/
+  lastUpdate). `allRemoteSeqsAsUInt32()` (196-199) is new but additive, not a caller-visible change
+  to any existing method.
+- **`tankMoveTick`-only scope, confirmed by grep, not assertion:** `grep -n
+  "tankLocalTick\|shellTick\|builderTick" "Bolo 2026/Bolo 2026/GameSession.swift"` returns only two
+  doc-comment mentions (lines 145-146, explaining why they're *not* called) — zero actual call sites.
+  `handleJoinEvent`'s `.tick` case calls `tankMoveTick` alone (line 297).
+- **Cadence match, both sides read directly, not trusted from commit message:**
+  `Sources/BoloNet/HostGameEngine.swift:328-337` gates `assembleClUpdate`/send behind `localSeq % 5
+  == 0`, citing `client.c:485-487`. Confirmed in the reference: `Reference/c/client.c:488` calls
+  `sendclupdate()` unconditionally every tick, and `sendclupdate()` itself (`client.c:3509` onward)
+  contains the real `seq % 5 == 0` gate — the host-side comment's citation is accurate.
+  `GameSession.swift:315-322` (`sendLocalUpdateIfDue`) gates identically: `localSeq += 1; guard
+  localSeq % 5 == 0 else { return }`. Same modulus, same increment-then-gate order as
+  `HostGameEngine`'s. `seq[state.localPlayer] = UInt32(bitPattern: localSeq)` plus
+  `udpSession.allRemoteSeqsAsUInt32()` for everyone else mirrors `HostSessionTable.
+  allSeqsAsUInt32()`'s role exactly, as claimed.
+- **Test count:** `grep -rc "@Test" Tests/` totals **671**, split 181 (`XCTest`-era/13 suites) + 490
+  (Swift Testing/7 suites) by `swift test`'s own summary lines. Ran three consecutive times, all
+  green, counts stable each run. Matches Planner's expected 671 exactly.
+
+**No citation drift found** — every file:line cited in the completion report and Planner's entry
+checked out against the actual source on read.
+
+**For Jerod, plainly:** this audit confirms the code is structurally sound — the concurrency fix is
+real, the transport split is behavior-preserving, scope is respected, cadence matches. It does
+**not** confirm a real two-instance join works — `GameSession`'s third mode has no test harness of
+its own (matching this project's established convention that network wiring above the `BoloNet`
+level isn't unit-tested), so nothing this session ran ever opened a real socket pair through this
+exact path. Worth trying by hand.
+
+[TO: PLANNER] B.8 (`106946c`+`4b309e6`+`058d23f`) — PASS. All five priorities independently
+re-derived: single-consumer claim holds structurally (traced, not assumed), both transport splits
+are behavior-preserving thin wrappers, `tankMoveTick`-only scope confirmed by grep (zero call
+sites for the excluded functions), ~10Hz cadence matches `HostGameEngine`'s own `seq % 5 == 0`
+gate and the C oracle's `sendclupdate()`, test count 671 stable across three runs. No findings.
+Live two-instance join still untested — flagged for Jerod, not a PARITY blocker.
+[TO: IMPLEMENTER] Nothing to fix. Clean audit — good use of the exact D95/D96 producer/consumer
+shape a second time running.
