@@ -1961,3 +1961,60 @@ No citation drift found.
 `HostGameView`/`JoinGameView` genuinely read the same `UserDefaults.standard` store
 `PreferencesView` writes; diff confirmed pure app-target, no `BoloKit`/`BoloNet` touch; B.6's
 no-test precedent independently confirmed in `docs/notes/archive.md`. No findings.
+
+### [PARITY] 2026-09-06 — C.3 audit (procedural sound synthesis)
+
+**Type:** post-commit audit (`2662d5e`). Standing limitation: no full Xcode/app build re-run, but
+`swift build --product BoloSounds` succeeded locally and the built executable was actually run
+(see below) — more direct verification than a pure hand-trace for this pass.
+
+**Verdict: PASS, with one minor bookkeeping-only correction (not a behavioral defect).**
+
+- **`fshot` shared-pairing confirmed exactly per D122.** Read `SoundSetBuilder.swift:1-28` and
+  `SoundSource.swift:205-225` directly: `farNameSources["fshot"] = "tankshot"`, no `"fpillshot"`
+  key anywhere; `buildSounds()` computes `fshot` once via `lowpass(nearBuffer: tankshot's buffer,
+  cutoffHz: farCutoffHz)` inside the single `for (farName, nearName) in farNameSources` loop —
+  no special-cased second assignment for pillshot. Matches D122's ruling exactly.
+- **Independently re-verified D122's own citation against the reference.** `grep -n
+  "kFarShotSound\|kTankShotSound\|kPillShotSound" "Reference/c/Mac OS X/GSXBoloController.m"` →
+  three separate `case` lines (3667, 3703, 3715) inside the same switch — `kFarShotSound` is
+  genuinely a distinct case from both `kTankShotSound` and `kPillShotSound`, not a citation error.
+  D122's ruling holds up under direct re-check.
+- **`whiteNoise` determinism confirmed.** Read `SoundSource.swift:12-23`: a hand-rolled 64-bit LCG
+  (Numerical Recipes constants) seeded from the `seed` parameter, no `SystemRandomNumberGenerator`
+  or other non-deterministic source anywhere in the function. Load-bearing for the determinism
+  regression test as claimed.
+- **`buildSounds()` name/buffer count — ran the actual code, not just the test.** Built
+  `swift build --product BoloSounds` (clean) and ran the resulting executable against a scratch
+  directory: **24 `.aiff` files written**, names matching `allSoundNames` exactly (no
+  `fpillshot.aiff`, `fbubbles.aiff`, `fmine.aiff`, or `fmsgreceived.aiff` — consistent with the
+  10-of-14 far-name set). `Tests/BoloKitTests/BoloSoundsTests.swift`'s
+  `buildSoundsNameCoverage` test (11 new tests total in this file, confirmed via `grep -c "@Test"`)
+  independently checks the same `count == 24`/`Set(allSoundNames).count == 24` invariants.
+  **Correction on the "23 unique buffers" figure** (stated in both D122 and the completion
+  report): `md5` over all 24 generated `.aiff` files shows **24 distinct hashes, not 23** — every
+  one of the 24 dictionary entries (14 designed + 10 `far*`, `fshot` included once) is an
+  independently-computed, content-unique buffer. The "23 unique" framing conflates two different
+  facts: (a) there is no separate `fpillshot` *entry* (true, correctly implemented, matches the
+  reference), and (b) a hypothetical 25th slot for a dedicated `fpillshot` buffer was never
+  computed (also true) — but neither of those makes any of the 24 buffers that *do* exist
+  identical to another. The dictionary genuinely holds 24 unique buffers, not 23. This is a
+  bookkeeping/wording slip, not a functional defect — `fshot` correctly serves both `tankshot`'s
+  and `pillshot`'s far event at the naming level exactly as D122 specified, and no code needs to
+  change. Flagging so the "23" figure isn't repeated in `PLAN.md` as a hard fact.
+- **AIFF encoding spot-checked, valid and playable.** `afinfo` on the generated `explosion.aiff`:
+  `1 ch, 44100 Hz, lpcm, 16-bit big-endian signed integer`, `estimated duration: 0.500000 sec`
+  (matches the parameter table's designed 0.5s), `File type ID: AIFC` — confirming the
+  already-disclosed AIFC-vs-AIFF deviation (D124: ruled acceptable, cosmetic) rather than a new
+  finding. Valid, well-formed audio, not corrupt output.
+- **Test count confirmed.** `grep -rc "@Test" Tests/BoloKitTests/BoloSoundsTests.swift` = 11.
+  Full suite: `grep -rc "@Test" Tests/` = 684 total (501 BoloKitTests + 183 DifferentialTests),
+  matching the completion report's and D123's own re-verified figures exactly.
+
+[TO: PLANNER] C.3: PASS overall — `fshot` sharing, determinism, AIFF validity, and test counts
+all independently re-derived and confirmed (including actually building and running `BoloSounds`
+against a scratch directory, not just reading the test). One correction: the "23 unique buffers"
+figure in D122/the completion report is inaccurate — `md5` across all 24 generated files shows
+24 distinct buffers, not 23. Purely a bookkeeping slip (the underlying `fshot`-sharing behavior
+itself is correctly implemented); recommend not carrying "23" forward as fact if `PLAN.md` cites
+this sub-wave's numbers.
