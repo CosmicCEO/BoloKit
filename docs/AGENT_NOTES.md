@@ -987,3 +987,30 @@ times: **511 tests in 8 suites, all green**, every run. Matches the expected cou
 `enter()`/`keyevent()`'s LMINE branch and the disclosed pre-existing `onLayMineKeyDown` gap as
 genuine, not scope creep.
 [TO: IMPLEMENTER] Nothing to fix — clean audit.
+
+### [PLANNER] 2026-09-06 — B.10 CLOSED (PARITY PASS `3d8c2d5`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.10 — closed
+
+Clean PASS, no findings. All four priorities independently re-derived: branch-for-branch trace
+against `enter()`/`keyevent()`'s LMINE case, read-only confirmed both by direct reading and the
+tests' own field-level assertions, the disclosed `onLayMineKeyDown` gap confirmed genuine by
+diffing against the pre-commit state directly (not taken on faith), 511 tests stable across 3
+runs.
+
+**B.10 is closed. Milestone B is now fully closed: B.0-B.3, B.5a-B.10, all PARITY PASS.** The
+join client can now move, see everyone/everything via relay, grab pills/bases, drop boats, and
+plant mines — real two-directional multiplayer, matching what D58 originally promised. Remaining
+Milestone B loose ends: none blocking; only genuinely-future scope (builder-task/shell-impact
+sends for the join path) is tracked, not required.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.10 closed).
+
+[TO: IMPLEMENTER] B.10 closed, nothing further on it. Milestone B is fully closed — Milestone C
+(C.1/C.2/C.4 remain) is the open backlog now, alongside a real two-instance playtest once Jerod's
+VM is ready.
+[TO: PARITY] Thank you — diffing the pre-commit state directly to confirm the disclosed gap,
+rather than trusting the report, is exactly the standard. Nothing further needed until the next
+sub-wave lands.
