@@ -1176,3 +1176,196 @@ updated (started early, three pre-briefs in flight).
 Three independent sessions being assigned C.0/C.5/C.3-research directly — each instructed to
 check `git status`/`git log` immediately before every commit, same concurrency discipline this
 project's multiple named peer sessions already run under safely.
+
+### [IMPLEMENTER] 2026-09-06 — C.0 pre-brief (HUD/status panel + kick/ban)
+
+**Reference traced:** `GSXBoloController.m:2103-2419` (`setPlayerStatus:`/`setPillStatus:`/
+`setBaseStatus:`) confirmed exactly what D92's pre-plan claimed — a 16-slot player status grid
+(`player0StatusImageView`...`playerFStatusImageView`, one `NSImageView` per possible player index
+0x0-0xf), each showing one of three images per connected slot: `PlayerStatFriendly` (self),
+`PlayerStatAlliedFriendly` (mutual alliance — both directions of the bitmask checked, matching
+`testAlliance`'s own shape already ported), or `PlayerStatHostile` (everyone else); `nil` image
+when `client.players[player].connected` is false. A parallel `playerInfoArray`/
+`playerInfoTableView` also renders each connected player's name, colored by staleness of
+`lastupdate` (green <1s, yellow 1-3s, red ≥3s since last update — lag indicator, not status in
+the alliance sense). `setPillStatus:`/`setBaseStatus:` are the same three-way friendly/allied/
+hostile/neutral image switch over `PlayerStatIntFriendly` etc., keyed off `pill.owner`/
+`base.owner` instead of a player slot — confirmed independent of `client.images`/`seentiles`/
+`fog` per D92's own claim, nothing in either method touches those arrays. Kick/ban itself is
+**not** in this 2103-2419 range — it's a separate menu-driven path (`Reference/c/Mac OS X/
+GSXBoloController.m`'s allegiance/tracker menu actions calling into `server.c`'s `kickplayer()`/
+`banplayer()` via the same net message this port's `hostKickPlayer`/`hostBanPlayer` already
+wrap), not wired through the status views at all in the original — this port doesn't need to
+preserve that exact menu location, just the two operations themselves, reachable from wherever
+makes sense in a per-player HUD row.
+
+**Swift model confirmed sufficient, no gaps found on the model side:**
+`Sources/BoloKit/GameObjects.swift`'s `PlayerState` already carries every field the three-way
+image switch needs — `connected`, `used`, `alliance` (`UInt16` bitmask), `name` (set once on
+join, `GameObjects.swift:238`) — plus `testAlliance(_:_:players:)` (`GameObjects.swift:417`) is
+already the exact mutual-check the reference inlines by hand in `setPlayerStatus:`. Pill/base
+owner fields (`Pill.owner`/`Base.owner`) plus the same `testAlliance` cover the pill/base rows.
+`hostKickPlayer(player:state:table:)`/`hostBanPlayer(player:state:table:)`
+(`Sources/BoloNet/HostSession.swift:323,345`) are both `async`, take `state: inout GameState`
+and `table: HostSessionTable`, and already do the full C-ordering-correct broadcast+disconnect
+(kick uses `sendtoall`, ban excludes nothing per that file's own comments) — no new `BoloKit`/
+`BoloNet` surface needed for either operation itself.
+
+**Real gap found, not in the model — in how the app target's `HostGameEngine` exposes `state`
+for a UI to read *or mutate* safely.** Traced `GameSession.swift`'s own header (Wave 7.3/B.7/B.8)
+and `HostGameEngine.swift:72-104,181-190` directly: `HostGameEngine.state` is `public private(set)`,
+readable from the UI thread today (fine for a read-only status panel — the three-way image switch
+only *reads* `connected`/`alliance`/`name`/`owner` fields, so C.0's status half is safe as a plain
+poll-and-render view, same shape `GameRenderView` already uses each tick). **Kick/ban is not
+read-only.** `hostKickPlayer`/`hostBanPlayer` take `state: inout GameState` — calling either
+directly from a SwiftUI button handler would mutate `HostGameEngine.state` from the main thread
+while `HostGameEngine`'s own consumer `Task` (`runHostConsumerLoop`-shaped, per that file's header:
+"the single consumer — the only place in this type that ever mutates `state`") is concurrently
+mutating the exact same property from its own isolation. `submitLocalInputChange`/
+`submitLocalLayMineKeyDown` (`HostGameEngine.swift:181,186`) already exist as the sanctioned
+pattern for exactly this problem — they don't touch `state` directly, they queue onto the merged
+event stream the sole consumer drains. **`HostGameEngine` has no equivalent
+`submitKickPlayer(_:)`/`submitBanPlayer(_:)` today** — this is new, small (two methods, queue an
+enum case, consumer-loop `case .kick(let p): await hostKickPlayer(player: p, state: &state,
+table: table)` alongside its existing `case`s), but real: C.0 cannot wire a kick/ban button
+straight to `Sources/BoloNet`'s existing functions without either this addition or a confirmed-
+safe alternative access path. Flagging rather than guessing past it, since `HostGameEngine`'s own
+concurrency design (D95/D96) is exactly the kind of thing this project has already self-caught a
+race in once (B.8's join-side pre-brief, same file family).
+
+**App-target conventions confirmed by reading `HostGameView.swift`/`GameView.swift`/
+`GameSession.swift` directly:** plain SwiftUI `Form`/`Section`/`Toggle` style (`HostGameView`),
+`GameView`'s existing `safeAreaInset(edge: .top)` top bar (currently "Quit to Menu" + an optional
+`notice:` banner) is the natural place for a "Show Status" toggle/button, matching the reference's
+own `statusPanel` being a separate floating window toggled from the main window
+(`windowWillClose:`'s `setShowStatusBool:`) — a SwiftUI `.sheet`/second `WindowGroup`-style panel
+over cramming rows into the main HUD is the closer match to the original's own UX, not just easier
+in SwiftUI.
+
+**Proposed scope:**
+- New `Sources/... ` — no `BoloKit` changes needed at all (model already sufficient).
+- `Sources/BoloNet/HostGameEngine.swift` — add `submitKickPlayer(_:)`/`submitBanPlayer(_:)` (~15
+  lines: two methods + one new case in whatever event enum the consumer loop switches over),
+  gated to the host path only — a join-side client has no authority to kick/ban anyone, matching
+  the reference (only the server-role menu ever calls `kickplayer()`/`banplayer()`).
+- New `Bolo 2026/Bolo 2026/PlayerStatusView.swift` (~90-120 lines) — a SwiftUI view taking a
+  `[PlayerState]` snapshot + `localPlayer` index (read-only render, same polling shape
+  `GameRenderView` already uses) rendering one row per connected slot: name (staleness-tinted
+  text is a nice-to-have carryover from `playerInfoTableView`, not required for v1), a colored
+  dot/icon for friendly/allied/hostile, and — **host-only** — Kick/Ban buttons per row calling
+  through the new `submitKickPlayer`/`submitBanPlayer` (present only when `GameView` was
+  constructed via the `hostEngine:` init; entirely absent on the single-process and join-path
+  inits, since neither has host authority).
+- `GameView.swift` — small addition: a toggle button in the existing top bar opening
+  `PlayerStatusView` as a `.sheet`, passing `session`'s current `state.players`/host-only engine
+  reference through. `GameSession` likely needs one new small accessor (either expose
+  `hostEngine` itself, currently `private`, or add a narrow
+  `var canKickBan: Bool`/`func kickPlayer(_:)`/`func banPlayer(_:)` passthrough) — proposing the
+  narrow passthrough over widening `hostEngine`'s visibility, keeping `GameSession` as the one
+  place that knows which of its three paths is active.
+- Total estimate: ~150-180 lines across 3 files (1 new view, small `HostGameEngine` addition,
+  small `GameSession`/`GameView` wiring). No test-count shrink; new tests needed for
+  `submitKickPlayer`/`submitBanPlayer`'s consumer-loop wiring (mirroring however
+  `submitLocalInputChange` is already tested, if at all — not yet checked, flagged below).
+
+**Not yet investigated, flagged rather than assumed:**
+1. Whether `submitLocalInputChange`/`submitLocalLayMineKeyDown` have existing `DifferentialTests`
+   coverage to mirror for the new kick/ban submit methods — not checked in this pass.
+2. Pill/base status rows (the `setPillStatus:`/`setBaseStatus:` half of the reference) are
+   modeled above as in-scope per D92's framing ("HUD status icons... player kick/ban"), but the
+   proposed file above only sketches the player-row half in detail — sizing assumed pill/base
+   rows are the same pattern at ~2x the row count, not independently re-verified line-by-line.
+
+> **→ Planner:** Model-side (`PlayerState`/`testAlliance`/`hostKickPlayer`/`hostBanPlayer`) is
+> fully sufficient, confirming D92's "bind-only, lowest risk" framing for the *read* half. The one
+> real finding: kick/ban's *write* half has no safe entry point into `HostGameEngine`'s
+> single-consumer state machine today — needs `submitKickPlayer`/`submitBanPlayer` added (small,
+> same shape as the two `submitLocal*` methods already there) before a UI button can call them
+> without risking the exact kind of concurrent-mutation race B.8's own pre-brief already
+> self-caught once in this file family. Recommend GO'ing C.0 with that addition folded in as part
+> of the sub-wave (not a separate split — it's a ~15-line, clearly-scoped prerequisite, not a new
+> design axis), unless you'd rather treat it as its own tiny pre-step. No other blocking
+> ambiguity found; pill/base row detail (open question 2 above) is sizing-only, not a design risk.
+
+### [IMPLEMENTER] 2026-09-06 — C.5 pre-brief (preferences shell)
+
+**Type:** pre-brief only, no coding GO exists yet, per D118's parallel authorization.
+
+**Reference model (`Reference/c/Mac OS X/GSXBoloController.m` + `Reference/c/en.lproj/DefaultPreferences.plist`):**
+Preferences are a single flat `NSUserDefaults` domain, seeded via `registerDefaults:` from
+`DefaultPreferences.plist` at launch (`GSXBoloController.m:218-219`), read/written directly by ~25
+`set*` methods (lines 525-731) wired to a tabbed `preferencesWindow` + `NSToolbar`
+(`GSPreferencesToolbar`). No separate persistence model class — the reference literally *is*
+`NSUserDefaults` calls scattered through the controller. Full key inventory from the plist: host
+settings (`GSHostPortNumber`=50000, `GSHostUPnPBool`, `GSHostPasswordBool`/`String`,
+`GSHostTimeLimitBool`/`String`, `GSHostHiddenMinesBool`, `GSHostTrackerBool`,
+`GSHostDominationTypeNumber`/`BaseControlString`, `GSHostGameTypeNumber`, `GSHostMapString`,
+`GSHostOpenGameBool`), join settings (`GSJoinAddressString`="localhost", `GSJoinPortNumber`=50000,
+`GSJoinPasswordBool`/`String`), identity/tracker (`GSPlayerNameString`="Newbie",
+`GSTrackerString`="tracker.xbolo.org"), display (`GSShowStatusBool`/`ShowAllegianceBool`/
+`ShowMessagesBool`, `GSZoomLevel`), audio (`GSMuteBool`), misc
+(`GSAutoSlowdownBool`, `GSMessageTarget`, `GSBuilderToolInteger`, `GSPrefPaneIdentifierString`),
+and the 14-entry `GSKeyConfigDict` (keycode → binding-name map — this is C.1's territory, not C.5's).
+
+**Shipped Swift app state (`Bolo 2026/Bolo 2026/`):** confirmed zero persistence anywhere today.
+`HostGameView.swift` and `JoinGameView.swift` each carry local `@State` copies of exactly the
+reference's own shipped defaults, hardcoded and never saved: `portText = "50000"` (both host and
+join), `nameText = "Newbie"` (join), `trackerHostnameText = "tracker.xbolo.org"` (join),
+`trackerEnabled = false` (host). Every launch resets to these literals — a real, if currently
+invisible, gap versus the reference's `registerDefaults:`-then-persist model. `InputKeymap.swift`
+(`Sources/BoloKit/`, 64 lines) confirmed to be a hardcoded 7-case `switch`, no defaults-backed
+storage, no dictionary shape resembling `GSKeyConfigDict` — consistent with D92's finding that C.1
+has to build the remappable model from scratch, not just add a settings UI over an existing one.
+
+**Proposed v1 scope for C.5 (thin, matching D92's sizing):**
+1. **Mechanism:** `@AppStorage` directly in SwiftUI views, no custom `PreferencesStore`/model
+   class — same "reuse over invention" principle as elsewhere in this project (D67 font, D72
+   build-time sheet generation). `@AppStorage` is backed by `UserDefaults.standard`, the same
+   underlying mechanism the reference uses, just the SwiftUI-idiomatic wrapper. No plist file
+   needs to ship — `@AppStorage`'s own default-value argument at each call site plays the role
+   `DefaultPreferences.plist` + `registerDefaults:` play in the reference; no seeding step needed.
+2. **What actually gets exposed and becomes persistent in v1:** the three fields already visibly
+   hardcoded above that map 1:1 to reference defaults with zero new modeling required —
+   player name (`GSPlayerNameString`), tracker hostname (`GSTrackerString`), and default host port
+   (`GSHostPortNumber`). Add one more genuinely thin, already-fully-modeled toggle: mute sound
+   (`GSMuteBool`) — even though C.3 (sound) hasn't landed yet, the toggle itself is a one-line
+   `@AppStorage` bool with no dependency on C.3's asset work; C.3 just reads it later. That's 4
+   preferences, all scalar (`String`/`Int`/`Bool`), no dictionary-shaped state.
+3. **New surface:** a single `PreferencesView.swift` (~60-90 lines) — one flat form, no tabs/
+   toolbar (reference's multi-pane `NSToolbar` UI is overkill for 4 fields), wired into
+   `AppRootView.swift`/`Bolo_2026App.swift` via a `Settings { }` scene (SwiftUI's native
+   preferences-window idiom, opens on Cmd+, automatically) rather than a hand-rolled window/sheet.
+   `HostGameView.swift`/`JoinGameView.swift` change their `@State` initial values to read from the
+   same `@AppStorage` keys instead of literals — small edits (a handful of lines each), not a
+   rewrite, and exactly the routing named in this task's step 2.
+4. **Explicitly out of v1 scope, left for later sub-waves:** `GSKeyConfigDict`/key remap (C.1's
+   job entirely — C.5 leaves the seam by simply not touching `InputKeymap.swift` at all; C.1 can
+   add its own `@AppStorage`-or-custom-model preferences UI section independently, no coupling
+   either direction), all host-game-options fields already covered by `HostGameView`'s own in-flow
+   UI (time limit, hidden mines, domination type, map string, password — these are per-game
+   choices already surfaced at host-setup time, not "preferences" in the persistent-shell sense,
+   and duplicating them here would be scope creep), display toggles (`GSShowStatusBool` etc. —
+   no HUD exists yet for them to control, that's C.0's HUD panel's concern once it lands),
+   `GSZoomLevel`/`GSAutoSlowdownBool` (no zoom/scroll polish exists yet — Milestone D's territory
+   per D60), and `GSMessageTarget`/`GSBuilderToolInteger` (transient per-session UI state in the
+   reference, not real "preferences" even there).
+
+**Rough estimate:** 1 new file (`PreferencesView.swift`, ~60-90 lines) + small edits to 2 existing
+files (`HostGameView.swift`, `JoinGameView.swift`, ~2-4 lines each) + 1 `Settings { }` scene
+addition in `Bolo_2026App.swift` (~3 lines). No new `BoloKit`/`BoloNet` model code — this is
+entirely app-target UI + `@AppStorage`, no `DifferentialTests` surface (no C-oracle numeric/physics
+logic involved). Estimated total: well under 150 lines.
+
+**Open question for Planner:** none blocking — the scope above is deliberately narrow and every
+field chosen has a direct, already-hardcoded reference-default counterpart already in the shipped
+app, so there's no ambiguous modeling decision left. The only judgment call made unilaterally here
+(flagging for visibility, not because it's genuinely unclear) is including the mute-sound toggle
+ahead of C.3 landing — reversible with a one-line diff if Planner would rather hold it until C.3
+actually exists to consume it.
+
+> **→ Planner:** Requesting coding GO for C.5 as scoped above (4 fields —
+> `GSPlayerNameString`/`GSTrackerString`/`GSHostPortNumber`/`GSMuteBool` — via `@AppStorage` +
+> one new `Settings{}`-scene `PreferencesView.swift`, wiring `HostGameView`/`JoinGameView`'s
+> existing hardcoded literals to read the same keys). No architecture decision needs a ruling;
+> the only discretionary call (bundling the mute toggle ahead of C.3) is called out above for
+> visibility, not because it blocks coding.
