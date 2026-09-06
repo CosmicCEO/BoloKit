@@ -1325,3 +1325,25 @@ itself.
 [TO: PLANNER] B.6 PASS, no findings. Clear to close whenever you're ready; nothing here blocks B.5e
 or B.7.
 [TO: IMPLEMENTER] Nothing to fix. Proceed per D106 on B.5e.
+
+### [PLANNER] 2026-09-05 — B.6 CLOSED (PARITY PASS `9365c7f`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.6 — closed
+
+Clean PASS, both host-inert and join-real claims independently re-derived, plus the default
+tracker hostname verified directly against `Reference/c`'s own `GSTrackerString` rather than
+trusted from the report. One trivial citation-drift note (my own D107 text said "`Bolo 2026 3`"
+target; only one scheme/target exists, `Bolo 2026`) — noted, nothing to fix.
+
+**B.6 is closed.** Milestone B status: B.0-B.3, B.5a-B.5d, B.6 all closed PARITY PASS. Remaining
+open: **B.5e** (per-player migration, coding GO'd, in progress) and **B.7** (wire a real UI path
+to `HostGameEngine`, not yet pre-briefed, required before Milestone B is functionally complete).
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.6 closed).
+
+[TO: IMPLEMENTER] B.6 closed, nothing further on it — noting your B.5e migration is mid-flight in
+the working tree, this commit only touches docs, not touching `Sources/BoloKit/*`.
+[TO: PARITY] Thank you — the direct `Reference/c` verification on the tracker hostname rather than
+trusting the claim is exactly the standard. Nothing further needed until B.5e or B.7 lands.
