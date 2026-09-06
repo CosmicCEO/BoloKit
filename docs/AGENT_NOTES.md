@@ -1432,3 +1432,95 @@ always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO. `READM
 Director-owned untracked files are Jerod's own — leave untouched.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back. B.7 (wire a real UI path to
 `HostGameEngine`) is still open whenever you want to pick up its pre-brief.
+
+### [PARITY] 2026-09-05 — B.5e audit (`b0d2791`+`ece24c4`): PASS, all five priorities independently re-derived with two of my own negative controls
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present; every check below is execution-verified, including two negative controls I built
+myself (not re-runs of Implementer's own). **Concurrency note:** `README.md` sits
+modified-uncommitted throughout (Jerod's own edit) and the three Director-owned untracked files are
+present — all left completely untouched.
+
+**Verdict: PASS.** The 6-field migration is exhaustive, the `killPointBuilder`/`killSquareBuilder`
+fix is correct and independently proven with my own reverted negative control, the `returnTick`
+gate removal is confirmed necessary by reading the C reference's own equivalent gate (not just
+accepting the claim), the rewritten `BuilderTickTests.swift` assertion genuinely tests independent
+per-player refund (also independently negative-controlled), and the test count matches exactly.
+
+**1. Migration exhaustiveness — confirmed by grep, not by trusting "it compiled."**
+`grep -rn "local\.mines\|local\.trees\|local\.builderTask\|local\.builderMines\|local\.builderTrees\|local\.builderPill" Sources/ Tests/`
+returns exactly one hit, and it's a historical doc comment in `TankLocalTick.swift:440` describing
+the *original* D88/D89 bug's old field reference (`layMineOnKeyDown`'s own doc comment,
+unrelated to B.5e, predates this migration) — not live code; the function itself
+(`TankLocalTick.swift:445-459`) already reads/writes `state.players[player].mines`. Confirmed the
+6 fields live exclusively on `PlayerState` now (`GameObjects.swift:212-218`) and
+`LocalPlayerState` (`GameObjects.swift:334-347`) retains exactly the 11 fields the report claims
+(`armour`/`shells`/`range`/`respawnCounter`/`spawned`/`drainCounter`/`refueling`/`refuelingBase`/
+`refuelingCounter`/`shellCounter`/`deaths`) — none of the 6 remain.
+
+**2. `killPointBuilder`/`killSquareBuilder` fix — PASS, confirmed correct against the C reference
+*and* independently negative-controlled.** Read `killpointbuilder()`/`killsquarebuilder()`
+(`client.c:6999-7045`) directly: both check `client.players[client.player]` only — not a loop —
+because in the real multi-process architecture, *every* connected client independently runs this
+same check against its own `client.player`. This port's single unified `GameState` has no second
+process to do that work for anyone else, so looping over every connected player (`TankLocalTick.
+swift:55,76`) is the correct generalization of the reference's actual multi-process behavior, not
+a deviation from it — confirmed by reading the C source myself, not by accepting the doc comment's
+claim. Built my own negative control (temporarily reverted both functions to `state.localPlayer`-only,
+no loop; `git diff` confirmed byte-identical restoration after): both of the report's new tests
+(`killSquareBuilderKillsARemotePlayersBuilderNotJustLocalPlayers`,
+`killPointBuilderKillsEveryConnectedPlayersBuilderWithinRadiusInOnePass`) failed exactly as
+expected against the reverted code, confirming real teeth independent of Implementer's own
+negative-control claim.
+
+**3. `returnTick` gate removal — confirmed genuinely necessary, not a risky shortcut, by reading
+the C reference's own equivalent gate.** Read `client.c:4934-5000`'s `kBuilderReturn` case
+directly: C **does** have `if (player == client.player) { client.buildertask = ...; client.mines
++= client.buildermines; ... }` (line 4962) and a second `if (player == client.player && ...)`
+(line 4998) — these gates are real in the reference. But they exist *only* because
+`client.mines`/`client.buildertask`/etc. are **process-singleton fields** in C — each connected
+player's own process has its own separate memory for these, so `player == client.player` is how a
+single process avoids writing into a concept that doesn't exist for anyone else in its own address
+space. Once this port migrated those 6 fields to `state.players[player].<field>` (B.5e's own
+change), the gate's original *reason* — routing to the one process that owns the singleton — no
+longer applies: `state.players[player].mines` already correctly addresses that specific player's
+own resources, for any player. Keeping the gate post-migration would have been the actual bug
+(exactly the stuck-remote-builder symptom the pre-brief diagnosed), not a fidelity feature to
+preserve. Independently negative-controlled this too (reintroduced `if player ==
+state.localPlayer` around the refund block in `returnTick`; reverted after, byte-identical):
+`returnRemotePlayerRefundsItsOwnResourcesIndependentlyOfLocalPlayer` failed on all three of its
+real assertions (`builderTask`, `trees`, `mines`) exactly as expected.
+
+**4. Rewritten `BuilderTickTests.swift` assertion — confirmed genuine coverage, not weakened.**
+Read the new `returnRemotePlayerRefundsItsOwnResourcesIndependentlyOfLocalPlayer` directly: it
+seeds *different* values on player 0 (`trees=5, mines=5`) and player 1 (`trees=10, mines=10,
+builderTrees=3, builderMines=1`), asserts player 1's refund lands correctly on player 1's own
+totals (`13`/`11`) *and* that player 0's totals are untouched (`5`/`5`) — a real cross-talk check,
+not merely "no crash." The old test it replaced only asserted a singleton pool was untouched
+because there was nothing else for a remote player's return to write into — asserting the bug's
+own symptom, not a positive behavior. The new test is strictly stronger coverage, confirmed by my
+own negative control in item 3 above (which specifically caught this test, not a different one).
+
+**5. Test count — confirmed exactly.** `swift test list | wc -l`: **662**, split **489
+`BoloKitTests`** + **173 `DifferentialTests`**, matching the claimed `660 → 662 (+2)` exactly. Ran
+the **full suite**, not just filtered subsets: both summaries report all tests passing (`173 tests
+in 13 suites` / `489 tests in 7 suites`, zero failures).
+
+[TO: PLANNER] B.5e audited at `b0d2791`+`ece24c4` — **PASS** on all five priorities. Migration
+exhaustiveness confirmed by grep (one harmless historical-comment hit, not live code). The
+`killPointBuilder`/`killSquareBuilder` loop-over-connected-players fix is the correct
+generalization of the reference's own multi-process behavior (confirmed by reading
+`client.c:6999-7045` directly), and I built my own reverted negative control rather than re-running
+Implementer's. The `returnTick` gate removal is genuinely necessary, not a shortcut — the reference
+really does have an equivalent `player == client.player` gate (`client.c:4962,4998`), but only
+because the fields it guards were process-singletons in C; migrating them to per-player storage
+makes the gate's original purpose moot, and keeping it would reproduce the exact bug this sub-wave
+fixes. Also independently negative-controlled with my own reverted patch. The rewritten
+`BuilderTickTests.swift` assertion is confirmed to test genuine independent-refund/no-cross-talk
+behavior, not a weakened restatement. Test count 662 confirmed, full suite green. Nothing
+outstanding from PARITY.
+[TO: IMPLEMENTER] Clean work — nothing to fix. Both negative controls I built independently
+(reverting `killPointBuilder`/`killSquareBuilder`'s loop, and separately reintroducing
+`returnTick`'s refund gate) failed exactly as your own report predicted, and the C-reference read
+for the gate-removal claim holds up precisely (the gate is real in `client.c`, but tied to
+process-singleton storage that no longer exists after this migration).
