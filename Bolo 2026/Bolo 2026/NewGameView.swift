@@ -28,8 +28,9 @@ struct NewGameView: View {
     /// `GameState` `onStartHosting` would have.
     let onStartHostingLocalOnly: (GameState) -> Void
     /// Milestone B.3 -- fires with the fully-assembled `GameState` (`applyBoloPreamble`'s result)
-    /// once the join form successfully completes a handshake.
-    let onJoinedGame: (GameState) -> Void
+    /// once the join form successfully completes a handshake. Carries the live `TCPSession`/
+    /// `UDPSession` pair as of Milestone B.8 (D113), not a bare `GameState`.
+    let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
 
     var body: some View {
         TabView {
@@ -43,5 +44,8 @@ struct NewGameView: View {
 }
 
 #Preview {
-    NewGameView(onStartHosting: { (_: HostGameEngine) in }, onStartHostingLocalOnly: { _ in }, onJoinedGame: { _ in })
+    NewGameView(
+        onStartHosting: { (_: HostGameEngine) in }, onStartHostingLocalOnly: { _ in },
+        onJoinedGame: { (_: TCPSession, _: UDPSession, _: GameState) in }
+    )
 }

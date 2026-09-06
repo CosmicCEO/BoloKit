@@ -24,6 +24,10 @@
 //  a real listener couldn't be constructed (see `HostGameView.swift`'s own header), but not tied
 //  to that case specifically; any caller of the local-only `init` can supply one.
 //
+//  Milestone B.8 (D113): a third init for the join path, taking the already-live `TCPSession`/
+//  `UDPSession` pair `JoinGameView` established -- see `GameSession`'s own header for the
+//  merged-event-stream consumer that drives this path instead of a bare tick loop.
+//
 
 import BoloKit
 import BoloNet
@@ -50,6 +54,21 @@ struct GameView: View {
         let (tiles, sprites) = Self.loadSheets()
         _session = State(
             initialValue: GameSession(hostEngine: hostEngine, tilesImage: tiles, spritesImage: sprites)
+        )
+    }
+
+    init(
+        tcpSession: TCPSession, udpSession: UDPSession, initialState: GameState,
+        onQuitToMenu: @escaping () -> Void
+    ) {
+        self.onQuitToMenu = onQuitToMenu
+        self.notice = nil
+        let (tiles, sprites) = Self.loadSheets()
+        _session = State(
+            initialValue: GameSession(
+                tcpSession: tcpSession, udpSession: udpSession, initialState: initialState,
+                tilesImage: tiles, spritesImage: sprites
+            )
         )
     }
 

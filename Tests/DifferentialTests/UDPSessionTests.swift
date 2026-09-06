@@ -265,3 +265,31 @@ private func sampleHeader(player: UInt8, remoteSeqForLocal: Int32) -> CLUpdateHe
     #expect(result?.seq == 7)
     #expect(state.players[1].tank == Vec2f(x: 55, y: 66))
 }
+
+// B.8: `allRemoteSeqsAsUInt32()` is the join-side GameSession's own source for
+// `assembleClUpdate`'s `seq:` parameter (each outbound CLUpdate embeds this session's belief
+// about every player's latest seq, not just the sender's own). Proves it reflects what's actually
+// been tracked, not a static default.
+@Test func udpSessionAllRemoteSeqsReflectsTrackedUpdates() async throws {
+    let (listener, port, waiter) = try await startLoopbackUDPListener()
+    defer { listener.cancel() }
+
+    let session = try await UDPSession(host: "127.0.0.1", port: port)
+    defer { session.cancel() }
+
+    try await session.sendLocalUpdate(CLUpdate(header: sampleHeader(player: 0, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    let harnessConnection = await waiter.wait()
+    _ = try await receiveOneDatagram(harnessConnection)
+
+    #expect(session.allRemoteSeqsAsUInt32() == [UInt32](repeating: 0, count: maxPlayers))
+
+    var state = GameState()
+    state.localPlayer = 0
+    state.players = (0..<maxPlayers).map { i in PlayerState(connected: i == 1, used: i == 1) }
+    try await sendDatagram(harnessConnection, CLUpdate(header: sampleHeader(player: 1, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    _ = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
+
+    var expected = [UInt32](repeating: 0, count: maxPlayers)
+    expected[1] = 5  // sampleHeader's own fixed seq value for whichever player it's built for
+    #expect(session.allRemoteSeqsAsUInt32() == expected)
+}

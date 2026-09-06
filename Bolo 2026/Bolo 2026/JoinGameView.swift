@@ -30,13 +30,21 @@
 //  kept opaque network-byte-order per that struct's own doc comment -- formatted here into a
 //  dotted-quad purely for display, not reused as a real value anywhere else.
 //
+//  Milestone B.8 (D113): `startJoining()` now calls `TCPSession.join` directly instead of
+//  `joinClient` -- the plain `joinClient` wrapper closes its connection before returning (see its
+//  own doc comment), but B.8's live post-handshake network loop needs that exact same accepted
+//  connection kept open, not a fresh reconnect the host would treat as an unauthenticated new
+//  join attempt. A second, freshly-dialed `UDPSession` on the same host/port completes the pair
+//  (matching `HostDgramListener.swift`'s own precedent: the dgram channel binds the same port the
+//  TCP side resolved, with no handshake of its own -- the host registers it on first receipt).
+//  `onJoinedGame` now hands both live sessions up alongside the decoded state.
 
 import BoloKit
 import BoloNet
 import SwiftUI
 
 struct JoinGameView: View {
-    let onJoinedGame: (GameState) -> Void
+    let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
 
     @State private var addressText = "127.0.0.1"
     @State private var portText = "50000"  // GSJoinPortNumber's own shipped default
@@ -155,7 +163,7 @@ struct JoinGameView: View {
 
         Task { @MainActor in
             do {
-                let result = try await joinClient(
+                let result = try await TCPSession.join(
                     host: addressText, port: port, name: nameText, pass: passwordText,
                     onProgress: { newProgress in
                         Task { @MainActor in progress = newProgress }
@@ -165,12 +173,23 @@ struct JoinGameView: View {
                 var state = GameState()
                 guard applyBoloPreamble(result.preamble, mapData: result.mapData, state: &state) else {
                     isJoining = false
+                    result.session.cancel()
                     errorMessage = "Incompatible Map Version"
                     return
                 }
 
+                let udpSession: UDPSession
+                do {
+                    udpSession = try await UDPSession(host: addressText, port: port)
+                } catch {
+                    isJoining = false
+                    result.session.cancel()
+                    errorMessage = "Unable to Establish the Datagram Channel -- \(error.localizedDescription)"
+                    return
+                }
+
                 isJoining = false
-                onJoinedGame(state)
+                onJoinedGame(result.session, udpSession, state)
             } catch let error as JoinClientError {
                 isJoining = false
                 errorMessage = Self.message(for: error)
@@ -200,5 +219,5 @@ struct JoinGameView: View {
 }
 
 #Preview {
-    JoinGameView(onJoinedGame: { _ in })
+    JoinGameView(onJoinedGame: { (_: TCPSession, _: UDPSession, _: GameState) in })
 }

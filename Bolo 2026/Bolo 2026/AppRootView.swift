@@ -25,6 +25,11 @@
 //  local-only `GameView(initialState:)` the join path already uses, plus a visible notice so
 //  solo play still works without silently pretending the game is networked.
 //
+//  Milestone B.8 (D113): `.playing` now carries the live `TCPSession`/`UDPSession` pair
+//  `JoinGameView` established, not a bare `GameState` snapshot -- the join side had the
+//  identical "no live network loop past the handshake" gap the host side had before B.7, now
+//  closed the same way (see `GameSession.swift`'s own B.8 header).
+//
 
 import BoloKit
 import BoloNet
@@ -32,7 +37,7 @@ import SwiftUI
 
 enum AppScreen {
     case newGame
-    case playing(GameState)
+    case playing(tcpSession: TCPSession, udpSession: UDPSession, state: GameState)
     case hosting(HostGameEngine)
     case hostingFallback(GameState)
 }
@@ -46,10 +51,15 @@ struct AppRootView: View {
             NewGameView(
                 onStartHosting: { engine in screen = .hosting(engine) },
                 onStartHostingLocalOnly: { state in screen = .hostingFallback(state) },
-                onJoinedGame: { state in screen = .playing(state) }
+                onJoinedGame: { tcpSession, udpSession, state in
+                    screen = .playing(tcpSession: tcpSession, udpSession: udpSession, state: state)
+                }
             )
-        case .playing(let state):
-            GameView(initialState: state, onQuitToMenu: { screen = .newGame })
+        case .playing(let tcpSession, let udpSession, let state):
+            GameView(
+                tcpSession: tcpSession, udpSession: udpSession, initialState: state,
+                onQuitToMenu: { screen = .newGame }
+            )
         case .hosting(let engine):
             GameView(hostEngine: engine, onQuitToMenu: { screen = .newGame })
         case .hostingFallback(let state):

@@ -188,4 +188,13 @@ public final class UDPSession: @unchecked Sendable {
     public func cancel() {
         connection.cancel()
     }
+
+    /// **B.8:** every other player's latest seq this session has observed, for the caller's own
+    /// outbound `assembleClUpdate(player:state:seq:)` call -- the wire format embeds each
+    /// sender's belief about *every* player's latest seq (dead-reckoning extrapolation on the
+    /// receiving end, D44), not just the sender's own. Mirrors `HostSessionTable.
+    /// allSeqsAsUInt32()`'s identical role on the host side.
+    public func allRemoteSeqsAsUInt32() -> [UInt32] {
+        remoteSeqs.map { UInt32(bitPattern: $0) }
+    }
 }
