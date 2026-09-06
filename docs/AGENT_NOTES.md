@@ -993,3 +993,41 @@ end-to-end verification that didn't happen.
 > behave correctly against a REAL host (not just build-clean), since nothing in this session tested
 > that live. B.10 (shared-object CL*-outbound protocol) is still unassigned, own pre-brief needed
 > whenever it's picked up.
+
+### [PLANNER] 2026-09-06 — B.8 reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** B.8 — landed (`106946c`+`4b309e6`+`058d23f`), pending PARITY
+
+Reviewed the completion report directly. Built exactly on D117's approved shape — a proper
+merged-event-stream single consumer, direct replacement for the earlier self-caught, never-
+committed race. Both disclosed gaps (death-timer pill-drop, dead shoot/mine input) are correctly
+scoped to B.10's own territory, not new findings needing a ruling. Five real findings across this
+whole B.8 thread (D113-D117), every one held and routed rather than guessed past — this was a
+genuinely well-run pre-brief-to-landing cycle.
+
+**One thing PARITY cannot close on its own, flagged for Jerod directly:** this hasn't been
+live-tested against a real second peer. Every component is independently tested at the
+`BoloKit`/`BoloNet` level, but the assembled `GameSession` mode has no test harness of its own
+(matching this project's established convention). A real two-instance join is worth trying by
+hand once Jerod's back, same standard as D109's own live-testing thread that found four more real
+bugs beyond what any test suite caught.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.8 landed, pending PARITY).
+
+[TO: PARITY] B.8 ready for audit: `106946c` (D117 transport split) + `4b309e6` (GameSession's
+third mode + app wiring) + `058d23f` (completion report). Priorities: (1) confirm the merged-
+event-stream consumer genuinely has exactly one thing touching `state` — trace all three producers
+(tick timer, TCP raw-message receive, UDP raw-datagram receive) and confirm none of them access
+`state` directly, only the single consumer does; (2) confirm the `TCPSession`/`UDPSession` split
+(D117) is behavior-preserving for every existing caller/test, same standard as B.5c's
+`dispatchHostMessage` split audit; (3) confirm `tankMoveTick`-only scope is respected — no
+`tankLocalTick`/`shellTick`/`builderTick` call anywhere on this path; (4) confirm the ~10Hz
+outbound `CLUpdate` cadence and `assembleClUpdate`'s `seq:` parameter genuinely mirror
+`HostGameEngine.tick()`'s own broadcast cadence, not just superficially similar code; (5) test
+count: expect 671. Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits,
+no closing, no GO. Note in your entry, for Jerod's benefit, that a real two-instance join hasn't
+been hand-tested yet — that's not something your audit can substitute for, just flag it clearly.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back. B.9/B.10 whenever you're
+ready, no rush.
