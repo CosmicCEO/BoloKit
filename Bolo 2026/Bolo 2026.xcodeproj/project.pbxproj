@@ -61,11 +61,13 @@
 				6288C26B304B70C6007A9580 /* Frameworks */,
 				6288C26C304B70C6007A9580 /* Resources */,
 				B01A0002304B70C6007A9580 /* Generate Glyph Sheets */,
+				B01A0005304B70C6007A9580 /* Generate Sound Effects */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				B01A0003304B70C6007A9580 /* PBXTargetDependency */,
+				B01A0006304B70C6007A9580 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6288C270304B70C6007A9580 /* Bolo 2026 */,
@@ -146,6 +148,50 @@
 				"",
 			);
 		};
+		B01A0005304B70C6007A9580 /* Generate Sound Effects */ = {
+			isa = PBXShellScriptBuildPhase;
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/BoloSounds",
+			);
+			name = "Generate Sound Effects";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/explosion.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/superboom.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hittank.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hitterrain.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/hittree.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/mine.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tankshot.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/pillshot.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/build.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/builderdeath.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tree.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/bubbles.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/sink.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/msgreceived.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fbuild.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fbuilderdeath.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fexplosion.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fhittank.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fhitterrain.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fhittree.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fshot.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fsink.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fsuperboom.aiff",
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ftree.aiff",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"# D124/C.3: 24 .aiff sound effects are regenerated at build time by the BoloSounds",
+				"# executable target and are never committed to git. BoloSounds is an explicit",
+				"# target dependency, so it is always built before this phase runs. Mirrors D72's",
+				"# BoloGlyphs Run Script pattern exactly.",
+				"set -e",
+				"mkdir -p \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"\"$BUILT_PRODUCTS_DIR/BoloSounds\" \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"",
+			);
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -160,6 +206,10 @@
 		B01A0003304B70C6007A9580 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			productRef = B01A0011304B70C6007A9580 /* BoloGlyphs */;
+		};
+		B01A0006304B70C6007A9580 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = B01A0013304B70C6007A9580 /* BoloSounds */;
 		};
 /* End PBXTargetDependency section */
 
@@ -406,6 +456,10 @@
 		B01A0012304B70C6007A9580 /* BoloNet */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BoloNet;
+		};
+		B01A0013304B70C6007A9580 /* BoloSounds */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BoloSounds;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
