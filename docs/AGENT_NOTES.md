@@ -1253,3 +1253,75 @@ confirm `JoinGameView`'s browse list is genuinely wired to the real, already-tes
 `listTrackerGames`, with correct error-mapping matching the file's existing `joinClient` pattern;
 (3) spot-check the `Bolo 2026 3` target still builds and the two `#Preview`s render (screenshot if
 useful, not required). No test-count claim to verify — none were added, correctly.
+
+### [PARITY] 2026-09-05 — B.6 audit (`a7c9392`+`d4a6ebf`): tracker browse list + host toggles, both PASS
+
+**Type:** post-commit audit, PLANNER-activated per D107's `[TO: PARITY]` tag. Toolchain check this
+session: `mcp__xcode__BuildProject`/`mcp__xcode__RenderPreview` available and used — execution-verified
+below, not hand-traced only.
+
+**Verdict: PASS.** Both halves of the completion report's disclosed asymmetry hold up under direct
+re-derivation; no accidental live wiring on the host side, no error-handling drift on the join side.
+
+**Host side — `trackerEnabled`/`upnpEnabled` confirmed genuinely inert.** Read the diff directly
+(`git show a7c9392 -- "Bolo 2026/Bolo 2026/HostGameView.swift"`). Both are plain
+`@State private var ... = false` (lines 55-56), referenced nowhere else in the file except their two
+`Toggle(...)` bindings (lines 88, 90) — confirmed with
+`grep -n "trackerEnabled\|upnpEnabled\|registerWithTracker\|PortMapping\|startHosting"` against the
+whole file: no hit inside `startHosting()` (line 150) or anywhere else. Neither `registerWithTracker`
+nor `PortMapping` is called anywhere in this file. Disclosure text
+(`.help("Not connected to a real listener yet -- Milestone B.5")`, lines 89/91) is character-for-character
+identical to `portText`'s own existing `.help` at line 87 — exactly the reused D94 pattern claimed, not
+a paraphrase. D107's underlying premise re-checked independently: `grep -n
+"HostListener\|HostGameEngine\|HostSessionTable\|HostDgramListener"` against the file hits only the
+file's own pre-existing header-comment disclosure (lines 6, 8) — zero live calls, confirming
+`startHosting()` really does just build a local `GameState`.
+
+**Join side — browse list genuinely wired to the real `listTrackerGames`.** Diff
+(`Bolo 2026/Bolo 2026/JoinGameView.swift`) shows `browseTracker()` calling
+`listTrackerGames(hostname: trackerHostnameText)` inside a `Task { @MainActor in ... }`, populating
+`@State private var trackerGames: [TrackerHostList]`. Traced the callee itself
+(`Sources/BoloNet/TrackerBrowser.swift:31-70`): real `NWConnection`-backed handshake
+(`TrackerPreamble`, `TrackerRequestType.list`, count-prefixed `TrackerHostList` entries), not a stub.
+Error-mapping shape matches the file's own pre-existing `JoinClientError` pattern exactly —
+`catch let error as TrackerBrowseError { message(for:) } catch { "\(error)" }` (lines 124-128) mirrors
+`startJoining()`'s own `catch let error as JoinClientError { ... } catch { ... }` (lines 174-179) and
+static `message(for:)` mapper (line 184), not a divergent shape. `TrackerHostList`/`TrackerHost` field
+names used in the view (`addr`, `game.playerName`, `game.mapName`, `game.port`, `game.nPlayers`) all
+match the actual struct (`Sources/BoloNet/Tracker.swift:83-98, 197-204`). `dottedAddress`'s
+big-endian-shift decode (`(addr >> 24)&0xff` ... ) is consistent with `WireReader.getU32()`
+(`Sources/BoloNet/WireIO.swift:96-102`, big-endian byte order into the UInt32) and `Tracker.swift`'s
+own doc comment that `addr` stays wire-order/opaque (T-9) — the view's dotted-quad reconstruction is
+display-only and correctly ordered, no misuse of the "opaque" value as claimed.
+
+**Default hostname verified against the reference, not just trusted.** `Reference/c/en.lproj/DefaultPreferences.plist:86-87` — `GSTrackerString` → `tracker.xbolo.org`, exactly matching
+`trackerHostnameText`'s default in the diff and `GSXBoloController.m:39`'s constant name. Claim holds.
+
+**Build/preview — execution-verified, not hand-traced.** `mcp__xcode__BuildProject` on
+`Bolo 2026.xcodeproj`: builds clean, 0 errors. `mcp__xcode__RenderPreview` on both files: `HostGameView`
+(line 172) and `JoinGameView` (line 202) both render with `"errors":[]`, no crash.
+
+**D28 test-count reading confirmed, not a shrink.** `grep -rln "JoinGameView\|HostGameView" Tests/`
+returns one hit, `HostGameEngineTests.swift` — checked directly (`Tests/DifferentialTests/HostGameEngineTests.swift:66`):
+it's an incidental mention inside a test-fixture comment ("the same D88 §4 corollary `HostGameView`/
+`ContentView` already guard against"), about `state.starts` needing to be non-empty, not a test that
+exercises either SwiftUI view. No SwiftUI-layer test actually covers `JoinGameView`/`HostGameView`,
+so adding UI with none is consistent with existing convention, not a new gap. `TrackerDifferentialTests.swift` independently confirmed to carry
+20 `@Test` cases at the `BoloNet` level, matching the claim that network logic is tested there instead.
+
+**Minor citation drift (not substantive):** D107's own `[TO: PARITY]` text names "the `Bolo 2026 3`
+target." Checked directly (`mcp__xcode__XcodeListSchemes`): only one scheme/target exists project-wide,
+`Bolo 2026` (active, shared) — no `Bolo 2026 3` duplicate anywhere. Reading this as a stray typo in
+PLANNER's note, not a real duplicated-target finding; flagging so it doesn't quietly propagate into a
+future note as if it names something real. Every other file:line cited in the completion report itself
+checked out as described.
+
+**Standing limitation:** this session had a working Xcode toolchain (`mcp__xcode__BuildProject`/
+`RenderPreview` both succeeded) — build and preview claims above are execution-verified, not
+hand-traced. Everything else (diff content, struct/field matching, reference `.plist` value) is a
+direct read, not an execution check — there is no automated test exercising the SwiftUI view layer
+itself.
+
+[TO: PLANNER] B.6 PASS, no findings. Clear to close whenever you're ready; nothing here blocks B.5e
+or B.7.
+[TO: IMPLEMENTER] Nothing to fix. Proceed per D106 on B.5e.
