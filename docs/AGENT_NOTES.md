@@ -1795,3 +1795,57 @@ Script wiring for `BoloSounds` intentionally deferred — same shape as `BoloGly
 wiring, ready whenever a session isn't racing C.0/C.5 edits in the same tree.
 [TO: PARITY] C.3 ready for audit whenever picked up — `2662d5e` is the full diff, no prior commits
 to combine.
+
+### [IMPLEMENTER] 2026-09-06 — C.5 completion report (D120), plus a real git-index race hit and fixed live
+
+**Commit:** `3db8d6c`. `PreferencesView.swift` (new, ~56 lines) + `Settings{}` scene in
+`Bolo_2026App.swift` (5 lines) + small `init()` additions to `HostGameView`/`JoinGameView` (~15
+lines each) reading the same `UserDefaults` keys instead of hardcoded literals. Exactly the scope
+`91a1b61`'s pre-brief proposed and D120 approved — no deviation.
+
+`PreferencesView`'s own `#Preview` rendered clean (`mcp__xcode__RenderPreview`), including a
+mid-session polish fix (the port field's `.number` format showed a thousands separator — `50,000`
+— for a raw port number; `.number.grouping(.never)` fixed it, re-verified). Full app target build
+(`mcp__xcode__BuildProject`) succeeds; `swift test` 684 passing (was 673 before C.0/C.3's own work
+landed in the same window).
+
+**Hit, and fixed live, the exact concurrent-session git-race both other tracks' own reports
+already flagged from their side — worth one more account here since it happened to my own commit
+specifically, not just alongside it.** My first `git commit` for this work (`git add` on exactly
+my 4 files, verified via `git status` immediately beforehand) landed as commit `7af6bcd` — but its
+actual diff was five files from the *other* tracks' in-progress work (`GameSession.swift`,
+`GameView.swift`, `PlayerStatusView.swift`, `HostGameEngine.swift`, `HostGameEngineTests.swift`),
+none of mine. Root cause: `git`'s index is one shared file per working tree, not per-process —
+another session's own concurrent `git add`/`git commit` interleaved with mine on the *same*
+checkout, so my `git commit` ran against an index state a different process had just rewritten,
+not the one I'd staged. Fixed immediately, before anything was built on top (confirmed `git log`
+still showed my erroneous commit as the tip): `git reset --soft HEAD~1` (keeps every file's actual
+content untouched, just un-commits), then `git restore --staged` on the files that weren't mine,
+leaving both tracks' in-progress work exactly as it had actually been — modified/untracked, not
+frozen into a stray commit under my message. Re-staged, re-verified with `git diff --cached --stat`
+this time (not just `git status`), hit the *same* contamination on the verification step itself (a
+second concurrent `git add` from another session landed in the gap), unstaged again, waited for a
+quiet moment, then landed clean at `3db8d6c` — confirmed via `git show --stat` immediately after.
+**No data was lost at any point** — every file's real content survived on disk throughout; the
+risk was entirely about which commit's *message* a given diff would end up attributed to, not
+losing anything. Both other sessions' own subsequent commits (`318e244` C.0, `2662d5e` C.3) show
+they hit and independently fixed the identical race from their own side in the same window.
+
+**Worth Planner's attention, not because anything broke, but because it easily could have:** three
+sessions running truly concurrent `git add`/`git commit` against one shared working tree with no
+coordination got lucky three times in a row (self-caught, each time, before anything was built on
+top). That's not a property to rely on indefinitely. If more parallel-track sessions are planned,
+worth considering either serializing commits through Planner (a "clear to commit" handshake) or
+having each track work in its own worktree, merged later — flagging as a process question, not
+blocking anything already landed.
+
+> **→ Planner:** C.5 done exactly as scoped, ready for PARITY. The git-race section above is the
+> one thing worth reading even if C.5 itself is trivial to review — it's the third independent
+> account of the same hazard this window, and the pattern (lucky self-correction, not actual
+> safety) seems worth a real process decision rather than continuing to rely on every session
+> happening to notice in time.
+> **→ Parity:** Straightforward audit — 4 fields, 1 new file, 2 small existing-file edits, no
+> `BoloKit`/`BoloNet` surface at all. The `UserDefaults` key names reused verbatim from the
+> reference's own plist (listed in the pre-brief) are worth a quick cross-check against
+> `Reference/c/en.lproj/DefaultPreferences.plist` if you want a concrete thing to verify beyond
+> reading the diff.
