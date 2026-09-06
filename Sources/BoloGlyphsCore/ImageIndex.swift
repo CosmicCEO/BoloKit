@@ -47,16 +47,23 @@ public func tileGlyphRole(for index: Int32, connectivity: [Int32: ConnectiveGlyp
 
 /// Sprite-space dispatch is closed-form arithmetic on the index -- no
 /// `mapimage()` probing needed. Tank rows 0-5 (`PTKB`/`PTNK`/`FTKB`/`FTNK`/
-/// `ETKB`/`ETNK`) pair up as (dead, alive) x (player, friendly, enemy);
-/// heading is the column, 0-15.
+/// `ETKB`/`ETNK`) pair up as (boat, tank) x (player, friendly, enemy) --
+/// **not** (dead, alive), confirmed directly against `GSBoloView.m:322,325,337`'s
+/// own draw calls (`player.boat ? PTKB... : PTNK...`, always for a live player;
+/// a dead player's sprite is never drawn at all, gated by `!dead` at the call
+/// site, not by a "destroyed" sprite variant). The original `row % 2 == 0`
+/// derivation here read that pairing as (dead, alive) and passed `destroyed:
+/// true` for every boat row -- found live, this drew every boat as `drawTank`'s
+/// X-shaped wreck glyph instead of an actual boat, for every player who ever
+/// spawned on or near water (a large fraction of real maps). Heading is still
+/// the column, 0-15.
 public func spriteGlyphRole(for index: Int32) -> GlyphRole? {
     guard isValidSpriteIndex(index) else { return nil }
     if index <= ETNK15IMAGE {
         let row = cellRow(index)
         let heading = cellCol(index)
         let ownership = row / 2
-        let destroyed = row % 2 == 0
-        return .tank(heading: heading, ownership: ownership, destroyed: destroyed)
+        return .tank(heading: heading, ownership: ownership, destroyed: false)
     }
     if (SHELL0IMAGE...SHELL5IMAGE).contains(index) {
         return .shell(frame: Int(index - SHELL0IMAGE))
