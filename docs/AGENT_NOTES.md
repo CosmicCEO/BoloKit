@@ -671,3 +671,131 @@ how the receive side already works), and whether this reopens B.8's own `GameSes
 design or is additive to it. Write the pre-brief into `docs/AGENT_NOTES.md` and commit — not a
 coding GO yet.
 [TO: PARITY] Nothing yet — no commit exists for B.10.
+
+### [IMPLEMENTER] 2026-09-06 — B.10 pre-brief (join client's outbound CL* protocol)
+
+**Type:** pre-brief only, no coding GO. Traced per PLANNER's B.10 GO above.
+
+**1. Reference wire shapes — no new formats needed.** `Reference/c/client.c:98-115` declares 15
+`sendcl*()` functions (`sendcldropboat`/`sendcldroppills`/`sendcldropmine`/`sendcltouch`/
+`sendclgrabtile`/`sendclgrabtrees`/`sendclbuildroad`/`sendclbuildwall`/`sendclbuildboat`/
+`sendclbuildpill`/`sendclrepairpill`/`sendclplacemine`/`sendcldamage`/`sendclsmallboom`/
+`sendclsuperboom`/`sendclrefuel`/`sendclhittank`/`sendclupdate`). Every one just fills a small
+struct and calls `writebuf(&client.sendbuf, …)` — no framing surprise. Cross-checked against
+`Sources/BoloNet/ClientMessages.swift`: **every one of these already has a matching `CL*` Swift
+struct with both `encode()` and `decode()`** (`CLTouch`, `CLGrabTile`, `CLGrabTrees`,
+`CLBuildRoad/Wall/Boat/Pill`, `CLRepairPill`, `CLPlaceMine`, `CLDamage`, `CLDropMine`, `CLDropBoat`,
+`CLDropPills`, `CLSmallBoom`, `CLSuperBoom`, `CLRefuel`, `CLHitTank`). `Sources/BoloNet/
+HostSession.swift`'s `recvCl*` dispatch (lines ~448-720) already decodes and fully applies every
+one of these via `Sources/BoloKit/RecvCL.swift`'s `recvClGrabTile`/`recvClTouch`/`recvClDropMine`/
+`recvClPlaceMine`/etc — host-side authoritative application + `SR*` broadcast is **already fully
+built and tested**, wired since B.5c/B.5d. B.10 is genuinely pure outbound-send wiring, not new
+wire-format or new host-side logic.
+
+**2. Where the send half belongs.** `Sources/BoloNet/TCPSession.swift:113` already has a generic
+`public func send(_ bytes: [UInt8]) async throws`, the exact mechanism `sendLocalUpdateIfDue`
+(B.8, `UDPSession` equivalent for `CLUpdate`) already uses as precedent. No new `TCPSession` API is
+strictly required — call sites can do `try await tcpSession.send(CLGrabTile(x: x, y: y).encode())`
+directly. A thin `TCPSession.sendCl*(...)` convenience wrapper per message type is optional polish,
+not load-bearing; recommend skipping it and calling `.send(_:.encode())` directly, matching how
+`CLUpdate`'s own send already works, unless PLANNER wants the symmetry with the receive side's
+named dispatch.
+
+**3. Where the detection logic belongs — corrects the framing in PLANNER's GO.** Traced
+`Reference/c/client.c:5785`'s `enter()` (the reference's own client-side tile-entry function,
+which every reference client runs for its own local player, whether host or join) directly: it
+**never mutates `client.pills`/`client.bases` itself**. On pill/base entry it only calls
+`sendclgrabtile(new.x, new.y)` and returns — the actual `owner`/`armour` mutation happens only via
+`recvsrcapturepill`/`recvsrcapturebase` when the `SR*` broadcast comes back (client.c:5795-5857).
+Same shape for the `.lmine` key path (`client.c:6509`, `sendcldropmine`) and the moving-mine-lay
+branch inside `enter()` (`client.c:5913`). This means **`TankLocalTick.swift`'s `enterTile`/
+`grabTile`/`plantMine`/`layMineOnKeyDown` are not the right functions to modify at all** — they're
+already the *authoritative-mutation* half (used correctly today by the single-process and host
+local-player paths, which are self-authoritative same as the reference's server role folded into
+one process). The host side's *receive* half already has its own separate, already-built,
+already-tested implementation in `RecvCL.swift` (`recvClGrabTile` etc.) — B.10 doesn't touch that
+either.
+
+What's actually missing is the **third thing**: a lean, non-mutating, detect-and-send analogue of
+`enter()`'s pill/base/mined-terrain/lmine-key branches, for the join client's own local tank only.
+This is genuinely new `BoloKit` code (not a refactor of `TankLocalTick.swift`), because the
+existing `enterTile`/`grabTile`/`plantMine` are mutate-and-return, and threading a "suppress the
+mutation, call this closure with what would have happened" callback through their existing
+recursive shape (`enterTile` calls `grabTile` calls `plantMine`) is more invasive than writing a
+small parallel function that only inspects `state` (read-only) and returns "you should send X" —
+mirroring `enter()`'s own actual shape more faithfully than retrofitting the mutation-first code
+would. Rough shape: `public func detectJoinTileEntry(new: Pointi, old: Pointi, state: GameState) ->
+[JoinOutboundCL]` (an enum of the small handful of message shapes actually reachable from tile
+entry: `.grabTile(x,y)`, `.dropBoat(x,y)`, plus the existing `layMineOnKeyDown`'s own separate,
+simpler LMINE-key check reused almost as-is since it's already read-mostly). `GameSession`'s join
+tick handler calls this once per tick (same cadence as `tankMoveTick` today) and does
+`try await tcpSession.send(msg.encode())` for whatever comes back — no `state` mutation from this
+path at all, matching the reference exactly (the join client's own copy of `state.pills`/
+`state.bases` stays stale until the host's `SR*` broadcast arrives, same latency the real protocol
+always had).
+
+**4. Does this reopen B.8's `GameSession` design?** No — additive only. `Bolo 2026/GameSession.swift:
+314`'s `handleJoinEvent` `.tick` case (lines 316-328) already calls `tankMoveTick` then
+`sendLocalUpdateIfDue` then renders; the new detect-and-send call slots into that same block,
+before or after `tankMoveTick`. It's outbound-only (`tcpSession.send`, fire-and-forget in the sense
+that the reference's own `sendcl*()` calls don't block on a reply either — the eventual `SR*`
+mutation arrives later through the *already-existing* `.tcpMessage` producer/consumer path B.8/D117
+built). No new producer, no new stream case, no change to the single-consumer discipline — the
+detection call itself never touches `state` mutably, so it doesn't need to run inside
+`handleJoinEvent`'s consumer exclusivity for correctness, though running it there anyway (rather
+than from a separate Task) is simpler and costs nothing, since it's already on the main-actor tick
+path.
+
+**5. Sizing.**
+- `BoloKit`: one new file (or a new section in `TankLocalTick.swift` clearly marked read-only) —
+  a `detectJoinTileEntry`-style function covering `findPill`/`findBase`/mined-terrain/lmine-key
+  cases only (the ones D116 named: pills, bases/building-adjacent capture, mine-planting). Small —
+  these are read-only re-derivations of logic that already exists in mutating form, mostly
+  `if`/`switch` restructuring, no new physics or math. Estimate: well under a day, with named
+  regression tests per message type (grabTile-on-pill, grabTile-on-base, dropMine-on-lmine-key,
+  dropBoat-on-terrain-exit) — 4-6 new tests.
+- `BoloNet`: **zero required changes** — `TCPSession.send` already exists, `CL*.encode()` already
+  exists for every relevant message.
+- `Bolo 2026/GameSession.swift`: a few lines in `handleJoinEvent`'s `.tick` case, calling the new
+  detection function and sending whatever it returns.
+- **Total: small, closer to B.9's builder/shell-smoothing size than a full sub-wave like B.8** —
+  most of the apparent risk PLANNER flagged (new outbound protocol surface) turns out to already
+  be solved at the wire-format/host-receive layer; what's left is a narrow, mostly-mechanical
+  read-only port of `enter()`'s detect-and-send half.
+
+**6. Explicitly out of scope, flagged rather than silently included:** builder-task sends
+(`CLGrabTrees`/`CLBuildRoad`/`CLBuildWall`/`CLBuildBoat`/`CLBuildPill`/`CLRepairPill`/
+`CLPlaceMine`-via-builder/`CLRefuel`) live in the reference's much larger `builderTick`
+(client.c:4817-4877, refuel state machine ~4351-4389), not `enter()`. D116's own wording named
+"pills, building, mining" but its concrete flagged branches were `enterTile`/`grabTile`/
+mine-planting specifically — the join path doesn't call `builderTick` at all today (confirmed by
+grep, zero call sites), so there is no builder task to intercept yet; wiring a join client's own
+builder UI/input at all is new scope beyond what D116 flagged, and not estimated here.
+`sendclhittank`/`sendcltouch`/`sendclsmallboom`/`sendclsuperboom`/`sendcldamage` are shell-impact
+sends (`shellTick`, client.c:5143-5479) — same story, `shellTick` isn't run on the join path either
+(per B.8's own header, `shift`/shoot is "functionally dead" for join). `sendclupdate` is already
+B.8's own solved territory. Recommend B.10 stays scoped to exactly what D116 named (pill/base/mine
+tile-entry via `enter()`'s branches + the LMINE key), leaving builder/shell join-parity as
+follow-on sub-wave(s) if PLANNER wants them tracked.
+
+**Open question for PLANNER:** none blocking — the design is more constrained than the GO's framing
+suggested (no `TCPSession`/`TankLocalTick.swift` mutation-path changes needed, just a new small
+read-only detection function), so there's nothing genuinely ambiguous left to rule on. One judgment
+call already made above rather than left open: scoping strictly to `enter()`'s branches (pill/
+base/mine-terrain/lmine-key) and excluding builder/shell sends, since that matches D116's concrete
+flagged branches even though its prose said "pills, building, mining" — flagging in case PLANNER
+reads "building" as intended scope rather than loose phrasing.
+
+> **→ Planner:** B.10 is smaller than its GO framing assumed — wire formats and host-side receive
+> are 100% already built (`ClientMessages.swift` + `RecvCL.swift` + `HostSession.swift`'s dispatch),
+> `TCPSession.send` already exists, so no `BoloNet` work is needed at all. The real gap is a small
+> new `BoloKit` read-only function mirroring `enter()`'s detect-and-send half (pill/base/mined-
+> terrain/lmine-key only, per D116's named branches — NOT `TankLocalTick.swift`'s existing mutating
+> `enterTile`/`grabTile`/`plantMine`, which stay correct as-is for the host/single-process paths),
+> plus a few lines in `GameSession.swift`'s join `.tick` handler to call it and send whatever it
+> returns. No `GameSession`/B.8 concurrency redesign needed — purely additive to the existing
+> single-consumer tick handler, no new producer. Builder-task and shell-impact `CL*` sends
+> (`builderTick`/`shellTick` families) are out of scope — the join path doesn't run those ticks at
+> all yet, so there's nothing to intercept there; flagging as a real follow-on if "building, mining"
+> in D116's prose was meant to include builder tasks rather than just mine-planting. Requesting
+> coding GO on the scope above (pill/base/mine-terrain/lmine-key only).
