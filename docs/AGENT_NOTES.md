@@ -1886,3 +1886,45 @@ one's own completion-report commit). Suggest auditing them as three separate pas
 than one combined pass, matching this project's usual one-sub-wave-per-audit granularity. Priority
 worth calling out specifically: C.0's self-caught test bug (vacuous pass from an unseeded player
 slot) — confirm the final tests genuinely exercise the kick/ban path, not just that they pass.
+
+### [PARITY] 2026-09-06 — C.0 audit (HUD status panel + host-only kick/ban)
+
+**Type:** post-commit audit (`318e244`). Standing limitation: no Swift toolchain compile/run in
+this pass beyond a direct hand-trace of the diffs and referenced source — build/test-green is
+Implementer's claim, not independently re-run here.
+
+**Verdict: PASS.**
+
+- **Self-caught test bug, re-traced directly, holds up.** Read
+  `Tests/DifferentialTests/HostGameEngineTests.swift`'s final
+  `hostGameEngineSubmitKickPlayerDisconnectsThePlayer`/`...SubmitBanPlayerDisconnectsThePlayer`
+  in full (`318e244`'s diff). `makeEngine` now seeds `state.players[0]` as
+  used/connected/alive, so the real join lands in slot 1 (slot 0 already occupied) — the test
+  asserts `isConnected(1) == true` right after join (this assertion is itself non-vacuous: if
+  the fix hadn't been made, the join would land in slot 0 and this check would already fail),
+  then `submitKickPlayer(1)`/`submitBanPlayer(1)`, then re-asserts `isConnected(1) == false`.
+  Genuinely exercises the kick/ban path end-to-end, not a vacuous pass.
+- **Routing confirmed.** `HostGameEngine.swift`'s `submitKickPlayer`/`submitBanPlayer` both only
+  call `continuation?.yield(.kickPlayer/.banPlayer(...))` — no direct `state` mutation. The sole
+  consumer's `handle(_:)` switch gained `case .kickPlayer`/`.banPlayer` calling
+  `hostKickPlayer`/`hostBanPlayer(player:state:table:)` exactly as `.localInputChanged` already
+  does for `submitLocalInputChange`. Same pattern, confirmed by direct diff read.
+- **`hostEngine` stays `private`.** `GameSession.swift`'s diff adds `canKickBan: Bool { hostEngine
+  != nil }` plus narrow `kickPlayer(_:)`/`banPlayer(_:)` passthroughs; `hostEngine`'s own
+  declaration is untouched (still `private`), confirmed by reading the diff — no widening.
+- **Pill/base rows use the same three-way pattern as `BMap.swift`.** `PlayerStatusView.swift`'s
+  `ownershipStatus(owner:snapshot:)` (neutral if `owner == playerNeutral`, else friendly if
+  `ownerIndex == localPlayer`, else `testAlliance` for allied, else hostile) is structurally
+  identical to `BMap.swift:103-156`'s `tileFor`/`displayTileGrid` owner-classification branches
+  (same three checks, same order, same `testAlliance` call) — confirmed by reading both files.
+- **Test count confirmed.** Current full suite: 684 (`grep -rc "@Test" Tests/`: 501 BoloKitTests +
+  183 DifferentialTests), consistent with the completion report's own "488+2=490" figure at the
+  time of that commit, before C.3's later +11/C.5's (test-free) landed on top — no shrink anywhere
+  in this sub-wave's own diff.
+
+No citation drift found — all `file:line` references in the pre-brief/completion report checked
+out against the actual diff and `BMap.swift`.
+
+[TO: PLANNER] C.0: PASS. Self-caught test-bug fix genuinely exercises the kick/ban path;
+`hostEngine` stays private; routing and pill/base-row parity with `BMap.swift` both confirmed
+directly. No findings.
