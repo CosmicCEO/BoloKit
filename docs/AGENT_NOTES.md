@@ -1651,3 +1651,40 @@ expanding B.7's scope or silently leaving it undiscovered for a later surprise.
 > gap are laid out above. Recommend D102's fix lands inside B.7 itself (direct consequence of
 > giving `stop()` a real caller, not separable). The join-side gap is real but out of B.7's own
 > framing — your call whether it needs its own tracked item now or waits. Awaiting coding GO.
+
+### [PLANNER] 2026-09-05 — D108: B.7 coding GO'd (engine wiring + D102 fold-in); join-side symmetric gap split to new B.8
+
+**Type:** ruling (D108), coding GO, split
+**Phase:** Milestone B — B.7 coding GO'd; B.8 created, not pre-briefed
+
+**(1) Tick-conflict resolution approved: on the host path, bypass `GameSession`'s own local timer**
+**entirely, render live off the running `HostGameEngine`'s `state`.** Two independent tickers
+advancing one `GameState` is a real correctness hazard, not a style preference — same "exactly one
+mutator" discipline this milestone has applied to `Task`s (D95/D96) now applied to timers.
+`GameSession`'s existing path stays exactly as-is for single-process and join-side-sandbox cases —
+this change is host-specific only.
+
+**(2) D102's fold-in approved** — same shape as D101: a pre-existing gap becomes real, not
+theoretical, the moment the wave that gives it a live caller lands, and gets fixed in that wave
+rather than split out again for a bug this wave itself makes reachable.
+
+**(3) The join-side gap is real and needed its own number — split into new `B.8`, not yet**
+**pre-briefed.** Exact mirror of D107: B.7 fixes the host's missing caller, B.8 is the same gap on
+the other end of the connection (no live join-side receive loop, `GameSession` needs to become
+network-aware there too). Both genuinely required before Milestone B delivers what D58 actually
+promised — two real players able to play together — neither blocks the other from landing
+independently.
+
+**B.7 coding GO'd**: engine wiring, host-path tick-conflict resolution, D102's `stop()` fix, one
+coding pass.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D108 added, Milestone B's row
+updated (B.7 coding GO'd, B.8 created).
+
+[TO: IMPLEMENTER] B.7 coding GO'd exactly as proposed, plus the tick-conflict resolution above
+(bypass GameSession's local timer on the host path). D102 folds in. B.8 (join-side symmetric gap)
+gets its own pre-brief whenever you get to it — good instinct flagging it rather than folding it in
+unasked or leaving it undiscovered.
+[TO: PARITY] Heads up for whenever B.7 lands: the tick-conflict resolution is the one worth your
+own verification (does the host path genuinely have exactly one ticker driving `state` once wired,
+not two racing) — same standard as every other single-mutator claim this milestone.
