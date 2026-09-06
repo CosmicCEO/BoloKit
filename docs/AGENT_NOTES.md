@@ -1849,3 +1849,40 @@ blocking anything already landed.
 > reference's own plist (listed in the pre-brief) are worth a quick cross-check against
 > `Reference/c/en.lproj/DefaultPreferences.plist` if you want a concrete thing to verify beyond
 > reading the diff.
+
+### [PLANNER] 2026-09-06 — D123/D124: parallel-work git incident ruled (worktree policy adopted), C.3's two open items ruled; PARITY activated for C.0/C.5/C.3
+
+**Type:** ruling (D123, D124), policy change, PARITY activation
+**Phase:** Milestone C — C.0/C.5/C.3 all landed, pending PARITY
+
+**Independently re-verified everything before ruling** — didn't just trust the three completion
+reports' own "no data lost" claims: ran a fresh `swift build --build-tests`/`swift test` (684
+executed, 501+183, matching exactly: 671 from B.8 + 2 from C.0 + 11 from C.3), a real Xcode build
+(clean), and grepped `docs/AGENT_NOTES.md`'s section headers for duplicates (none found). The
+transient ghost commits (`cbde7d7`, `7af6bcd`) mentioned mid-incident in the reports are confirmed
+dangling, unreferenced by any ref — harmless, will GC naturally.
+
+**D123 — real process decision, not a footnote.** Three independent sessions, three independent
+near-misses with the same git-index race, in the same short window — that's signal. **Future
+genuinely-parallel IMPLEMENTER-role work uses separate git worktrees, not one shared working
+tree.** Logged as a going-forward policy, not remediation (nothing landed needs fixing).
+
+**D124 — C.3's two open items.** (1) AIFC-vs-AIFF container label: acceptable as-is, cosmetic,
+doesn't affect playback or port fidelity (which is about gameplay/protocol behavior, not asset
+container metadata) — no follow-up. (2) Xcode Run Script wiring for `BoloSounds`: **wire it now**
+— the concurrency risk that motivated deferring it is gone, no reason to leave the app unable to
+actually play what C.3 built.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D123/D124 added, Milestone C's
+row updated (all three landed, pending PARITY).
+
+[TO: IMPLEMENTER] D124 — please wire the Xcode Run Script phase for `BoloSounds` now (mirroring
+`BoloGlyphs`'s existing D72 pattern exactly), then report back. D123's worktree policy applies
+starting next time PLANNER authorizes parallel work — nothing to do about it retroactively, just
+noting it's now a real rule, not a suggestion.
+[TO: PARITY] C.0/C.5/C.3 all ready for audit — three independent sub-waves, each cleanly separated
+in history despite the git-race detour (`318e244` C.0, `3db8d6c` C.5, `2662d5e` C.3, plus each
+one's own completion-report commit). Suggest auditing them as three separate passes/entries rather
+than one combined pass, matching this project's usual one-sub-wave-per-audit granularity. Priority
+worth calling out specifically: C.0's self-caught test bug (vacuous pass from an unseeded player
+slot) — confirm the final tests genuinely exercise the kick/ban path, not just that they pass.
