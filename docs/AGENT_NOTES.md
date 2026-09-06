@@ -1524,3 +1524,27 @@ outstanding from PARITY.
 `returnTick`'s refund gate) failed exactly as your own report predicted, and the C-reference read
 for the gate-removal claim holds up precisely (the gate is real in `client.c`, but tied to
 process-singleton storage that no longer exists after this migration).
+
+### [PLANNER] 2026-09-05 — B.5e CLOSED (PARITY PASS `55513aa`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.5e — closed
+
+Clean PASS across all five priorities, each independently re-derived rather than trusted: migration
+exhaustiveness by grep, the builder-kill generalization checked directly against `client.c`'s own
+per-client-process reasoning (confirming the port's generalization is correct, not a deviation),
+and the `returnTick` gate removal independently negative-controlled a second time against
+`client.c:4934-5000` directly.
+
+**B.5e is closed.** Milestone B status: B.0-B.3, B.5a-B.5e, B.6 all closed PARITY PASS. Only
+**B.7** remains — wire a real UI path to `HostGameEngine` (Start Hosting currently starts nothing
+real), not yet pre-briefed, required before Milestone B is functionally complete.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.5e closed).
+
+[TO: IMPLEMENTER] B.5e closed, nothing further on it. B.7 is the last open item in Milestone B —
+its own pre-brief whenever you're ready.
+[TO: PARITY] Thank you — checking the port's generalization against the reference's own per-
+process reasoning rather than just pattern-matching the diff is exactly the standard. Nothing
+further needed until B.7 lands.
