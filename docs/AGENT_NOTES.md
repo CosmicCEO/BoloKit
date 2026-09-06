@@ -1347,3 +1347,57 @@ to `HostGameEngine`, not yet pre-briefed, required before Milestone B is functio
 the working tree, this commit only touches docs, not touching `Sources/BoloKit/*`.
 [TO: PARITY] Thank you — the direct `Reference/c` verification on the tracker hostname rather than
 trusting the claim is exactly the standard. Nothing further needed until B.5e or B.7 lands.
+
+### [IMPLEMENTER] 2026-09-05 — B.5e completion report (D104/D105/D106)
+
+**Commit:** `b0d2791`. **Tests:** 660 → 662 (2 new: `killSquareBuilderKillsARemotePlayersBuilderNotJustLocalPlayers`,
+`killPointBuilderKillsEveryConnectedPlayersBuilderWithinRadiusInOnePass`, both negative-controlled).
+All existing tests still pass; app target (`Bolo 2026`) builds clean. No coverage shrinkage.
+
+Landed exactly per the proposed 7-step build-green ordering:
+
+1. Added `mines`/`trees`/`builderTask`/`builderMines`/`builderTrees`/`builderPill` to
+   `PlayerState`. Pure addition, build green.
+2. Migrated `BuilderTick.swift` entirely off `state.local.<field>` to `state.players[player].
+   <field>` — no new `player: Int` parameters needed on the 7 private terrain-action helpers after
+   all (they already operate on `trees: Int`/`owner: Int` value semantics, not direct `state.local`
+   access — only `readyTick`/`arriveAtTarget`/`gotoTick`/`returnTick`, which already take `player`,
+   touched the singleton directly). Also removed `returnTick`'s two `if player == state.localPlayer`
+   gates — these weren't a correctness feature, they were the bug's own workaround: a non-local
+   player's builder returning to its tank never refunded resources or reset its task before this
+   fix, leaving it permanently stuck.
+3. Migrated the remaining ~13 mechanical sites (`RecvSR.swift`, `killBuilder`, `killTank`,
+   `MineChain.swift`'s `applySplashDamage`, `Spawn.swift`, `TankTick.swift`'s gated dead-tank
+   branch) — same rename shape as B.5d's `onDropPills`→`onShouldBroadcastDropPill`, not a design
+   risk.
+4. Removed the 6 fields from `LocalPlayerState`'s struct + init — the forcing function. Caught
+   zero stragglers in production code; confirms steps 2-3 were exhaustive.
+5. Fixed test-side fallout: 8 test files (`SpawnTests.swift`, `ShellTickTests.swift`,
+   `HostSessionTests.swift`, `RecvSRTests.swift`, `TankTickTests.swift`, `MineChainTests.swift`,
+   `TankLocalTickTests.swift`, `BuilderTickTests.swift`). Mechanical for most; `BuilderTickTests.
+   swift`'s `returnRemotePlayerEntersTankWithoutTouchingLocalResourcePools` needed a full rewrite,
+   not just a field move — its premise (a remote player's return can't refund into a shared
+   singleton pool) was the bug itself, now renamed
+   `returnRemotePlayerRefundsItsOwnResourcesIndependentlyOfLocalPlayer` and asserting the fixed
+   behavior (independent per-player refund, no cross-talk).
+6. The actual fix: `killPointBuilder`/`killSquareBuilder` now loop over every *connected* player
+   (matching precedent like `builderTick`'s own connected-guard) instead of checking
+   `state.localPlayer` alone; `killBuilder` gained an explicit `player: Int` parameter, no longer
+   deriving it internally. Only 2 production call sites existed (both updated in step); no other
+   callers found anywhere in the codebase.
+7. Two new regression tests (`TankLocalTickTests.swift`) proving the real fix — a remote player's
+   builder on the exploding tile is now correctly killed, and multiple connected players' builders
+   within radius are all killed in one pass. Both negative-controlled: reverted each function to
+   `state.localPlayer`-only, confirmed the corresponding new test fails exactly as expected
+   (`state.players[1].builderStatus == .parachute` → `false`, actual `.goto`), restored, re-verified
+   clean.
+
+**Bonus fix landed for free, not a separate change:** the `builderTick` per-player-loop clobbering
+bug flagged in the pre-brief (multiple players' in-progress builder tasks stepping on each other's
+singleton state every tick) is fixed by steps 1-4 alone — once the 6 fields are per-player,
+`builderTick`'s existing per-player loop (already correct in shape since Wave 5.6/5.7, just reading
+the wrong storage) works correctly with no further change.
+
+> **→ Planner:** B.5e landed as pre-briefed, no scope surprises during coding (the ~112-site
+> estimate held). Both the originally-scoped builder-kill gap and the bonus clobbering bug are
+> fixed by the same migration. Ready for PARITY.
