@@ -2190,3 +2190,86 @@ yourself (don't just trust the citation), and confirm `BoloGlyphsTests.swift`'s 
 expect 665 unchanged (none of these three touch `BoloKit`/`BoloNet` test-covered logic). Same
 scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
+
+### [PARITY] 2026-09-06 — three-fix audit (`bbe039d`+`a708583`+`c868bbe`): all PASS, boat-sprite fix independently re-derived against GSBoloView.m directly; one dead-parameter observation
+
+**Type:** post-commit audit. **Toolchain:** `swift`/`xcodebuild`/`plutil`/`codesign`/`vtool`/`xmllint`
+all present. **Concurrency note:** another `swift test` instance was running concurrently
+(presumably IMPLEMENTER on B.8) — one run waited for it, no interference, nothing else touched.
+`README.md` and four Director-owned untracked files present, all left untouched.
+
+**Verdict: PASS on all three.** No functional defects found. One worth-noting observation on the
+boat-sprite fix's own aftermath, not a defect: the `destroyed` parameter it neutralizes is now
+fully dead code, exercised by nothing.
+
+**1. `bbe039d` (keyboard-focus fix) — PASS, no new race introduced.** Read `GameRenderView.swift`
+directly: `mouseDown`'s `window?.makeFirstResponder(self)` only ever fires when AppKit routes a
+mouse-down event to *this* view, which only happens for clicks landing inside its own bounds — it
+cannot steal focus from a text field or control elsewhere in the window, since AppKit dispatches
+`mouseDown` to whichever view is actually under the cursor, not broadcast. Confirmed there is no
+other view ever overlaid on `GameRenderView` in this app today (`AppRootView`'s screen switch fully
+replaces the view hierarchy between `NewGameView`'s host/join forms and `GameView`; no HUD/text
+input coexists with the render view — that's Milestone C's scope). The deferred
+`DispatchQueue.main.async` claim is `[weak self]`-captured, so a torn-down view before the next
+runloop turn is a safe no-op, not a crash or stale reference.
+
+**2. `a708583` (D110, camera-centering) — PASS, confirmed genuinely one-shot and using the real
+local player.** `centerOnLocalPlayerSpawn()`'s only call site is inside `viewDidMoveToWindow()`'s
+deferred block (`GameRenderView.swift:111-115`). Confirmed `GameRenderRepresentable.updateNSView`
+(`:282`) is an empty no-op — SwiftUI never re-diffs into a fresh attach-to-window event for this
+view — and `AppRootView`'s screen switch (`enum AppScreen`, `switch screen`) fully replaces the
+view hierarchy on every navigation rather than reusing a `GameRenderView` instance across sessions,
+so `viewDidMoveToWindow()` fires exactly once per real game session, meaning the one-shot
+scroll can never re-fire and fight the user's own later scrolling. Confirmed `state.localPlayer`
+(not a hardcoded `0`) indexes into `state.players` for the tank position used to center — a genuine
+per-session local-player read, not an assumption baked in.
+
+**3. `c868bbe` (D111, boat-sprite fix) — PASS, re-derived independently against `GSBoloView.m`
+myself, not by trusting the commit's own citation.** Read `GSBoloView.m:295-337` directly (the
+whole draw-sprites block, not just the three cited lines in isolation): line 311's
+`if (client.players[i].connected && i != client.player && !client.players[i].dead)` gates *the
+entire* other-player draw loop, including both the `FTKB00IMAGE`/`FTNK00IMAGE` (line 322,
+allied) and `ETKB00IMAGE`/`ETNK00IMAGE` (line 325, hostile) ternaries on `.boat`; the local
+player's own draw (line 334) is separately gated by its own `if (!client.players[client.player].
+dead)` wrapping a `PTKB00IMAGE`/`PTNK00IMAGE` ternary, also on `.boat`. **Every one of the six tank
+rows is drawn only for an alive player, chosen strictly by boat-vs-tank mode — there is no
+death-conditional branch anywhere in this code, confirming independently (not on the citation's
+word) that no destroyed-tank sprite variant exists in the reference at all.** The fix
+(`destroyed: false` unconditionally for the tank sprite range) is correct.
+
+**Worth flagging precisely, since you asked about the redundant-path question specifically: the
+`destroyed` parameter and `drawTank`'s corresponding branch are now fully dead code, not merely
+redundant coverage.** `grep -rn "destroyed" Sources/ Tests/ "Bolo 2026/"`: every single call site
+in the entire tree — `ImageIndex.swift`'s own production call, `AppIcon.swift`, and all five
+`BoloGlyphsTests.swift` call sites — passes `destroyed: false` explicitly; **there is now no path
+anywhere in the codebase that can ever pass `true`.** `drawTank`'s `if destroyed { ... }` branch
+(`GlyphSource.swift:124-130`, drawing an X-shaped wreck) is therefore unreachable from any real
+caller, and the existing `destroyed:`-explicit test calls are not testing a *weakened* version of
+what they tested before (they still correctly verify tank-heading rendering), but they can no
+longer exercise — and never again will exercise — the `destroyed == true` branch at all, since
+nothing in the codebase can produce that value anymore. Not a defect: the reference genuinely has
+no destroyed-tank sprite concept to model, so there's nothing to lose by this becoming dead code.
+Flagging as a small cleanup opportunity (drop the parameter/branch entirely, or leave a comment
+explaining why it's kept anyway) rather than a correctness issue.
+
+**4. Test count and full suite — confirmed unchanged.** `swift test list | wc -l`: **665**
+(**489 `BoloKitTests`** + **176 `DifferentialTests`**), exactly as expected since none of these
+three fixes touch `BoloKit`/`BoloNet` test-covered logic. Ran the full suite: both summaries green,
+zero failures. Also ran `BoloGlyphsTests.swift`'s tank-heading suite specifically: both tests pass.
+
+[TO: PLANNER] All three fixes audited — **PASS**, no defects. `bbe039d`'s `mouseDown` reclaim
+cannot steal focus from anything else in this app today (confirmed no overlapping view exists for
+it to steal from, and AppKit only routes `mouseDown` to the view under the cursor). `a708583`'s
+scroll-to-spawn is confirmed genuinely one-shot (its only call site fires exactly once per real
+game session, since the view hierarchy is fully replaced rather than reused across navigations)
+and uses the real `state.localPlayer`, not a hardcoded index. `c868bbe`'s boat-sprite fix is
+independently re-derived against the *entire* `GSBoloView.m:295-337` draw block myself, not just
+the three cited lines — confirmed there is no destroyed-tank sprite concept anywhere in the
+reference for any of the six tank rows. One thing worth a look when convenient, not blocking:
+the `destroyed` parameter/branch this fix neutralizes is now fully dead code — nothing anywhere in
+the tree can ever pass `true` again — worth a small follow-up cleanup (or a comment explaining why
+it's intentionally kept) whenever `GlyphSource.swift`/`ImageIndex.swift` are next touched. Test
+count 665 confirmed, full suite green.
+[TO: IMPLEMENTER] Nothing to fix. The one thing worth your attention next time you're in
+`GlyphSource.swift`: `drawTank`'s `destroyed` branch is now provably unreachable from every call
+site in the tree — a small cleanup candidate, not a defect, whenever convenient.
