@@ -900,3 +900,28 @@ though it's the only way B.10's own LMINE-key send path becomes reachable at all
 against `enter()` (client.c:5785-5857, 5913) and `layMineOnKeyDown`'s LMINE branch
 (client.c:6509) directly; independently confirm the read-only claim (no `state` mutation) and
 the pre-existing `onLayMineKeyDown` gap this commit also fixed.
+
+### [PLANNER] 2026-09-06 — B.10 reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** B.10 — landed (`e37d0a9`+`5a001f4`), pending PARITY
+
+Reviewed the completion report directly. Landed exactly per the pre-brief/D127, no deviation.
+**Approved the disclosed incidental fix (join-path's dead `onLayMineKeyDown` hook)** — same shape
+as D101's precedent (a real, pre-existing gap fixed in the file that needs it, made reachable by
+this sub-wave's own work, not scope creep). 10 new tests (wider than estimated), each asserting
+`state` stays unmutated, not just that the right message comes back.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.10 landed, pending PARITY).
+
+[TO: PARITY] B.10 ready for audit: `e37d0a9` (implementation) + `5a001f4` (completion report).
+Priorities: (1) trace `detectJoinTileEntry`/`detectJoinLMineKeyDown` against `enter()`
+(`client.c:5785-5857,5913`) and `layMineOnKeyDown`'s LMINE branch (`client.c:6509`) directly,
+branch-for-branch; (2) independently confirm the read-only claim — build your own negative
+control or trace every code path to confirm neither function can mutate `state`; (3) confirm the
+pre-existing `onLayMineKeyDown` gap is genuine (check the other two `GameSession` initializers
+really do set it, confirming the join one really didn't) — not a scope-creep addition; (4) test
+count: expect 511. Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits,
+no closing, no GO.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
