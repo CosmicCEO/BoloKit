@@ -95,6 +95,9 @@ public final class UDPSession: @unchecked Sendable {
     /// apply, or `nil` if the datagram was malformed, the player index was out of range, or the
     /// update was rejected (self-echo/stale/disconnected -- the same no-op conditions
     /// `applyRemotePlayerUpdate` itself already covers).
+    ///
+    /// **B.8 (D117):** now a thin wrapper over the async-receive/sync-apply split below --
+    /// existing callers/tests keep this exact signature and behavior unchanged.
     @discardableResult
     public func receiveAndApply(
         myOwnSeq: Int32, state: inout GameState,
@@ -111,7 +114,56 @@ public final class UDPSession: @unchecked Sendable {
         onSmallboom: () -> Void = {},
         onSpawn: () -> Void = {}
     ) async throws -> (player: Int, seq: Int32, lastUpdate: Int32)? {
-        let data = try await receiveOneDatagram()
+        let data = try await receiveOneRawDatagram()
+        return apply(
+            data, myOwnSeq: myOwnSeq, state: &state,
+            onPlayerLagStatusChanged: onPlayerLagStatusChanged, onTankShotSound: onTankShotSound,
+            onPillShotSound: onPillShotSound, onSinkSound: onSinkSound, onBuilderDeathSound: onBuilderDeathSound,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
+        )
+    }
+
+    /// **B.8 (D117):** the async, I/O-only half -- waits for one raw datagram off the socket,
+    /// touching no `GameState` at all. Mirrors `TCPSession.receiveOneRawMessage`'s identical
+    /// role and the identical reason: a join-side consumer juggling this, a `TCPSession` receive
+    /// loop, and its own tick timer needs the network *wait* off the critical path that ever
+    /// touches shared state, so no `await` spans an actor-isolated mutation.
+    public func receiveOneRawDatagram() async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            connection.receiveMessage { data, _, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: UDPSessionError.malformedDatagram)
+                }
+            }
+        }
+    }
+
+    /// **B.8 (D117):** the synchronous, no-`await` half -- decodes an already-received raw
+    /// datagram and applies it, exactly as `receiveAndApply` always did inline. An instance
+    /// method (unlike `TCPSession.dispatch`, which is `static`) because it reads/writes this
+    /// session's own `remoteSeqs`/`remoteLastUpdates` table -- the demultiplexing state stays
+    /// owned by whichever `UDPSession` actually received the datagram.
+    @discardableResult
+    public func apply(
+        _ data: Data, myOwnSeq: Int32, state: inout GameState,
+        onPlayerLagStatusChanged: (Int) -> Void = { _ in },
+        onTankShotSound: () -> Void = {},
+        onPillShotSound: () -> Void = {},
+        onSinkSound: () -> Void = {},
+        onBuilderDeathSound: () -> Void = {},
+        onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+        onMineExplosion: (Pointi) -> Void = { _ in },
+        onSuperboomTerrain: (Pointi) -> Void = { _ in },
+        onExplosion: (Vec2f) -> Void = { _ in },
+        onSuperboom: () -> Void = {},
+        onSmallboom: () -> Void = {},
+        onSpawn: () -> Void = {}
+    ) -> (player: Int, seq: Int32, lastUpdate: Int32)? {
         guard let update = CLUpdate.decode(Array(data)) else { return nil }
         let player = Int(update.header.player)
         // `applyRemotePlayerUpdate` itself already bounds-checks `player` against
@@ -131,20 +183,6 @@ public final class UDPSession: @unchecked Sendable {
         remoteSeqs[player] = result.seq
         remoteLastUpdates[player] = result.lastUpdate
         return (player, result.seq, result.lastUpdate)
-    }
-
-    private func receiveOneDatagram() async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            connection.receiveMessage { data, _, _, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: UDPSessionError.malformedDatagram)
-                }
-            }
-        }
     }
 
     public func cancel() {

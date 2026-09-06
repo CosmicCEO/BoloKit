@@ -148,10 +148,34 @@ public final class TCPSession: @unchecked Sendable {
     /// and dispatches it to the matching `recvSr*` function (or, for the
     /// three opcodes with no such function, the matching plain callback).
     /// Returns the opcode that was dispatched.
+    ///
+    /// **B.8 (D117):** now a thin wrapper over the async-receive/sync-dispatch split below --
+    /// existing callers/tests keep this exact signature and behavior unchanged.
     @discardableResult
     public func receiveAndDispatchOne(
         state: inout GameState, callbacks: SRDispatchCallbacks = SRDispatchCallbacks()
     ) async throws -> ServerOpcode {
+        let message = try await receiveOneRawMessage()
+        try Self.dispatch(message, state: &state, callbacks: callbacks)
+        return message.opcode
+    }
+
+    /// One fully-read (but undecoded) `SR*` message -- the opcode plus every byte the wire format
+    /// says belongs to it, opcode byte included.
+    public struct RawMessage: Sendable {
+        public let opcode: ServerOpcode
+        public let bytes: [UInt8]
+    }
+
+    /// **B.8 (D117):** the async, I/O-only half of what `receiveAndDispatchOne` used to do in one
+    /// call -- reads exactly the bytes one `SR*` message needs off the stream and returns them
+    /// undecoded, touching no `GameState` at all. Mirrors `HostGameEngine`'s own producer/consumer
+    /// split (`receiveOneHostMessageBytes`, I/O-only, vs. its single consumer's synchronous
+    /// dispatch) -- built for the identical reason: a caller juggling multiple concurrent event
+    /// sources (a join-side `GameSession`'s tick timer, this, and a `UDPSession` receive loop)
+    /// needs the network *wait* off the critical path that touches shared state, so no `await`
+    /// ever spans an actor-isolated mutation.
+    public func receiveOneRawMessage() async throws -> RawMessage {
         let opcodeByte = try await receiveOneByte()
         guard let opcode = ServerOpcode(rawValue: opcodeByte) else {
             throw TCPSessionError.malformedMessage
@@ -163,39 +187,13 @@ public final class TCPSession: @unchecked Sendable {
         }
 
         switch opcode {
-        case .playerJoin:
-            let bytes = try await rest(SRPlayerJoin.wireSize)
-            guard let msg = SRPlayerJoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerJoin(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
-        case .playerRejoin:
-            let bytes = try await rest(SRPlayerRejoin.wireSize)
-            guard let msg = SRPlayerRejoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerRejoin(
-                player: Int(msg.player), state: &state,
-                onPlayerStatusChanged: callbacks.onPlayerStatusChanged, onPillStatusChanged: callbacks.onPillStatusChanged
-            )
-        case .playerExit:
-            let bytes = try await rest(SRPlayerExit.wireSize)
-            guard let msg = SRPlayerExit.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerExit(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
-        case .playerDisc:
-            let bytes = try await rest(SRPlayerDisc.wireSize)
-            guard let msg = SRPlayerDisc.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerDisc(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
-        case .playerKick:
-            let bytes = try await rest(SRPlayerKick.wireSize)
-            guard let msg = SRPlayerKick.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerKick(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
-        case .playerBan:
-            let bytes = try await rest(SRPlayerBan.wireSize)
-            guard let msg = SRPlayerBan.decode(bytes) else { throw TCPSessionError.malformedMessage }
-            recvSrPlayerBan(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
-        case .hangUp:
-            _ = try await rest(SRHangUp.wireSize)
-            // "Not used" per `bolo.h:210` -- no `recvSr*` function exists
-            // (`RecvSR.swift`'s own header). Consumed off the stream and
-            // otherwise ignored, matching that established finding.
-            break
+        case .playerJoin: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerJoin.wireSize))
+        case .playerRejoin: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerRejoin.wireSize))
+        case .playerExit: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerExit.wireSize))
+        case .playerDisc: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerDisc.wireSize))
+        case .playerKick: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerKick.wireSize))
+        case .playerBan: return RawMessage(opcode: opcode, bytes: try await rest(SRPlayerBan.wireSize))
+        case .hangUp: return RawMessage(opcode: opcode, bytes: try await rest(SRHangUp.wireSize))
         case .sendMesg:
             let fixed = try await rest(SRSendMesg.wireSize)
             var textBytes: [UInt8] = []
@@ -204,10 +202,76 @@ public final class TCPSession: @unchecked Sendable {
                 if b == 0 { break }
                 textBytes.append(b)
             }
-            guard let msg = SRSendMesg.decode(fixed + textBytes + [0]) else { throw TCPSessionError.malformedMessage }
+            return RawMessage(opcode: opcode, bytes: fixed + textBytes + [0])
+        case .damage: return RawMessage(opcode: opcode, bytes: try await rest(SRDamage.wireSize))
+        case .grabTrees: return RawMessage(opcode: opcode, bytes: try await rest(SRGrabTrees.wireSize))
+        case .build: return RawMessage(opcode: opcode, bytes: try await rest(SRBuild.wireSize))
+        case .grow: return RawMessage(opcode: opcode, bytes: try await rest(SRGrow.wireSize))
+        case .flood: return RawMessage(opcode: opcode, bytes: try await rest(SRFlood.wireSize))
+        case .placeMine: return RawMessage(opcode: opcode, bytes: try await rest(SRPlaceMine.wireSize))
+        case .dropMine: return RawMessage(opcode: opcode, bytes: try await rest(SRDropMine.wireSize))
+        case .dropBoat: return RawMessage(opcode: opcode, bytes: try await rest(SRDropBoat.wireSize))
+        case .repairPill: return RawMessage(opcode: opcode, bytes: try await rest(SRRepairPill.wireSize))
+        case .coolPill: return RawMessage(opcode: opcode, bytes: try await rest(SRCoolPill.wireSize))
+        case .capturePill: return RawMessage(opcode: opcode, bytes: try await rest(SRCapturePill.wireSize))
+        case .buildPill: return RawMessage(opcode: opcode, bytes: try await rest(SRBuildPill.wireSize))
+        case .dropPill: return RawMessage(opcode: opcode, bytes: try await rest(SRDropPill.wireSize))
+        case .replenishBase: return RawMessage(opcode: opcode, bytes: try await rest(SRReplenishBase.wireSize))
+        case .captureBase: return RawMessage(opcode: opcode, bytes: try await rest(SRCaptureBase.wireSize))
+        case .refuel: return RawMessage(opcode: opcode, bytes: try await rest(SRRefuel.wireSize))
+        case .grabBoat: return RawMessage(opcode: opcode, bytes: try await rest(SRGrabBoat.wireSize))
+        case .mineAck: return RawMessage(opcode: opcode, bytes: try await rest(SRMineAck.wireSize))
+        case .builderAck: return RawMessage(opcode: opcode, bytes: try await rest(SRBuilderAck.wireSize))
+        case .smallBoom: return RawMessage(opcode: opcode, bytes: try await rest(SRSmallBoom.wireSize))
+        case .superBoom: return RawMessage(opcode: opcode, bytes: try await rest(SRSuperBoom.wireSize))
+        case .hitTank: return RawMessage(opcode: opcode, bytes: try await rest(SRHitTank.wireSize))
+        case .setAlliance: return RawMessage(opcode: opcode, bytes: try await rest(SRSetAlliance.wireSize))
+        case .timeLimit: return RawMessage(opcode: opcode, bytes: try await rest(SRTimeLimit.wireSize))
+        case .baseControl: return RawMessage(opcode: opcode, bytes: try await rest(SRBaseControl.wireSize))
+        case .pause: return RawMessage(opcode: opcode, bytes: try await rest(SRPause.wireSize))
+        }
+    }
+
+    /// **B.8 (D117):** the synchronous, no-`await` half -- decodes an already-fully-read
+    /// `RawMessage` and dispatches it to the matching `recvSr*` function, exactly as
+    /// `receiveAndDispatchOne` always did inline. `static` (not an instance method) since it
+    /// touches no connection state at all, only `state`/`callbacks` -- a caller's single
+    /// consumer can call this for a message that arrived from any `TCPSession`.
+    public static func dispatch(
+        _ message: RawMessage, state: inout GameState, callbacks: SRDispatchCallbacks = SRDispatchCallbacks()
+    ) throws {
+        let bytes = message.bytes
+        switch message.opcode {
+        case .playerJoin:
+            guard let msg = SRPlayerJoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerJoin(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
+        case .playerRejoin:
+            guard let msg = SRPlayerRejoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerRejoin(
+                player: Int(msg.player), state: &state,
+                onPlayerStatusChanged: callbacks.onPlayerStatusChanged, onPillStatusChanged: callbacks.onPillStatusChanged
+            )
+        case .playerExit:
+            guard let msg = SRPlayerExit.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerExit(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
+        case .playerDisc:
+            guard let msg = SRPlayerDisc.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerDisc(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
+        case .playerKick:
+            guard let msg = SRPlayerKick.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerKick(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
+        case .playerBan:
+            guard let msg = SRPlayerBan.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrPlayerBan(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
+        case .hangUp:
+            // "Not used" per `bolo.h:210` -- no `recvSr*` function exists
+            // (`RecvSR.swift`'s own header). Consumed off the stream and
+            // otherwise ignored, matching that established finding.
+            break
+        case .sendMesg:
+            guard let msg = SRSendMesg.decode(bytes) else { throw TCPSessionError.malformedMessage }
             callbacks.onSendMesg(msg.player, msg.to, msg.text)
         case .damage:
-            let bytes = try await rest(SRDamage.wireSize)
             guard let msg = SRDamage.decode(bytes), let terrain = Terrain(rawValue: Int32(msg.terrain)) else {
                 throw TCPSessionError.malformedMessage
             }
@@ -217,45 +281,35 @@ public final class TCPSession: @unchecked Sendable {
                 onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill
             )
         case .grabTrees:
-            let bytes = try await rest(SRGrabTrees.wireSize)
             guard let msg = SRGrabTrees.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrGrabTrees(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .build:
-            let bytes = try await rest(SRBuild.wireSize)
             guard let msg = SRBuild.decode(bytes), let terrain = Terrain(rawValue: Int32(msg.terrain)) else {
                 throw TCPSessionError.malformedMessage
             }
             recvSrBuild(x: Int(msg.x), y: Int(msg.y), terrain: terrain, state: &state)
         case .grow:
-            let bytes = try await rest(SRGrow.wireSize)
             guard let msg = SRGrow.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrGrow(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .flood:
-            let bytes = try await rest(SRFlood.wireSize)
             guard let msg = SRFlood.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrFlood(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .placeMine:
-            let bytes = try await rest(SRPlaceMine.wireSize)
             guard let msg = SRPlaceMine.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrPlaceMine(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .dropMine:
-            let bytes = try await rest(SRDropMine.wireSize)
             guard let msg = SRDropMine.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrDropMine(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .dropBoat:
-            let bytes = try await rest(SRDropBoat.wireSize)
             guard let msg = SRDropBoat.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrDropBoat(x: Int(msg.x), y: Int(msg.y), state: &state)
         case .repairPill:
-            let bytes = try await rest(SRRepairPill.wireSize)
             guard let msg = SRRepairPill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrRepairPill(pill: Int(msg.pill), armour: msg.armour, state: &state, onPillStatusChanged: callbacks.onPillStatusChanged)
         case .coolPill:
-            let bytes = try await rest(SRCoolPill.wireSize)
             guard let msg = SRCoolPill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrCoolPill(pill: Int(msg.pill), state: &state)
         case .capturePill:
-            let bytes = try await rest(SRCapturePill.wireSize)
             guard let msg = SRCapturePill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrCapturePill(
                 pill: Int(msg.pill), owner: msg.owner, state: &state,
@@ -263,42 +317,33 @@ public final class TCPSession: @unchecked Sendable {
                 onRequestGrabTile: callbacks.onRequestGrabTile
             )
         case .buildPill:
-            let bytes = try await rest(SRBuildPill.wireSize)
             guard let msg = SRBuildPill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrBuildPill(
                 pill: Int(msg.pill), x: msg.x, y: msg.y, armour: msg.armour, state: &state,
                 onPillStatusChanged: callbacks.onPillStatusChanged
             )
         case .dropPill:
-            let bytes = try await rest(SRDropPill.wireSize)
             guard let msg = SRDropPill.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrDropPill(pill: Int(msg.pill), x: msg.x, y: msg.y, state: &state, onPillStatusChanged: callbacks.onPillStatusChanged)
         case .replenishBase:
-            let bytes = try await rest(SRReplenishBase.wireSize)
             guard let msg = SRReplenishBase.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrReplenishBase(base: Int(msg.base), state: &state, onBaseStatusChanged: callbacks.onBaseStatusChanged)
         case .captureBase:
-            let bytes = try await rest(SRCaptureBase.wireSize)
             guard let msg = SRCaptureBase.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrCaptureBase(base: Int(msg.base), owner: msg.owner, state: &state, onBaseStatusChanged: callbacks.onBaseStatusChanged)
         case .refuel:
-            let bytes = try await rest(SRRefuel.wireSize)
             guard let msg = SRRefuel.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrRefuel(base: Int(msg.base), armour: msg.armour, shells: msg.shells, mines: msg.mines, state: &state)
         case .grabBoat:
-            let bytes = try await rest(SRGrabBoat.wireSize)
             guard let msg = SRGrabBoat.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrGrabBoat(player: Int(msg.player), x: Int(msg.x), y: Int(msg.y), state: &state)
         case .mineAck:
-            let bytes = try await rest(SRMineAck.wireSize)
             guard let msg = SRMineAck.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrMineAck(success: msg.success != 0, state: &state, onTankStatusChanged: callbacks.onTankStatusChanged)
         case .builderAck:
-            let bytes = try await rest(SRBuilderAck.wireSize)
             guard let msg = SRBuilderAck.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrBuilderAck(mines: msg.mines, trees: msg.trees, pill: msg.pill, state: &state)
         case .smallBoom:
-            let bytes = try await rest(SRSmallBoom.wireSize)
             guard let msg = SRSmallBoom.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrSmallBoom(
                 player: msg.player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -306,7 +351,6 @@ public final class TCPSession: @unchecked Sendable {
                 onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill, onTankStatusChanged: callbacks.onTankStatusChanged
             )
         case .superBoom:
-            let bytes = try await rest(SRSuperBoom.wireSize)
             guard let msg = SRSuperBoom.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrSuperBoom(
                 player: msg.player, x: Int(msg.x), y: Int(msg.y), state: &state,
@@ -314,11 +358,9 @@ public final class TCPSession: @unchecked Sendable {
                 onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill, onTankStatusChanged: callbacks.onTankStatusChanged
             )
         case .hitTank:
-            let bytes = try await rest(SRHitTank.wireSize)
             guard let msg = SRHitTank.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrHitTank(dir: msg.dir, state: &state, onTankStatusChanged: callbacks.onTankStatusChanged, onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill)
         case .setAlliance:
-            let bytes = try await rest(SRSetAlliance.wireSize)
             guard let msg = SRSetAlliance.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrSetAlliance(
                 player: Int(msg.player), alliance: msg.alliance, state: &state,
@@ -326,20 +368,15 @@ public final class TCPSession: @unchecked Sendable {
                 onPillStatusChanged: callbacks.onPillStatusChanged, onShouldLeaveAlliance: callbacks.onShouldLeaveAlliance
             )
         case .timeLimit:
-            let bytes = try await rest(SRTimeLimit.wireSize)
             guard let msg = SRTimeLimit.decode(bytes) else { throw TCPSessionError.malformedMessage }
             callbacks.onTimeLimit(msg.timeRemaining)
         case .baseControl:
-            let bytes = try await rest(SRBaseControl.wireSize)
             guard let msg = SRBaseControl.decode(bytes) else { throw TCPSessionError.malformedMessage }
             callbacks.onBaseControl(msg.timeLeft)
         case .pause:
-            let bytes = try await rest(SRPause.wireSize)
             guard let msg = SRPause.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrPause(pause: msg.pause, state: &state)
         }
-
-        return opcode
     }
 
     public func cancel() {

@@ -154,6 +154,35 @@ private func makeState() -> GameState {
     #expect(pillNotified == [0])
 }
 
+// B.8 (D117): `receiveAndDispatchOne` is now a thin wrapper over `receiveOneRawMessage` (async,
+// I/O-only) + `TCPSession.dispatch` (sync, no `await`) -- built so a join-side consumer can
+// receive raw bytes off the network without ever holding an `await` open across a `state`
+// mutation. Proves the split independently produces the identical result `receiveAndDispatchOne`
+// itself already gets, for both a fixed-size opcode and the variable-length `sendMesg` case.
+@Test func tcpSessionSplitReceiveAndDispatchMatchCombinedCall() async throws {
+    let (listener, port, waiter) = try await startLoopbackTCPListener()
+    defer { listener.cancel() }
+
+    let session = try await TCPSession(host: "127.0.0.1", port: port)
+    defer { session.cancel() }
+
+    let harness = await waiter.wait()
+    var state = makeState()
+
+    try await sendBytes(harness, SRBuild(x: 15, y: 15, terrain: UInt8(Terrain.road.rawValue)).encode())
+    let rawBuild = try await session.receiveOneRawMessage()
+    #expect(rawBuild.opcode == .build)
+    try TCPSession.dispatch(rawBuild, state: &state)
+    #expect(state.terrain[15, 15] == .road)
+
+    try await sendBytes(harness, SRSendMesg(player: 1, to: 255, text: "gg").encode())
+    let rawSendMesg = try await session.receiveOneRawMessage()
+    #expect(rawSendMesg.opcode == .sendMesg)
+    var sentText: String?
+    try TCPSession.dispatch(rawSendMesg, state: &state, callbacks: SRDispatchCallbacks(onSendMesg: { _, _, text in sentText = text }))
+    #expect(sentText == "gg")
+}
+
 @Test func tcpSessionDispatchesVariableLengthSendMesgCorrectly() async throws {
     let (listener, port, waiter) = try await startLoopbackTCPListener()
     defer { listener.cancel() }

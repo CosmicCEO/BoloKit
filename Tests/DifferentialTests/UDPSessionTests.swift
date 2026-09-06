@@ -228,3 +228,40 @@ private func sampleHeader(player: UInt8, remoteSeqForLocal: Int32) -> CLUpdateHe
     let staleResendResult = try await session.receiveAndApply(myOwnSeq: 0, state: &state)
     #expect(staleResendResult == nil)
 }
+
+// B.8 (D117): `receiveAndApply` is now a thin wrapper over `receiveOneRawDatagram` (async,
+// I/O-only) + `apply` (sync, no `await`) -- built for the same reason as `TCPSession`'s identical
+// split: a join-side consumer needs the network *wait* off the critical path that touches shared
+// state. Proves the split independently produces the identical result `receiveAndApply` itself
+// already gets.
+@Test func udpSessionSplitReceiveAndApplyMatchCombinedCall() async throws {
+    let (listener, port, waiter) = try await startLoopbackUDPListener()
+    defer { listener.cancel() }
+
+    let session = try await UDPSession(host: "127.0.0.1", port: port)
+    defer { session.cancel() }
+
+    try await session.sendLocalUpdate(CLUpdate(header: sampleHeader(player: 0, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    let harnessConnection = await waiter.wait()
+    _ = try await receiveOneDatagram(harnessConnection)
+
+    var state = GameState()
+    state.localPlayer = 0
+    state.players = (0..<maxPlayers).map { i in PlayerState(connected: i == 1, used: i == 1) }
+
+    var seq = [Int32](repeating: 0, count: maxPlayers)
+    seq[1] = 7
+    let header = CLUpdateHeader(
+        player: 1, seq: seq, dead: false, boat: false, dir: 0, tank: Vec2f(x: 55, y: 66),
+        speed: 0, turnSpeed: 0, kickDir: 0, kickSpeed: 0, builderStatus: 0, builder: Vec2f(x: 0, y: 0),
+        builderTargetX: 0, builderTargetY: 0, builderWait: 0, inputFlags: 0,
+        tankShotSound: false, pillShotSound: false, sinkSound: false, builderDeathSound: false
+    )
+    try await sendDatagram(harnessConnection, CLUpdate(header: header, shells: [], explosions: []).encode())
+
+    let raw = try await session.receiveOneRawDatagram()
+    let result = session.apply(raw, myOwnSeq: 0, state: &state)
+    #expect(result?.player == 1)
+    #expect(result?.seq == 7)
+    #expect(state.players[1].tank == Vec2f(x: 55, y: 66))
+}
