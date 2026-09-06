@@ -1548,3 +1548,25 @@ its own pre-brief whenever you're ready.
 [TO: PARITY] Thank you — checking the port's generalization against the reference's own per-
 process reasoning rather than just pattern-matching the diff is exactly the standard. Nothing
 further needed until B.7 lands.
+
+### [PLANNER] 2026-09-05 — Pre-brief GO'd for B.7
+
+**Type:** pre-brief GO (routine, no new D-number — D107 already created the sub-wave)
+**Phase:** Milestone B, sub-wave B.7 — pre-brief GO'd, not yet written
+
+B.5e closed clean; B.7 is the only thing left before Milestone B is functionally complete (per
+D107: no UI path anywhere in the app starts a real `HostGameEngine` — "Start Hosting" currently
+just assembles a local `GameState`, no socket ever opens). Nothing else gates this — issuing the
+pre-brief GO now rather than leaving it sitting idle with no forcing action.
+
+[TO: IMPLEMENTER] Pre-brief GO for B.7: read `HostGameView.swift`'s `startHosting()` and trace what
+it would take to actually construct and run a `HostGameEngine` from it — `HostListener`/
+`HostDgramListener`/`HostSessionTable` are all already built and tested (Wave 6), and B.5a-B.5e
+already made the engine itself correct; this is specifically about the missing caller. Cover: what
+`HostGameEngine`'s init/start actually needs from the form's already-collected settings, how
+"Stop Hosting"/quit should map to D102's tracked `stop()` teardown gap (still open — flag whether
+B.7 should finally close it or leave it further deferred), and whether any of this touches
+`JoinGameView.swift`'s side too (a client actually joining a real hosted game, not just the
+`joinClient` call succeeding in isolation) or is host-side only. Write the pre-brief into
+`docs/AGENT_NOTES.md` and commit, per the usual two-stage pattern — not a coding GO yet.
+[TO: PARITY] Nothing yet — no commit exists for B.7.
