@@ -947,3 +947,93 @@ trace `TrackerBrowser`/`PortMapping`'s current wiring state for D104's sizing qu
 pre-brief into `docs/AGENT_NOTES.md` and commit, per the usual two-stage pattern — this is not a
 coding GO yet.
 [TO: PARITY] Nothing yet — no commit to audit until B.5e's pre-brief lands and gets a coding GO.
+
+### [IMPLEMENTER] 2026-09-05 — B.5e pre-brief (D104): scoping-gap depth + B.4 sizing
+
+**Type:** pre-brief, not yet coding — per your instruction, no coding GO requested here.
+
+## Part 1: `killSquareBuilder`/`killPointBuilder`'s `state.localPlayer`-only scoping gap is an
+## architectural refactor, not a loop-and-done fix — plus one bonus finding along the way
+
+`killPointBuilder`/`killSquareBuilder` (`TankLocalTick.swift:43-78`) read
+`state.players[state.localPlayer].builder*` — already per-player (`PlayerState.builder`/
+`.builderStatus`/`.builderTarget`), so THAT half generalizes cleanly. But both call `killBuilder`
+(`TankLocalTick.swift:94-125`), which reads/writes `state.local.builderPill`/`.builderTask`/
+`.builderMines`/`.builderTrees` — all four live on `GameState.local: LocalPlayerState`
+(`GameObjects.swift:298-360`), a **singleton, not indexed per player**.
+
+**Consequence:** "generalize `killSquareBuilder`/`killPointBuilder` to kill any player's builder,
+not just `state.localPlayer`'s" requires those 4 fields to become per-player first (move into
+`PlayerState`, or turn `state.local` into an array) — not a small fix. Blast radius, every read/
+write of the 4 fields:
+
+| Field | Sites | Concentration |
+|---|---|---|
+| `builderPill` | 16 | `BuilderTick.swift` ×9, `RecvSR.swift` ×1, `ShellTick.swift` ×1, `TankLocalTick.swift` ×3 |
+| `builderTask` | 19 | `BuilderTick.swift` ×15, `RecvSR.swift` ×1, `TankLocalTick.swift` ×1 |
+| `builderMines` | 12 | `BuilderTick.swift` ×10, `RecvSR.swift` ×1, `TankLocalTick.swift` ×1 |
+| `builderTrees` | 24 | `BuilderTick.swift` ×20, `RecvSR.swift` ×2, `TankLocalTick.swift` ×1 |
+
+Overwhelmingly concentrated in `BuilderTick.swift`'s own state machine (`readyTick`/
+`arriveAtTarget`/`gotoTick`/`returnTick`, lines 428-745). None of its 7 private terrain-action
+helpers (`grabTrees`/`buildRoad`/`buildWall`/`buildBoat`/`buildPill`/`repairPill`/`placeMineWork`,
+lines 233-427) currently take a `player: Int` parameter — each would need one, plus every
+`state.local.builderX` read/write in them and their 5 callers switched to
+`state.players[player].builderX`.
+
+**Bonus finding, same root cause, distinct bug, already shipped (Wave 5.6/5.7), not introduced by
+B.5e:** `builderTick` is already called in a `for player in state.players.indices` loop
+(`RunTick.swift`), yet every iteration reads/writes the same singleton `state.local.builderTask/
+builderPill/builderMines/builderTrees`. **In any game with more than one player actively running a
+builder task, each player's per-tick pass clobbers the previous player's in-progress task state,
+every tick.** This is a real, pre-existing multiplayer-correctness bug in already-PARITY-passed
+code — flagging it now since it shares the exact root cause (singleton `state.local`), not
+resolving it, since it's a separate finding from the one PLANNER asked me to investigate.
+
+**Confirmed `state.localPlayer` is permanently 0 on the host** — `HostGameEngine.swift` only ever
+reads it; the only assignment site anywhere in the codebase is `JoinClientApply.swift:34`
+(`state.localPlayer = Int(preamble.player)`), exclusively the **client app's own** join-time
+self-identification, irrelevant to the host's `GameState`. `state.local`'s singleton design was
+never revisited for the host's authoritative-for-all-players role — it's a genuine architectural
+gap dating back to Wave 5.6/5.7's original single-client framing, not something B.5e's own
+investigation invented.
+
+**Not deciding, flagging for your ruling:** whether B.5e's coding scope should (a) do the full
+`LocalPlayerState` → per-player migration (fixes both the builder-kill gap AND the bonus
+clobbering bug, touches ~50+ call sites across `BuilderTick.swift` mainly), (b) do a narrower fix
+scoped only to `killSquareBuilder`/`killPointBuilder`'s own gap (if that's even separable from the
+migration — it may not be, since `killBuilder` itself needs the same fields generalized), or (c)
+split the bonus clobbering bug into its own tracked item separate from B.5e entirely. This is
+bigger than a "wire a causer parameter" task — closer to the shape of D22 (splitting 5.5a out of
+5.2b) than a callback-wiring sub-wave.
+
+## Part 2: B.4 (tracker/UPnP UI wiring) sizing, for D104
+
+Both `TrackerBrowser`/`PortMapping` BoloNet primitives are fully implemented and tested, zero known
+gaps: `listTrackerGames(hostname:port:)` (`TrackerBrowser.swift`, 71 lines, 3 tests in
+`TrackerDifferentialTests.swift:485-551`); `PortMapping`/`registerWithTracker`/`TrackerSession`
+(`PortMapping.swift` 163 lines + `TrackerRegistration.swift` 215 lines, ~12 tests combined).
+
+**Zero wiring exists in the `Bolo 2026` app target** — grep across all 8 view files found nothing
+except a comment: `HostGameView.swift:16` explicitly says "Tracker/UPnP switches excluded — B.4's
+scope." `JoinGameView.swift` (B.3) is manual address/port entry only, no browse list.
+
+Remaining work, both following patterns already established elsewhere in the app (no new BoloNet
+or BoloKit code needed):
+- **`HostGameView.swift`**: 2 toggles — Tracker (hold a `TrackerSession`, call
+  `registerWithTracker`, tied to hosting start/stop) and UPnP (create `PortMapping(internalPort:)`,
+  drain its `updates: AsyncStream`, `cancel()` on stop) — same shape the app already uses for
+  `HostListener.connections`/`HostDgramListener.packets`.
+- **`JoinGameView.swift`**: one new section — call `listTrackerGames`, populate a list, tap-to-fill
+  address/port — same `async throws` call shape this view already uses for `joinClient`.
+
+**Sizing estimate: ~60-100 lines of new SwiftUI across 2 files.** Genuinely small enough to fold
+into a coding pass alongside other work. The risk of folding it into B.5e specifically isn't
+effort size — it's scope-mixing: killSquareBuilder's fix (if taken to full depth per Part 1) is a
+real architectural refactor; B.4's UI wiring is trivial by comparison and touches entirely
+different files (`Resources/App/*.swift` vs `Sources/BoloKit/BuilderTick.swift`). Your call on
+whether that's a reason to keep them in one sub-wave or split.
+
+> **→ Planner:** Both parts sized as asked, no scope decision made on either. Awaiting your ruling
+> on Part 1's fix depth (a/b/c above) and whether B.4 folds into B.5e's coding pass or gets its own
+> sub-wave, before any coding GO.
