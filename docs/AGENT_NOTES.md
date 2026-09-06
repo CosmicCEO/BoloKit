@@ -1506,3 +1506,88 @@ coding-level pre-brief now that Q28's sourcing question is resolved — DSP prim
 parameter table, encoding format, test strategy. All three (well, four counting C.3's next step)
 independent of each other and of B.9/B.10 — keep working whichever you get to first.
 [TO: PARITY] Nothing yet for any of these — no commits exist beyond pre-briefs/research.
+
+
+### [IMPLEMENTER] 2026-09-06 — C.3 coding pre-brief (sound synthesis design)
+
+**Type:** pre-brief only, no code written, no coding GO requested yet
+**Phase:** Milestone C, C.3 — coding-level design per D121's mandate (Q28 sourcing already resolved: procedural synthesis, mirroring D67)
+
+**1. Structural template, read in full (`Sources/BoloGlyphsCore/`, `Sources/BoloGlyphs/main.swift`, `Package.swift`):**
+- Two targets outside `BoloKit`: `BoloGlyphsCore` (library, depends on `BoloKit`, tested by `BoloKitTests`) + `BoloGlyphs` (thin `executableTarget`, depends only on `BoloGlyphsCore`). `Package.swift` also declares `BoloGlyphs` as a package `.executable` product (line 15) so Xcode's Run Script can reference `$BUILT_PRODUCTS_DIR/BoloGlyphs` directly.
+- `BoloGlyphsCore` internals: `SheetBuilder.swift` is the pure orchestrator (`buildSheets() -> GeneratedSheets`, no I/O, deterministic function of `BoloKit` constants) that calls per-glyph generation (`GlyphSource.swift`) and blits into a raw RGBA buffer (`Canvas.swift`/`RGBASheet`). `PNGCodec.swift` is the only I/O-adjacent file — pure `[UInt8] -> Data` encode/decode, no filesystem access itself.
+- `main.swift` (the executable) does all filesystem I/O: parses `CommandLine.arguments` for an output dir, calls the pure builder, writes files. Two modes (default sheet-build; `icon` sub-mode) selected by `args.first`.
+- Xcode wiring (`Bolo 2026.xcodeproj/project.pbxproj`): a Run Script build phase lists `$(BUILT_PRODUCTS_DIR)/BoloGlyphs` as an *input* (forces build-order dependency) and `Tiles.png`/`Sprites.png` under `$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)` as *outputs* (so Xcode treats them as generated resources, never committed — D72), then just invokes the built binary with the resources dir as `argv[1]`.
+
+**`BoloSoundsCore`/`BoloSounds` mirrors this exactly:**
+- `Package.swift`: add `.target(name: "BoloSoundsCore", dependencies: ["BoloKit"])` (BoloKit dependency likely unnecessary — sound has no dependency on tile/sprite constants — so actually `dependencies: []`, revisit at coding time if a shared "event name" enum should live in `BoloKit` instead of being duplicated), `.executableTarget(name: "BoloSounds", dependencies: ["BoloSoundsCore"])`, a package product `.executable(name: "BoloSounds", targets: ["BoloSounds"])`, and add `BoloSoundsCore` to `BoloKitTests`' dependencies.
+- `BoloSoundsCore` files (mirroring `Canvas.swift`/`GlyphSource.swift`/`SheetBuilder.swift`/`PNGCodec.swift`):
+  - `SampleBuffer.swift` — the `Canvas.swift` analogue: a plain `[Float]` (or `[Int16]`) mono sample buffer value type with sample-rate metadata, plus mixing/concatenation helpers (`+=` overlay, `append`, `gain(by:)`).
+  - `SoundSource.swift` — the `GlyphSource.swift` analogue: the DSP primitive functions (below) plus the 14-entry parameter table and the function that renders one named sound to a `SampleBuffer`.
+  - `SoundSetBuilder.swift` — the `SheetBuilder.swift` analogue: pure orchestrator, `buildSounds() -> [String: SampleBuffer]` (24 entries: 14 designed + 10 `far*` derived by lowpass-filtering their near counterpart), no I/O.
+  - `AIFFCodec.swift` — the `PNGCodec.swift` analogue: pure `SampleBuffer -> Data` encoder (design in §4 below).
+- `BoloSounds/main.swift` — the `BoloGlyphs/main.swift` analogue: parses an output dir argument, calls `buildSounds()`, writes 24 `.aiff` files named exactly per the reference list (`explosion.aiff`, `fexplosion.aiff`, ...).
+- Xcode wiring: identical Run Script pattern in `Bolo 2026.xcodeproj` — `BoloSounds` as an explicit target dependency/input, 24 `.aiff` paths as outputs, invoked the same way. This is a C.3-coding-time task, not part of this pre-brief's scope, but the shape is confirmed transferable — no open design question there.
+
+**2. DSP primitive set — concrete signatures.**
+
+Sample format: **44.1 kHz, mono, 16-bit signed PCM** internally represented as `[Float]` in `[-1, 1]` during synthesis (avoids intermediate integer clipping/rounding bugs across chained primitives), quantized to `Int16` only at AIFF-encode time. 44.1kHz/16-bit matches the reference's own `explosion.aiff` format exactly (confirmed via `afinfo`: "2 ch, 44100 Hz, lpcm, 16-bit big-endian signed integer"); mono instead of the reference's 2ch is a deliberate simplification — these are one-shot mono SFX, stereo adds no value for a procedurally-generated pool-played sound and halves the encoder's complexity.
+
+```swift
+public let sampleRate: Double = 44100.0
+
+/// Deterministic white noise: a fixed-seed LCG, not `SystemRandomNumberGenerator` — determinism
+/// is required for the buffer-equality regression tests (see §5).
+public func whiteNoise(duration: Double, seed: UInt64, amplitude: Float = 1.0) -> SampleBuffer
+
+/// Two-stage attack/decay envelope (no separate sustain/release -- these are one-shots, not
+/// held notes; "ADSR-style" per D121 collapses to AD in practice). Both times in seconds,
+/// linear attack ramp 0->1, exponential decay 1->~0 with `decayRate` as the exponent's time
+/// constant (e.g. amplitude(t) = exp(-t / decayRate) after attack completes).
+public func adEnvelope(attackTime: Double, decayTime: Double, decayRate: Double) -> [Float] // one gain sample per output sample, applied via SampleBuffer.apply(envelope:)
+
+/// Pure tone or linear frequency sweep (startFreq == endFreq for a plain tone). Sine wave.
+public func toneSweep(duration: Double, startFreq: Double, endFreq: Double, amplitude: Float = 1.0) -> SampleBuffer
+
+/// Single-pole IIR lowpass, cutoff in Hz -- this is the `far*` muffling filter (D121's own
+/// finding: 10 of 24 names are filtered-not-independent). y[n] = y[n-1] + alpha*(x[n]-y[n-1]),
+/// alpha derived from cutoffHz and sampleRate at call time.
+public func lowpass(_ buffer: SampleBuffer, cutoffHz: Double) -> SampleBuffer
+```
+
+`SampleBuffer` also needs: `mix(_:)` (sample-wise add, for combining e.g. noise+tone layers), `apply(envelope:)` (sample-wise multiply against an envelope array of matching length, zero-padded/truncated to buffer length), `gain(by:)` (scalar multiply), and `trimOrPad(to duration:)`.
+
+**3. 14-entry parameter table** (the 10 `far*` names are `lowpass(nearBuffer, cutoffHz: ~800)` applied to these 14's output — a single shared cutoff constant is the starting point, tunable later if some effects need a different "muffled" character):
+
+| Name | Primitives | Rough parameters |
+|---|---|---|
+| `explosion` | noise burst + AD envelope + downward tone sweep, mixed | duration 0.5s, attack 0.005s, decay 0.3s (decayRate ~0.15), sweep 400Hz->60Hz layered under noise for "boom" body |
+| `superboom` | same shape as `explosion`, bigger | duration 0.9s, decay 0.5s, sweep 250Hz->40Hz, noise amplitude higher — the reference's own naming implies this is explosion's "big" variant |
+| `hittank` | noise burst, short, sharp AD | duration 0.15s, attack 0.002s, decay 0.08s, no tone layer (metallic clank via noise alone, cutoff-shaped) |
+| `hitterrain` | noise burst, softer/duller than hittank | duration 0.2s, decay 0.12s, pre-filtered through lowpass ~2kHz before envelope for a "thud" rather than "clank" |
+| `hittree` | noise burst, similar to hitterrain but shorter | duration 0.15s, decay 0.08s |
+| `mine` | noise burst + AD envelope, mid-sized, no sweep | duration 0.35s, decay 0.2s — a smaller cousin of `explosion` without the tone layer |
+| `tankshot` | tone sweep, short, upward, no noise | duration 0.1s, sweep 300Hz->900Hz, attack 0.001s, decay 0.06s — a "pew" |
+| `pillshot` | same shape as tankshot, slightly different pitch | duration 0.1s, sweep 350Hz->1000Hz |
+| `build` | short tone sequence: 2-3 discrete tone pulses ascending | 3 pulses, ~0.06s each, frequencies 440/554/659Hz (a small ascending triad), gap ~0.02s between |
+| `builderdeath` | tone sequence descending + noise tail | 3 pulses descending in pitch, then a short noise burst (0.1s) mixed in at the end |
+| `tree` | single short click: very short noise burst, near-zero decay | duration 0.08s, decay 0.03s, no tone |
+| `bubbles` | noise burst filtered hard (lowpass ~500Hz) + slow AD envelope, maybe 2-3 overlapping short bursts at staggered offsets | duration 0.4s, 3 sub-bursts of ~0.08s each at offsets 0/0.12/0.24s, each individually enveloped |
+| `sink` | noise burst, longer and lower-filtered than bubbles, single sweep-down tone underneath | duration 0.6s, decay 0.4s, tone sweep 200Hz->50Hz, heavy lowpass ~400Hz on the noise component |
+| `msgreceived` | two discrete tones, no noise | two pulses ~0.08s each, 880Hz then 1100Hz, gap ~0.03s — a simple two-tone chime |
+
+`fbuild`/`fbuilderdeath`/`fexplosion`/`fhittank`/`fhitterrain`/`fhittree`/`fshot`/`fsink`/`fsuperboom`/`ftree` = `lowpass(nearBuffer, cutoffHz: 800)` applied to `build`/`builderdeath`/`explosion`/`hittank`/`hitterrain`/`hittree`/`tankshot`(shared with `pillshot`'s `fshot`? — **open question, flagged below**)/`sink`/`superboom`/`tree` respectively.
+
+**Open naming question surfaced while building this table, not resolved here:** the reference has both `tankshot` and `pillshot` as near names but only a single `fshot` far name (no `fpillshot`) — 24 total names, 14 near, but only 10 far, meaning one of {`tankshot`,`pillshot`} shares its far variant with the other, or `fshot` is `tankshot`'s far pair and `pillshot` simply has no far variant modeled in the reference. This needs a direct re-check of `GSXBoloController.m:357-490`'s pool declarations before coding (I did not re-verify the exact near/far pairing beyond the research entry's name list) — flagging rather than guessing, per D121's own "verify don't assume" standard.
+
+**4. AIFF encoding.** `AVFoundation` gives this for free and is the right choice over hand-rolling: `AVAudioFile(forWriting:settings:)` with `AVFormatIDKey: kAudioFormatLinearPCM`, `AVSampleRateKey: 44100`, `AVNumberOfChannelsKey: 1`, `AVLinearPCMBitDepthKey: 16`, `AVLinearPCMIsBigEndianKey: true` (AIFF's native byte order — matches the reference files' own big-endian format per `afinfo`), writing an `AVAudioPCMBuffer` built from the `[Float]` samples. This avoids hand-rolling AIFF chunk headers (FORM/COMM/SSND) entirely, mirrors D121's own suggestion to check whether `AVFoundation` is available outside `BoloKit` (it is — same as `CoreGraphics`/`ImageIO` are available to `BoloGlyphsCore` today, no constraint violation, `BoloSoundsCore` isn't inside `BoloKit`). A hand-rolled writer stays a fallback only if `AVAudioFile`'s file-URL-based API proves awkward for a batch-generate-in-memory workflow (it writes to a URL directly, not to an in-memory `Data`, unlike `CGImageDestination`'s `NSMutableData` path used by `PNGCodec.swift` — this is a minor structural asymmetry from the glyph precedent, but not a blocker: `main.swift` already targets a directory path, so writing on-disk directly rather than round-tripping through `Data` is fine and arguably simpler).
+
+**5. Test strategy** (mirrors `BoloKitTests`' `BoloGlyphsCore` determinism assertions):
+- **Primitive-level tests**, one per DSP function: `whiteNoise` — same seed produces byte-identical buffers across two calls (determinism), buffer length matches `duration * sampleRate` within rounding, peak amplitude never exceeds the requested `amplitude` parameter. `adEnvelope` — envelope array starts at/near 0, ramps to 1.0 at the attack/decay boundary, monotonically non-increasing during decay, ends near (not necessarily exactly) 0. `toneSweep` — buffer length correct, zero-crossings roughly match expected frequency at start and end (a coarse period-counting assertion, not an exact-sample check). `lowpass` — output buffer same length as input, verified attenuation of a synthetic high-frequency test tone's peak amplitude vs. the same tone unfiltered (not asserting exact filter response, just "measurably quieter after filtering").
+- **Per-name integration tests**: for all 24 names, `buildSounds()`'s output buffer for that name is non-empty, duration falls inside the parameter table's designed range (+/- rounding), and (for the 10 `far*` names specifically) is measurably different from its near counterpart via the same coarse high-frequency-attenuation check used for `lowpass` directly — asserting the filter was actually applied, not that it "sounds muffled."
+- **Determinism regression test**: `buildSounds()` called twice produces byte-identical `[String: SampleBuffer]` output — the direct analogue of whatever `BoloGlyphsCore`'s existing pixel-buffer-equality test does for `buildSheets()`.
+- Explicitly **not tested**: perceptual/subjective sound quality — left to Jerod's ear per D121's own ruling, no test attempts this.
+
+**6. Sizing.** File list: `SampleBuffer.swift` (~60 lines), `SoundSource.swift` (DSP primitives + 14-entry table + per-name render dispatch, ~250-300 lines — the table itself is the bulk, one case per name), `SoundSetBuilder.swift` (~40 lines, thin orchestrator), `AIFFCodec.swift` (~40-60 lines given `AVAudioFile` does the heavy lifting), `BoloSounds/main.swift` (~30 lines, near-identical to `BoloGlyphs/main.swift`). Roughly 420-490 lines of new source, plus ~150-200 lines of new tests (`BoloKitTests` additions). **This matches D121's "medium, comparable to a slice of Wave 7.0" estimate** — slightly smaller than 7.0's actual `BoloGlyphsCore` (which carries autotile/connectivity logic sound has no equivalent of), but the same order of magnitude and the same two-target shape.
+
+> **→ Planner:** C.3 coding-level pre-brief complete — DSP primitives (`whiteNoise`/`adEnvelope`/`toneSweep`/`lowpass`), 14-entry parameter table (10 `far*` derived by shared lowpass, cutoff ~800Hz), AIFF via `AVAudioFile` (44.1kHz/16-bit/mono, big-endian, matching the reference's own on-disk format per direct `afinfo` check — mono is a deliberate simplification since the reference's 2ch carries no information for a synthesized mono source), `BoloSoundsCore`/`BoloSounds` target pair mirroring `BoloGlyphsCore`/`BoloGlyphs` exactly (`Package.swift` diff sketched above). Sizing confirms D121's "medium, comparable to a slice of Wave 7.0" estimate (~420-490 new lines + ~150-200 test lines). **One open question needing resolution before coding GO, not resolvable from the research entry alone:** the reference has 14 near names but the `far*` set only covers 10 — `tankshot`/`pillshot` both exist as near names but only one `fshot` far name appears in the research's own list. Needs a direct re-check of `GSXBoloController.m:357-490`'s pool declarations (which of the two `fshot` actually pairs with, or whether `pillshot` simply has no far variant in the reference) before the parameter table's far-derivation step can be finalized. No code written this session — awaiting coding GO.
