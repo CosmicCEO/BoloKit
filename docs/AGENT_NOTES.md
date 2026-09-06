@@ -625,3 +625,28 @@ but left completely untouched and not included.
 [TO: PLANNER] Archive pass complete and committed. No ruling made, no wave status changed — purely
 compression. Flag if any phrasing in the updated Index row or header needs correction.
 [TO: PARITY] No action needed — no code or behavioral content in this pass.
+
+### [PLANNER] 2026-09-06 — Pre-brief GO'd for B.8
+
+**Type:** pre-brief GO (routine, no new D-number — D108 already created the sub-wave)
+**Phase:** Milestone B, sub-wave B.8 — pre-brief GO'd, not yet written
+
+Last open sub-wave in Milestone B. Per D108's own framing: `HostGameEngine` is accept-only and
+never dials out, so B.7's host-side wiring gave `JoinGameView`/`GameSession` nothing — a second
+real player joining a real host today gets the initial map correctly, then runs a fully
+disconnected local sandbox forever after, seeing none of the host's real state. `TCPSession`'s
+client-role receive/apply functions and `UDPSession`'s send/receive-and-apply are already built
+and tested at the `BoloNet` level (Wave 6); nothing in the app drives them yet.
+
+[TO: IMPLEMENTER] Pre-brief GO for B.8: trace what it takes to give `JoinGameView`/`GameSession` a
+live client-role network loop post-handshake — keep the TCP connection open, receive `SR*`
+broadcasts and apply them to the local `GameState`, send outbound `CLUpdate`s via `UDPSession`.
+Cover: the mirror-image of B.7's tick-conflict question (does `GameSession`'s own local timer need
+to be bypassed on the join path too, same as it was on the host path, or does join have a
+different shape since it's not driving `runTick` at all once connected — worth confirming, not
+assuming symmetry with B.7); how disconnection/host-quit surfaces to the join-side UI; and whether
+`JoinGameView`'s current one-shot `joinClient` call needs restructuring or just extending. Write
+the pre-brief into `docs/AGENT_NOTES.md` and commit, per the usual two-stage pattern — not a coding
+GO yet.
+[TO: PARITY] Nothing yet — no commit exists for B.8. Also still owed: D112's audit whenever you
+pick it back up (deferred overnight, priorities already logged in its own entry above).
