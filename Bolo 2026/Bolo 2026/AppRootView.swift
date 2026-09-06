@@ -19,6 +19,12 @@
 //  running state instead of freezing the moment `NewGameView` handed control here. The join path
 //  is unchanged (still a `GameState` snapshot) -- its own symmetric gap is B.8, not assigned yet.
 //
+//  Milestone B.7 (D109): a third case, `hostingFallback`, for when the real listener couldn't be
+//  constructed at all (root-caused to a macOS 27 beta Network.framework issue on Jerod's machine,
+//  not this port's own code -- see `HostGameView.swift`'s own header). Routes to the exact same
+//  local-only `GameView(initialState:)` the join path already uses, plus a visible notice so
+//  solo play still works without silently pretending the game is networked.
+//
 
 import BoloKit
 import BoloNet
@@ -28,6 +34,7 @@ enum AppScreen {
     case newGame
     case playing(GameState)
     case hosting(HostGameEngine)
+    case hostingFallback(GameState)
 }
 
 struct AppRootView: View {
@@ -38,12 +45,18 @@ struct AppRootView: View {
         case .newGame:
             NewGameView(
                 onStartHosting: { engine in screen = .hosting(engine) },
+                onStartHostingLocalOnly: { state in screen = .hostingFallback(state) },
                 onJoinedGame: { state in screen = .playing(state) }
             )
         case .playing(let state):
             GameView(initialState: state, onQuitToMenu: { screen = .newGame })
         case .hosting(let engine):
             GameView(hostEngine: engine, onQuitToMenu: { screen = .newGame })
+        case .hostingFallback(let state):
+            GameView(
+                initialState: state, onQuitToMenu: { screen = .newGame },
+                notice: "Running local-only -- hosting is unavailable on this system"
+            )
         }
     }
 

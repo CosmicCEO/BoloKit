@@ -29,6 +29,15 @@
 //  not this one -- registering with a tracker/mapping a port needs a reachable public address,
 //  which this milestone doesn't add).
 //
+//  Milestone B.7 (D109): root-caused live -- `HostListener`/`HostDgramListener` construction fails
+//  on *every* fixed port on Jerod's current machine (confirmed: a bare, zero-dependency `NWListener`
+//  call outside this project entirely reproduces the identical `EINVAL`, while `port: 0` succeeds).
+//  A macOS 27 beta Network.framework issue, not a bug in this port's own code, and nothing here can
+//  fix it. Jerod confirmed solo play must still work regardless, so a failed listener construction
+//  now falls back to `onStartHostingLocalOnly` -- the same local-only simulation
+//  `JoinGameView`'s post-handshake flow already runs -- with a visible in-game notice, rather than
+//  a dead-end form error. Real multi-human-one-machine networked play stays unscoped for now.
+//
 
 import BoloKit
 import BoloNet
@@ -37,6 +46,9 @@ import UniformTypeIdentifiers
 
 struct HostGameView: View {
     let onStartHosting: (HostGameEngine) -> Void
+    /// D109's fallback target -- fires with the same fully-assembled `GameState` `onStartHosting`
+    /// would have, when the real listener couldn't be constructed on this machine.
+    let onStartHostingLocalOnly: (GameState) -> Void
 
     @State private var mapURL: URL?
     /// Decoded from `mapURL`'s bytes via `decodeBMap` -- terrain/pills/bases/starts only; the
@@ -193,11 +205,14 @@ struct HostGameView: View {
             engine.start()
             onStartHosting(engine)
         } catch {
-            hostErrorMessage = "Unable to Start Hosting on Port \(port) -- \(error.localizedDescription)"
+            // D109: a real, environment-level Network.framework failure this port's own code
+            // can't fix (see this file's own header) -- fall back to solo local play rather than
+            // leaving the user at a dead end.
+            onStartHostingLocalOnly(state)
         }
     }
 }
 
 #Preview {
-    HostGameView(onStartHosting: { (_: HostGameEngine) in })
+    HostGameView(onStartHosting: { (_: HostGameEngine) in }, onStartHostingLocalOnly: { _ in })
 }

@@ -19,6 +19,11 @@
 //  class needs to know which path it's on. `session.stop()` is `async` now (both paths go through
 //  it), so its two call sites below hop into a `Task`.
 //
+//  Milestone B.7 (D109): `notice`, an optional banner shown in the same top bar as "Quit to Menu"
+//  -- currently only used for `AppRootView.hostingFallback`'s "running local-only" disclosure when
+//  a real listener couldn't be constructed (see `HostGameView.swift`'s own header), but not tied
+//  to that case specifically; any caller of the local-only `init` can supply one.
+//
 
 import BoloKit
 import BoloNet
@@ -26,11 +31,13 @@ import SwiftUI
 
 struct GameView: View {
     let onQuitToMenu: () -> Void
+    let notice: String?
 
     @State private var session: GameSession
 
-    init(initialState: GameState, onQuitToMenu: @escaping () -> Void) {
+    init(initialState: GameState, onQuitToMenu: @escaping () -> Void, notice: String? = nil) {
         self.onQuitToMenu = onQuitToMenu
+        self.notice = notice
         let (tiles, sprites) = Self.loadSheets()
         _session = State(
             initialValue: GameSession(initialState: initialState, tilesImage: tiles, spritesImage: sprites)
@@ -39,6 +46,7 @@ struct GameView: View {
 
     init(hostEngine: HostGameEngine, onQuitToMenu: @escaping () -> Void) {
         self.onQuitToMenu = onQuitToMenu
+        self.notice = nil
         let (tiles, sprites) = Self.loadSheets()
         _session = State(
             initialValue: GameSession(hostEngine: hostEngine, tilesImage: tiles, spritesImage: sprites)
@@ -63,6 +71,9 @@ struct GameView: View {
         .onDisappear { Task { @MainActor in await session.stop() } }
         .safeAreaInset(edge: .top) {
             HStack {
+                if let notice {
+                    Text(notice).foregroundStyle(.orange)
+                }
                 Spacer()
                 Button("Quit to Menu") {
                     Task { @MainActor in

@@ -23,13 +23,17 @@ struct NewGameView: View {
     /// Milestone B.2 -- fires once the host form's "Start Hosting" succeeds. Carries a real,
     /// already-`start()`ed `HostGameEngine` as of Milestone B.7 (D108), not a bare `GameState`.
     let onStartHosting: (HostGameEngine) -> Void
+    /// Milestone B.7 (D109) -- fires instead of `onStartHosting` when the real listener couldn't
+    /// be constructed (see `HostGameView.swift`'s own header). Carries the same fully-assembled
+    /// `GameState` `onStartHosting` would have.
+    let onStartHostingLocalOnly: (GameState) -> Void
     /// Milestone B.3 -- fires with the fully-assembled `GameState` (`applyBoloPreamble`'s result)
     /// once the join form successfully completes a handshake.
     let onJoinedGame: (GameState) -> Void
 
     var body: some View {
         TabView {
-            HostGameView(onStartHosting: onStartHosting)
+            HostGameView(onStartHosting: onStartHosting, onStartHostingLocalOnly: onStartHostingLocalOnly)
                 .tabItem { Text("Host") }
             JoinGameView(onJoinedGame: onJoinedGame)
                 .tabItem { Text("Join") }
@@ -39,5 +43,5 @@ struct NewGameView: View {
 }
 
 #Preview {
-    NewGameView(onStartHosting: { (_: HostGameEngine) in }, onJoinedGame: { _ in })
+    NewGameView(onStartHosting: { (_: HostGameEngine) in }, onStartHostingLocalOnly: { _ in }, onJoinedGame: { _ in })
 }
