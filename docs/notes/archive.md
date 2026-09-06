@@ -829,3 +829,114 @@ B.5b, and B.5c's own pre-brief flagging B.5d) — explicitly recorded as the dis
 intended, not a process failure. Full uncompressed entries (every pre-brief, completion report,
 PARITY audit/re-audit, and PLANNER ruling in this span, including D94–D99's full text and the B.0
 process-incident thread) preserved in git history per D28.
+
+## D100 through B.7's close (Milestone B: B.5c's coding GO through B.7 CLOSED)
+
+**B.5c — D100 coding GO'd, items 1-5 landed (`8ca6567`), D101 fix (`47e9c09`), CLOSED (D102
+tracked, not blocking; PARITY audit found no fatal issues).** D100 approved the
+dynamic per-connection producer Task generalizing D95/D96's three-fixed-producers architecture
+("exactly one consumer mutates `state`" holds regardless of producer count) and split the
+9-callback mine-chain broadcast question into new B.5d rather than folding it in blind. Landed:
+`HostSession.swift`'s dispatch split into I/O-only `receiveOneHostMessageBytes` + pure
+`dispatchHostMessage`; the dynamic producer Task; `onPlayerDisconnected` wiring; 5 callbacks
+confirmed correctly unwired (local-only animation triggers). **D101** — a real pre-existing bug
+found along the way: `HostListener.swift`'s `runJoinHandshake` `.accepted`-branch `catch` on a
+preamble/map-send failure called `table.disconnect` but never reverted `applyJoin`'s
+`used/connected` flags, permanently leaking a `GameState` player slot. Fixed with `removePlayer`
+(resets `connected`, preserves `used` for rejoin-eligibility, no broadcast since `SRPlayerJoin`
+never fired) — same shape as D77's precedent for a pre-existing bug only reachable once new work
+exercises the path. PARITY independently re-derived both the slot-leak fix and the dispatch split
+(diff-level behavior check, not just re-running tests), found one further real gap:
+`HostGameEngine.stop()` never tears down already-joined players' `NWConnection`s/producer Tasks
+(proved with a built scratch test: send succeeds after `stop()` when it should fail). **D102**
+tracked this as non-blocking (no production caller of `stop()` yet) rather than reopening B.5c;
+revisit when a real caller lands. Tests 650→655.
+
+**B.5d — pre-brief corrected D100's causer-threading premise (direct `server.c` reads showed
+`explosionat()`/`superboomat()` need no signature change), GO'd as D103, landed (`35e2320`),
+CLOSED (PARITY PASS `aaf2229`).** The real gap was only 2 missing call sites
+(`onMineExplosion`/`onSuperboomTerrain`) inside functions that already had what they needed, plus
+a genuine design question (separate parameters for the client-role notify vs. server-role
+broadcast, since C itself draws that line — `client.c`'s `smallboom()`/`superboom()` never
+broadcast, only server-role `explosionat()`/`superboomat()` do) — approved. During coding, scope
+corrected *down* further: `RecvCL.swift` was already broadcasting correctly since Wave 6.6; the
+only real gap was `chain()`/`flood()` (`MineChain.swift`) having no broadcast hook at all. Also
+folded in (per D103) the `onDropPills`→`onShouldBroadcastDropPill` direct-call refactor — a bigger
+mechanical footprint (13 files) than scoped but a real behavior fix: `dropPills`'s spiral-search
+pill-scatter placement had never actually run in production (all 5 fire sites were bare
+data-only closure calls with no `state` access), plus a dead-end no-op `CLDispatchCallbacks`
+field in `HostSession.swift`. PARITY independently confirmed via negative control that the
+pre-fix behavior really was dead code, spot-checked/then fully swept (16 of 16, not a sample) all
+`explosionAt`/`superboomAt` call sites for broadcast coverage. `killSquareBuilder`/
+`killPointBuilder`'s `state.localPlayer`-only scoping (found investigating the same code) split
+out to new **B.5e**. Tests 655→660.
+
+**B.6 (tracker/UPnP UI wiring, D104/D105 split from B.4's long-unruled disposition) — landed
+(`a7c9392`), CLOSED (PARITY PASS `9365c7f`).** `TrackerBrowser`/`PortMapping` primitives were
+already fully built/tested; sizing came out to ~60-100 lines across 2 files, small enough for a
+direct coding GO with no separate pre-brief. Correction found while implementing: the host side
+has zero live networking of any kind today (`HostGameView.startHosting()` just assembles a local
+`GameState`) — hosting toggles built inert-but-disclosed, reusing `portText`'s existing D94
+`.help` precedent rather than falsely wiring a live tracker/UPnP call for a host with no open
+socket. `JoinGameView`'s browse list is fully real (wired to `listTrackerGames`). PARITY confirmed
+both sides directly (grep for zero live host-side calls; traced the join-side call into
+`TrackerBrowser.swift`; verified the default tracker hostname against the reference's own
+`GSTrackerString` plist value).
+
+**B.5e (`killSquareBuilder`/`killPointBuilder`'s local-only scoping) — two-stage pre-brief, D105/**
+**D106, landed (`b0d2791`), CLOSED (PARITY PASS `55513aa`).** First pass found the fix isn't a
+small generalization: `killBuilder` reads 4 fields living on `GameState.local: LocalPlayerState`,
+a **singleton**, not per-player. Deeper pre-brief (D105) found the real count is **6 fields, not
+4** (`mines`/`trees` also touched by `BuilderTick.swift`), ~112 production call sites concentrated
+in `BuilderTick.swift`. Also surfaced, same root cause, a genuine **already-shipped multiplayer
+bug**: `builderTick` already ran in a per-player loop but every iteration clobbered the same
+singleton fields — any game with 2+ players building simultaneously stomped each other's task
+state every tick. D106 approved the full migration (6 fields moved to `PlayerState`, 7-step
+build-green ordering: add fields → migrate `BuilderTick.swift` → migrate ~13 mechanical sites →
+remove fields from `LocalPlayerState` as forcing function → fix test fallout (8 files) → the
+actual `killSquareBuilder`/`killPointBuilder` generalization → regression tests). Migration also
+fixed the clobbering bug for free, and removed two `returnTick` gates that PARITY confirmed (by
+reading `client.c:4934-5000` directly) were real in the C reference but only because C's fields
+were process-singletons — the gate's purpose was moot post-migration, and keeping it would have
+reproduced the exact stuck-remote-builder bug. PARITY confirmed migration exhaustiveness by grep
+(one harmless historical comment hit, no live code), confirmed the loop-over-connected-players
+generalization is the correct mapping of the reference's actual per-process design (not a
+deviation — `client.c:6999-7045` only checks `client.player` because every real client is its own
+process), and built its own independent negative controls on both the kill-fix and the gate
+removal. Tests 660→662.
+
+**B.7 (wire a real UI path to `HostGameEngine` — D107/D108) — landed (`f4b8efc`), CLOSED (PARITY**
+**PASS `6b31ba1`).** D107: reviewing B.6 surfaced that no UI path anywhere in the app actually
+starts a `HostGameEngine` — "Start Hosting" only ever assembled a local `GameState`; B.5a-B.5e's
+engine work had no live caller. Split to B.7. Pre-brief traced `HostGameEngine`'s fully
+self-driving `init`/`start()`/`stop()` contract and flagged that wiring it in creates a genuine
+tick-conflict (two independent tickers would advance the same `GameState` — `GameSession`'s own
+timer and the engine's own `DispatchSourceTimer`) plus a symmetric join-side gap (no live
+join-side receive loop exists either — `GameSession` runs a fully disconnected local sandbox after
+the initial handshake). D108 approved: (1) bypass `GameSession`'s own timer entirely on the host
+path, render off `HostGameEngine.onTickRendered`'s per-tick value-type snapshot; (2) fold D102's
+`stop()`-teardown fix into B.7 (direct consequence of finally giving `stop()` a real caller — now
+`shutdown()` disconnects every connected slot, letting each producer Task exit via its existing
+tested path); (3) split the join-side symmetric gap into new **B.8**, not B.7's problem. While
+designing the callback wiring, Implementer caught and disclosed (before any diagnostic forced it)
+a second real race: host-side local keyboard input would otherwise need to mutate
+`HostGameEngine.state` directly from the main thread while the consumer Task might be mid-`runTick`
+— fixed with two new event cases/public methods reusing the existing merged-stream mechanism, not
+a new one. PARITY proved the tick-conflict resolution and local-input exclusivity to a stronger
+standard than asked — an exhaustive grep of every mutating access to `state` in
+`HostGameEngine.swift` (all 8 `&state` hits confined to `handle(_:)`/`tick()`), not spot-checks or
+scenario tests — plus its own independent negative control on the `shutdown()` fix and confirmation
+of its real app-side caller (`GameView.swift`'s Quit-to-Menu/`onDisappear`). Tests 662→665.
+
+**Cross-cutting, this span:** the "hidden scope surfaces only at real pre-brief depth, split
+rather than silently absorb/narrow" pattern recurred repeatedly and by design — D100→B.5d,
+B.5c-pre-brief→B.5d, D104→B.5e's own 4-vs-6-field correction, D107 (B.6 review surfaces B.7),
+B.7-pre-brief→B.8 — every one flagged live and re-ruled rather than guessed at. D28's coverage
+discipline held throughout (650→655→660→662→665, net +15, every delta backed by a
+negative-controlled regression test, several with PARITY building its own independent negative
+control rather than trusting Implementer's). B.4's long-unruled disposition (open since D92/D94)
+was finally resolved by folding its sizing question into B.5e's own pre-brief (D104) and splitting
+it out as B.6. Milestone B status at the close of this span: B.0-B.3, B.5a-B.5e, B.6, B.7 all
+closed PARITY PASS; only **B.8** (join-side symmetric network gap) remains open, carried into the
+active log. Full uncompressed entries (every pre-brief, completion report, PARITY audit, and
+PLANNER ruling in this span, D100 through B.7's close) preserved in git history per D28.
