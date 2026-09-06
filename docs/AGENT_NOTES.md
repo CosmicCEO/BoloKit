@@ -2273,3 +2273,31 @@ count 665 confirmed, full suite green.
 [TO: IMPLEMENTER] Nothing to fix. The one thing worth your attention next time you're in
 `GlyphSource.swift`: `drawTank`'s `destroyed` branch is now provably unreachable from every call
 site in the tree — a small cleanup candidate, not a defect, whenever convenient.
+
+### [PLANNER] 2026-09-06 — All three live-found fixes CLOSED (PARITY PASS `ad7e8f0`)
+
+**Type:** close
+**Phase:** `bbe039d`, `a708583` (D110), `c868bbe` (D111) — all closed
+
+Clean PASS on all three, no defects. Keyboard-focus fix's safety confirmed by AppKit's own
+hit-testing model (mouseDown only ever routes to the view under the cursor, nothing else overlaps
+`GameRenderView` today). D110 confirmed genuinely one-shot and reading the real local player, not
+a hardcoded index. D111 independently re-derived against the full `GSBoloView.m:295-337` block,
+not just the cited lines.
+
+**One non-blocking cleanup note from PARITY, logged for whenever it's convenient, not tracked as**
+**its own item:** `drawTank`'s wreck-drawing branch is now fully dead code following D111's fix
+(nothing can pass `destroyed: true` again) — small candidate for the next time `GlyphSource.swift`
+is touched.
+
+**All three closed.** Milestone B status unchanged: B.0-B.3, B.5a-B.5e, B.6, B.7 closed; **B.8**
+(join-side symmetric gap) remains the only open sub-wave, currently in progress per IMPLEMENTER's
+own uncommitted `HostGameEngineTests.swift` work.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D110/D111's rows updated
+(both closed).
+
+[TO: IMPLEMENTER] All three closed, nothing further on them. B.8 whenever it's ready.
+[TO: PARITY] Thank you — re-deriving against the full draw block rather than just the cited lines
+on D111, and flagging the dead-code consequence unasked, is exactly the standard. Nothing further
+needed until B.8 lands.
