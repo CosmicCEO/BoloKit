@@ -925,3 +925,65 @@ really do set it, confirming the join one really didn't) — not a scope-creep a
 count: expect 511. Same scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits,
 no closing, no GO.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
+
+### [PARITY] 2026-09-06 — Post-commit audit: B.10 (join client's outbound CL* protocol)
+
+**Type:** post-commit audit. Unlike the standing "no Swift toolchain" limitation noted in past
+entries, this session's environment does have a working `swift test` — ran the full suite
+directly rather than hand-verifying test counts from a report.
+
+**Verdict: PASS.** All four priorities from PLANNER's activation independently confirmed.
+
+**1. `detectJoinTileEntry` vs. `enter()` (`Reference/c/client.c:5785-5857, 5913`) — branch-for-
+branch match, no gaps found:**
+- Pill branch: C gates `sendclgrabtile` on `armour==0 && !dead && new!=old`
+  (`client.c:5790-5796`); armed pills (`armour>0`) go to `superboom()`, correctly excluded
+  (out of D127 scope). `TankLocalTick.swift:650-660` matches exactly, including the separate
+  boat-drop check gated by `isWalkableNonWater(terrain) && boat && new!=old`
+  (`client.c:5802-5820`).
+- Base branch: C gates `sendclgrabtile` on `!dead && new!=old && (owner==NEUTRAL ||
+  !testalliance(...))` (`client.c:5831-5844`); boat-drop nested inside the same `new!=old`
+  block, not independently re-gated (`client.c:5846-5849`). `TankLocalTick.swift:664-673`
+  matches, including the nesting (single `guard !dead, new != old` covers both the grabTile
+  and boat-drop checks, same as C's shared block).
+- Plain-terrain group (swamp/crater/road/forest/rubble/grass): C's boat-drop
+  (`client.c:5900-5904`) and mine-plant (`client.c:5907-5911`) branches are each independently
+  gated on `!dead && new!=old` plus their own condition (boat / `LMINEMASK && mines>0`).
+  `TankLocalTick.swift:679-686` matches order and gating exactly. Wall/sea/river/forest-death/
+  boat-terrain/minedSea/mined* branches correctly excluded per D127 (return `[]` via the
+  `isWalkableNonWater` guard at line 676) — confirmed these are genuinely shell-impact/collision
+  sends (`shellTick` family) not reachable from the join path, matching the pre-brief's own
+  claim.
+- `detectJoinLMineKeyDown` vs. `keyevent()`'s LMINE branch (`client.c:6456-6516`, specifically
+  the pill-loop at 6472-6479, base-loop at 6483-6486, and minable-terrain switch at 6489-6513):
+  matches `layMineOnKeyDown`'s existing guard shape exactly (dead gate at 6470, pill exclusion
+  via `armour != ONBOARD` at 6474 — confirmed `findPill`, `GameObjects.swift:401-404`, already
+  encodes that filter — base exclusion at 6483, `mines>0` at 6506).
+
+**2. Read-only claim — independently confirmed, not just re-read.** The 10 new tests
+(`Tests/BoloKitTests/TankLocalTickTests.swift:664-798`) already assert field-level non-mutation
+per gating condition (pill owner, base owner/armour, boat flag, terrain, mine count) rather than
+whole-state equality — read every line of both `detectJoinTileEntry` (lines 644-687) and
+`detectJoinLMineKeyDown` (694-709) directly: neither takes `state` as `inout`, neither assigns to
+any `state.` property, both are pure `Pointi`/`GameState -> [JoinOutboundCL]`/`JoinOutboundCL?`
+functions. No stronger check needed given the parameter is non-`inout` — the compiler itself
+enforces no mutation is possible through this binding.
+
+**3. Prior-gap disclosure confirmed genuine.** `git show e37d0a9^:"Bolo 2026/Bolo 2026/
+GameSession.swift"` shows the join initializer (starting line 160) had no `view.onLayMineKeyDown`
+assignment, while the single-process init (line 94) sets it at line 110 and the host init
+(line 118) sets it at line 131 — both pre-dating this commit. The diff (`git show e37d0a9`) adds
+exactly one new `onLayMineKeyDown` assignment, in the third initializer only. This is a real
+pre-existing B.8-era gap, correctly disclosed rather than silently folded in as new scope.
+
+**4. Test count — confirmed independently, not from the report.** `swift test` run 3 consecutive
+times: **511 tests in 8 suites, all green**, every run. Matches the expected count exactly
+(501 → 511, +10, matching the completion report's own arithmetic).
+
+**No findings, no citation drift.** Line ranges cited in the pre-brief/completion report
+(`client.c:5785`, `5913`, `6509`) all check out against the actual function bodies read above.
+
+[TO: PLANNER] B.10 — PARITY PASS. No findings. Confirmed both the detect-and-send parity against
+`enter()`/`keyevent()`'s LMINE branch and the disclosed pre-existing `onLayMineKeyDown` gap as
+genuine, not scope creep.
+[TO: IMPLEMENTER] Nothing to fix — clean audit.
