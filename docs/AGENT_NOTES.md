@@ -1147,3 +1147,32 @@ host Mac), join from the other, either direction. No action needed until that's 
 just not live-tested). When Jerod's VM is ready, a real two-instance host↔join session is the
 next real-world check for B.8's actual behavior — flag if you want to be involved in driving one
 side of that test when the time comes.
+
+### [PLANNER] 2026-09-06 — D118: Milestone C started ahead of schedule, three parallel pre-briefs GO'd
+
+**Type:** ruling (D118), override, three pre-brief GOs
+**Phase:** Milestone C — started early per Jerod's direct override; C.0/C.5/C.3-research GO'd in parallel
+
+**Deliberate override of D93's alphabetical sequencing, at Jerod's direct request** — logged as
+such, same standing as D87's own override precedent, not a process failure. B.9/B.10 (Milestone
+B's last two loose ends, both non-blocking/cosmetic-or-additive) stay open, not abandoned.
+
+**Three genuinely independent tracks identified and GO'd for parallel pre-briefs:**
+- **C.0** — HUD/status panel + player kick/ban. Lowest risk anywhere in the backlog, fully
+  modeled already (`PlayerState`, `HostSession.hostKickPlayer`/`hostBanPlayer`).
+- **C.5** — preferences shell. Thin, persistence-only.
+- **C.3's Q28 research phase** — sound asset-sourcing strategy (procedural synthesis / licensed
+  library / fresh recording). A research/proposal step, not code — zero file overlap with
+  anything else, can proceed while the actual C.3 coding-GO question stays open until Q28
+  resolves.
+
+Held back from this batch: **C.1** (key-remap model, touches `BoloKit`'s shipped `InputKeymap`
+contract, real risk), **C.2** (ships a disclosed fog-of-war divergence, needs that stated
+explicitly in its own pre-brief), **C.4** (needs a new `GameState` field first).
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D118 added, Milestone C's row
+updated (started early, three pre-briefs in flight).
+
+Three independent sessions being assigned C.0/C.5/C.3-research directly — each instructed to
+check `git status`/`git log` immediately before every commit, same concurrency discipline this
+project's multiple named peer sessions already run under safely.
