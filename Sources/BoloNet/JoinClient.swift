@@ -125,7 +125,7 @@ public enum JoinClientError: Error, Sendable, Equatable {
     /// `NWError.posix(.ECONNRESET)` -- a clean 1:1 mapping, not empirically triggered.
     case connectionReset
 
-    fileprivate init(rejecting status: JoinStatusByte) {
+    init(rejecting status: JoinStatusByte) {
         switch status {
         case .badVersion: self = .badVersion
         case .disallow: self = .disallow
@@ -144,7 +144,7 @@ public enum JoinClientError: Error, Sendable, Equatable {
     /// Maps a thrown `NWError`'s POSIX case to the matching network-error case above, or `nil`
     /// if it's some other `NWError`/POSIX code this join path doesn't specifically distinguish
     /// (falls through to the generic `error` rethrow in `joinClient`, same as before B.3).
-    fileprivate init?(posix error: Error) {
+    init?(posix error: Error) {
         guard case .posix(let code) = error as? NWError else { return nil }
         switch code {
         case .ECONNREFUSED: self = .connectionRefused
@@ -164,7 +164,10 @@ public enum JoinClientError: Error, Sendable, Equatable {
 /// a best-effort cancellation signal into the abandoned connection attempt, even though this
 /// file's header already established `withNetworkConnection` doesn't reliably act on it for a
 /// black-holed route.
-private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+/// **B.8 (D113):** dropped from `private` to file-scope-only `internal` so `TCPSession.join`
+/// (`TCPSession.swift`) can reuse the identical connect-phase-timeout race this file's own header
+/// already justifies at length -- the reasoning doesn't change just because the caller moved.
+final class ResumeOnce<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var didResume = false
     private let continuation: CheckedContinuation<T, Error>
@@ -204,7 +207,7 @@ private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
 /// `ResumeOnce`) actually returns as soon as one finishes -- the loser keeps running detached in
 /// the background until Network.framework's own internal state eventually resolves it, exactly
 /// as a real caller closing/abandoning a slow connection attempt would have to work anyway.
-private func withConnectTimeout<T: Sendable>(
+func withConnectTimeout<T: Sendable>(
     seconds: Double, _ body: @escaping @Sendable () async throws -> T
 ) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in
@@ -234,69 +237,25 @@ private func withConnectTimeout<T: Sendable>(
 /// `client.c:661-680`) -- loading those bytes into a real map
 /// (`BMap.swift`'s decoder, Wave 4.1) is the caller's job, not this
 /// function's.
+///
+/// **B.8 (D113):** the real handshake wire logic moved to `TCPSession.join`
+/// (`TCPSession.swift`) -- a join-side live network loop has to keep using the *same* accepted
+/// connection the handshake ran on (the host's `HostSessionTable` slot is tied to that specific
+/// connection; a fresh second one looks like an unauthenticated new join attempt, not a
+/// resumption), which this function's own `withNetworkConnection`-scoped transport can't support
+/// -- that helper closes the connection the moment its closure returns. This function is now a
+/// thin wrapper that discards the live session, preserving its own existing signature/behavior
+/// (and every test in `JoinClientTests.swift`) unchanged for whatever still only needs the
+/// one-shot handshake result.
 public func joinClient(
     host: String, port: UInt16, name: String, pass: String,
     connectTimeoutSeconds: Double = 15,
     onProgress: @escaping @Sendable (JoinProgress) -> Void = { _ in }
 ) async throws -> (preamble: BoloPreamble, mapData: [UInt8]) {
-    let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!)
-
-    onProgress(.connecting)
-    let result: (preamble: BoloPreamble, mapData: [UInt8])
-    do {
-        result = try await withConnectTimeout(seconds: connectTimeoutSeconds) {
-            // `outcome` is local to this closure -- it's the one child task `withConnectTimeout`
-            // races against its timeout sibling, so nothing else ever touches it concurrently
-            // (unlike a var declared in `joinClient`'s own scope and captured by both tasks,
-            // which is what the compiler correctly rejected here originally).
-            var outcome: Result<(BoloPreamble, [UInt8]), Error>?
-
-            try await withNetworkConnection(to: endpoint, using: { TCP() }) { connection in
-                do {
-                    onProgress(.sendingJoin)
-                    let joinPreamble = JoinPreamble(name: name, pass: pass)
-                    try await connection.send(joinPreamble.encode())
-
-                    let statusMessage = try await connection.receive(exactly: 1)
-                    guard let statusByte = statusMessage.content.first,
-                          let status = JoinStatusByte(rawValue: statusByte)
-                    else {
-                        outcome = .failure(JoinClientError.serverProtocolError)
-                        return
-                    }
-                    guard status == .sendingPreamble else {
-                        outcome = .failure(JoinClientError(rejecting: status))
-                        return
-                    }
-
-                    onProgress(.receivingPreamble)
-                    let preambleMessage = try await connection.receive(exactly: BoloPreamble.wireSize)
-                    guard let preamble = BoloPreamble.decode(Array(preambleMessage.content)) else {
-                        outcome = .failure(JoinClientError.malformedPreamble)
-                        return
-                    }
-
-                    onProgress(.receivingMap)
-                    let mapMessage = try await connection.receive(exactly: Int(preamble.mapLength))
-                    outcome = .success((preamble, Array(mapMessage.content)))
-                } catch {
-                    // A reset (or, in principle, any other POSIX code this join path
-                    // recognizes) can happen mid-handshake too, not just while connecting --
-                    // classify it here the same way the outer catch does for connect-phase
-                    // failures, rather than only mapping half the cases.
-                    outcome = .failure(JoinClientError(posix: error) ?? error)
-                }
-            }
-
-            guard let outcome else { throw JoinClientError.connectionClosedEarly }
-            return try outcome.get()
-        }
-    } catch let error as JoinClientError {
-        throw error
-    } catch {
-        throw JoinClientError(posix: error) ?? error
-    }
-
-    onProgress(.success)
-    return result
+    let result = try await TCPSession.join(
+        host: host, port: port, name: name, pass: pass,
+        connectTimeoutSeconds: connectTimeoutSeconds, onProgress: onProgress
+    )
+    result.session.cancel()
+    return (result.preamble, result.mapData)
 }

@@ -186,6 +186,44 @@ private func samplePlayerEntries(localName: String) -> [BoloPreamble.PlayerEntry
     #expect(result.mapData == mapBytes)
 }
 
+// B.8 (D113): the whole reason the handshake moved from `joinClient`'s own
+// `withNetworkConnection`-scoped transport into `TCPSession.join` -- the live network loop has to
+// keep receiving on the *same* connection the handshake used, not a fresh one. Proves that
+// directly: after the handshake, the returned `session` receives one more real `SR*` message
+// (`SRPause`) over the identical connection, exactly the shape B.8's own receive loop needs.
+@Test func tcpSessionJoinReturnsALiveSessionUsableForFurtherReceives() async throws {
+    let (listener, port, waiter) = try await startLoopbackListener()
+    defer { listener.cancel() }
+
+    let mapBytes: [UInt8] = [9, 8, 7]
+
+    async let serverScript: Void = {
+        let connection = await waiter.wait()
+        _ = try await receiveExactly(connection, JoinPreamble.wireSize)
+        try await sendBytes(connection, [JoinStatusByte.sendingPreamble.rawValue])
+        let preamble = BoloPreamble(
+            player: 0, hiddenMines: 0, pause: 0, dominationType: 0, baseControl: 60,
+            players: samplePlayerEntries(localName: "Alice"), mapLength: UInt32(mapBytes.count)
+        )
+        try await sendBytes(connection, preamble.encode())
+        try await sendBytes(connection, mapBytes)
+        // The extra message: proves the connection `TCPSession.join` hands back is still alive
+        // and still this exact same one, not a coincidentally-successful fresh reconnect.
+        try await sendBytes(connection, SRPause(pause: 255).encode())
+    }()
+
+    let result = try await TCPSession.join(host: "127.0.0.1", port: port, name: "Alice", pass: "secret")
+    try await serverScript
+    defer { result.session.cancel() }
+
+    #expect(result.mapData == mapBytes)
+
+    var state = GameState()
+    let opcode = try await result.session.receiveAndDispatchOne(state: &state)
+    #expect(opcode == .pause)
+    #expect(state.clientPauseDisplaySeconds == -1)
+}
+
 @Test func joinClientThrowsSpecificErrorForEachRejectionStatus() async throws {
     let cases: [(JoinStatusByte, JoinClientError)] = [
         (.badVersion, .badVersion),

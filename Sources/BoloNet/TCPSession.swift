@@ -345,4 +345,74 @@ public final class TCPSession: @unchecked Sendable {
     public func cancel() {
         connection.cancel()
     }
+
+    // MARK: - Join handshake (B.8/D113)
+
+    /// Performs the full join handshake against `host:port` and returns the still-live session
+    /// alongside the decoded `BoloPreamble` + raw map bytes -- see this type's own file header
+    /// and `joinClient`'s doc comment (`JoinClient.swift`) for why the handshake had to move
+    /// here: a join-side live network loop must keep receiving on the *same* accepted connection
+    /// the handshake used, not a fresh one, and `TCPSession` (not `withNetworkConnection`'s
+    /// auto-closing scope) is the type built to hold a connection open past one call.
+    ///
+    /// Ported wire logic 1:1 from `joinClient`'s own original body (same protocol steps, same
+    /// `JoinClientError`/`JoinProgress` taxonomy) -- only the transport underneath changed.
+    ///
+    /// **Known, disclosed, narrow leak risk, same shape already accepted in `withConnectTimeout`'s**
+    /// **own doc comment:** if the connect+handshake loses the race against `connectTimeoutSeconds`
+    /// but keeps running in the background and *later* succeeds, the resulting `TCPSession`'s
+    /// connection is never cancelled -- nothing is listening for it once the timeout has already
+    /// resumed the continuation. The original `joinClient` didn't have this specific leak (a lost
+    /// race there left a `withNetworkConnection`-scoped closure running, which self-closes its
+    /// connection on return regardless), so this is a new-but-narrow consequence of the transport
+    /// change, not a pre-existing one carried over. Not fixed here -- flagged for Planner.
+    public static func join(
+        host: String, port: UInt16, name: String, pass: String,
+        connectTimeoutSeconds: Double = 15,
+        onProgress: @escaping @Sendable (JoinProgress) -> Void = { _ in }
+    ) async throws -> (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8]) {
+        onProgress(.connecting)
+        do {
+            return try await withConnectTimeout(seconds: connectTimeoutSeconds) {
+                // Not inside the `do` below on purpose -- if connecting itself throws, there is
+                // no live session yet for that block's `catch` to cancel.
+                let session = try await TCPSession(host: host, port: port)
+                do {
+                    onProgress(.sendingJoin)
+                    let joinPreamble = JoinPreamble(name: name, pass: pass)
+                    try await session.send(joinPreamble.encode())
+
+                    let statusByte = try await session.receiveOneByte()
+                    guard let status = JoinStatusByte(rawValue: statusByte) else {
+                        throw JoinClientError.serverProtocolError
+                    }
+                    guard status == .sendingPreamble else {
+                        throw JoinClientError(rejecting: status)
+                    }
+
+                    onProgress(.receivingPreamble)
+                    let preambleBytes = try await session.receiveExactly(BoloPreamble.wireSize)
+                    guard let preamble = BoloPreamble.decode(preambleBytes) else {
+                        throw JoinClientError.malformedPreamble
+                    }
+
+                    onProgress(.receivingMap)
+                    let mapData = try await session.receiveExactly(Int(preamble.mapLength))
+
+                    onProgress(.success)
+                    return (session, preamble, mapData)
+                } catch let error as JoinClientError {
+                    session.cancel()
+                    throw error
+                } catch {
+                    session.cancel()
+                    throw JoinClientError(posix: error) ?? error
+                }
+            }
+        } catch let error as JoinClientError {
+            throw error
+        } catch {
+            throw JoinClientError(posix: error) ?? error
+        }
+    }
 }
