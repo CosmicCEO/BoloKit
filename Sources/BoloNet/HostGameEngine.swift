@@ -66,6 +66,11 @@ enum HostEngineEvent {
     case localInputChanged(set: InputFlags, clear: InputFlags)
     /// Same reasoning as `localInputChanged` above, for `layMineOnKeyDown`'s separate call.
     case localLayMineKeyDown
+    /// **C.0 (D119):** host-only kick/ban, same reasoning as `localInputChanged` above --
+    /// `hostKickPlayer`/`hostBanPlayer` (`HostSession.swift:323,345`) take `state: inout GameState`,
+    /// so a UI button must route through the merged stream rather than calling either directly.
+    case kickPlayer(player: Int)
+    case banPlayer(player: Int)
     case tick
 }
 
@@ -187,6 +192,18 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation?.yield(.localLayMineKeyDown)
     }
 
+    /// **C.0 (D119):** host-only kick, routed through the merged stream -- see
+    /// `HostEngineEvent.kickPlayer`'s own doc comment for why this can't call `hostKickPlayer`
+    /// directly.
+    public func submitKickPlayer(_ player: Int) {
+        continuation?.yield(.kickPlayer(player: player))
+    }
+
+    /// Same reasoning as `submitKickPlayer` above, for `hostBanPlayer`.
+    public func submitBanPlayer(_ player: Int) {
+        continuation?.yield(.banPlayer(player: player))
+    }
+
     /// The single consumer -- the only place in this type that ever mutates `state`.
     private func handle(_ event: HostEngineEvent) async {
         switch event {
@@ -244,6 +261,12 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .localLayMineKeyDown:
             layMineOnKeyDown(state: &state)
+
+        case .kickPlayer(let player):
+            await hostKickPlayer(player: player, state: &state, table: table)
+
+        case .banPlayer(let player):
+            await hostBanPlayer(player: player, state: &state, table: table)
 
         case .tick:
             await tick()

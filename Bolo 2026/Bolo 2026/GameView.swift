@@ -38,6 +38,7 @@ struct GameView: View {
     let notice: String?
 
     @State private var session: GameSession
+    @State private var showingStatus = false
 
     init(initialState: GameState, onQuitToMenu: @escaping () -> Void, notice: String? = nil) {
         self.onQuitToMenu = onQuitToMenu
@@ -94,6 +95,7 @@ struct GameView: View {
                     Text(notice).foregroundStyle(.orange)
                 }
                 Spacer()
+                Button("Status") { showingStatus = true }
                 Button("Quit to Menu") {
                     Task { @MainActor in
                         await session.stop()
@@ -102,6 +104,9 @@ struct GameView: View {
                 }
             }
             .padding(8)
+        }
+        .sheet(isPresented: $showingStatus) {
+            PlayerStatusView(session: session, onDone: { showingStatus = false })
         }
     }
 }

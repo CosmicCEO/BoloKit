@@ -178,6 +178,25 @@ public final class GameSession {
         }
     }
 
+    /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no
+    /// authority to kick/ban anyone (matching the reference: only the server-role menu ever calls
+    /// `kickplayer()`/`banplayer()`). `PlayerStatusView`'s kick/ban buttons are gated on this
+    /// rather than on `hostEngine` itself, keeping `hostEngine`'s own visibility `private` --
+    /// `GameSession` stays the one place that knows which of its three paths is active.
+    public var canKickBan: Bool { hostEngine != nil }
+
+    /// See `canKickBan` above -- routes through `HostGameEngine`'s own merged-event-stream submit
+    /// methods rather than mutating `state` directly, same reasoning as `onInputFlagsChange`'s
+    /// host-path branch in the `hostEngine:` initializer.
+    public func kickPlayer(_ player: Int) {
+        hostEngine?.submitKickPlayer(player)
+    }
+
+    /// Same reasoning as `kickPlayer` above, for `submitBanPlayer`.
+    public func banPlayer(_ player: Int) {
+        hostEngine?.submitBanPlayer(player)
+    }
+
     public func start() {
         if let hostEngine {
             hostEngine.start()

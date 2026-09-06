@@ -600,6 +600,53 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
     #expect(engine.state.players[0].inputFlags.contains(.turnL))
 }
 
+// C.0 (D119): `submitKickPlayer`/`submitBanPlayer` are the sanctioned entry points for a UI
+// button to kick/ban a connected player -- same "route through the merged stream, never touch
+// `state` directly" reasoning as `submitLocalInputChange` above. This proves the kicked player's
+// slot is actually disconnected (mirrors `hostKickPlayer`'s own contract).
+@Test func hostGameEngineSubmitKickPlayerDisconnectsThePlayer() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Kickee", pass: "").encode())
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+    #expect(await engine.table.isConnected(1))
+
+    engine.submitKickPlayer(1)
+    try await waitForCondition(timeout: 3) { await !(engine.table.isConnected(1)) }
+    #expect(await engine.table.isConnected(1) == false)
+}
+
+// C.0 (D119): same shape as the kick test above, for `submitBanPlayer`/`hostBanPlayer`.
+@Test func hostGameEngineSubmitBanPlayerDisconnectsThePlayer() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Bannee", pass: "").encode())
+    try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+    #expect(await engine.table.isConnected(1))
+
+    engine.submitBanPlayer(1)
+    try await waitForCondition(timeout: 3) { await !(engine.table.isConnected(1)) }
+    #expect(await engine.table.isConnected(1) == false)
+}
+
 // B.7 (D108): `onTickRendered` is the app's only sanctioned way to read a live `state` snapshot
 // off the engine -- fired every tick with a value-type copy, never the live `state` itself.
 @Test func hostGameEngineFiresOnTickRenderedEveryTick() async throws {

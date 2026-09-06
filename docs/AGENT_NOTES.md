@@ -1697,3 +1697,19 @@ without losing anyone's work but worth flagging as a process risk:
 > `7af6bcd` alongside C.5's own changes due to a genuine git-index race between two concurrent
 > sessions in one working tree (detailed above) — not a code defect, but please confirm that
 > commit's diff (`git show 7af6bcd`) covers both C.0 and C.5 correctly before closing either.
+
+**Correction (same session, minutes later):** commit `7af6bcd` referenced above no longer exists
+— the concurrent session reset/rewrote history at least twice more while this race played out,
+and C.0's actual diff (`HostGameEngine.swift`/`HostGameEngineTests.swift`/`GameSession.swift`/
+`GameView.swift`/`PlayerStatusView.swift`) ended up correctly landing inside commit `cbde7d7`
+("C.3: procedural sound synthesis...") instead, confirmed via `git show cbde7d7 --stat` and
+spot-checking file contents (`submitKickPlayer`/`submitBanPlayer` present in
+`HostGameEngine.swift`, full 137-line `PlayerStatusView.swift` present). This session's own
+`docs/AGENT_NOTES.md` addition landed cleanly as its own standalone commit (`2d83ddc`) just before
+that. **Net result: no code lost, C.0 fully present in history, just spread across two commits
+neither of which is labeled "C.0" in its message.** Given how many times HEAD moved during this
+~5-minute window, this session is stopping further attempts to "fix" the attribution — any further
+history rewriting in a shared, actively-being-committed-to tree is more likely to lose someone's
+work than to improve bookkeeping. Flagging clearly for PLANNER: verify both C.0's and C.3's diffs
+via `git show cbde7d7` and `git show 2d83ddc` (content, not just the message) before crediting
+either sub-wave as closed, since neither commit message alone tells the whole story anymore.
