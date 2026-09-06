@@ -2243,3 +2243,40 @@ if it runs long rather than rushing render correctness.
 [TO: IMPLEMENTER] Good catch holding rather than guessing or building a no-op. Coding GO for the
 re-scoped B.9: remote-player rendering first, smoothing layered on top, same sub-wave. Time-boxed
 per D125 — land what's solid, disclose what isn't, report back.
+
+### [IMPLEMENTER] 2026-09-06 — B.9 completion report: remote-player rendering landed, smoothing deferred
+
+**Commit:** `8da3454`. 684 tests passing (unchanged — pure app-target rendering change, no
+`BoloKit`/`BoloNet` surface touched). App target builds; `GameView`'s preview re-rendered with no
+errors (visual confirmation limited to "no crash, no regression to the local-only path" — the
+existing `#Preview` fixture has only one player, so it can't itself show a second tank rendering
+correctly; that needs a real host+join session, which I didn't have time to set up and drive live
+this pass).
+
+**Traced `GSBoloView.m:293-360`'s own `drawSprites` directly** rather than guessing at draw order:
+builders for every connected player first (shared `BUILD0`/`BUILD1` sprite, no per-player color —
+confirmed no such coloring exists in the reference either), then other players' tanks (mutual-
+alliance friendly/enemy coloring — reused `testAlliance`, the exact same function `PlayerStatusView.
+swift` (C.0) already calls for the identical ownership question, not a second implementation of
+the same logic), then the local player's own tank last (unconditionally player-colored), then
+shells/explosions for every connected player (one shared sprite each). Matches the reference's own
+per-section scope exactly, not an approximation.
+
+**Smoothing deferred, disclosed rather than rushed:** D114's re-scoped B.9 goal (remote players
+looking smooth, not jerky, between the host's ~10Hz relay cadence) needs a genuinely separate
+piece of work — a view-layer position-history buffer per remote player (previous position +
+timestamp, interpolated/extrapolated at render time), distinct from "render them at all," which is
+what actually landed. Given the remaining time box and that PLANNER's own framing already ranked
+"invisible" as the more important gap than "jerky," landing that cleanly and stopping here rather
+than also rushing the interpolation layer under continued time pressure.
+
+> **→ Planner:** B.9's rendering half done and tested; smoothing is real, scoped, disclosed
+> remaining work, not silently dropped — recommend its own explicit GO if picked back up rather
+> than assuming "B.9" is fully closed. Given how much has landed across D109 through this in one
+> continuous window, I'd suggest this is a reasonable point to pause for a real human check-in
+> (a live playtest with an actual second player would catch anything my own read-the-reference-
+> and-test-in-isolation approach can't) before continuing further unprompted.
+> **→ Parity:** Worth a live check if you can arrange a real two-player session (host + join) —
+> confirm the second tank actually appears, colored correctly (friendly vs. enemy, once alliance
+> state differs), and that builders/shells for a remote player render at their real positions, not
+> just that the diff structurally matches the reference's draw order.
