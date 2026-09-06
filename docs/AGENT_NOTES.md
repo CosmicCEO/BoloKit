@@ -1112,3 +1112,102 @@ not independently at the SwiftUI layer).
 > already surfaced: `HostGameView.swift` has zero live networking at all today, unlike
 > `JoinGameView.swift`). Not proposing to fix that gap now — just disclosing it since it's
 > adjacent to what B.6 touched.
+
+### [IMPLEMENTER] 2026-09-05 — B.5e deeper pre-brief (D105 Part 1): migration mechanics
+
+**Type:** deeper pre-brief per your instruction, still not requesting a coding GO.
+
+## Which fields become `PlayerState` members — 6 of 17, not 4 and not all 17
+
+Reread every one of `LocalPlayerState`'s 17 fields (`GameObjects.swift:298-321`) against which
+functions touch them, classified by whether the touching function is gated to `state.localPlayer`
+(safe as a singleton) or reached from an **ungated** `for player in state.players.indices` loop
+(unsafe — real clobbering). One structural finding narrows this a lot: `tankMoveTick`
+(`TankTick.swift`) IS in a per-player loop too, but has its own `guard player ==
+state.localPlayer else { return }` inside the dead-tank branch, *before* any `state.local` touch —
+so it's safe despite the outer loop. `builderTick` (`BuilderTick.swift:769`) has no such gate at
+all — called unconditionally for every connected player, straight into `readyTick`/`gotoTick`/
+`arriveAtTarget`/`returnTick`, which read/write `state.local` directly.
+
+**Result: 6 fields must migrate — all and only the ones `builderTick`'s ungated chain touches.**
+`mines`/`trees` (the general tank resource counts, not just the builder-specific sub-counters)
+are *also* touched by `BuilderTick.swift` (building/planting costs are spent from this pool) — the
+original B.5e pre-brief's "4 fields" undercounted this.
+
+| Field | Site count | Unsafe (must fix) | Safe elsewhere (unaffected) |
+|---|---|---|---|
+| `builderTask` | 19 | `BuilderTick.swift` | `RecvSR.swift` (gated), `killBuilder` |
+| `builderMines` | 12 | `BuilderTick.swift` | `RecvSR.swift` (gated), `killBuilder` |
+| `builderTrees` | 24 | `BuilderTick.swift` | `RecvSR.swift` (gated), `killBuilder` |
+| `builderPill` | 16 | `BuilderTick.swift` | `RecvSR.swift` (gated), `killBuilder`, `killTank` |
+| `mines` | ~21 | `BuilderTick.swift:534,541,710,715` | `MineChain.swift`, `TankLocalTick.swift` refuel/mine-lay (gated), `Spawn.swift` (only reached via `tankMoveTick`'s gated branch) |
+| `trees` | ~21 | `BuilderTick.swift:447-716` (~18 sites) | `Spawn.swift` (gated) |
+
+**11 fields confirmed safe, staying a true singleton, no migration:** `armour`, `shells` (the
+int ammo count — **note for whoever codes this:** `PlayerState` already has an unrelated
+`shells: [Shell]` field, in-flight projectiles; the names don't collide today because the count
+isn't migrating, but flag this explicitly in the diff so nobody confuses the two later), `range`,
+`respawnCounter`, `spawned`, `drainCounter`, `refueling`, `refuelingBase`, `refuelingCounter`,
+`shellCounter`, `deaths`. All touched exclusively by `tankLocalTick`'s own body or `tankMoveTick`'s
+gated branch (including `spawn(state:)`, which takes no player parameter and is only ever reached
+there).
+
+**No naming collisions** — checked `PlayerState`'s current members (`GameObjects.swift:190-226`);
+none of the 6 target names exist there yet.
+
+**`PlayerState` members, not an array:** `PlayerState` already IS the per-player array
+(`GameState.players: [PlayerState]`) — these 6 fields become ordinary members on it, exactly like
+`builderStatus`/`builder`/`builderTarget` already are. No new array type needed; `LocalPlayerState`
+stays alive, just loses these 6 fields, for the other 11 that remain genuinely singleton.
+
+## Total scope: ~112 production call sites, concentrated in one file, plus real test-side impact
+
+Bulk is `BuilderTick.swift`'s own state machine (`readyTick`/`gotoTick`/`arriveAtTarget`/
+`returnTick`, its 7 private terrain-action helpers at lines 233-427 — none currently take a
+`player: Int` parameter, all need one). The remaining ~13 sites are mechanical
+`state.local.X` → `state.players[player].X` swaps where `player` already resolves to
+`state.localPlayer` locally (`RecvSR.swift`, `killBuilder`, `killTank`) — same shape as the
+`onDropPills`→`onShouldBroadcastDropPill` rename's mechanical sites in B.5d, not a design risk.
+
+**Test side, sized just now, not yet included in the 112:** 6 test files reference the migrating
+fields directly (`ShellTickTests.swift`, `GameObjectsTests.swift`, `TankLocalTickTests.swift`,
+`BuilderTickTests.swift`, `RecvSRTests.swift`, `HostSessionTests.swift`); 50
+`LocalPlayerState(...)` construction sites total across `Tests/` (not all touch the 6 migrating
+fields, but each needs checking); 40 sites read `state.local.mines`/`.trees` directly in test
+assertions/setup. `BuilderTickTests.swift` will absorb most of this, matching where the production
+code concentration is.
+
+## Proposed build-green ordering
+
+1. Add the 6 fields to `PlayerState` (matching `LocalPlayerState`'s current defaults) — pure
+   addition, build stays green, nothing reads them yet.
+2. Migrate `BuilderTick.swift` entirely: add `player: Int` to the 7 private helpers, switch every
+   `state.local.<field>` read/write (for the 6 migrating fields only) to
+   `state.players[player].<field>` throughout `readyTick`/`gotoTick`/`arriveAtTarget`/
+   `returnTick`/the 7 helpers. Build stays green — `LocalPlayerState`'s old fields still exist,
+   just unused by this file now.
+3. Migrate the ~13 remaining production sites (`RecvSR.swift`, `killBuilder`, `killTank`) — same
+   mechanical swap, `player` already in scope. Build stays green.
+4. **Remove the 6 fields from `LocalPlayerState`'s struct + init.** This is the forcing function:
+   if any production site was missed in steps 2-3, the compiler catches it immediately here, not
+   silently. Fix any stragglers.
+5. Fix every test-side compile error the removal surfaces (the ~6 files above) — construction
+   sites move the 6 fields from `LocalPlayerState(...)` to `PlayerState(...)`, assertions move from
+   `state.local.X` to `state.players[i].X`.
+6. Add the actual fix this migration exists for: generalize `killSquareBuilder`/`killPointBuilder`
+   to check every connected player's builder at the exploding tile/point, not just
+   `state.localPlayer`'s — this was blocked on steps 1-5 landing first, since `killBuilder` (which
+   both call) needed the 6 fields to be per-player before it could safely operate on a
+   non-`state.localPlayer` builder.
+7. Full test suite, negative-controlled per usual (temporarily break the new
+   `killSquareBuilder`/`killPointBuilder` generality, confirm a new regression test catches it,
+   restore).
+
+Steps 1-5 are mechanical and low-risk (the same shape of rename/relocate this project has done
+repeatedly); step 6 is the one genuinely new logic change, and where the bonus clobbering-bug fix
+(builderTick's per-player loop finally reading real per-player state) falls out for free as a
+side effect of steps 1-5, not a separate change.
+
+> **→ Planner:** Scope confirmed at 6 fields / ~112 production sites + real test-side impact (6
+> files, ~90 combined construction/assertion sites needing review), not the original "4 fields"
+> estimate. Build-green ordering and test strategy above. Awaiting coding GO.
