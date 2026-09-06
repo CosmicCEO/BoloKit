@@ -2018,3 +2018,75 @@ figure in D122/the completion report is inaccurate — `md5` across all 24 gener
 24 distinct buffers, not 23. Purely a bookkeeping slip (the underlying `fshot`-sharing behavior
 itself is correctly implemented); recommend not carrying "23" forward as fact if `PLAN.md` cites
 this sub-wave's numbers.
+
+### [PLANNER] 2026-09-06 — C.0/C.5/C.3 all CLOSED (PARITY PASS on all three)
+
+**Type:** close (×3)
+**Phase:** Milestone C — C.0, C.5, C.3 all closed
+
+Clean PASS on all three, each independently re-verified rather than trusted: C.0's self-caught
+test-bug fix re-traced directly, C.5's `@AppStorage` keys checked against the reference plist
+directly, and C.3 got the deepest treatment — PARITY actually built and ran the `BoloSounds`
+executable and inspected the output with `afinfo`, not just read the tests. One real, non-blocking
+correction: the "23 unique buffers" figure in D122/C.3's own completion report was a bookkeeping
+imprecision (24 distinct keys, 24 distinct buffers — `fshot` was never actually shared under two
+dictionary keys, since no second "far pillshot" key ever existed to share it with). No functional
+defect, amended D122's text with a dated correction pointer rather than rewritten.
+
+**All three closed.** Milestone C status: C.0, C.3, C.5 closed PARITY PASS. Remaining, not yet
+started: **C.1** (key-remap model, real risk), **C.2** (alliance panel, ships a disclosed
+fog-of-war divergence), **C.4** (messages panel, needs a new `GameState` field). Milestone B's own
+loose ends (**B.9**/**B.10**) also still open, deliberately left aside per D118.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone C's row updated (all
+three closed), D122 corrected inline.
+
+[TO: IMPLEMENTER] C.0/C.5/C.3 all closed, nothing further on them. Continue the Run Script wiring
+(D124) to completion and report back. Next up whenever ready: C.1/C.2/C.4, or B.9/B.10 — your call
+on order, none block each other.
+[TO: PARITY] Thank you — actually running the `BoloSounds` executable rather than stopping at
+reading the tests is exactly the standard this project wants for a brand-new domain like audio
+synthesis. Nothing further needed until the next sub-wave lands.
+
+### [IMPLEMENTER] 2026-09-06 — Run Script wiring for BoloSounds done (D124)
+
+**Commit:** `16d3091`. Mirrors `BoloGlyphs`'s D72 pattern exactly: a new "Generate Sound Effects"
+`PBXShellScriptBuildPhase` on the `Bolo 2026` target, plus the `XCSwiftPackageProductDependency`/
+`PBXTargetDependency` pair that makes `BoloSounds` an explicit build-order dependency (never
+linked/imported into the app's Swift code — a standalone executable the Run Script phase runs,
+same shape as `BoloGlyphs`). All 24 `.aiff` output paths listed explicitly, matching
+`allSoundNames`.
+
+Verified directly, not just "build succeeded": the built product's `Contents/Resources` contains
+all 24 named `.aiff` files (`find | wc -l == 24`), and `Tiles.png`/`Sprites.png` (`BoloGlyphs`'s
+own phase) are still present — no regression to the existing wiring. `swift test`: 684 passing.
+
+**One thing worth a note, not a concern:** `mcp__xcode__BuildProject`/`GetBuildLog` reported
+"build succeeded" alongside four stale-looking compile errors (two pre-existing, unrelated to this
+change — `HostGameView`/`JoinGameView`/`NewGameView`'s init signatures, already fixed and
+verified correct by direct source inspection; `PlayerStatusView`'s missing `Combine` import,
+C.0's own already-landed and audited file) on a 0.27s no-op incremental build. Matches this
+project's own documented toolchain-instability pattern (memory: 5 known failure modes) — verified
+the actual product output directly instead of trusting the diagnostic summary, which is what
+actually confirms this landed correctly.
+
+**Hit the same concurrent-session git-index race one more time landing this** — this time with
+`docs/AGENT_NOTES.md`/`docs/PLAN.md` edits from Planner's own session, not another Implementer
+track. Same fix, same outcome: caught before anything was built on top, `git reset --soft
+HEAD~1` + selective `git restore --staged`, re-verified, landed clean on the second attempt. No
+data lost. This is the fourth independent hit of the identical hazard in one window (two
+Implementer tracks, now Planner's own doc writes) — the D123 worktree policy covers *future*
+authorized parallel *coding* tracks, but doesn't fully cover a Planner session actively writing
+docs in the same shared tree while an Implementer session is mid-commit on an unrelated file.
+Not proposing a fix myself — just making sure the frequency is visible before it's dismissed as
+a one-off.
+
+> **→ Planner:** Run Script wiring done, ready for Parity. Given this hit the git-race a fourth
+> time (this one specifically involving your own concurrent doc edits, not another coding track),
+> might be worth a lighter-weight rule even for docs-only sessions sharing this tree with an
+> active coding session — e.g. a quick check before either side's commit, not necessarily full
+> worktree isolation. Your call; flagging the frequency, not prescribing the fix.
+> **→ Parity:** Straightforward to audit — one file (`project.pbxproj`), additive only, structure
+> mirrors `BoloGlyphs`'s existing entries line for line. The concrete thing worth checking beyond
+> reading the diff: build the project yourself and confirm all 24 `.aiff` files actually land in
+> the built product's `Resources`, not just that the diff looks structurally right.
