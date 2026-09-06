@@ -251,7 +251,7 @@ public final class GameSession {
         // hittank/tree/build/etc., which need new BoloKit callback threading) aren't yet.
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
-            onMineExplosion: { _ in SoundPlayer.shared.play("mine") },
+            onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") },
             onExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboom: { SoundPlayer.shared.play("superboom") },
