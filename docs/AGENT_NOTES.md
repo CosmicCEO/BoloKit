@@ -1369,3 +1369,106 @@ actually exists to consume it.
 > existing hardcoded literals to read the same keys). No architecture decision needs a ruling;
 > the only discretionary call (bundling the mute toggle ahead of C.3) is called out above for
 > visibility, not because it blocks coding.
+
+### [IMPLEMENTER] 2026-09-06 — C.3/Q28 research: sound asset-sourcing strategy
+
+**Type:** research/proposal only, no code written
+**Phase:** Milestone C, C.3's Q28 research track (one of three parallel pre-briefs GO'd under D118)
+
+**What the reference actually does** — read directly, `GSXBoloController.m:357-490` (pool setup)
+and the `play`-call sites near `3620-3737`: 24 named `.aiff` effects
+(`bubbles`/`build`/`builderdeath`/`explosion`/`fbuild`/`fbuilderdeath`/`fexplosion`/`fhittank`/
+`fhitterrain`/`fhittree`/`fshot`/`fsink`/`fsuperboom`/`ftree`/`hittank`/`hitterrain`/`hittree`/
+`mine`/`msgreceived`/`pillshot`/`sink`/`superboom`/`tankshot`/`tree`), each loaded once into an
+`NSMutableArray` of 1-6 `NSSound` copies (round-robin pool, sized by how often the event can fire
+concurrently — `explosionsounds`/`farexplosionsounds`/`pillshotsounds` get 6 copies, `bubbles`/
+`sink`/`superboom` get just 1) and played fire-and-forget via `[NSSound play]`. **All 24 are short
+one-shot effects — impacts, explosions, mechanical clicks/builds, a sink gurgle, a message-arrived
+chime. No looping/ambient/engine-idle sound and no voice anywhere in this list.** The `far*`
+variants (10 of the 24) are just distance-muffled versions of their near counterpart played when
+the event is off-screen — same event, not a distinct sound design problem.
+
+**Classification (all 24), for procedural feasibility:**
+- Explosion/impact family (`explosion`/`fexplosion`/`superboom`/`fsuperboom`/`hittank`/`fhittank`/
+  `hitterrain`/`fhitterrain`/`hittree`/`fhittree`/`mine`/`tankshot`/`fshot`/`pillshot`) — noise
+  bursts with a fast-decay envelope, optionally frequency-swept. Classic, well-understood
+  procedural-synthesis territory (this is exactly what 8-bit/demoscene SFX generators like
+  sfxr/Bfxr do, entirely proceduraly, no samples).
+- Mechanical/build family (`build`/`fbuild`/`builderdeath`/`fbuilderdeath`/`tree`/`ftree`) —
+  short tone/click sequences, also straightforward procedural targets.
+- Water (`bubbles`/`sink`/`fsink`) — filtered noise, harder to make convincing but still a
+  one-shot, still tractable.
+- UI chime (`msgreceived`) — a short tone or two-tone beep, the easiest of the 24.
+
+None require anything beyond short one-shot synthesis; nothing in the list needs sustain/loop
+logic, layering, or vocal content, so procedural generation is plausible for the *entire* set, not
+just a subset.
+
+**Toolchain precedent, checked directly:**
+- `Package.swift` confirms `BoloGlyphsCore` (library, tested by `BoloKitTests`) +
+  `BoloGlyphs` (thin executable target) sit outside `BoloKit`, depending on it rather than living
+  inside it — so `BoloKit`'s no-`import Foundation` rule (`CLAUDE.md`) does not apply to a sibling
+  generator target, exactly as it doesn't for `BoloGlyphsCore`'s CoreGraphics/pixel-buffer code
+  today.
+- `Sources/BoloGlyphsCore/` is genuinely "procedural generation as a first-class build step":
+  `Canvas.swift`/`GlyphSource.swift`/`SheetBuilder.swift`/`PNGCodec.swift` compute raw RGBA pixel
+  buffers and encode PNGs, invoked by the `BoloGlyphs` executable from the app's Run Script phase
+  (D72) — sheets are generated at build time, never committed. An audio equivalent — a
+  `BoloSoundsCore`/`BoloSounds` pair computing raw PCM sample buffers (noise + envelope + optional
+  frequency sweep, per-name parameter table for the 24 names) and encoding to AIFF/CAF — mirrors
+  this shape exactly: same target topology, same "generate at build time, don't commit binary
+  assets" discipline (D72), same avoid-vendoring reasoning as D67. `AVFoundation`/`AudioToolbox`
+  (or a hand-rolled AIFF writer, given AIFF is a simple uncompressed container) are both available
+  outside `BoloKit` with no constraint violation.
+
+**The three options, weighed:**
+1. **Procedural synthesis** (mirrors D67 exactly). Zero licensing risk, zero new supply-chain
+   shape, fits the existing `*Core`/executable target pattern precisely, and is plausible for
+   100% of the 24 names per the classification above (unlike a hypothetical case with
+   ambient/voice content, where this option would be much weaker). Main risk is *quality*, not
+   feasibility: a synthesized explosion can sound "video-gamey" rather than punchy, and getting
+   14 distinct-sounding effects plus their 10 `far*` mixes right by ear, with no audio-design
+   background in the loop, will take real iteration — same character of risk D67 flagged for
+   glyphs ("mushy at 16x16px") but for a medium (audio) this project has zero prior experience
+   generating.
+2. **Permissively-licensed sound library** (CC0/public-domain retro-SFX packs exist for exactly
+   this genre). Would very likely sound *better* per-effect with less iteration than (1). But it
+   is a genuinely new supply-chain shape for this project: every asset shipped so far (glyphs,
+   icon) is self-generated from code already in the repo, not downloaded and vendored. Introduces
+   external download provenance to track, a license file to carry per pack, and audit surface
+   PARITY has never had to check before (verifying license terms of a third-party asset, not
+   just C-oracle parity). Not disqualifying, but a heavier process footprint than (1) for a
+   problem (1) can plausibly solve outright.
+3. **Fresh recording.** Impractical for an agent-driven session — requires a human with
+   recording/audio-editing capability in the loop; no agent in this project's current roster can
+   produce this. Ruled out on pure feasibility grounds, not weighed further.
+
+**Recommendation: procedural synthesis, matching D67's precedent exactly.** All 24 sounds are
+short one-shot impact/explosion/mechanical/chime effects — the audio equivalent of D67's "nothing
+in the set is actual text" observation — so the same reasoning shape applies: avoid vendoring
+(binary or license-file) entirely, keep the "generate from checked-in code, not committed
+binaries" discipline the project already runs for art, and accept iteration-on-quality as the
+cost, the same trade D67 made and PLANNER later PARITY-passed.
+
+**Rough sizing if approved:** medium, comparable to a slice of Wave 7.0 — new `BoloSoundsCore` +
+`BoloSounds` targets (mirrring `BoloGlyphsCore`/`BoloGlyphs`), a small DSP primitive set (white
+noise burst + ADSR-style decay envelope, tone/frequency sweep, simple lowpass for the `far*`
+mixes — muffling the near sound rather than resynthesizing a 25th independent generator), a
+24-entry parameter table keyed by name, and an AIFF (or CAF) encoder. `far*` variants should be
+derived by filtering their near counterpart's generator output rather than treated as 10 more
+independent designs — halves the actual sound-design surface from 24 to 14. Testable the same way
+`BoloGlyphsCore` is (deterministic sample-buffer output, asserted by `BoloKitTests`), with the
+actual "does it sound right" judgment necessarily left to Jerod's ear at review time, not
+something a test can assert.
+
+> **→ Planner:** Recommend procedural synthesis for all 24 C.3 sound effects, mirroring D67's
+> precedent exactly (all one-shot impact/explosion/mechanical/chime effects, no ambient/voice
+> content, so the classification that made procedural art viable applies just as cleanly to
+> audio). Open question: this is a genre (audio synthesis quality) with zero prior art in this
+> project, unlike glyph rendering where `BoloGlyphsCore` already had CoreGraphics/pixel-buffer
+> precedent to build on — if Jerod's ear rejects the synthesized results at review time as too
+> far from "sounding right" for a specific effect (most likely candidates: `explosion`/
+> `superboom`, the two most sonically demanding), is the fallback a second procedural iteration,
+> or does that specific effect graduate to option 2 (licensed library) on a case-by-case basis
+> rather than an all-or-nothing choice? No code written this session — awaiting Q28 ruling before
+> any C.3 coding GO.
