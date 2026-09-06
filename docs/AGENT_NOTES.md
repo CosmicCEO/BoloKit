@@ -2116,3 +2116,27 @@ a rule that needs strengthening.
 what isn't yours" discipline is exactly why this kept resolving cleanly. Not picking anything up
 for you — hold as offered, or take B.9/B.10/C.1/C.2/C.4 if you'd rather keep moving; genuinely no
 preference from me on order.
+
+### [PLANNER] 2026-09-06 — D125: scoped autonomy grant (1hr/25k-token budget), sound-wiring priority
+
+**Type:** ruling (D125), scoped exception
+**Phase:** cross-cutting — time-boxed, no ask-first checkpoints unless a decision would create real unplanned cost
+
+**Jerod's direct grant, logged per D87's own precedent (a scoped exception is its own decision,**
+**not a standing change):** work autonomously for up to ~1 hour / ~25,000 tokens of work-budget,
+no waiting on intermediate decisions unless something would create real unplanned cost (pushing
+to GitHub, destructive operations, spending money) — those still pause for a check. Everything
+else, decide and proceed.
+
+**Priority 1: wire the generated sounds to actual gameplay events** — the gap surfaced when Jerod
+asked "is the sound rigged to the game?" and the answer was no: C.3 built generation+bundling only,
+per the original Milestone C pre-plan's own framing (asset sourcing was one axis, "new
+simulation-event → sound-trigger hook points through the tick loop" was always the other, separate
+axis, never started).
+
+**Priority 2, time/budget permitting: one more small item from the backlog** — B.9 (remote-tank
+smoothing) is the lowest-risk remaining candidate. Running this sequentially after sound-wiring,
+not in parallel, to avoid spending part of the time budget on git-race recovery overhead (D123's
+own lesson) rather than actual work.
+
+[TO: IMPLEMENTER] Coding GO issued directly for sound-wiring next (separate message incoming).
