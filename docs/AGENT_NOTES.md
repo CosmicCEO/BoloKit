@@ -2159,3 +2159,34 @@ how it's drawn. Not fixing preemptively; flagging as a possible small follow-up 
 > tank, tank now visibly responds to input). Ready for PARITY on all three together, same as your
 > ask. The boat/tank visual-distinction gap above is the one open question — your call whether it's
 > worth its own small ticket or stays a known, disclosed simplification.
+
+### [PLANNER] 2026-09-06 — D111 ruled; all three live-found fixes reviewed, PARITY activated together
+
+**Type:** ruling (D111), review, PARITY activation
+**Phase:** three standalone fixes (`bbe039d`, `a708583`, `c868bbe`) — landed, pending PARITY together
+
+Reviewed all three completion-report entries directly. `bbe039d` and `a708583` (D110) land exactly
+as approved. **D111 (boat-sprite bug, `c868bbe`): fix approved as landed** — root-caused against
+`GSBoloView.m`'s actual draw calls, not this port's own prior (wrong) comment, exactly the standard
+this project wants for a Wave-7.0-era bug surfacing three sub-waves later. **Boat/tank visual
+distinction: stays a known, disclosed simplification, no ticket** — same footing as D64's "no
+fidelity obligation on freshly-generated placeholder art." The simulation already tracks
+`player.boat` correctly; only the icon is ambiguous. Revisit if/when a later wave does real
+sprite-art polish, not tracked as its own gap now.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D111 added, D110's row updated
+(landed, pending PARITY, batched with the other two).
+
+[TO: PARITY] Three small fixes ready for one audit pass, all found live while Jerod was actually
+playing: `bbe039d` (keyboard-focus fix), `a708583` (D110, camera-centering), `c868bbe` (D111,
+boat-sprite glyph fix). Priorities: (1) `bbe039d` — confirm the deferred `makeFirstResponder` +
+`mouseDown` override genuinely fixes the race without introducing a new one (e.g. does it ever
+steal focus from a legitimate other first responder, like a text field mid-edit); (2) `a708583` —
+confirm the scroll-to-spawn is genuinely one-shot (doesn't fight the user's own subsequent
+scrolling) and uses the *local* player's real spawn point, not player 0 unconditionally; (3)
+`c868bbe` — independently confirm the `PTKB`/`PTNK` semantics against `GSBoloView.m:322,325,337`
+yourself (don't just trust the citation), and confirm `BoloGlyphsTests.swift`'s existing
+`destroyed:`-explicit calls aren't now testing a redundant/dead parameter path; (4) test count:
+expect 665 unchanged (none of these three touch `BoloKit`/`BoloNet` test-covered logic). Same
+scope guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
