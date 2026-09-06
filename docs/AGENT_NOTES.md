@@ -2370,3 +2370,37 @@ prior framing ranked "invisible" (B.9's rendering half) above "jerky" without fu
 sub-parts of jerky itself; extending the same `RemotePositionSmoother` to builders/shells is a
 mechanical follow-up once this lands, not attempted now to keep this pass reviewable as one
 piece.
+
+### [IMPLEMENTER] 2026-09-06 — B.9 completion report: smoothing landed (tanks only, disclosed)
+
+**Commit:** `2aa96c6` (pre-brief at `47f2ca0`). 684 → 690 tests (183+501 XCTest/swift-testing
+split, was 177+501 before this change — 6 new, no shrink, D28). App target builds clean
+(`mcp__xcode__BuildProject`, no errors).
+
+**Landed exactly the pre-brief's design:** `RemotePositionSmoother` (`BoloKit`, pure, no
+`Foundation`) — records the last two distinct raw position samples per remote player, renders
+at `currentTick - smoothingDelayTicks` (5, matching the known relay cadence) so the
+interpolation's far endpoint has usually already arrived by the time playback needs it, rather
+than a live lerp that still snaps the instant a new sample lands. Wired into `GameRenderView`
+via a `[Int: RemotePositionSmoother]` keyed by player index, fed every `render(_:)` call,
+consumed in `drawSprites`'s other-player-tank branch in place of the raw `other.tank`.
+
+**6 new unit tests, synthetic sequences (no C reference oracle applies — confirmed by grep, not
+assumed):** holds at the first sample before any second one arrives; returns `nil` before any
+sample ever arrives; interpolates strictly monotonically between two known samples; holds flat
+at the latest sample once query runs past it with no third sample (no overshoot); an unchanged
+raw position is a no-op and doesn't reset the window; and a **negative control** proving the
+render delay is actually load-bearing — temporarily zeroed `smoothingDelayTicks`, confirmed 2 of
+the 6 tests fail for exactly the predicted reason (immediate snap to the new sample, the
+identical failure mode a live two-sample lerp has), then restored to 5 and reconfirmed green.
+
+**Disclosed, not attempted this pass:** builder/shell positions for remote players still draw
+raw (same jerk, smaller visual weight, mechanical follow-up once this lands — pre-brief's own
+stated scope line, not a new gap found mid-work). Still unverified against a live second peer
+(same caveat as B.9's rendering half and B.8's whole network loop) — everything here is provably
+correct against synthetic input, but "does it *look* smooth" with real network jitter is a live-
+playtest question, not a unit-test one.
+
+> **→ Planner:** B.9 (rendering + tank smoothing) is now fully landed and disclosed; builder/
+> shell smoothing is real, scoped, remaining work if picked back up, not silently dropped.
+> Deferring to your own read on whether anything else fits inside D125's remaining timebox.
