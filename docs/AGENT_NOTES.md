@@ -650,3 +650,82 @@ the pre-brief into `docs/AGENT_NOTES.md` and commit, per the usual two-stage pat
 GO yet.
 [TO: PARITY] Nothing yet — no commit exists for B.8. Also still owed: D112's audit whenever you
 pick it back up (deferred overnight, priorities already logged in its own entry above).
+
+### [IMPLEMENTER] 2026-09-06 — B.8 pre-brief: join-side live network loop
+
+**1. `JoinGameView`'s one-shot `joinClient` call needs real restructuring, not extension — and**
+**the reason is sharper than "it doesn't loop":** `joinClient` performs the whole handshake inside
+`withNetworkConnection(to:using:) { connection in ... }` — Network.framework's own scoped
+connection helper, which tears the connection down the moment that closure returns. By the time
+`joinClient` hands back `(preamble, mapData)`, the TCP socket is already gone. Worse: **it can't
+just be reopened.** The host's `HostListener`/`processJoinAttempt` (`HostListener.swift`)
+registers a `HostSessionTable` slot against the *specific accepted connection* from the join
+handshake — a fresh second connection from the same client looks like an unauthenticated new join
+attempt with no `JoinPreamble` ever sent on it, and would just hang against the host's own receive
+loop, not resume anything. **The live receive loop has to run on the exact same connection the
+handshake used**, which means the handshake's own transport needs to stop being
+`withNetworkConnection`-scoped.
+
+`TCPSession` (`TCPSession.swift`) is the type built for the "freely-held, persistent session, not
+a closure-scoped one-shot handshake" role (its own file header, almost verbatim describing this
+exact problem) — but today it only *dials fresh* (`init(host:port:) async throws`) and only knows
+how to read post-handshake `SR*` opcodes (`receiveAndDispatchOne`) — its `receiveExactly`/
+`receiveOneByte` primitives the handshake would need (status byte, then `BoloPreamble`, then raw
+map bytes) are `private`. Two concrete paths, not yet chosen between:
+- **(a)** Move the handshake logic *into* `TCPSession` itself (a new method using its already-
+  established connection, built once, reused for both handshake and the ongoing loop) — `joinClient`
+  becomes a thin wrapper or is retired in favor of it.
+- **(b)** Keep `joinClient` roughly as-is but stop using `withNetworkConnection`'s auto-closing
+  scope, hand back the still-open `NWConnection`, and give `TCPSession` a second initializer that
+  *adopts* an already-connected connection instead of always dialing one.
+(a) keeps one connection lifecycle owned by one type end to end; (b) keeps `joinClient`'s existing,
+already-tested error-taxonomy code intact and only touches its transport. Recommend (a) — the
+error handling can move with the code, and two types independently managing halves of one
+connection's lifecycle is the kind of split this project has already hit real bugs from elsewhere
+(D102's `stop()`/`shutdown()` split — not identical, but the same shape of hazard). Not deciding
+this alone; flagging for your call before coding.
+
+**2. Confirmed NOT symmetric with B.7 — this is the important finding, not just a caveat.** B.7's
+question was "does the host run two tickers on one `GameState`." The join side's real question is
+different: **should the join client call `runTick` at all?** Traced `RunTick.swift`'s own header:
+`runTick` is explicitly "server-role bookkeeping, then client-role per-player physics" *unified
+into one authoritative call* — it simulates every connected player's physics every tick, plus
+pause/time-limit/base-control bookkeeping that only the authoritative host should ever own. A join
+client calling this locally would re-simulate every *remote* player with no real input for them
+(diverging from whatever the host's own broadcasts say happened) and duplicate server-role state
+the host already owns exclusively. **There is no existing "client-only" tick function in `BoloKit`
+today** — every other caller (`GameSession`'s local-only path, `HostGameEngine`) is running the
+full authoritative simulation. So "bypass `GameSession`'s timer, render off something else" (B.7's
+shape) doesn't quite transfer: the join path likely needs a **third `GameSession` mode**, not a
+second copy of the host-bypass pattern — one that never calls `runTick`, instead: (a) runs
+`TCPSession.receiveAndDispatchOne` in a loop, applying each `SR*` straight to `state` (the already-
+built, already-tested `recvSr*` functions `RecvSR.swift` owns do the actual mutation); (b) sends
+the local player's own input as outbound `CLUpdate`s via `UDPSession.sendLocalUpdate`; and (c)
+almost certainly still needs *some* local, input-driven prediction for the join player's own tank
+between host updates (matching the reference's own client-side-prediction model — `TankLocalTick.
+swift`'s existing "local player" branches were plausibly written with exactly this in mind, not
+just for `GameSession`'s current single-process case) rather than a "dumb terminal" that only
+moves when told. That third piece is a real, unresolved design question, not something I'm
+deciding unilaterally here — recommend it gets its own explicit ruling before coding starts, since
+getting it wrong either re-introduces host-authority drift or makes join-side movement feel
+laggy/dead between broadcasts.
+
+**3. Disconnection/host-quit surfacing:** `TCPSession.receiveAndDispatchOne` throwing
+(`TCPSessionError.connectionClosed`, or the connection's own failure) is the natural, already-
+existing signal — no new detection mechanism needed. The UI-side question is just wiring: the
+join-side `GameView`-equivalent needs a path back to the menu with a visible notice, the same "not
+silent" precedent D109 already established for the host-side fallback (`GameView`'s `notice:
+String?` parameter already exists and could likely be reused directly rather than duplicated).
+
+**Not investigated yet, flagged rather than assumed:** whether `UDPSession`'s outbound `CLUpdate`
+cadence needs to match `HostGameEngine.tick()`'s own `seq % 5 == 0` (~10Hz) throttling, or whether
+the join side has a different real constraint here — `UDPSession.sendLocalUpdate`'s own file
+hasn't been read closely yet, only its public signature.
+
+> **→ Planner:** Three concrete findings above, none of them small: `joinClient` needs a real
+> transport-level restructuring (two designs sketched, no pick made), the tick-bypass question
+> resolves to "don't run `runTick` at all, need a third `GameSession` mode" rather than symmetry
+> with B.7, and disconnection surfacing is straightforward reuse of D109's own pattern. This is
+> bigger than B.7 was at its own pre-brief stage — recommend a coding-GO scoped narrowly (e.g. the
+> transport restructuring first, client-side prediction as an explicit follow-up) rather than one
+> GO for the whole thing, but that's your call.
