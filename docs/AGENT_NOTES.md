@@ -1688,3 +1688,65 @@ unasked or leaving it undiscovered.
 [TO: PARITY] Heads up for whenever B.7 lands: the tick-conflict resolution is the one worth your
 own verification (does the host path genuinely have exactly one ticker driving `state` once wired,
 not two racing) — same standard as every other single-mutator claim this milestone.
+
+### [IMPLEMENTER] 2026-09-05 — B.7 completion report (D108)
+
+**Commit:** `f4b8efc`. 665 tests passing (was 662 — 3 new, all negative-controlled). App target
+builds clean (`mcp__xcode__BuildProject`); `HostGameView`/`GameView` `#Preview`s rendered and
+visually confirmed (`mcp__xcode__RenderPreview`) — form still correct with the new port-error
+`Text`, local-path render unaffected.
+
+**Tick-conflict resolution (D108 §1), the part PARITY was flagged to re-verify:** `HostGameEngine`
+already had its own `start()`/`stop()` and its own `DispatchSourceTimer`; `GameSession` had a
+second, independent one. Rather than have `GameSession` poll `HostGameEngine.state` from its own
+timer (still two tickers, just one of them idle-spinning), `GameSession` on the host path now
+**creates no timer of its own at all** — `start()` delegates straight to `hostEngine.start()`,
+`stop()` (now `async`) delegates to `hostEngine.shutdown()`, and rendering happens via a new
+`HostGameEngine.onTickRendered: (@MainActor (GameState) -> Void)?` callback fired once per tick,
+right after `runTick` mutates `state`, with a value-type snapshot — never the live `state` itself.
+Confirmed by inspection: nothing but the engine's own consumer `Task` ever calls `runTick` on the
+host path; `GameSession.tick()` (the local-path method) is simply never invoked when `hostEngine`
+is set — `start()` returns before reaching the code that would create `timer`.
+
+**A second race the pre-brief didn't originally flag, found while designing the callback wiring,
+not after:** the host's own local keyboard input (`GameRenderView.onInputFlagsChange`/
+`onLayMineKeyDown`, fired from AppKit's main-thread key handler) would otherwise need to mutate
+`HostGameEngine.state` directly — but `state` is deliberately `private(set)`, and the file's own
+header says three times that exactly one thing (the consumer `Task`, which runs with no actor
+isolation of its own, not necessarily on the main thread) may ever touch it. Writing to it from
+the main-thread key handler while the consumer might concurrently be mid-`runTick` is a genuine,
+un-diagnosable-by-the-type-system data race, not a style violation. Fixed the same way every other
+external input to this engine already works: two new `HostEngineEvent` cases
+(`.localInputChanged`/`.localLayMineKeyDown`) and two new public methods
+(`submitLocalInputChange`/`submitLocalLayMineKeyDown`) that just `continuation.yield(...)` —
+callable from any thread, landing on the single consumer like every other event in the stream.
+Caught this by tracing the actual isolation of `consumerTask` (a plain `Task`, no actor, no
+`@MainActor`) before writing any app-side code, not by hitting a Swift 6 diagnostic — flagging it
+here since it's a real expansion of `HostGameEngine`'s public surface D108's own wording
+("bypass GameSession's own local tick timer... render live off the running HostGameEngine's
+state") didn't spell out.
+
+**`HostGameView.startHosting()`:** now `async`, parses `portText` to `UInt16` (shows "Invalid
+Port" inline if it doesn't), constructs a real `HostListener(port:)`/`HostDgramListener(port:)`
+(both `async throws` — a bind failure, e.g. port already in use, shows inline as "Unable to Start
+Hosting on Port N -- <error>" rather than crashing or silently no-opping), builds the
+`HostGameEngine`, calls `engine.start()`, then hands the **engine** (not a `GameState` snapshot)
+up through `onStartHosting`. Threaded the type change (`(GameState) -> Void` →
+`(HostGameEngine) -> Void`) through `NewGameView` and `AppRootView.AppScreen` (`.hosting
+(HostGameEngine)`, a new case alongside the unchanged `.playing(GameState)` the join path still
+uses). Tracker/UPnP toggles' `.help` text updated to drop the stale "Milestone B.5" reference (that
+milestone is long done) without claiming they're wired — they're still genuinely inert; wiring them
+needs a reachable public address for tracker registration/UPnP mapping, out of this sub-wave's
+scope and not something D108 asked for.
+
+**Not touched, deliberately:** B.8 (join-side symmetric gap) — `JoinGameView`/`GameSession`'s local
+path is completely unchanged by this commit. `AppScreen.playing(GameState)` still feeds the
+existing disconnected-sandbox `GameSession` init exactly as before.
+
+> **→ Planner:** B.7 done as coding-GO'd, plus the local-input race above, which I'm disclosing as
+> a real (small) expansion of `HostGameEngine`'s public API surface rather than folding in
+> silently — two new `HostEngineEvent` cases and two new public methods, same "queue into the
+> merged stream" shape every other producer already uses, not a new mechanism. PARITY's own
+> verification pass should treat this the same as the tick-conflict resolution: confirm nothing
+> but the consumer `Task` ever mutates `state` on the host path, including via these two new entry
+> points.
