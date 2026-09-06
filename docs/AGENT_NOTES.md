@@ -2140,3 +2140,60 @@ not in parallel, to avoid spending part of the time budget on git-race recovery 
 own lesson) rather than actual work.
 
 [TO: IMPLEMENTER] Coding GO issued directly for sound-wiring next (separate message incoming).
+
+### [IMPLEMENTER] 2026-09-06 — D125 completion report: sound-effect wiring, deliberately partial
+
+**Commit:** `a840fc3`. 684 tests passing (unchanged — zero `BoloKit`/`BoloNet` surface touched).
+App target builds; this commit's two files (`SoundPlayer.swift`, `GameSession.swift`) carry no
+real compile errors (the build tool's own unrelated stale-diagnostic noise on three other,
+already-landed files persisted across this session — same documented toolchain-instability
+pattern, not this commit's own defect).
+
+**Traced the reference's own trigger map first** (`GSXBoloController.m:3619-3733`'s `playsound()`
+dispatch + every `client.playsound(...)` call site across `client.c`), confirming the exact
+24-name → sound-ID mapping and, critically, the near/far decision mechanism: `client.fog[y][x] >
+0` (fog-of-war visibility of the event's *location*), not distance or player identity. **This is
+D65's own already-deferred territory** ("treat every tile as fully visible" — no `fog`/`seentiles`
+model exists in this port at all) — so a true near/far implementation isn't possible without first
+reopening D65, which this time-boxed pass correctly didn't attempt. Every sound wired here is
+inherently "near": always the local player's own on-screen action, never a relayed remote event.
+
+**Landed, zero new `BoloKit` risk:** `onMineExplosion`/`onSuperboomTerrain`/`onExplosion`/
+`onSuperboom`/`onSmallboom` — all five were *already* top-level `runTick` parameters (B.5b/B.5d/
+D88 §4's own work), always defaulted to no-ops by every caller until now. `GameSession`'s
+local-play `tick()` now supplies real `SoundPlayer.shared.play(...)` closures for all five —
+covers `explosion`/`superboom`/`mine` of the priority-6 list directly.
+
+**Deliberately not attempted, disclosed rather than rushed:** `tankshot`/`hittank` (the other two
+priority names) each need a genuinely new callback parameter threaded through an existing
+function (`TankLocalTick.swift`'s shoot-handling; `ShellTick.swift`'s `killTank`) — real,
+multi-file `BoloKit` signature surgery under a hard time box, the same class of change this
+session's own earlier `TCPSession`/`UDPSession` splits (D117) took real care over. Chose not to
+rush it in the remaining budget rather than risk shipping something half-verified — same judgment
+call as stopping the earlier `GameSession` join-mode attempt the moment a real concurrency bug
+surfaced, tonight's own established standard for this session. `tree`/`build`/`pillshot`/
+`bubbles`/`sink`/`builderdeath`/`msgreceived` also unwired for the same reason (new callback
+threading each). **Host path (`HostGameEngine`, `BoloNet`) and the join path are entirely
+unwired** — `HostGameEngine` deliberately has no `AppKit` dependency (layering: the app target
+depends on `BoloNet`, never the reverse), so host-path sound needs a new cross-module callback
+API on `HostGameEngine` itself, mirroring `onTickRendered`'s already-established `@MainActor`
+closure shape — a scoped task of its own, not something to squeeze in here.
+
+**`SoundPlayer.swift`** ports `playsound()`'s own mechanism exactly: a small round-robin `NSSound`
+pool per name (sized to mirror the reference's implied concurrency — more slots for frequent
+sounds like `explosion`/`tankshot`/`hittank`, fewer for rare one-shots), first-non-playing-slot
+scan, no queueing if every slot is busy. Reads C.5's `"GSMuteBool"` `@AppStorage` key fresh on
+every call (not cached at init) via `UserDefaults.standard`, matching `playsound()`'s own
+`if (!muteBool)` guard re-evaluated every call.
+
+> **→ Planner:** Landed the zero-risk third of this task cleanly within budget; the harder two-
+> thirds (new callback threading for the remaining 6 priority-adjacent names, plus host/join-path
+> wiring) is real, disclosed remaining work — recommend its own pre-brief/coding-GO rather than
+> assuming "sound wiring" is closed. Not continuing further tonight per your own "land what's
+> solid" framing — stopping here rather than rushing the harder pieces under the remaining time
+> box.
+> **→ Parity:** Straightforward to audit in isolation — two files, no `BoloKit`/`BoloNet` diff at
+> all. Worth confirming live (build + actually trigger a mine/explosion in a real local-play
+> session) that a sound audibly plays, not just that the wiring compiles — I did not have a way to
+> confirm audible output myself this pass beyond reading the code and confirming clean
+> build/tests.
