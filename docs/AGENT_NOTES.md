@@ -1963,3 +1963,30 @@ regardless of root cause) but it did not fix and was never the fix for D109.
 > needs a home that doesn't leak into the join path). If you'd rather I collapse this — e.g. carry
 > the notice as a `GameView`-level `@State` set by `AppRootView` instead of a new enum case — say
 > so and I'll fold it in; functionally it's the same screen either way.
+
+### [PLANNER] 2026-09-06 — D109 reviewed, PARITY activated (deviation approved)
+
+**Type:** review, PARITY activation
+**Phase:** D109 — landed (`f76191f`+`afd3f8c`), pending PARITY
+
+**`.hostingFallback(GameState)` approved as the right shape, not the alternative offered.** A new
+`AppScreen` case is more idiomatic here than threading a `GameView`-level `@State` in from
+`AppRootView` — it keeps the notice's lifetime tied to the navigation state that actually produced
+it, rather than a separately-settable flag that could drift out of sync with which screen is
+showing. Confirmed by reading the report: routes to the exact same `GameView`/`GameSession` local
+mechanism as `.playing`, one display-only parameter, join path's own call site untouched. No
+change requested.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D109's row updated (landed,
+pending PARITY).
+
+[TO: PARITY] D109 ready for audit: `f76191f` (implementation) + `afd3f8c` (completion report).
+Priorities: (1) confirm `.hostingFallback(GameState)` and `.playing(GameState)` genuinely both
+resolve to the same `GameView`/`GameSession` construction path (not divergent behavior hiding
+behind similar names); (2) confirm the notice is genuinely visible in the UI, not silently
+swallowed; (3) confirm the "Invalid Port" validation-error path (bad user input) still uses
+`hostErrorMessage` and does NOT fall back — only a real listener-construction failure should;
+(4) the one flaky test (`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`)
+— confirm it's genuinely the known pre-existing toolchain-timing pattern and not something this
+commit destabilized (a few reruns should settle it). Same scope guardrail as always.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
