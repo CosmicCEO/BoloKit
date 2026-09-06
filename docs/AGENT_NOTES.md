@@ -2110,3 +2110,52 @@ Please also add a short completion-report entry here for `bbe039d` (the keyboard
 commit message already has the right content, just needs to exist in this log too before I can
 activate PARITY on it. Land D110 and write both up whenever convenient; I'll activate PARITY for
 both together once they're in the log.
+
+### [IMPLEMENTER] 2026-09-06 — three completion-report entries: keyboard-focus fix (`bbe039d`), D110 (`a708583`), and one more found live (`c868bbe`)
+
+**1. `bbe039d` — dead keyboard input after transitioning into `GameView`.** `GameRenderView.
+viewDidMoveToWindow()` called `window?.makeFirstResponder(self)` synchronously, which silently
+no-ops if the window hasn't actually become key yet (e.g. right after a button click in the host
+form held focus) — every key press was then dead with zero visible symptom, no error, no console
+output. Fix: defer the claim one runloop turn (`DispatchQueue.main.async`), and add a `mouseDown`
+override so clicking into the game view reliably reclaims focus if anything else took it back
+afterward (e.g. a toolbar control). Found live testing D109's fallback with Jerod. Not caught by
+the test suite — pure AppKit focus behavior, no `BoloKit`/`BoloNet` coverage applies.
+
+**2. D110 (`a708583`) — camera now centers on the local player's spawn point.** `GameRenderView`'s
+`intrinsicContentSize` is the full 4096x4096 map, wrapped in `GameView`'s `ScrollView` with no
+camera logic at all — it opened scrolled to the map's `(0,0)` corner, not wherever the player
+actually spawned, with no on-screen cue that scrolling was even necessary. Found live: Jerod could
+see terrain but not his own tank. One-shot scroll-to-spawn added to the same deferred block as the
+keyboard-focus fix, for the same settled-layout reason (`enclosingScrollView.contentView.bounds.
+size` isn't trustworthy any earlier).
+
+**3. `c868bbe` — not requested, found while verifying #2 live, disclosing before PARITY sees it:**
+once the camera actually centered on the right spot, what was visible there was a small gray
+"X," not a tank — and no key press visibly changed it. Traced to `Sources/BoloGlyphsCore/
+ImageIndex.swift`'s `spriteGlyphRole(for:)`: it read the `PTKB`/`PTNK` (and friendly/enemy
+equivalents) row pairing as *(dead, alive) × (player, friendly, enemy)* and derived `destroyed =
+row % 2 == 0`. Wrong — confirmed directly against `GSBoloView.m:322,325,337`, which draw `player.
+boat ? PTKB... : PTNK...` unconditionally for an *alive* player; a dead player's tank is simply
+never drawn at all (`!dead` gate at the call site, matching this port's own `GameRenderView.
+drawSprites` gate), never replaced by a wreck sprite. Every boat-mode player — which per `bmap.h`'s
+own "direction toward land" field on `Start`, is an expected, common case, not a mapping error —
+got `drawTank`'s X-shaped wreck glyph instead of a boat.
+
+This is a Wave 7.0 (`BoloGlyphsCore`) bug, not introduced by B.7 — first surfaced by B.7 being the
+first real playthrough to actually reach open water with a real player watching. Fix: `destroyed`
+is now always `false` for the tank sprite range, so boat and tank rows both render the same
+alive-tank triangle (ownership-colored) — no existing test locked in the wrong derivation
+(`BoloGlyphsTests.swift`'s direct `renderGlyph(.tank(...))` calls all pass `destroyed:` explicitly).
+665 tests passing, unchanged by this fix.
+
+**Disclosed, not fixed:** boat mode and tank mode now render *identically* (same triangle, no
+visual distinction) — correct per the reference's own sprite semantics for v1's placeholder art,
+but Jerod (live) couldn't tell from the icon alone whether he was in a boat. Genuine UX gap, not a
+correctness bug — the underlying simulation already tracks `player.boat` correctly regardless of
+how it's drawn. Not fixing preemptively; flagging as a possible small follow-up if wanted.
+
+> **→ Planner:** All three landed and verified live with Jerod actually playing (camera finds the
+> tank, tank now visibly responds to input). Ready for PARITY on all three together, same as your
+> ask. The boat/tank visual-distinction gap above is the one open question — your call whether it's
+> worth its own small ticket or stays a known, disclosed simplification.
