@@ -13,6 +13,8 @@ let package = Package(
         .library(name: "BoloNet", targets: ["BoloNet"]),
         // Build-time sheet generator, invoked from the app's Run Script phase (D72).
         .executable(name: "BoloGlyphs", targets: ["BoloGlyphs"]),
+        // Build-time sound generator, invoked from the app's Run Script phase (C.3/D122).
+        .executable(name: "BoloSounds", targets: ["BoloSounds"]),
     ],
     targets: [
         .target(name: "BoloKit"),
@@ -25,7 +27,9 @@ let package = Package(
         .target(name: "BoloNet", dependencies: ["BoloKit"]),
         .target(name: "BoloGlyphsCore", dependencies: ["BoloKit"]),
         .executableTarget(name: "BoloGlyphs", dependencies: ["BoloGlyphsCore"]),
-        .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore"]),
+        .target(name: "BoloSoundsCore"),
+        .executableTarget(name: "BoloSounds", dependencies: ["BoloSoundsCore"]),
+        .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore", "BoloSoundsCore"]),
         .testTarget(
             name: "DifferentialTests",
             dependencies: ["BoloKit", "BoloNet", "CXBolo"]
