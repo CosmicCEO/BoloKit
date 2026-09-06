@@ -1570,3 +1570,84 @@ B.7 should finally close it or leave it further deferred), and whether any of th
 `joinClient` call succeeding in isolation) or is host-side only. Write the pre-brief into
 `docs/AGENT_NOTES.md` and commit, per the usual two-stage pattern — not a coding GO yet.
 [TO: PARITY] Nothing yet — no commit exists for B.7.
+
+### [IMPLEMENTER] 2026-09-05 — B.7 pre-brief: HostGameEngine wiring, D102, join-side symmetry
+
+**Type:** pre-brief, not a coding GO, per your instruction.
+
+## 1. `HostGameEngine`'s construction/run contract — fully self-driving once stood up
+
+`init(initialState: GameState, listener: HostListener, dgramListener: HostDgramListener)`
+(`HostGameEngine.swift:87-92`) — the caller pre-constructs both listeners
+(`HostListener(port: UInt16) async throws`, `HostDgramListener(port: UInt16) async throws`) and
+hands them in; `HostSessionTable` is NOT a caller-supplied dependency, the engine builds its own
+internally. Once `start()` runs, the engine drives itself completely: an internal
+`DispatchSourceTimer` at `1.0/ticksPerSec` fires `.tick` events, two `Task`s drain
+`listener.connections`/`dgramListener.packets`, one consumer `Task` processes the merged stream —
+**no external caller pumps events or calls `tick()` manually.** `state`/`table` are `public` for a
+caller (e.g. a renderer) to read. This means wiring `HostGameView.startHosting()` is concretely:
+construct `HostListener`/`HostDgramListener` for the chosen port, construct `HostGameEngine`,
+call `start()`, then feed the SAME `GameState` (or a live read of `engine.state`) into whatever
+`GameView`/`GameSession` already does for rendering — `GameSession`'s own `DispatchSourceTimer`-
+driven `runTick` loop becomes redundant/conflicting for the host path once a real engine is
+running its own tick loop, since `GameState` would then have two independent tickers advancing it
+otherwise.
+
+## 2. D102 — real, not latent, once B.7 lands
+
+`HostGameEngine.stop()` cancels its own timer, both listener objects (no more *new* connections
+accepted), and its consumer task — but never touches `table`'s already-registered per-player
+`NWConnection`s, nor the dynamic per-player producer `Task`s spawned per accepted player
+(`HostGameEngine.swift:153-167`, one `while true { receiveOneHostMessageBytes... }` per player).
+Those keep running indefinitely after `stop()` returns. PARITY's finding + PLANNER's ruling
+(`docs/AGENT_NOTES.md` D102 entry) already names the fix shape: `stop()` should call
+`table.disconnect(player)` for every connected slot, causing each blocked
+`receiveOneHostMessageBytes` to throw and each producer's own already-tested `catch { ...; break }`
+path to exit cleanly — reusing an existing, tested termination path, not inventing a new one.
+D102 was explicitly deferred pending "whoever wires `stop()` a live production caller" — **that's
+B.7.** Today's only exit control, `GameView.swift`'s "Quit to Menu" button, calls `GameSession.
+stop()` (which only cancels the LOCAL tick timer) and nothing else — there is currently no
+"Stop Hosting" affordance anywhere, because there is currently no real engine for one to stop.
+Once B.7 wires a real `HostGameEngine` in, that same button (or a new one) must additionally call
+the engine's `stop()` — and D102 means that call would leak every already-joined player's
+connection and producer `Task` the first time a real host actually quits with players connected,
+not a theoretical concern anymore. **D102's fix belongs inside B.7's own coding scope, not split
+out further** — it's the direct, immediate consequence of giving `stop()` a real caller.
+
+## 3. JoinGameView / GameSession — a symmetric, equally real gap exists, but it's not what B.7 as
+## scoped fixes, and shouldn't be folded in without your explicit call
+
+Read `GameSession.swift`'s own header (D73, verbatim): *"Single-process, no networking... with no
+network at all in this slice."* Confirmed directly: `GameSession.tick()` calls bare `BoloKit.
+runTick(state:, ticksSinceLastUpdate:)`, driven by `GameSession`'s own timer — zero `import
+BoloNet` anywhere in `GameSession.swift`/`GameView.swift`/`GameRenderView.swift`/`HostGameView.
+swift`/`AppRootView.swift`/`NewGameView.swift`. `import BoloNet` appears in exactly one app-target
+file today: `JoinGameView.swift`. **Joining a real remote host currently only ever touches the
+network for one one-shot handshake** (`joinClient(...)`, fetching a `BoloPreamble` + map snapshot)
+— after that, `GameSession` runs the decoded state as a private, disconnected local sandbox, with
+no further wire traffic in either direction. `AppRootView`'s `onStartHosting`/`onJoinedGame`
+closures both do the identical `screen = .playing(state)`, feeding the same `GameView`/
+`GameSession` path regardless of origin.
+
+**Consequence: wiring a real `HostGameEngine` into `HostGameView` (B.7 as scoped) does not give
+`JoinGameView`/`GameSession` any live client-role network loop.** `HostGameEngine` is accept-only
+— it never dials out, so it has no bearing on the join side at all. A live join-side loop (keep
+the TCP connection open, receive `SR*` broadcasts, send outbound `CLUpdate`s via `UDPSession`)
+doesn't exist anywhere in the app today. The underlying pieces are already built and independently
+tested at the `BoloNet` level (`TCPSession`'s client-role receive/apply functions, `UDPSession`'s
+send/receive-and-apply, both exercised in this session's own B.5d/B.5e work) — but nothing in the
+app drives them. This is the **same shape of gap** as D107 (host side), just on the other side of
+the connection, and it's just as real: today, a second real player joining a real host would
+receive the initial map/preamble correctly, then run a completely disconnected local simulation
+forever after, seeing none of the host's actual game state.
+
+**Not proposing to fold this into B.7** — it's a distinct, separately-sizeable piece of work (a
+live join-side receive loop + `GameSession` needing to become network-aware on that side too,
+mirroring whatever host-side integration B.7 designs) that PLANNER's own framing of B.7 ("wire
+`HostGameView`'s `startHosting()`") didn't ask for. Flagging it clearly rather than either silently
+expanding B.7's scope or silently leaving it undiscovered for a later surprise.
+
+> **→ Planner:** `HostGameEngine`'s contract, D102's exact mechanism, and the join-side symmetric
+> gap are laid out above. Recommend D102's fix lands inside B.7 itself (direct consequence of
+> giving `stop()` a real caller, not separable). The join-side gap is real but out of B.7's own
+> framing — your call whether it needs its own tracked item now or waits. Awaiting coding GO.
