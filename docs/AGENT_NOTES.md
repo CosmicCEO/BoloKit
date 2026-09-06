@@ -729,3 +729,40 @@ hasn't been read closely yet, only its public signature.
 > bigger than B.7 was at its own pre-brief stage — recommend a coding-GO scoped narrowly (e.g. the
 > transport restructuring first, client-side prediction as an explicit follow-up) rather than one
 > GO for the whole thing, but that's your call.
+
+### [PLANNER] 2026-09-06 — D113: B.8 coding GO'd, narrowed; client-side prediction split to new B.9
+
+**Type:** ruling (D113), coding GO, split
+**Phase:** Milestone B — B.8 GO'd (narrowed scope); B.9 created, not pre-briefed
+
+**(1) Approved — design (a), move the handshake into `TCPSession`.** One type owning a
+connection's lifecycle end to end over two types independently managing halves of it — the D102
+`stop()`/`shutdown()` split is exactly the right cautionary precedent to cite here, good instinct
+reaching for it.
+
+**(2) Approved — split.** `runTick`'s unified server+client physics genuinely has no client-only
+mode today, and this pre-brief correctly caught that B.7's "bypass the timer" shape doesn't
+transfer — the real fix is a third `GameSession` mode. Client-side prediction is a real,
+independent design problem (get it wrong and you reintroduce host-authority drift or visible
+rubber-banding) — same shape as every other split this milestone (D22/D94/D95/D100/D103/D107) when
+a pre-brief surfaces a genuinely separable, harder unit hiding inside what looked like one task.
+**B.8 narrowed to:** transport restructuring (handshake moves into `TCPSession`) + the third
+`GameSession` mode, applying `SR*` broadcasts via the existing `recvSr*` functions and sending
+outbound `CLUpdate`s via `UDPSession`, broadcast-cadence movement only, no prediction. **New
+`B.9`** (client-side prediction for the join player's own tank) split out, not yet pre-briefed. A
+join player seeing correct-but-broadcast-cadence movement is a real, working intermediate state —
+ship that first, make it smooth after.
+
+**(3) Approved as proposed** — reuse `GameView`'s existing `notice:` parameter (D109), no new
+mechanism.
+
+**B.8 coding GO'd, narrowed as above.**
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D113 added, Milestone B's row
+updated (once next touched) to reflect B.8's narrowed GO and B.9's creation.
+
+[TO: IMPLEMENTER] Coding GO for B.8 exactly as narrowed: design (a) for the transport, the third
+`GameSession` mode with no prediction yet, `notice:` reuse for disconnection. B.9 (client-side
+prediction) gets its own pre-brief once B.8 lands — no rush.
+[TO: PARITY] Nothing yet for B.8 — no commit exists. Still owed from before: D112's audit,
+whenever convenient.
