@@ -827,3 +827,76 @@ updated.
 "this is much smaller than assumed" rather than either padding scope to match the GO's framing or
 guessing past the builder-task ambiguity is exactly right.
 [TO: PARITY] Nothing yet — no commit exists for B.10.
+
+### [IMPLEMENTER] 2026-09-06 — B.10 completion report (join client's outbound CL* protocol)
+
+**Shipped exactly per the pre-brief/D127's scope, no deviation.** Commit `e37d0a9`.
+
+**1. New `BoloKit` surface — `Sources/BoloKit/TankLocalTick.swift`, new clearly-marked
+read-only section** (chose a section over a new file, since it needs `isWalkableNonWater`
+and the plant-mine terrain list, both file-private, and duplicating them risked drift):
+- `JoinOutboundCL` — enum of the three reachable message shapes (`.grabTile`, `.dropBoat`,
+  `.dropMine`). `BoloKit`-only, no `BoloNet` dependency (correct per the dependency graph —
+  `BoloNet` depends on `BoloKit`, not the reverse); the caller converts to `CL*` structs.
+- `detectJoinTileEntry(new:old:state:) -> [JoinOutboundCL]` — read-only re-derivation of
+  `enter()`'s (client.c:5785) pill/base/mined-terrain branches. Traced directly against the
+  already-ported, already-tested `enterTile` (same file) branch-for-branch: pill entry
+  (armour==0 gate, `.grabTile` + conditional `.dropBoat`), base entry (neutral-or-hostile
+  gate via `testAlliance`, `.grabTile` + conditional `.dropBoat`), and the plain-terrain
+  group's boat-drop + LMINE-flag mine-plant. Armed pills, wall/sea/river/boat-terrain/
+  forest-death branches (superboom/drown/damage) are out of scope per D127 and return `[]`.
+- `detectJoinLMineKeyDown(state:) -> JoinOutboundCL?` — read-only twin of `layMineOnKeyDown`
+  (client.c:6509), reusing its exact guard shape (alive, no pill/base underfoot, mines > 0,
+  minable terrain).
+- Neither function mutates `state` — verified by tests asserting `state` is unchanged after
+  each call (pills/bases/terrain/mine-count), not just by reading the code.
+
+**2. Wiring — `Bolo 2026/GameSession.swift`:**
+- Join tick handler (`handleJoinEvent`'s `.tick` case): captures `old` tank tile before
+  `tankMoveTick`, `new` after, calls `detectJoinTileEntry`, converts each returned case to
+  its `CL*` struct (`CLGrabTile`/`CLDropBoat`/`CLDropMine`), sends via
+  `tcpSession.send(_:.encode())` in a `Task` (matching `sendLocalUpdateIfDue`'s own
+  fire-and-forget precedent — the reference's `sendcl*()` calls don't block on a reply
+  either).
+- Join-path initializer's `view.onLayMineKeyDown` was previously unset (confirmed by
+  reading the initializer directly — the host-path and single-process initializers both set
+  it, the join one didn't) — added, calling `detectJoinLMineKeyDown` and sending
+  `CLDropMine` the same way.
+
+**3. `CL*` structs — no gap.** `CLGrabTile`/`CLDropBoat`/`CLDropMine` in
+`Sources/BoloNet/ClientMessages.swift` already had `encode()`/`decode()`, confirming the
+pre-brief's own claim; nothing new needed in `BoloNet`.
+
+**4. Tests — `Tests/BoloKitTests/TankLocalTickTests.swift`, appended.** 10 new named
+regression tests (pre-brief estimated 4-6; went wider to cover both functions and a
+negative control per gating condition): unowned-pill→grabTile, armed-pill→nothing
+(negative control on the armour gate), hostile-base→grabTile, allied-base→nothing
+(negative control on `testAlliance`), pill-entry-with-boat→grabTile+dropBoat, grass-exit-
+with-boat→dropBoat-only, mine-plant-on-moved-grass-with-lmine-flag, mine-plant-skipped-
+when-stationary (negative control on `new != old`), lmine-key→dropMine on minable terrain,
+lmine-key→nil on a pill tile (negative control). Every test that returns a message also
+asserts the underlying `state` field is untouched.
+
+**Test counts (D28):** 501 → 511 (+10), full suite green, 3 consecutive `swift test` runs
+stable. `swift build --build-tests` clean. Real Xcode build
+(`mcp__xcode__BuildProject` on `Bolo 2026.xcodeproj`) succeeded.
+
+**Deviations from the pre-brief:** none. The pre-brief's own sizing ("closer to B.9's size")
+held — no new `BoloNet` surface, no `TankLocalTick.swift` mutation-path changes, no new
+`GameSession` producer/consumer-stream case.
+
+**One real finding worth flagging, not blocking:** the join-path `GameSession` initializer
+had never wired `view.onLayMineKeyDown` at all (both other initializers do) — a
+pre-existing, silent gap from B.8, not something this sub-wave introduced. Fixed as part of
+this same change since B.10's own scope (the LMINE-key `CL*` send) needed it wired to be
+reachable at all; flagging in case PARITY wants to independently confirm this was a genuine
+prior gap and not a scope-creep addition.
+
+[TO: PLANNER] B.10 shipped exactly as pre-briefed/GO'd. One incidental fix disclosed above
+(join path's dead `onLayMineKeyDown` hook, now wired) — flagging since it's technically
+outside D127's literal "detect-and-send function + a few lines in the tick handler" framing,
+though it's the only way B.10's own LMINE-key send path becomes reachable at all.
+[TO: PARITY] Ready for audit — `e37d0a9`. Trace `detectJoinTileEntry`/`detectJoinLMineKeyDown`
+against `enter()` (client.c:5785-5857, 5913) and `layMineOnKeyDown`'s LMINE branch
+(client.c:6509) directly; independently confirm the read-only claim (no `state` mutation) and
+the pre-existing `onLayMineKeyDown` gap this commit also fixed.
