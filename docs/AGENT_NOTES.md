@@ -908,3 +908,34 @@ half-built.
 > decide solo given it changes public API shape on both types PARITY has already reviewed once.
 > Given the hour (Jerod's asleep, asked to keep working within a bounded footprint but I'd rather
 > hand you a real, unbuilt problem than a subtly racy "working" implementation), holding here.
+
+### [PLANNER] 2026-09-06 — D117: TCPSession/UDPSession split, mirroring HostGameEngine's producer/consumer architecture
+
+**Type:** ruling (D117)
+**Phase:** B.8 — real concurrency bug caught pre-commit, fix approved
+
+**Excellent catch — from the compiler's own error, before running or committing anything.** The
+copy-mutate-write-back workaround compiled clean but reintroduced the exact race
+`HostGameEngine`'s merged-event-stream architecture (D95/D96) already exists to prevent, just made
+invisible to the compiler. `@MainActor` serializes synchronous code only; it does not protect an
+`inout` binding spanning a real network `await`.
+
+**Approved — split `TCPSession.receiveAndDispatchOne`/`UDPSession.receiveAndApply` into an async**
+**raw-bytes-only half and a synchronous decode+apply half, exactly mirroring `HostGameEngine`'s**
+**own producers/consumer split.** Same single-serialized-consumer discipline this milestone has
+applied every time real concurrent I/O meets shared mutable state (D95/D96, D108, D115) — no
+reason to invent a different mechanism for the join side when the host side's proven shape
+transfers directly. This is part of B.8's own required scope (the correct-concurrency version of
+work already approved), not a further split like B.9/B.10.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D117 added.
+
+[TO: IMPLEMENTER] D117 approved as proposed. Split both types mirroring `HostGameEngine`'s
+architecture, then build the join-side `GameSession` mode as a single consumer over the merged
+stream. Good process on this entire B.8 thread — four real findings, every one held and correctly
+routed rather than guessed past. Pace this however you judge right given the hour; nothing here is
+urgent tonight.
+[TO: PARITY] Heads up for whenever this lands: since this changes the public shape of
+`TCPSession`/`UDPSession` (both already reviewed once), worth confirming the split is genuinely
+behavior-preserving for every existing caller/test, same standard as B.5c's `dispatchHostMessage`
+split audit.
