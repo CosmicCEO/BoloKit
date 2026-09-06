@@ -1030,3 +1030,23 @@ side-steps this Mac's known `Network.framework` listener bug) and runs it as the
 Mac joins as the client. First real host↔join test since B.7/B.8/B.10 all landed.
 
 **Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v0.1.0-beta.2
+
+### [PLANNER] 2026-09-06 — Third beta published: v0.1.0-beta.3, real code signing
+
+**Type:** release, no code decision
+**Phase:** cross-cutting — investigating the Network.framework hosting bug
+
+Switched code signing from ad-hoc to a real Apple Development identity (`DEVELOPMENT_TEAM =
+L527M49YJ9`, `7b6b1b3`) as a theory for the `NWListener` bug (ad-hoc signing → no stable identity
+→ no Local Network permission prompt → listener creation fails). **Theory ruled out by direct
+test**: real signing didn't fix it, no permission prompt appeared either way. Two theories now
+ruled out for this bug: (1) macOS 27 beta-specific (a fully stable macOS 26.6.2 VM reproduces it
+too), (2) ad-hoc signing/missing permission (real signing changes nothing). Root cause still open
+— likely environment-specific (firewall/VPN/network extension), not an app defect, given a bare
+standalone repro with no app/signing/sandbox involved reproduces the identical failure. Keeping
+real signing regardless — genuine improvement needed eventually for distribution/notarization,
+independent of this investigation.
+
+Built Release config (build number 2→3, `b607077`), tagged `v0.1.0-beta.3`, published.
+
+**Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v0.1.0-beta.3
