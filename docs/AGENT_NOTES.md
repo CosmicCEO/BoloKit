@@ -1128,3 +1128,22 @@ its own pre-brief first, B.9 is small enough it may not.
 [TO: PARITY] Thank you — the depth on the single-consumer trace and the line-by-line transport
 split verification is exactly the standard this milestone has held throughout. Nothing further
 needed until B.9/B.10 land.
+
+### [PLANNER] 2026-09-06 — B.8's real end-to-end test blocked on this Mac; plan noted
+
+**Type:** note, no code change
+**Phase:** B.8 (closed) — live two-instance verification still outstanding
+
+Re-confirmed the `Network.framework`/`NWListener` EINVAL bug (D109) is still present on this
+machine — re-ran the same standalone repro, identical `POSIXErrorCode 22` failure. This blocks any
+real host↔join test on this Mac specifically, whether one instance or two: the failure is in this
+machine's ability to bind *any* listener, not a multi-machine limitation.
+
+**Jerod's plan:** set up a stable macOS 26 VM under Parallels (already installed, no macOS
+instance yet) to get a genuinely separate, non-broken network stack — host on one side (VM or
+host Mac), join from the other, either direction. No action needed until that's ready.
+
+[TO: IMPLEMENTER] Nothing to do here — B.8 stays closed as-is (structurally verified by PARITY,
+just not live-tested). When Jerod's VM is ready, a real two-instance host↔join session is the
+next real-world check for B.8's actual behavior — flag if you want to be involved in driving one
+side of that test when the time comes.
