@@ -13,11 +13,14 @@
 //  Field mapping traced against the reference's actual host-panel outlets
 //  (`Reference/c/Mac OS X/GSXBoloController.h:28-45`) and its shipped defaults
 //  (`Reference/c/en.lproj/DefaultPreferences.plist`): domination type 0 (open), base-control
-//  30s, hidden mines off, password off, port 50000. Tracker/UPnP switches excluded -- B.4's
-//  scope. `hostGameTypeMenu`/`Tab` excluded -- the reference's own header comment confirms
-//  domination is the only supported game type, and `BoloKit.DominationType` only models that.
-//  `hostHiddenMinesTextField` excluded -- `GameState.hiddenMines` is a pure `Bool`, nothing in
-//  this port for a second numeric field to bind to.
+//  30s, hidden mines off, password off, port 50000. `hostGameTypeMenu`/`Tab` excluded -- the
+//  reference's own header comment confirms domination is the only supported game type, and
+//  `BoloKit.DominationType` only models that. `hostHiddenMinesTextField` excluded --
+//  `GameState.hiddenMines` is a pure `Bool`, nothing in this port for a second numeric field to
+//  bind to.
+//
+//  Milestone B.6 (D105 Part 2, split from B.4): Tracker/UPnP toggles added, same "no live
+//  listener to bind to yet" treatment as `portText` -- see that field's own comment below.
 //
 
 import BoloKit
@@ -44,6 +47,13 @@ struct HostGameView: View {
     /// No live effect yet -- no listener exists to bind this to until B.5. Kept in the form so
     /// the UI doesn't need rework once B.5 lands and actually needs a port.
     @State private var portText = "50000"
+    /// Milestone B.6 (D105 Part 2, split from B.4): same "no live effect yet" treatment as
+    /// `portText` above, for the identical reason -- `startHosting()` below still only produces a
+    /// local `GameState` (D94's own disclosed scope), so there is no real listener for
+    /// `registerWithTracker`/`PortMapping` (both already shipped, Wave 6.5) to bind to yet. Kept
+    /// in the form now so it doesn't need rework once real host-network wiring lands.
+    @State private var trackerEnabled = false
+    @State private var upnpEnabled = false
 
     private let mapContentType = UTType(filenameExtension: "map") ?? .data
 
@@ -74,6 +84,10 @@ struct HostGameView: View {
                     SecureField("Password", text: $passwordText)
                 }
                 TextField("Port", text: $portText)
+                    .help("Not connected to a real listener yet -- Milestone B.5")
+                Toggle("Announce on Tracker", isOn: $trackerEnabled)
+                    .help("Not connected to a real listener yet -- Milestone B.5")
+                Toggle("UPnP Port Mapping", isOn: $upnpEnabled)
                     .help("Not connected to a real listener yet -- Milestone B.5")
             }
 

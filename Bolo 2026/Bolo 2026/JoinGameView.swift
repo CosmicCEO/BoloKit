@@ -22,6 +22,14 @@
 //  equivalent (framing catch-alls specific to this port's own transport, not the reference's
 //  wire protocol) and get plain descriptive text instead.
 //
+//  Milestone B.6 (D105 Part 2, split from B.4): tracker browse list, calling the already-shipped
+//  `listTrackerGames` (`TrackerBrowser.swift`, Wave 6.5) -- fully real networking, unlike
+//  `HostGameView`'s still-local-only hosting (D94), since this view's own join path is already a
+//  real remote connection. Default hostname matches the reference's shipped
+//  `GSTrackerString` (`Reference/c/en.lproj/DefaultPreferences.plist`). `TrackerHostList.addr` is
+//  kept opaque network-byte-order per that struct's own doc comment -- formatted here into a
+//  dotted-quad purely for display, not reused as a real value anywhere else.
+//
 
 import BoloKit
 import BoloNet
@@ -38,6 +46,11 @@ struct JoinGameView: View {
     @State private var progress: JoinProgress?
     @State private var errorMessage: String?
 
+    @State private var trackerHostnameText = "tracker.xbolo.org"
+    @State private var isBrowsingTracker = false
+    @State private var trackerGames: [TrackerHostList] = []
+    @State private var trackerErrorMessage: String?
+
     var body: some View {
         Form {
             Section("Server") {
@@ -45,6 +58,31 @@ struct JoinGameView: View {
                 TextField("Port", text: $portText)
                 SecureField("Password (if required)", text: $passwordText)
                 TextField("Player Name", text: $nameText)
+            }
+
+            Section("Tracker") {
+                HStack {
+                    TextField("Tracker Hostname", text: $trackerHostnameText)
+                    Button("Browse", action: browseTracker)
+                        .disabled(isBrowsingTracker || trackerHostnameText.isEmpty)
+                }
+                if isBrowsingTracker {
+                    ProgressView()
+                }
+                if let trackerErrorMessage {
+                    Text(trackerErrorMessage).foregroundStyle(.red)
+                }
+                ForEach(trackerGames, id: \.self) { listing in
+                    Button(action: { fill(from: listing) }) {
+                        VStack(alignment: .leading) {
+                            Text("\(listing.game.playerName) — \(listing.game.mapName)")
+                            Text("\(Self.dottedAddress(listing.addr)):\(listing.game.port) · \(listing.game.nPlayers) players")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             if isJoining {
@@ -72,6 +110,40 @@ struct JoinGameView: View {
         case .receivingPreamble: return "Receiving game info…"
         case .receivingMap: return "Receiving map…"
         case .success: return "Joined."
+        }
+    }
+
+    private func browseTracker() {
+        trackerErrorMessage = nil
+        isBrowsingTracker = true
+        trackerGames = []
+
+        Task { @MainActor in
+            do {
+                trackerGames = try await listTrackerGames(hostname: trackerHostnameText)
+            } catch let error as TrackerBrowseError {
+                trackerErrorMessage = Self.message(for: error)
+            } catch {
+                trackerErrorMessage = "\(error)"
+            }
+            isBrowsingTracker = false
+        }
+    }
+
+    private func fill(from listing: TrackerHostList) {
+        addressText = Self.dottedAddress(listing.addr)
+        portText = String(listing.game.port)
+    }
+
+    private static func dottedAddress(_ addr: UInt32) -> String {
+        "\((addr >> 24) & 0xff).\((addr >> 16) & 0xff).\((addr >> 8) & 0xff).\(addr & 0xff)"
+    }
+
+    private static func message(for error: TrackerBrowseError) -> String {
+        switch error {
+        case .badVersion: return "Tracker version doesn't match."
+        case .connectionClosedEarly: return "The connection closed before the tracker list finished."
+        case .malformedResponse: return "The tracker sent an unreadable response."
         }
     }
 
