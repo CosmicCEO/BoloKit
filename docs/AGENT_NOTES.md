@@ -437,3 +437,148 @@ summarizing current status/known gaps.
 Semver pre-release naming, per Jerod's own choice — room to increment `beta.2`/`beta.3` etc. as
 more builds land. Not a wave/sub-wave decision, just a project-management artifact; no D-number
 assigned.
+
+### [PARITY] 2026-09-06 — Post-commit audit: B.9 (rendering + smoothing) and D125 sound-wiring
+
+**Type:** post-commit audit (two items queued by PLANNER's own D125 wrap-up entry above).
+**Standing limitation:** no Swift toolchain in this environment — this is a hand-trace against
+`Reference/c/`, not a compile-and-run; Implementer's own green build remains the authority that
+the code executes, this audit is the authority that it's correct against the oracle.
+
+**Verdict: one real, actionable bug (D125 sound-wiring); one real, undisclosed scope gap (B.9);
+one pre-existing-but-scope-widened item not attributable to B.9 itself; one cosmetic nit.**
+
+---
+
+**B.9 — `8da3454` (re-scope, all connected players) + `2aa96c6` (smoothing) + `33dca74` (report).**
+
+Confirmed independently:
+- `testAlliance` (`Sources/BoloKit/GameObjects.swift:417-422`) reproduces `testalliance()`'s mutual
+  bitmask check exactly against `Mac OS X/GSBoloView.m:314-317`'s own `(alliance & (1<<i)) &&
+  (alliance & (1<<player))` condition — order-independent, confirmed correct either call order.
+- `headingColumn` (`GameRenderView.swift:51-53`) is the literal `(int)(dir/(kPif/8.0)+0.5)%16`
+  formula, matching every heading-dependent draw call in `GSBoloView.m`.
+- Sprite base constants (`FTKB00IMAGE`/`FTNK00IMAGE`/`ETKB00IMAGE`/`ETNK00IMAGE`,
+  `Sources/BoloKit/Images.swift:217/233/249/265`) and the friendly/enemy branch in
+  `GameRenderView.swift:245-252` match `GSBoloView.m:316-320`'s branch exactly.
+- `drawBuilder` (`GameRenderView.swift:279-291`) correctly gates on `builderStatus` matching the
+  reference's `switch (builderstatus) { kBuilderGoto/Work/Wait/Return }` set
+  (`GSBoloView.m:295-303`) — the outer per-player loop calling it unconditionally is fine because
+  the gate lives inside.
+- `RemotePositionSmoother` (`Sources/BoloKit/RemotePositionSmoother.swift`) is disclosed
+  correctly as port-original with no reference counterpart (`GSBoloView.m` never smooths) —
+  confirmed by grep, no `playsound`/interpolation call anywhere in that file. Logic self-checks:
+  holds at first sample, interpolates strictly between two known samples at
+  `currentTick - smoothingDelayTicks`, holds flat past the latest sample. The negative-control
+  claim in `33dca854`'s completion report (zeroing `smoothingDelayTicks` reproduces the snap) is
+  architecturally sound given the code, though re-run is not possible here (no toolchain).
+- Wiring in `2aa96c6` (`GameRenderView.swift:97-99`, `253-255`) correctly buckets by player index,
+  keys off `newState.ticks`, and only smooths the tank draw position, exactly as disclosed —
+  builder/shell positions for remote players still draw raw, matching the commit message's own
+  scope line.
+
+**Real, undisclosed gap:** `GSBoloView.m:328-330` draws a name label above any other player's
+tank whenever its visibility fraction exceeds 0.90 (`if (vis > 0.90) drawLabel:...`). Under D65
+(no fog-of-war in v1, every tile/sprite fully visible) that condition is unconditionally true, so
+the reference would always show it. `8da3454`'s commit message claims to generalize "matching
+`GSBoloView.m`'s own draw order and per-player scope exactly" — but grepped
+`GameRenderView.swift` for `drawLabel`/`name` (confirmed via `grep -n`) and found zero calls; no
+player-name label is ever drawn for anyone, at any point, host or join. The file's own header
+comment (`GameRenderView.swift:16-18`, left unedited by `8da3454`) still lists "other-player
+tank/name/builder sprites" together as the single thing D73 scoped out — but this commit's own
+diff generalized tank+builder while leaving name silently behind, with no line in either commit
+message (`8da3454` or `2aa96c6`) disclosing the label as remaining/deferred scope the way
+builder/shell smoothing was disclosed in `2aa96c6`. Not a fidelity-breaking bug (multiplayer is
+playable without it) but exactly the kind of silent scope-narrowing D28-adjacent conventions exist
+to catch — a claim of "exactly" matching draw order/scope that isn't quite true.
+
+**Pre-existing, scope now widened (not a new B.9 defect, flagging since exposure changed):**
+`drawSprites` draws both `state.explosions` (global list, top of function) and, per connected
+player, `player.explosions` (bottom of function, in `2aa96c6`'s diff at `GameRenderView.swift:270-276`).
+Traced `client.c:3572` (`sendclupdate`'s own drain of
+`client.players[client.player].explosions`) and `client.c:1427-1428` (`recvclupdate`'s
+`clearlist`) — `client.players[i].explosions` is a network-transmission staging queue, populated
+at specific damage sites (e.g. `client.c:5183`) that are the *mutually exclusive alternative*
+branch to adding straight to the globally-rendered `client.explosions` (confirmed at
+`client.c:5148` vs. `client.c:5183`, same `if/else` inside `dealwithhit`/equivalent). `GSBoloView.m`'s
+own `drawSprites` (lines 340-346) draws only the global list — never iterates any
+`client.players[i].explosions`. This dual-draw pattern predates B.9 (present since the original
+7.2 landing for the local player alone, reviewed and passed at `3dfabff`/`07974bd` as one of "four
+smaller judgment calls" under the label "global/unattributed explosions drawn") — `8da3454` just
+generalized it from one player to every connected player, multiplying how often a
+staging-queue-only explosion gets an extra render frame it wouldn't get in the reference. Given it
+was previously reviewed and accepted as a scope call, not re-litigating it as a hard finding here,
+but flagging the widened exposure for Planner's own read on whether the earlier acceptance still
+holds at the new scope.
+
+**Cosmetic nit:** `remoteTankSmoothers` (`GameRenderView.swift:61-65`) is never pruned when a
+player disconnects — a small per-session dictionary leak, one entry per departed remote index.
+No rendering-correctness impact (a stale smoother for a disconnected index is simply never read
+again), not a parity issue, not blocking.
+
+---
+
+**D125 sound-wiring — `a840fc3` (SoundPlayer + GameSession wiring) + `3f100b4` (report).**
+
+Confirmed independently:
+- `SoundPlayer.play(_:)` (`Bolo 2026/Bolo 2026/SoundPlayer.swift:59-67`) reproduces
+  `playsound()`'s round-robin/first-non-playing-slot scan (`GSXBoloController.m:3717-3722`)
+  exactly, and its `"GSMuteBool"` check (read fresh every call) matches `playsound()`'s own
+  `if (!muteBool)` guard (`GSXBoloController.m:3620`) evaluated fresh every call, not cached at
+  init — confirmed correct.
+- `onSuperboomTerrain → "superboom"` and `onExplosion`/`onSmallboom → "explosion"` are correct:
+  traced `recvsrsuperboom`'s `client.c:2845-2848` (`kSuperBoomSound`/`kFarSuperBoomSound` by fog)
+  and `recvsrsmallboom`'s `client.c:2691-2694` (`kExplosionSound`/`kFarExplosionSound` by fog) —
+  under D65's no-fog v1 scope, the "near" branch always applies, so `"superboom"`/`"explosion"`
+  are the right effect names for these two hooks.
+
+**Real finding: `onMineExplosion → SoundPlayer.shared.play("mine")` is the wrong sound.** Traced
+every `playsound(kMineSound)` call site in the reference — there are exactly two,
+`recvsrplacemine` (`client.c:1811-1812`) and `recvsrdropmine` (`client.c:1888-1889`) — both fire
+only on receipt of a mine being successfully *laid* (`SRPlaceMine`/`SRDropMine`), never on a mine
+detonating. Then traced every call site of BoloKit's `onMineExplosion` hook (`grep -n
+"onMineExplosion(point)"` across `Sources/BoloKit/`): `TankLocalTick.swift:210` (`smallboom()`'s
+own tank-death explosion — its doc comment literally calls the hook "a pure notify hook" reused
+from elsewhere, not a mine-specific concept), `TankLocalTick.swift:371` (`grabTile`, a live tank
+driving onto an *already-mined* tile — genuine detonation, ported from
+`server.c:2332`'s`explosionat` per that function's own doc comment), and the `BuilderTick.swift`
+sites (`grabTrees`/`buildRoad`/`buildWall`/`buildBoat`/`repairPill`/`placeMineWork`, all firing
+only in each function's `case .minedSea, .minedSwamp, ...:` branch — i.e., only when the target
+tile is *already* mined and the builder's action detonates it, never on a clean, successful lay).
+**Every single call site is a detonation, never a successful, non-conflicting lay** — so `kMineSound`
+never applies to any of them under the reference's own semantics; the correct sound for all of
+these is `kExplosionSound` (`"explosion"`), the same effect already correctly wired to
+`onSmallboom`/`onExplosion` in this very commit. The hook's name (`onMineExplosion`) is a
+BoloKit-internal label describing where the explosion physically originates (at a mine tile), not
+a reference sound-category name — `a840fc3` appears to have pattern-matched the hook's name to
+the sound name without tracing the actual reference call sites, which is exactly the class of
+error this role exists to catch.
+
+**Citation check:** `a840fc3`'s commit message and `SoundPlayer.swift`'s own header cite
+`GSXBoloController.m:3619-3733` for `playsound()` — confirmed correct, function spans exactly
+that range (verified by reading `sed -n '3619,3733p'`). No other file:line citations to check in
+this diff (the "5 of 24 events" claim wasn't independently re-derived against the full 24-name
+enum here, but the 5 named sound files present — `explosion`/`superboom`/`mine`/plus the reused
+mapping above — are consistent with the pool-size table's own 14-name coverage; not exhaustively
+re-checked, low risk, disclosed scope not part of this finding).
+
+---
+
+[TO: PLANNER] Two real items from this audit: (1) B.9 — other players' name labels
+(`GSBoloView.m:328-330`'s `vis > 0.90` case, unconditionally true under D65) are never drawn,
+undisclosed as remaining scope in `8da3454`/`2aa96c6`'s commit messages despite claiming an
+"exact" scope match; small, cosmetic, your call whether it's worth a follow-up commit or just a
+disclosed-gap note. Also flagging (not a hard finding, needs your read) that the pre-existing
+per-player-`explosions`-list double-draw (previously accepted at 7.2 for the local player alone)
+now applies to every connected player as of `8da3454` — same acceptance may or may not still hold
+at the wider scope. (2) D125 — real bug, `onMineExplosion` is wired to play the mine-laying click
+(`"mine"`) at every detonation site instead of the explosion sound (`"explosion"`); no call site
+of that hook is ever a successful mine-lay under the reference's own semantics. Recommend a
+one-line fix before this is considered closed.
+
+[TO: IMPLEMENTER] D125 fix needed: in `Bolo 2026/Bolo 2026/GameSession.swift`, change
+`onMineExplosion: { _ in SoundPlayer.shared.play("mine") }` to `.play("explosion")` — traced every
+call site of `onMineExplosion` in `BoloKit` and confirmed none of them is a mine being laid (all
+are detonations of an already-placed mine); the reference's `kMineSound` is reserved exclusively
+for `recvsrplacemine`/`recvsrdropmine` receipt (a successful lay), never for detonation. B.9's
+name-label gap is optional/your and Planner's call on priority — not blocking.
