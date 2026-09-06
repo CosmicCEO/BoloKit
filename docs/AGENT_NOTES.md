@@ -861,3 +861,50 @@ to it, own pre-brief required.
 [TO: PARITY] Heads up for whenever B.8 lands: worth confirming the join-side `GameSession` mode
 genuinely never calls any of `TankLocalTick.swift`'s shared-object-mutating functions — only
 `tankMoveTick` for the local player, and `recvSr*`-driven application for everything else.
+
+### [IMPLEMENTER] 2026-09-06 — B.8: fourth finding, a real concurrency bug caught before committing it
+
+**Type:** finding, self-caught, nothing landed
+**Phase:** B.8 — third `GameSession` mode design, blocked
+
+Built the join-side `GameSession` mode per D113/D114/D116/D115 (TCP `SR*` receive loop, UDP
+`CLUpdate` receive loop via two `withTaskGroup` child tasks, `tankMoveTick`-only local physics on
+the existing tick timer) and hit a compiler error: *"Actor-isolated property 'state' cannot be
+passed 'inout' to 'async' function call."* Worked around it the wrong way first — copy `self.state`
+into a local var, pass `&localState` to the `await`-spanning call, write it back after — which
+compiles, but **reintroduces the exact race the compiler was blocking, just where the compiler can
+no longer see it.**
+
+The real problem: `@MainActor` isolation guarantees no two pieces of code run their *synchronous*
+portions concurrently — it does **not** protect a read-mutate-write-back pattern that spans a long
+`await` (waiting on real network I/O, potentially seconds). While either receive loop is suspended
+mid-wait holding a stale copy, the 50Hz tick timer (or the *sibling* receive loop) can run in that
+gap, mutate the real `self.state`, and then get silently clobbered when the first loop's stale
+copy writes back over it. This is the identical hazard `HostGameEngine`'s whole merged-event-
+stream/single-consumer architecture (D95/D96) already exists to prevent — I dismissed that
+architecture as unnecessary here reasoning "`@MainActor` already serializes everything," which is
+true for synchronous code and false the moment an `inout` binding spans a suspension point. Caught
+it myself, from the compiler's own error, before running anything, let alone committing.
+
+**Why the obvious fix doesn't work either:** the clean fix would split `TCPSession.
+receiveAndDispatchOne`/`UDPSession.receiveAndApply` into an async "wait for raw bytes, no `state`
+access" half and a synchronous "decode + apply, no `await`" half — mirroring exactly how
+`HostGameEngine`'s own producers (`receiveOneHostMessageBytes`, I/O-only) are split from its single
+consumer (all `state` mutation, always synchronous once dispatched). Both functions currently
+bundle receive+decode+apply into one non-splittable async call. Splitting them is itself real
+`BoloNet`-level API surgery, not a small change — and needs the SAME kind of decision D113/D115
+already needed (how the split should look, whether both types converge on one shared mechanism).
+
+**Nothing committed from this.** Reverted the `GameSession.swift` join-mode edit and the
+(untested, unused without it) `UDPSession.allRemoteSeqsAsUInt32()` accessor back to their last
+committed state — working tree is clean, 668 tests passing, nothing speculative left sitting
+half-built.
+
+> **→ Planner:** This is the fourth real finding in B.8's own build, and it's the one that
+> actually blocks writing the third `GameSession` mode at all correctly — not a scope question
+> like the first three, a genuine "the design as approved has a race" catch. Recommend B.8 pause
+> here until there's an explicit ruling on how `TCPSession`/`UDPSession` should split receive-vs-
+> apply (or some other mechanism) for a safe join-side consumer — I don't think this is mine to
+> decide solo given it changes public API shape on both types PARITY has already reviewed once.
+> Given the hour (Jerod's asleep, asked to keep working within a bounded footprint but I'd rather
+> hand you a real, unbuilt problem than a subtly racy "working" implementation), holding here.
