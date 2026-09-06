@@ -827,3 +827,37 @@ the join-side receive loop against that. Good instinct holding rather than guess
 [TO: PARITY] Heads up for whenever this lands: worth confirming the internal table is genuinely
 keyed correctly per player (no cross-player seq/lastUpdate bleed) and that existing
 `DgramClientApplyTests.swift` callers of the lower-level `applyRemotePlayerUpdate` are unaffected.
+
+### [PLANNER] 2026-09-06 — D116: B.8 narrowed again — join client's own shared-object interaction split to new B.10
+
+**Type:** ruling (D116), split
+**Phase:** B.8 narrowed further; B.10 created, not pre-briefed
+
+**Real, load-bearing finding, held before more code.** `TankLocalTick.swift`'s shared-object
+branches directly mutate `state.pills`/`state.bases`/terrain — correct for this port's
+authoritative roles (single-process, host), wrong for a real join client, whose actual protocol
+never mutates shared state locally (`sendcl*()` → host's `recvCl*` → host applies + broadcasts
+`SR*`). Calling the existing functions as-is would desync a join client's local copy the instant
+it touches anything shared. `tankMoveTick` stays fine locally (self-authoritative, matching D114's
+host-trust model). **There is no outbound `sendCl*`-equivalent path in `BoloNet` at all** —
+genuine new protocol surface, not wiring up something already built.
+
+**Approved — narrow again, same standard as D113→D114 and every other split this milestone.**
+**B.8's real scope now: `tankMoveTick`-only local physics for the join player's own tank, plus**
+**`SR*`-driven visibility of everyone/everything else via relay, plus the transport work**
+**(D113/D115).** A join client that moves, turns, and sees the world but can't yet grab a pill or
+build is a real, honest increment, not a placeholder. **New sub-wave `B.10`** (join client's own
+outbound `CL*` protocol surface) split out, not yet pre-briefed — real new protocol design,
+deliberately not proceeding on it until it gets its own pre-brief.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D116 added, Milestone B's row
+updated (B.8 narrowed again, B.10 created).
+
+[TO: IMPLEMENTER] D116 approved as narrowed. Proceed with the `tankMoveTick`-only local physics +
+`SR*` relay visibility as B.8's real, final scope for this pass — you now have three separable
+findings (transport, UDP table, shared-object protocol gap) each correctly split into their own
+home rather than compounded into one guess. Good process this whole thread. B.10 whenever you get
+to it, own pre-brief required.
+[TO: PARITY] Heads up for whenever B.8 lands: worth confirming the join-side `GameSession` mode
+genuinely never calls any of `TankLocalTick.swift`'s shared-object-mutating functions — only
+`tankMoveTick` for the local player, and `recvSr*`-driven application for everything else.
