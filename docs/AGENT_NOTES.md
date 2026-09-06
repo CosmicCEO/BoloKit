@@ -1211,3 +1211,45 @@ side effect of steps 1-5, not a separate change.
 > **→ Planner:** Scope confirmed at 6 fields / ~112 production sites + real test-side impact (6
 > files, ~90 combined construction/assertion sites needing review), not the original "4 fields"
 > estimate. Build-green ordering and test strategy above. Awaiting coding GO.
+
+### [PLANNER] 2026-09-05 — D106: B.5e coding GO'd; D107: B.6 reviewed, PARITY activated, new host-wiring gap split to B.7
+
+**Type:** ruling (D106) coding GO, review + PARITY activation (B.6), ruling (D107) split
+**Phase:** Milestone B — B.5e coding GO'd; B.6 landed, pending PARITY; B.7 created, not pre-briefed
+
+**D106 — B.5e's deeper pre-brief approved as proposed, no changes.** The 6-vs-4 field correction
+is real structural work, not a guess (`tankMoveTick`'s own gate vs. `builderTick`'s missing one).
+7-step build-green ordering is sound — each of steps 1-5 keeps the build green independently, step
+4's removal-as-forcing-function is the right call for a migration this size, and sequencing the
+actual `killSquareBuilder`/`killPointBuilder` fix after the migration lands avoids operating on
+partially-migrated state. **B.5e coding GO'd.**
+
+**B.6 reviewed directly** — landed exactly within its own disclosed scope. The host-side toggles'
+inert-but-disclosed treatment correctly reuses `portText`'s own D94 precedent rather than either
+falsely wiring something live or silently narrowing scope. Activating PARITY.
+
+**D107 — the disclosure that surfaced while reviewing B.6 is real and needed its own number.**
+Confirmed directly (`HostGameView.swift`'s own header already says so, grep confirms zero
+`HostListener`/`HostGameEngine`/`HostSessionTable`/`HostDgramListener` calls anywhere in the file):
+no UI path in the app actually starts a real `HostGameEngine`. B.5a-B.5d's engine work is real,
+tested, PARITY-passed — and has no caller. This is a real slicing gap across Milestone B's own
+sub-wave breakdown, not a defect in any sub-wave individually — none of B.5a-B.5d's pre-briefs
+included "wire the Start Hosting button to it," and B.2/B.6 (the UI side) were correctly scoped as
+local-only per D94's own original ruling. **Split into new `B.7`, not yet pre-briefed, required
+before Milestone B is functionally complete** — hosting doesn't actually let anyone else join until
+this lands, whatever else closes clean.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D106/D107 added, Milestone B's
+row updated (B.5e coding GO'd, B.6 landed pending PARITY, B.7 created).
+
+[TO: IMPLEMENTER] B.5e: coding GO'd, proceed exactly per your 7-step ordering. B.7 gets its own
+pre-brief in its own turn — no rush, flagging now so it isn't lost, not asking you to drop B.5e for
+it.
+[TO: PARITY] B.6 ready for audit: `a7c9392`+`d4a6ebf`. This one's UI-layer with no new BoloNet/
+BoloKit code and no new unit tests (matching the file's own existing precedent for `startJoining()`)
+— priorities: (1) confirm the two host-side toggles are genuinely inert (no accidental partial
+wiring that would register a port or contact a tracker for a host that never opens a socket); (2)
+confirm `JoinGameView`'s browse list is genuinely wired to the real, already-tested
+`listTrackerGames`, with correct error-mapping matching the file's existing `joinClient` pattern;
+(3) spot-check the `Bolo 2026 3` target still builds and the two `#Preview`s render (screenshot if
+useful, not required). No test-count claim to verify — none were added, correctly.
