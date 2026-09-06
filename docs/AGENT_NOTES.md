@@ -1713,3 +1713,85 @@ history rewriting in a shared, actively-being-committed-to tree is more likely t
 work than to improve bookkeeping. Flagging clearly for PLANNER: verify both C.0's and C.3's diffs
 via `git show cbde7d7` and `git show 2d83ddc` (content, not just the message) before crediting
 either sub-wave as closed, since neither commit message alone tells the whole story anymore.
+
+### [IMPLEMENTER] 2026-09-06 — C.3 completion report (procedural sound synthesis)
+
+**Type:** completion report
+**Phase:** Milestone C, C.3 — coding GO'd at D122, built exactly per the pre-brief
+
+**What shipped.** `Sources/BoloSoundsCore/` (`SampleBuffer.swift`, `SoundSource.swift`,
+`SoundSetBuilder.swift`, `AIFFCodec.swift`) + `Sources/BoloSounds/main.swift`, mirroring
+`BoloGlyphsCore`/`BoloGlyphs`'s two-target shape exactly (library w/ no `BoloKit` dependency per
+the pre-brief's own note + thin executable). `Package.swift` updated: `BoloSoundsCore` target,
+`BoloSounds` executable target + package product, `BoloSoundsCore` added to `BoloKitTests`'
+dependencies.
+
+- DSP primitives per the pre-brief's signatures: `whiteNoise` (fixed-seed 64-bit LCG, not
+  `SystemRandomNumberGenerator`), `adEnvelope` (linear attack, exponential decay), `toneSweep`
+  (phase-accumulated sine, continuous through a sweep), `lowpass` (single-pole IIR). `SampleBuffer`
+  has `mix`/`apply(envelope:)`/`gain(by:)`/`trimOrPad(to:)` plus two small helpers not in the
+  pre-brief's own list (`appending`/`overlaying`/`silence`) needed for the pulse-sequence and
+  staggered-sub-burst names (`build`/`builderdeath`/`msgreceived`/`bubbles`).
+- 14-entry parameter table implemented as a `renderSound(named:)` switch, one case per name, using
+  the pre-brief's own concrete durations/frequencies/envelope times as written (no tuning done —
+  v1 synthesis per D121).
+- `far*` derivation in `SoundSetBuilder.swift`: 10 far names via shared `lowpass(cutoffHz: 800)`,
+  with `fshot` = `lowpass(tankshot)`, reused for both `tankshot`'s and `pillshot`'s far variant per
+  D122 — no `fpillshot` key exists. `buildSounds()` returns 24 entries (`allSoundNames.count == 24`,
+  `Set(allSoundNames).count == 24`), 23 unique underlying buffers.
+- AIFF encoding via `AVAudioFile` (44.1kHz/mono/16-bit/big-endian), writing directly to a file URL
+  per the pre-brief's own note (`main.swift` already targets a directory, no `Data` round-trip
+  needed unlike `PNGCodec.swift`).
+
+**Tests: 675 -> 686 (`swift test --list-tests` count), +11, all new + all pre-existing pass** (`swift
+test` overall: 183+501=684 executed across both test bundles, all green). New suite
+`BoloSoundsTests` (`Tests/BoloKitTests/BoloSoundsTests.swift`) covers: `whiteNoise` determinism/
+length/amplitude-bound, `adEnvelope` shape (attack ramp, monotonic non-increasing decay),
+`toneSweep` length, `lowpass` length-preservation + measurable high-frequency attenuation (RMS
+comparison), `SampleBuffer.mix`/`trimOrPad`, `buildSounds()` 24-name coverage, per-name duration
+ranges, `far*` measurable attenuation vs. near counterpart (first-difference energy proxy),
+`fshot`'s exact shared-pairing identity, and a `buildSounds()` determinism regression test (the
+direct analogue of `BoloGlyphsCore`'s `buildSheets()` equality test). Explicitly not tested:
+perceptual/subjective sound quality, per D121's own ruling — that's Jerod's ear, not a test.
+
+**Deviations from the pre-brief, disclosed:**
+1. `AVAudioFile` writes files with File type ID `AIFC`, not `AIFF` (confirmed via `afinfo` on a
+   generated `explosion.aiff` vs. the reference's own `Reference/c/Sounds/explosion.aiff`, which is
+   genuinely `AIFF`). Both are uncompressed linear-PCM containers and play identically in
+   `NSSound`/`AVAudioPlayer` — this is a chunk-labeling difference, not a data/quality difference —
+   but it's a real divergence from "matches the reference's own on-disk format" as stated in the
+   pre-brief. Didn't chase a fix (no `AVFileType` override surfaced in a quick API check); flagging
+   for PARITY/PLANNER to decide if it matters before Xcode wiring plays these back via `NSSound`.
+2. Added `appending`/`overlaying`/`silence` to `SampleBuffer` beyond the pre-brief's own listed
+   four helpers — needed once actually building the pulse-sequence (`build`/`builderdeath`/
+   `msgreceived`) and staggered-burst (`bubbles`) names; not a design change, just filled a gap the
+   pre-brief's table implied but didn't spell out as a primitive.
+3. **Did not wire the Xcode Run Script phase** for `BoloSounds` — left for a later session/explicit
+   request. C.0/C.5 are actively mid-edit in `Bolo 2026/Bolo 2026/*.swift` and
+   `Sources/BoloNet/HostGameEngine.swift` in the working tree right now; touching the `.xcodeproj`
+   at the same time as those sessions felt like the wrong risk trade for this pass. Confirmed the
+   pattern is transferable (same shape as `BoloGlyphs`'s existing wiring) but didn't execute it.
+
+**Git note:** hit a real index race — a concurrent session's `git add`/edits landed between my
+`git add <specific files>` and `git commit`, so the first commit attempt (`cbde7d7`) swept in
+`Bolo 2026/Bolo 2026/*.swift`, `Sources/BoloNet/HostGameEngine.swift`, and two new C.0/C.5 files
+(`PlayerStatusView.swift`/`PreferencesView.swift`) that weren't mine to commit. Caught it
+immediately via `git show --stat`, fixed with `git reset --soft HEAD~1` (preserves all working-tree
+content) + `git restore --staged` on the non-mine paths + a re-commit with an explicit pathspec.
+Final commit `2662d5e` contains only `Package.swift` + the six new `BoloSoundsCore`/`BoloSounds`/
+test files. Verified `git status --short` afterward shows those other sessions' changes back to
+exactly their pre-commit state (modified-not-staged / untracked, untouched).
+
+**Honest quality note:** the actual synthesized sound quality has not been reviewed by ear.
+Parameters are the pre-brief's own first-pass numbers, un-tuned. Per D121's own standard, Jerod's
+review is the real check — this report only confirms the pipeline builds, tests pass, and the
+24-name/far-derivation/`fshot`-sharing contract from D121/D122 is implemented as specified.
+
+[TO: PLANNER] C.3 landed clean at `2662d5e` (`Package.swift` + `Sources/BoloSoundsCore/` +
+`Sources/BoloSounds/` + `Tests/BoloKitTests/BoloSoundsTests.swift`). 675->686 tests, no
+regressions. Two things needing a ruling: (1) the AIFC-vs-AIFF file-type divergence noted above —
+acceptable as-is, or worth a follow-up to force true AIFF via a lower-level writer? (2) Xcode Run
+Script wiring for `BoloSounds` intentionally deferred — same shape as `BoloGlyphs`'s existing
+wiring, ready whenever a session isn't racing C.0/C.5 edits in the same tree.
+[TO: PARITY] C.3 ready for audit whenever picked up — `2662d5e` is the full diff, no prior commits
+to combine.
