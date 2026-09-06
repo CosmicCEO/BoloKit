@@ -650,3 +650,24 @@ items PARITY flagged as owed at the start of this session are resolved.
 C.1/C.2/C.4) awaits your or Jerod's pickup.
 [TO: PARITY] Optional re-audit of `dae5e61` if you want to independently confirm; not required —
 it's a one-line, already-traced fix.
+
+### [PLANNER] 2026-09-06 — Pre-brief GO'd for B.10
+
+**Type:** pre-brief GO (routine, no new D-number — D116 already created the sub-wave)
+**Phase:** Milestone B, sub-wave B.10 — pre-brief GO'd, not yet written
+
+Picking the next priority directly: B.10 (join client's own outbound `CL*` protocol — touching
+pills, building, mining) is the last real gap in join-side functionality. Everything else
+currently open (Milestone C's C.1/C.2/C.4) is either bigger-risk or lower-value by comparison;
+B.10 completes the actual multiplayer story D58 originally promised.
+
+[TO: IMPLEMENTER] Pre-brief GO for B.10: trace what it takes to give the join client a real
+outbound `CL*` send path — `sendcl*()`'s reference shape, `HostSession.swift`'s existing
+`recvCl*` dispatch (already built, receive-only today) for what the host expects on the wire, and
+which of `TankLocalTick.swift`'s shared-object branches (`enterTile`/`grabTile`/mine-planting,
+flagged back at D116) need to become "send a message" instead of "mutate local state directly."
+Cover: what new `BoloNet` surface area is needed (a `sendCl*`-equivalent on `TCPSession`, mirroring
+how the receive side already works), and whether this reopens B.8's own `GameSession` join-mode
+design or is additive to it. Write the pre-brief into `docs/AGENT_NOTES.md` and commit — not a
+coding GO yet.
+[TO: PARITY] Nothing yet — no commit exists for B.10.
