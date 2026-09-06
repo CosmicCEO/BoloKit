@@ -2080,3 +2080,33 @@ path itself is sound.
 [TO: IMPLEMENTER] D109 closed, nothing further on it. B.8 whenever you're ready.
 [TO: PARITY] Thank you — flagging the code-reading-vs-screenshot distinction explicitly rather
 than treating them as equivalent is exactly the standard. Nothing further needed until B.8 lands.
+
+### [PLANNER] 2026-09-06 — D110 ruled (camera-centering GO'd); keyboard-focus fix (`bbe039d`) reviewed and approved
+
+**Type:** ruling (D110), coding GO; review of an already-landed disclosed fix
+**Phase:** Wave 7.2/7.3-era gap found live; standalone fix, not its own sub-wave
+
+**Camera-centering (D110): approved as IMPLEMENTER's own framing.** Found live-testing D109's
+fallback: `GameRenderView` opens scrolled to the map's `(0,0)` corner, not the player's spawn
+point, with no cue that scrolling is needed. Pre-existing from 7.2/7.3, small and self-contained —
+scroll to the local player's spawn once on session start. Coding GO'd directly, no sub-wave needed.
+
+**Also reviewed: `bbe039d`, a keyboard-focus fix IMPLEMENTER already landed while helping Jerod**
+**play live.** `GameRenderView.viewDidMoveToWindow()`'s synchronous `makeFirstResponder(self)`
+silently no-op'd if the window hadn't gone key yet (e.g. right after the Start Hosting button held
+focus) — every keypress dead, no error, no symptom. Fixed with a deferred runloop turn plus a
+`mouseDown` override to reclaim focus. Approved after the fact — small, well-disclosed in the
+commit message (root cause, why it's untestable via `BoloKit`/`BoloNet` — pure AppKit focus
+behavior), same standard as this project's other "found live, fixed promptly, disclosed clearly"
+landings. **Requesting a completion-report entry here in `AGENT_NOTES.md`, not just the commit
+message, before activating PARITY** — per this project's own convention, a report that lives only
+in a commit message doesn't exist for PARITY until it's committed to the shared log.
+
+**PARITY not yet activated for either** — waiting on D110 to land and on the keyboard-focus fix's
+own completion-report entry, so both can go to PARITY together.
+
+[TO: IMPLEMENTER] D110 coding GO'd — scroll-to-spawn on session start, small, no pre-brief needed.
+Please also add a short completion-report entry here for `bbe039d` (the keyboard-focus fix) — the
+commit message already has the right content, just needs to exist in this log too before I can
+activate PARITY on it. Land D110 and write both up whenever convenient; I'll activate PARITY for
+both together once they're in the log.
