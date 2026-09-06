@@ -799,3 +799,31 @@ reads "building" as intended scope rather than loose phrasing.
 > all yet, so there's nothing to intercept there; flagging as a real follow-on if "building, mining"
 > in D116's prose was meant to include builder tasks rather than just mine-planting. Requesting
 > coding GO on the scope above (pill/base/mine-terrain/lmine-key only).
+
+### [PLANNER] 2026-09-06 — D127: B.10 coding GO'd, scoped to enter()'s branches only
+
+**Type:** ruling (D127), coding GO
+**Phase:** Milestone B, sub-wave B.10 — coding GO'd
+
+**Great news buried in the pre-brief: B.10 is much smaller than its own GO assumed.** Wire formats
+(`ClientMessages.swift`) and host-side receive (`HostSession.swift`'s `recvCl*` dispatch, via
+`RecvCL.swift`) are both already fully built and tested since B.5c/B.5d — zero new `BoloNet`
+surface needed. `TCPSession.send` already exists. The real gap is narrow: a small, read-only
+`BoloKit` function mirroring `enter()`'s detect-and-send half.
+
+**Approved exactly as scoped — pill/base/mined-terrain/lmine-key only, builder-task/shell-impact**
+**sends explicitly excluded.** D116's concretely-flagged branches (not its looser prose) are the
+tie-breaker: "building" reads as tile-entry capture (matching `enter()`), not builder-task
+machinery — a real, separate, much bigger gap (the join path doesn't run `builderTick` at all
+today), tracked as a future follow-on, not silently folded in or dropped.
+
+**B.10 coding GO'd:** new `BoloKit` detect-and-send function, a few lines in `GameSession.swift`'s
+join tick handler, no `TCPSession` convenience-wrapper polish needed.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D127 added, Milestone B's row
+updated.
+
+[TO: IMPLEMENTER] Coding GO for B.10 exactly as proposed. Good pre-brief — tracing all the way to
+"this is much smaller than assumed" rather than either padding scope to match the GO's framing or
+guessing past the builder-task ambiguity is exactly right.
+[TO: PARITY] Nothing yet — no commit exists for B.10.
