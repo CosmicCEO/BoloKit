@@ -170,7 +170,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer()])
     state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(consumed)
     #expect(state.pills[0].armour == 9)
 }
@@ -179,7 +179,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer()])
     state.pills = [Pill(x: 50, y: 50, armour: 0, owner: playerNeutral, speed: 40, counter: 5)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(!consumed)
 }
 
@@ -189,7 +189,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer(), connectedPlayer()])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 1, shells: 10, mines: 10)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: true)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(!consumed)
     #expect(state.bases[0].armour == 50)
 }
@@ -198,7 +198,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer(), connectedPlayer()])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 1, shells: 10, mines: 10)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(consumed)
     #expect(state.bases[0].armour == 45)
 }
@@ -211,7 +211,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [owner, ally])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 1, shells: 10, mines: 10)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(consumed)
     #expect(state.bases[0].armour == 50)
     #expect(state.players[0].explosions.count == 1)
@@ -226,7 +226,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [owner, ally])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 1, shells: 10, mines: 10)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(!consumed)
     #expect(state.bases[0].armour == 50)
     #expect(state.players[0].explosions.isEmpty)
@@ -236,7 +236,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer(), connectedPlayer()])
     state.bases = [Base(x: 50, y: 50, armour: UInt8(minBaseArmour - 1), owner: 1, shells: 10, mines: 10)]
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    let consumed = shellCollisionTest(shell: shell, state: &state)
+    let consumed = shellCollisionTest(shell: shell, player: 0, state: &state)
     #expect(!consumed)
 }
 
@@ -246,14 +246,14 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .sea
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
-    #expect(!shellCollisionTest(shell: shell, state: &state))
+    #expect(!shellCollisionTest(shell: shell, player: 0, state: &state))
 }
 
 @Test func shellCollisionTestBoatShellDamagesSolidTerrain() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .grass0
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
-    #expect(shellCollisionTest(shell: shell, state: &state))
+    #expect(shellCollisionTest(shell: shell, player: 0, state: &state))
     #expect(state.terrain[50, 50] == .swamp3)
 }
 
@@ -261,7 +261,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .grass0
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    #expect(!shellCollisionTest(shell: shell, state: &state))
+    #expect(!shellCollisionTest(shell: shell, player: 0, state: &state))
     #expect(state.terrain[50, 50] == .grass0)
 }
 
@@ -269,7 +269,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .forest
     let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
-    #expect(shellCollisionTest(shell: shell, state: &state))
+    #expect(shellCollisionTest(shell: shell, player: 0, state: &state))
     #expect(state.terrain[50, 50] == .grass3)
 }
 
@@ -316,10 +316,34 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(state.players[0].shells.isEmpty)
     #expect(state.players[1].kickSpeed == kickForce)
     #expect(state.players[1].kickDir == 1.0)
-    #expect(state.players[0].explosions.count == 1)
+    // Fix: the hit-explosion belongs to the TARGET (`player`, here 1) being ticked, matching
+    // `client.players[client.player].explosions` (client.c:5423) -- not the shooter/shell.owner
+    // (this test's own original assertion, before the fix, wrongly expected it on player 0).
+    #expect(state.players[1].explosions.count == 1)
     // Target is remote (not localPlayer): no LocalPlayerState armour pool
     // to decrement against in this port — see ShellTick.swift's file header.
     #expect(state.local.armour == 40)
+}
+
+// A mine-chain / crash fix, found live (Jerod driving a real map) -- a neutral pillbox's
+// return-fire shell (owner: playerNeutral, per PillTick.swift) hitting any tank used to index
+// `state.players[Int(shell.owner)]` == `state.players[0xff]`, trapping with "Index out of range."
+// Not a contrived edge case: any neutral pillbox actually hitting a tank reproduced it in a fuzzed
+// 20,000-tick drive across the real U.S.A.map fixture within the first couple thousand ticks.
+@Test func shellTickNeutralOwnedShellHittingATankDoesNotCrashAndAttributesToTheTarget() {
+    var shooter = connectedPlayer()
+    shooter.shells = [
+        Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 1.0, range: 5, owner: playerNeutral, boat: false, pill: true)
+    ]
+    var target = connectedPlayer()
+    target.tank = Vec2f(x: 50.5, y: 50.5)
+    var state = makeState(players: [shooter, target], localPlayer: 1)
+
+    shellTick(player: 1, state: &state)
+
+    #expect(state.players[0].shells.isEmpty)
+    #expect(state.players[1].kickSpeed == kickForce)
+    #expect(state.players[1].explosions.count == 1)
 }
 
 @Test func shellTickHitOnLocalPlayerDecrementsArmourAndDropsBoat() {

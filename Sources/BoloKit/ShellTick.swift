@@ -15,11 +15,23 @@ import Darwin
 // broadcast instead). BoloKit has one authoritative simulation, not N
 // independently-computing clients, so this port drops that specific gate
 // everywhere it appears. Per-player explosion attribution
-// (`client.players[client.player].explosions`) becomes
-// `state.players[shell.owner].explosions` — the gate's `client.player`
-// always equals the shell's owner at every call site that reaches it. This
-// mirrors the precedent already established for `pillTick`'s "closest
-// hostile" check and `tankLocalTick`'s tank-tank push (Wave 5.1/5.2 reports).
+// (`client.players[client.player].explosions`) becomes `state.players
+// [player].explosions`, `player` being this file's own per-call "whichever
+// player's simulation view we're computing" parameter -- the same role
+// `client.player` plays in the reference, always a real index.
+//
+// **Correction (crash found live):** this comment previously claimed
+// the target was `state.players[shell.owner].explosions` instead, reasoning
+// "the gate's client.player always equals the shell's owner at every call
+// site that reaches it." False in general: `Shell.owner` can be
+// `playerNeutral` (0xff) for an unowned pill's return fire (`PillTick.swift`
+// sets `owner: state.pills[i].owner`), and `state.players[0xff]` traps --
+// the first time any neutral pillbox's shot ever actually hit a tank, not
+// an edge case. Fixed at all three sites that read `shell.owner` as an
+// index; see each site's own comment. This mirrors the precedent already
+// established for `pillTick`'s "closest hostile" check and
+// `tankLocalTick`'s tank-tank push (Wave 5.1/5.2 reports) in spirit, not in
+// the specific (wrong) index this comment used to claim.
 //
 // The tank-hit loop's armour decrement and `killTank()` call stay gated to
 // `player == state.localPlayer`, however: `LocalPlayerState.armour` only
@@ -237,6 +249,7 @@ public func touchTile(
 /// network-authority-gate generalization applied throughout.
 public func shellCollisionTest(
     shell: Shell,
+    player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
@@ -265,7 +278,7 @@ public func shellCollisionTest(
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
-                state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
+                state.players[player].explosions.append(Explosion(point: shell.point))
                 killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
             return true
@@ -293,7 +306,7 @@ public func shellCollisionTest(
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
-                state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
+                state.players[player].explosions.append(Explosion(point: shell.point))
                 killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
             return true
@@ -391,7 +404,8 @@ public func shellTick(
     while i < state.players[player].shells.count {
         let shell = state.players[player].shells[i]
         if shellCollisionTest(
-            shell: shell, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill
         ) {
             state.players[player].shells.remove(at: i)
         } else {
@@ -411,7 +425,14 @@ public func shellTick(
                     continue
                 }
 
-                state.players[Int(shell.owner)].explosions.append(Explosion(point: shell.point))
+                // crash fix (see below): was `state.players[Int(shell.owner)]` -- `shell.owner`
+                // can legitimately be `playerNeutral` (0xff) for an unowned pill's return fire,
+                // which trapped ("Index out of range") the first time such a shot ever actually hit
+                // a tank. `client.c:5423` attributes the hit-explosion to `client.players[client.
+                // player]` -- the LOCAL client instance's own explosion list, always a real index --
+                // never to the shell's owner; `player` (this function's own target parameter) plays
+                // that identical role.
+                state.players[player].explosions.append(Explosion(point: shell.point))
                 killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 state.players[player].kickDir = shell.dir
                 state.players[player].kickSpeed = kickForce

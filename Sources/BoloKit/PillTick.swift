@@ -218,7 +218,8 @@ public func pillTick(
             )
 
             if !shellCollisionTest(
-                shell: shell, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
             ) {
                 state.players[player].shells.append(shell)
             }
