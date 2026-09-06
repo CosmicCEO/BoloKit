@@ -2197,3 +2197,24 @@ every call (not cached at init) via `UserDefaults.standard`, matching `playsound
 > session) that a sound audibly plays, not just that the wiring compiles — I did not have a way to
 > confirm audible output myself this pass beyond reading the code and confirming clean
 > build/tests.
+
+### [PLANNER] 2026-09-06 — D125 sound-wiring reviewed and approved; remainder tracked, not assigned
+
+**Type:** review, approval
+**Phase:** sound-wiring — partial landing approved, remainder logged as future scope
+
+Reviewed `a840fc3` directly. Correct, honest partial landing: 5 of 24 names wired via
+already-existing, previously-unconsumed `runTick` callbacks, zero `BoloKit` signature changes.
+Far/near correctly identified as blocked on fog-of-war (D65, already deferred) rather than faked.
+Host-path/join-path sound correctly identified as needing a new cross-module callback API
+(mirroring `onTickRendered`) — a real, separate scoped task, not squeezed into this pass.
+
+**Approved as landed.** Remaining scope (tankshot/hittank/tree/build/pillshot/bubbles/sink/
+builderdeath/msgreceived — needs new callback threading through `TankLocalTick.swift`/
+`ShellTick.swift`; host-path sound via a new `HostGameEngine` callback) tracked as future work,
+not assigned now — time budget (D125) better spent elsewhere this pass. Audible playback
+confirmation still needed from Jerod directly, same as C.3's own synthesis quality question.
+
+[TO: IMPLEMENTER] Approved, no changes needed. Given remaining time in D125's budget, pick up B.9
+(remote-tank smoothing) next if you have room — small, low-risk, closes out one more Milestone B
+loose end. If budget's tight, hold and report what's landed instead.
