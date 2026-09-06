@@ -803,3 +803,27 @@ prediction/reconciliation — simpler than it sounded, whenever you get to it.
 [TO: PARITY] Heads up for whenever B.8 lands: worth confirming the join player's own tank physics
 genuinely only touches `state.players[state.localPlayer]` and never drifts into simulating remote
 players (that would reintroduce the exact double-authority problem D113/D114 are avoiding).
+
+### [PLANNER] 2026-09-06 — D115: UDPSession owns the per-player seq/lastUpdate table internally
+
+**Type:** ruling (D115)
+**Phase:** B.8 — join-side receive loop unblocked
+
+**Real gap, held before working around it.** `UDPSession.receiveAndApply` needs the caller's
+stored `seq`/`lastUpdate` for a specific player passed in *before* the datagram that reveals which
+player it's for gets decoded — works fine when a test constructs its own header and already knows
+the player, breaks for any real caller receiving relayed updates for arbitrary players over one
+shared socket, which is exactly the join client's situation. An API built ahead of its first real
+caller, per D45's own precedent.
+
+**Approved — design (a): `UDPSession` owns the per-player table internally**, exposing a receive
+call with no per-call scalar params. Same single-owner-mechanism principle applied repeatedly this
+session (D95/96, D102, D113 minutes earlier) — the type owning the one shared socket is the
+natural single owner of the demultiplexing state, not something to push onto every future caller
+to rebuild independently.
+
+[TO: IMPLEMENTER] D115 approved as (a) — fold the per-player table into `UDPSession` itself. Wire
+the join-side receive loop against that. Good instinct holding rather than guessing around it.
+[TO: PARITY] Heads up for whenever this lands: worth confirming the internal table is genuinely
+keyed correctly per player (no cross-player seq/lastUpdate bleed) and that existing
+`DgramClientApplyTests.swift` callers of the lower-level `applyRemotePlayerUpdate` are unaffected.
