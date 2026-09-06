@@ -113,12 +113,37 @@ public final class GameRenderView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window?.makeFirstResponder(self)
+            self.centerOnLocalPlayerSpawn()
         }
     }
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         super.mouseDown(with: event)
+    }
+
+    /// **D110:** this view's `intrinsicContentSize` is the full 4096x4096 map, wrapped in
+    /// `GameView`'s `ScrollView` -- with no camera logic at all, that opens scrolled to the map's
+    /// (0,0) corner, not wherever the local player actually spawned, with no on-screen cue that
+    /// scrolling is even necessary (found live: Jerod could see terrain but not his own tank).
+    /// One-shot, same deferred timing as the first-responder claim above and for the same reason
+    /// -- the enclosing `NSScrollView`'s own layout may not have settled on this runloop turn yet,
+    /// so its `contentView.bounds.size` (used below) isn't trustworthy any earlier.
+    private func centerOnLocalPlayerSpawn() {
+        guard state.players.indices.contains(state.localPlayer) else { return }
+        guard let scrollView = enclosingScrollView else { return }
+
+        let size = CGFloat(tileSize)
+        let point = state.players[state.localPlayer].tank
+        let visible = scrollView.contentView.bounds.size
+        let maxX = max(0, CGFloat(mapPixelSize) - visible.width)
+        let maxY = max(0, CGFloat(mapPixelSize) - visible.height)
+        let origin = NSPoint(
+            x: min(max(0, CGFloat(point.x) * size - visible.width / 2), maxX),
+            y: min(max(0, CGFloat(point.y) * size - visible.height / 2), maxY)
+        )
+        scrollView.contentView.scroll(to: origin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     public override func keyDown(with event: NSEvent) {
