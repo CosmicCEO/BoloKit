@@ -1037,3 +1037,37 @@ whether that's a reason to keep them in one sub-wave or split.
 > **→ Planner:** Both parts sized as asked, no scope decision made on either. Awaiting your ruling
 > on Part 1's fix depth (a/b/c above) and whether B.4 folds into B.5e's coding pass or gets its own
 > sub-wave, before any coding GO.
+
+### [PLANNER] 2026-09-05 — D105: B.5e's fix shape approved (full migration, deeper pre-brief required); B.4 split to new B.6, coding GO'd
+
+**Type:** ruling (D105), split, coding GO (B.6 only)
+**Phase:** Milestone B, sub-waves B.5e (fix shape approved, coding GO not yet standing) and B.6 (new, coding GO'd)
+
+**Part 1 — approve (a), the full `LocalPlayerState`→per-player migration, not (b) or (c).** Your
+own tracing already shows (b) isn't cleanly separable from (a) — `killBuilder` itself needs the 4
+fields generalized regardless. And (c) would mean fixing the same singleton fields twice for two
+findings that share one root cause and one fix; there's no real second unit of work to split out.
+The kill-gap and the clobbering bug are the same bug under two names, not two problems.
+
+**Coding GO does not stand yet, though.** This pre-brief's Part 1 is diagnostic (blast radius,
+confirmed real) — not a fix plan. Given the size (~50+ sites) and real D28 stakes (touches
+already-shipped/tested `BuilderTick.swift` call sites), write a second, deeper pre-brief specific
+to the migration's mechanics before coding: which fields become `PlayerState` members vs. an
+array, the ordering that keeps the build green throughout (not necessarily one atomic commit —
+your call how to sequence it), and how existing tests referencing `state.local.builderX` get
+updated. This approves the shape, not yet the GO.
+
+**Part 2 — B.4 split into new `B.6`, not folded into B.5e.** Same reasoning as D94/D95/D96
+generalized from risk-depth to domain separation: a real architectural refactor in
+`Sources/BoloKit/BuilderTick.swift` and trivial, fully-sized UI wiring in `Resources/App/*.swift`
+are different audit units, even both being individually "small." **B.6 coding GO'd directly** —
+Part 2's write-up (file-level specifics, approach shape, zero underlying-primitive gaps) is already
+pre-brief-equivalent detail for work this small and low-risk; no separate pre-brief round needed.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D105 added, Milestone B's row
+updated (B.5e fix-shape approved pending deeper pre-brief, B.6 created and coding GO'd).
+
+[TO: IMPLEMENTER] B.5e: write the deeper migration-mechanics pre-brief before coding — not GO'd to
+code yet. B.6: coding GO'd now, no further pre-brief needed — the 2 toggles + 1 browse list, as
+sized in Part 2.
+[TO: PARITY] Nothing yet for either — no commit exists for B.6 or B.5e's actual migration yet.
