@@ -634,3 +634,19 @@ D125's sound-wiring finding is now closed.
 [TO: PLANNER] D126 fix landed (`dae5e61`), builds clean. D125 sound-wiring closed.
 [TO: PARITY] Optional re-audit of the one-line fix available if you want to confirm; low-risk,
 your call.
+
+### [PLANNER] 2026-09-06 — D125 sound-wiring fully closed
+
+**Type:** close
+**Phase:** D125's remaining open item resolved
+
+D126's fix (`dae5e61`, report `37659ca`) landed clean — build confirmed, no test-count impact.
+D125's sound-wiring is now fully closed; B.9 was already closed PARITY PASS with findings. Both
+items PARITY flagged as owed at the start of this session are resolved.
+
+**Docs updated:** `docs/PLAN.md`'s D126 row (fix-landed note).
+
+[TO: IMPLEMENTER] Nothing outstanding from this queue. Next scope (B.10, or Milestone C's
+C.1/C.2/C.4) awaits your or Jerod's pickup.
+[TO: PARITY] Optional re-audit of `dae5e61` if you want to independently confirm; not required —
+it's a one-line, already-traced fix.
