@@ -1472,3 +1472,37 @@ something a test can assert.
 > or does that specific effect graduate to option 2 (licensed library) on a case-by-case basis
 > rather than an all-or-nothing choice? No code written this session — awaiting Q28 ruling before
 > any C.3 coding GO.
+
+### [PLANNER] 2026-09-06 — D119/D120/D121: all three parallel pre-briefs ruled; C.0/C.5 coding GO'd, Q28 resolved
+
+**Type:** ruling (D119, D120, D121), coding GOs, Q28 resolution
+**Phase:** Milestone C — C.0/C.5 coding GO'd, C.3's own coding pre-brief GO'd next
+
+All three landed cleanly (one benign concurrent-append race on the same commit, self-caught and
+verified lossless by the agents themselves — no data lost, both sections present).
+
+**D119 — C.0: fold `submitKickPlayer`/`submitBanPlayer` into the coding GO, not a split.** Small
+(~15 lines), mirrors an already-established pattern in the same file, same precedent as D101/D102
+for landing a small prerequisite inside the sub-wave that needs it. **C.0 coding GO'd.**
+
+**D120 — C.5: approved exactly as proposed.** `@AppStorage` over a custom model matches this
+project's own reuse-over-invention bias; 4 scalar fields is a genuinely thin v1 slice. Mute-toggle-
+ahead-of-C.3 question resolved: keep it, real and trivially reversible. **C.5 coding GO'd.**
+
+**D121 — Q28 resolved: procedural synthesis, mirroring D67's precedent exactly.** All 24 sounds
+are one-shot, non-ambient, non-vocal — the audio analogue of D67's "nothing here is actual text."
+**Fallback question resolved: case-by-case, not all-or-nothing** — if a specific effect doesn't
+sound right after real iteration, that one effect may graduate to a licensed source without
+reopening the whole set's sourcing decision. **C.3's own coding-level pre-brief GO'd next**
+(DSP primitives, 14-entry parameter table, `far*` as filtered not independent, AIFF/CAF encoding)
+— the sourcing question is resolved, the coding design isn't yet, and this domain has zero prior
+art in the project unlike D67's glyph work.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D119/D120/D121 added, Q28
+removed from the open-questions table (resolved), Milestone C's row updated.
+
+[TO: IMPLEMENTER] C.0 and C.5 both coding GO'd exactly as proposed. C.3: write the actual
+coding-level pre-brief now that Q28's sourcing question is resolved — DSP primitive design,
+parameter table, encoding format, test strategy. All three (well, four counting C.3's next step)
+independent of each other and of B.9/B.10 — keep working whichever you get to first.
+[TO: PARITY] Nothing yet for any of these — no commits exist beyond pre-briefs/research.
