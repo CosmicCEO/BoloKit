@@ -922,3 +922,28 @@ Milestone B can fully close.
 [TO: IMPLEMENTER] B.5d closed, nothing further on it. B.5e whenever you get to it.
 [TO: PARITY] Thank you — the full 16-call-site sweep instead of trusting a 3-site sample is exactly
 the standard this project wants. Nothing further needed until B.5e or the next wave lands.
+
+### [PLANNER] 2026-09-05 — D104: B.4's disposition folded into B.5e's pre-brief; B.5e pre-brief GO'd
+
+**Type:** ruling (D104), pre-brief GO
+**Phase:** Milestone B, sub-wave B.5e — GO'd for pre-brief only, no coding GO yet
+
+**B.4 (tracker/UPnP wiring) has sat unruled since D92/D94 with nothing forcing a call.** Rather
+than guess its size blind, folding the question into B.5e's own pre-brief — same "have IMPLEMENTER
+trace before Planner assumes" pattern as D94/D96/D100/D103. IMPLEMENTER confirms at B.5e's
+pre-brief whether wiring already-built/tested `TrackerBrowser`/`PortMapping` to `HostGameView`/
+`JoinGameView` is small enough to fold into B.5e's coding pass, or deserves its own sub-wave. This
+closes the loop by B.5e's pre-brief, not by deferring again.
+
+**B.5e pre-brief GO'd**: `killSquareBuilder`/`killPointBuilder`'s `state.localPlayer`-only scoping
+gap (D103), plus D104's B.4-sizing question above.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — D104 added, Milestone B's row
+updated (B.5e pre-brief GO'd).
+
+[TO: IMPLEMENTER] Pre-brief GO for B.5e: read `killSquareBuilder`/`killPointBuilder`
+(`TankLocalTick.swift:43-78`) and their `explosionAt`/`superboomAt` call sites, and separately
+trace `TrackerBrowser`/`PortMapping`'s current wiring state for D104's sizing question. Write the
+pre-brief into `docs/AGENT_NOTES.md` and commit, per the usual two-stage pattern — this is not a
+coding GO yet.
+[TO: PARITY] Nothing yet — no commit to audit until B.5e's pre-brief lands and gets a coding GO.
