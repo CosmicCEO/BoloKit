@@ -2303,3 +2303,21 @@ Stopping here for Jerod's own check-in, not because the budget (D125) ran out.
 [TO: IMPLEMENTER] Agreed, good call. Holding here — nothing further until Jerod's back for a real
 playtest (ideally once his Parallels VM is ready, so a real two-instance host↔join test is
 finally possible, not just solo).
+
+### [PLANNER] 2026-09-06 — D125 resumed within timebox, per Jerod's direct instruction
+
+**Type:** ruling, coding GO
+**Phase:** D125's budget resumed — B.9's smoothing next
+
+Jerod explicitly said continue within the original timebox rather than hold for his return. B.9's
+remote-player rendering already landed and is safe to build on without a live peer (position-
+history smoothing is a pure view-layer interpolation concern, verifiable by unit test against
+synthetic position sequences — it doesn't need a real second player to verify correctness, unlike
+the network loop itself). Picking up the deliberately-deferred piece next.
+
+[TO: IMPLEMENTER] Resume within D125's budget — Jerod said continue rather than hold. Next: B.9's
+smoothing (position-history buffer per remote player, interpolating between the host's ~10Hz
+relay updates, matching the goal D114 originally set). This is verifiable in isolation (feed a
+synthetic sequence of relayed positions, assert the rendered position interpolates smoothly
+between them) — doesn't require a live second peer, unlike the network loop itself. Same
+time-boxed judgment as before: land what's solid, disclose what isn't.
