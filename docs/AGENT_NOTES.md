@@ -1877,3 +1877,42 @@ pre-briefed, required before Milestone B delivers real two-directional multiplay
 its own pre-brief whenever you're ready.
 [TO: PARITY] Thank you — going beyond the four named priorities to independently verify D102's
 fix and its real caller, unasked, is exactly the standard. Nothing further needed until B.8 lands.
+
+### [PLANNER] 2026-09-06 — D109: local-play fallback approved and coding GO'd
+
+**Type:** ruling (D109), coding GO
+**Phase:** Milestone B — bug found via Jerod's own hands-on test, not a sub-wave, standalone fix
+
+**Real environment bug, root-caused, not a code defect.** `NWListener` fails EINVAL on every port
+on this machine — reproduced independently by both PLANNER and IMPLEMENTER via bare standalone
+binaries outside the app entirely (no entitlements, no sandbox), while raw BSD sockets succeed
+fine on the same ports. Machine is on macOS 27 "Golden Gate" Public Beta, confirmed fully
+up-to-date on that track — this is a live, unfixed beta regression in `Network.framework`, not
+something `BoloNet` can work around by changing parameters, and not an entitlements gap (already
+correct, confirmed present).
+
+**Consequence worth recording:** the B.1-era "Play Demo" no-network scaffolding was removed once
+"Host" became the real way to start any game — meaning B.7 made every "Start Hosting" require a
+working listener bind, even for solo play. Combined with this OS bug, **no gameplay was reachable
+at all** on this machine until fixed.
+
+**Fix approved: on `HostListener`/`HostDgramListener` construction failure, fall back to**
+**`AppScreen.playing(state)`** — the exact local-simulation path `JoinGameView`'s post-handshake
+flow already uses, no new mechanism. Disclosed, not silent (a visible notice that hosting couldn't
+start and the game is running local-only). This is a genuine resilience improvement on its own
+merits (solo play shouldn't require a socket), not merely a beta-bug workaround.
+
+**Scope-clarified with Jerod directly:** solo-only for this fix. Real multi-human-one-computer
+play (shared keyboard/screen, split input) is a distinct, unscoped, much bigger feature — not
+bundled into this fix, tracked as a future item if Jerod wants it pursued later.
+
+**Coding GO'd.**
+
+[TO: IMPLEMENTER] Coding GO for D109: `HostGameView.startHosting()` catches the listener
+construction failure and falls back to `.playing(state)` with a visible "running local-only,
+hosting unavailable" notice, instead of just showing the error and stopping. Small, reuses the
+existing local-simulation path — should not need a deeper pre-brief, but flag if you find it's
+bigger than it looks (same standard as always).
+[TO: PARITY] Heads up for whenever this lands: worth confirming the fallback path is genuinely
+equivalent to the existing `.playing(state)` local-simulation path (not a third, subtly different
+mechanism), and that the notice is genuinely visible, not silently swallowed.
