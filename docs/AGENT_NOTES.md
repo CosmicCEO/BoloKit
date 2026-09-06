@@ -2321,3 +2321,52 @@ relay updates, matching the goal D114 originally set). This is verifiable in iso
 synthetic sequence of relayed positions, assert the rendered position interpolates smoothly
 between them) — doesn't require a live second peer, unlike the network loop itself. Same
 time-boxed judgment as before: land what's solid, disclose what isn't.
+
+### [IMPLEMENTER] 2026-09-06 — Pre-brief: B.9 smoothing (position-history buffer)
+
+**Confirmed no reference-side counterpart exists** (`grep -rl "smooth\|interp\|dead.reckon"
+Reference/c` → nothing but the LICENSE file matching "interp" substring) — this is genuinely
+new, port-original UI polish, not a port of `GSBoloView.m` behavior. D114 is this port's own
+goal, not something the C client ever did.
+
+**Root cause of the jerk, confirmed by tracing the actual call sites, not assumed:** every path
+(`GameSession.tick()`, `handleJoinEvent(.tick:)`, `HostGameEngine`'s own tick →
+`onTickRendered`) calls `renderView.render(state)` every game tick (50Hz). A remote player's
+`state.players[i].tank`, though, only changes when a UDP relay packet is actually decoded and
+applied (`UDPSession.apply`) — sender-side gated at `localSeq % 5 == 0` (~10Hz,
+`GameSession.sendLocalUpdateIfDue`/`HostGameEngine`'s identical cadence) and further irregular
+on the wire. So a remote tank's drawn position is frozen for ~5 render calls, then jumps —
+exactly D114's "jerky" complaint, not a bug in the relay itself.
+
+**Why naive lerp-between-last-two-samples in real time doesn't work, worked out before writing
+any code:** interpolating live between "previous known sample" and "latest known sample" only
+smooths ticks that occur *after* the latest sample already arrived, but by definition nothing
+is known about where the tank is heading until that sample lands — so a pure live lerp still
+snaps the instant a new sample arrives (fraction hits 1.0 immediately) and holds flat in
+between. The standard fix (used here) is a small **fixed render delay**: draw each remote
+player `smoothingDelayTicks` ticks in the past, not at the current tick. That gives the *next*
+real sample time to have already arrived by the time playback actually needs it, so the
+interpolation has two genuine endpoints instead of extrapolating into the unknown. Set
+`smoothingDelayTicks = 5`, matching the known relay cadence exactly (one interval of buffer).
+
+**Design, verifiable without AppKit or a live peer:** a pure `RemotePositionSmoother` struct
+in `BoloKit` (no `Foundation`, just `Vec2f` + tick math — same "reuse over invention," testable-
+in-isolation bias as every other `BoloKitTests`-level type) — `update(rawPosition:tick:)` (no-op
+unless the value actually changed since the last call, called every tick with the live
+`state.players[i].tank`) and `smoothedPosition(atTick:)` (returns the delayed/interpolated draw
+position — nil only before any sample has ever arrived). One instance per remote player index,
+owned by `GameRenderView` (the view-layer concern PLANNER's own framing named), never by
+`GameState`/`BoloKit` gameplay logic itself — this has no effect on simulation, only on what's
+drawn. Unit-tested in `BoloKitTests` with a synthetic sequence of `update` calls at known ticks,
+asserting: (a) before the delay window has any two real samples, position holds at the earliest
+known sample (no premature interpolation off partial data); (b) between two known samples,
+queried positions are strictly monotonic and bounded between them (not equal to either endpoint
+except at the boundary ticks); (c) held flat at the latest sample once the query tick runs past
+it with no third sample yet (no overshoot/extrapolation past known data).
+
+**Scope line, disclosed up front:** builder/shell positions for remote players are NOT smoothed
+this pass — same jerk exists there, but tanks are the visually dominant case and PLANNER's own
+prior framing ranked "invisible" (B.9's rendering half) above "jerky" without further ranking
+sub-parts of jerky itself; extending the same `RemotePositionSmoother` to builders/shells is a
+mechanical follow-up once this lands, not attempted now to keep this pass reviewable as one
+piece.
