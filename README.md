@@ -15,14 +15,18 @@ terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox ph
 chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire codec, tick
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
-are all complete and PARITY-verified against the C reference. 639 differential + unit tests
-passing. The **`Bolo 2026` app is playable single-process/single-player today**: a window opens,
+are all complete and PARITY-verified against the C reference. ~690 differential + unit tests
+passing. The **`Bolo 2026` app is playable, host-and-join multiplayer today**: a window opens,
 renders a real map from generated assets, and drives a tank via the actual physics engine,
-keyboard-controlled and tick-driven. Three further milestones are scoped but not yet built --
-**Milestone B** (Host/Join UI wired to the already-complete networking layer) is now underway;
-**Milestone C** (full HUD, key remap, alliance/chat, sound, preferences) and **Milestone D**
-(zoom/scroll polish, signing/notarization) are queued behind it. See `docs/PLAN.md` for the full
-wave-by-wave status and decisions log.
+keyboard-controlled and tick-driven, over a real live network session (host accepts real
+connections; joining clients see the world and move their own tank via relayed broadcasts).
+**Milestone B** (Host/Join UI wired to the networking layer) is closed except for **B.10**
+(the join client's own outbound pill/build/mine protocol surface, still open). **Milestone C**
+(full HUD, key remap, alliance/chat, sound, preferences) is in progress -- HUD status panel +
+kick/ban (C.0), procedural sound synthesis (C.3), and the preferences shell (C.5) are closed;
+key remap (C.1), the alliance panel (C.2), and the messages panel (C.4) are not yet started.
+**Milestone D** (zoom/scroll polish, signing/notarization) is queued behind Milestone C. See
+`docs/PLAN.md` for the full wave-by-wave status and decisions log.
 
 ## Approach
 
@@ -40,15 +44,36 @@ wave-by-wave status and decisions log.
 ## Contributors & Partners
 
 This project is a collaborative AI-human pair-programming endeavor, currently run as one human
-plus a structured multi-agent team:
+plus a structured multi-agent team using macos command line tools for xcode which are driven by claude code agent and subagents at the command line:
 
-- **Jerod Price ([CosmicCEO](https://github.com/CosmicCEO)):** Lead Architect, Maintainer, and Project Director.
-- **Implementer (Claude, Xcode agent):** full read/write on the workspace -- writes the Swift port, owns the differential test suite against the C oracle, commits to feature branches/worktrees.
-- **Planner (Claude.ai):** owns `docs/PLAN.md` -- wave sequencing, stage-gate GOs, the decisions/open-questions log, cross-wave policy.
-- **Parity Auditor (Claude.ai, adversarial):** independent post-commit audit of Implementer's work against the C source for behavioral parity, edge cases, and silent drift; reports findings only, doesn't write fixes.
-- **Admin agent (Claude, Cowork):** project administration alongside the three roles above -- cross-checking `docs/AGENT_NOTES.md` against `docs/PLAN.md`, repo housekeeping (commits, README upkeep), and relaying status -- so the Implementer/Planner/Parity rotation can stay focused on the port itself.
-- **Deep-dive Opus agents (as needed):** spun up for focused research passes outside the normal rotation -- protocol/wire-format reverse-engineering (`docs/notes/DEEPDIVE1.md`), architecture research (`docs/notes/HOSTMODELS.md`) -- folded back into the shared docs once complete.
-- **Gemini CLI:** (deprecated due to reliability) former Autonomous Implementation Partner, Swift Specialist, and Code Generator.
+Learning arc:
+- began with one claude agent and claude chat in xcode.app
+- learned more about claude and integrated claude.app with a planner and quality agent, everything manually passed between three agents
+-- developed understanding of cost of long workflows, long logs, repeat read and write
+-- developed a clean process of plan do check and act, based around a single agent notes scratch pad
+-- developed a bootstrapping process for agents so that I could archive the xcode agent and restart where I left; did the same thing for planner, quality agents in the app
+-- developed a better understanding of cost of documents, began archiving completed agent notes.md at close of each wave, maintaining a constant plan.md for open questions, decisions and etc.
+- learned more about agents and multi-agents, deployed the claude command line interface
+-- using existing bootstraps, exported skills from planner, quality, admin, and xcode coder imported into claude cli
+-- initiated same 4 agent paradigm in 4 terminal windows for one wave
+-- initiated one terminal window claude agent planner and asked her to spawn sub-agents as needed for quality, coding, admin; planner agent picks up the memories and bootstrap skills from previously imported baseline
+-- initially defined gating for my intervention at all waves, but quickly removed
+-- learned more about claude cli commands and began requesting planner to spawn subagents to tasks based on agent model complexity rather than always using sonnet high, for example sonnet low for admin agent doing product cleanup and archival duties.
+
+Current state:
+
+Claude Planner
+-- subagent coder uses xcode mcp
+-- subagent quality uses memories and skills developed in first 75% of project
+-- subagent admin uses memories and skill developed in middle of project
+Human Director is hands off except for pre-planning /plan command and /exit-plan commands
+-- human director monitors progress and is briefed at each stage gate
+
+To do:
+
+- implement additional token saving ideas into skill sets or figure out how to adopt pre-formed skills from claude website
+- adopt a more visual mode for monitoring progress (dashboard GUI)
+- finish the project and archive my learning in github
 
 **Parallel Implementer agents:** running multiple Xcode Implementer agents at once on unrelated,
 independently-scoped waves (separate git worktrees/branches) has been proven possible and

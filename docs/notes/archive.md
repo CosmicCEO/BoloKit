@@ -940,3 +940,150 @@ it out as B.6. Milestone B status at the close of this span: B.0-B.3, B.5a-B.5e,
 closed PARITY PASS; only **B.8** (join-side symmetric network gap) remains open, carried into the
 active log. Full uncompressed entries (every pre-brief, completion report, PARITY audit, and
 PLANNER ruling in this span, D100 through B.7's close) preserved in git history per D28.
+
+## D109 through Milestone C's full close (Milestone B's final loose fixes, B.8, and all of Milestone C's D118-batch: C.0/C.5/C.3)
+
+**D109-D112 (local-play fallback + three live-found fixes, then a fourth crash fix) — landed**
+**(`f76191f`/`afd3f8c`, `bbe039d`/`a708583`/`c868bbe`, `78df7a8`/`15b6157`), all CLOSED (PARITY**
+**PASS `f48314d`, `ad7e8f0`).** Real environment bug (this machine's `Network.framework`/
+`NWListener` fails EINVAL on every port — a live macOS 27 beta regression, not a code defect,
+independently reproduced via bare standalone binaries), which combined with B.7 removing the old
+no-network "Play Demo" scaffolding meant no gameplay was reachable at all. D109 approved a
+disclosed fallback: on listener-construction failure, `HostGameView.startHosting()` routes to new
+`AppScreen.hostingFallback(GameState)` — confirmed by PARITY to be the exact same `GameView`
+local-only initializer as `.playing`, plus one optional `notice: String?` for a visible banner (not
+a third mechanism). Three more bugs found live while Jerod actually played: (1) `bbe039d` — dead
+keyboard input from a `makeFirstResponder` race on window-key timing, fixed with a deferred runloop
+turn + `mouseDown` reclaim; (2) `a708583`/D110 — camera opened at map `(0,0)` instead of the local
+player's spawn, fixed with a one-shot `centerOnLocalPlayerSpawn()`; (3) `c868bbe`/D111 — a Wave-7.0
+`BoloGlyphsCore` bug where boat-mode players wrongly got the destroyed-tank wreck glyph, root-caused
+against `GSBoloView.m:295-337` directly (no destroyed-tank sprite concept exists in the reference at
+all for any of the six tank rows) and fixed by making `destroyed` always `false` for the tank
+range — leaving boat/tank visually identical (accepted as a disclosed placeholder-art
+simplification, no ticket) and the `destroyed` parameter/`drawTank` branch fully dead code (flagged
+as a cleanup candidate, not fixed). **D112** — a fourth live crash (`Index out of range` on any
+neutral pillbox's return-fire hit): `ShellTick.swift`'s `shellCollisionTest` indexed
+`state.players[Int(shell.owner)]` in three places, and `Shell.owner` can legitimately be
+`playerNeutral` (0xff) for an unowned pill's shot — root-caused against `client.c:5423` (the
+reference attributes the hit to the local client's own index, never the shooter) and fixed by
+threading each call's already-in-scope `player` parameter through instead; the file's own wrong
+header comment was corrected in place. All four PARITY-audited (two batches) with no defects found;
+665→666 tests. Two live-reported, unconfirmed issues (turning direction feeling backwards,
+acceleration not matching heading) were traced against the code/D70's regression coverage, found
+nothing wrong on paper, and were correctly left open pending Jerod's own repro rather than guessed
+at blind.
+
+**B.8 (join-side live network loop, D113-D117) — landed (`106946c`+`4b309e6`+`058d23f`), CLOSED**
+**(PARITY PASS `53ff764`).** A five-finding pre-brief-to-landing thread, each finding held and
+routed rather than guessed past: (1) D113 approved moving the handshake transport into `TCPSession`
+itself (design (a)) rather than reusing `withNetworkConnection`'s auto-closing scope, and split
+client-side prediction out to new B.9; (2) **D114 corrected D113's framing** — the host never
+corrects a client's self-reported position (each client is authoritative for its own tank), so
+running the join player's own `tankMoveTick`/`tankLocalTick` locally is *required* B.8 scope, not
+deferrable, and B.9 re-scoped from "prediction/reconciliation" to "remote-tank smoothing" (visual
+only); (3) D115 approved folding the per-player seq/lastUpdate table into `UDPSession` itself
+(single-owner-mechanism principle, same as D95/96/D102); (4) **D116 narrowed B.8 again** —
+`TankLocalTick.swift`'s shared-object branches (pills/bases/terrain) directly mutate state in a way
+a real join client's protocol never does locally (no outbound `sendCl*`-equivalent exists in
+`BoloNet` at all), so B.8's final scope became `tankMoveTick`-only local physics + `SR*`-relay
+visibility of everything else, with join-side building/mining/pill-grabbing split to new **B.10**;
+(5) Implementer self-caught a real concurrency bug before committing — an `inout state` copy
+spanning a network `await` compiles clean but reintroduces the exact race `HostGameEngine`'s
+merged-stream architecture (D95/96) exists to prevent, since `@MainActor` only serializes
+*synchronous* code. **D117 approved splitting `TCPSession.receiveAndDispatchOne`/
+`UDPSession.receiveAndApply` into async raw-bytes-only + synchronous decode+apply halves**,
+mirroring `HostGameEngine`'s own producer/consumer split exactly. Landed as a proper
+`AsyncStream`-based merged-event-stream single consumer (3 I/O-only producers: tick timer, TCP raw
+receive, UDP raw receive; exactly one consumer touches `state`). PARITY re-derived every claim
+directly (no `self.state` access in either producer body; both transport splits confirmed
+behavior-preserving thin wrappers; `tankMoveTick`-only scope confirmed by grep — zero
+`tankLocalTick`/`shellTick`/`builderTick` call sites; ~10Hz outbound cadence confirmed matching
+`HostGameEngine`'s own `seq % 5 == 0` gate and `client.c`'s `sendclupdate()`). Two disclosed gaps
+(death-timer pill-drop desync, dead shoot/mine input) correctly left for B.10, not new findings.
+671 tests. **Never hand-tested against a real second peer** — this machine's `NWListener` EINVAL
+bug (same as D109) blocks any real host↔join test locally; flagged repeatedly for Jerod, not a
+PARITY blocker. Jerod's plan: a macOS VM under Parallels for a genuinely separate network stack.
+
+**D118 — Milestone C started early (Jerod's direct override of D93's alphabetical sequencing),**
+**three parallel pre-briefs GO'd: C.0 (HUD status panel + kick/ban), C.5 (preferences shell), and**
+**C.3's Q28 sound-sourcing research.** B.9/B.10 (Milestone B's last two loose ends, both
+non-blocking) stayed open, not abandoned. C.1/C.2/C.4 held back (real risk / disclosed
+fog-of-war divergence / needs a new `GameState` field, respectively).
+
+**C.0 (HUD status panel + host-only kick/ban) — D119 coding GO'd (folding in a small**
+**`submitKickPlayer`/`submitBanPlayer` prerequisite), landed, CLOSED (PARITY PASS).** Pre-brief
+confirmed the model (`PlayerState`/`testAlliance`/`hostKickPlayer`/`hostBanPlayer`) was already
+fully sufficient for the reference's three-way friendly/allied/hostile status-icon switch
+(`GSXBoloController.m:2103-2419`); the one real gap was that `HostGameEngine`'s single-consumer
+design had no safe write-entry-point for a kick/ban button, fixed with two new
+`submitKickPlayer(_:)`/`submitBanPlayer(_:)` methods mirroring the existing `submitLocalInputChange`
+pattern exactly. Shipped `PlayerStatusView.swift` (player + pill/base ownership rows, host-only
+Kick/Ban), a narrow `GameSession.canKickBan`/`kickPlayer`/`banPlayer` passthrough (`hostEngine`
+stayed `private`, no widening), and a "Status" sheet button in `GameView`'s top bar. Self-caught
+test bug: the first draft's kick/ban tests passed vacuously (join landed in slot 0, not the
+asserted slot 1) because the default test helper left slot 0 unused — fixed by seeding it, PARITY
+independently re-traced and confirmed the fix makes the assertions genuinely non-vacuous. 490 tests
+(+2).
+
+**C.5 (preferences shell) — D120 coding GO'd exactly as proposed, landed, CLOSED (PARITY PASS).**
+`@AppStorage` over a custom persistence model (reuse-over-invention, same bias as D67/D72), four
+scalar fields (`GSPlayerNameString`/`GSTrackerString`/`GSHostPortNumber`/`GSMuteBool`) matching
+already-hardcoded literals in `HostGameView`/`JoinGameView` 1:1, wired via a native SwiftUI
+`Settings{}` scene. PARITY independently verified all four key names character-for-character
+against `Reference/c/en.lproj/DefaultPreferences.plist` directly, and confirmed `HostGameView`/
+`JoinGameView`'s new `init`s genuinely read the same `UserDefaults.standard` store `PreferencesView`
+writes to, not a disconnected copy. No new `BoloKit`/`BoloNet` surface, no test-count change
+(matching B.6's own no-test precedent for pure app-target SwiftUI work).
+
+**C.3 (procedural sound synthesis, Q28 resolved at D121, coding GO'd at D122) — landed (`2662d5e`),**
+**CLOSED (PARITY PASS).** Q28 (sound asset-sourcing strategy): resolved as procedural synthesis,
+mirroring D67's glyph-generation precedent exactly — all 24 of the reference's named `.aiff`
+effects (`GSXBoloController.m:357-490`) are short one-shot noise/tone/click/chime effects, no
+ambient/loop/vocal content, so the same "nothing here is actual text"-shaped reasoning applies; a
+case-by-case fallback to a licensed library was approved if a specific effect's synthesized quality
+fails Jerod's ear (not an all-or-nothing re-decision). Coding pre-brief mirrored `BoloGlyphsCore`/
+`BoloGlyphs`'s exact two-target shape: new `BoloSoundsCore`/`BoloSounds` targets, DSP primitives
+(`whiteNoise` fixed-seed LCG, `adEnvelope`, `toneSweep`, single-pole IIR `lowpass`), a 14-entry
+parameter table (10 more `far*` names derived by shared lowpass filtering, not independently
+designed), `AVAudioFile`-based AIFF encoding (44.1kHz/mono/16-bit/big-endian). One open pre-brief
+question — the reference has 14 near names but only 10 far names, with `tankshot`/`pillshot` both
+existing but only one `fshot` — **resolved at D122 by direct re-check of `GSXBoloController.m`'s
+switch (lines 3667-3731): `fshot` genuinely is shared between both**, no `fpillshot` was ever
+modeled. Landed with 11 new tests (675→686, later corrected to 684 total after reconciling with
+concurrent C.0/C.3 landings), determinism-focused (perceptual sound quality explicitly left to
+Jerod's ear, not tested, per D121). Two disclosed deviations: (1) `AVAudioFile` writes `AIFC`, not
+true `AIFF` container labeling (ruled acceptable/cosmetic at D124 — same uncompressed PCM data,
+plays identically); (2) Xcode Run Script wiring deliberately deferred to avoid a `.xcodeproj` edit
+colliding with concurrent C.0/C.5 sessions, then completed separately (`16d3091`) once it was safe
+— verified by actually finding all 24 `.aiff` files in the built product's `Resources`, not just a
+green build log. **PARITY gave this the deepest treatment of the three** — actually built and ran
+the `BoloSounds` executable against a scratch directory and inspected output with `afinfo`, not
+just reading tests — and caught one bookkeeping-only correction: D122/the completion report's "23
+unique buffers" framing was imprecise (all 24 dictionary entries are independently-computed,
+content-unique buffers via `md5`; there's no missing 24th buffer, just no separate `fpillshot`
+dictionary *key*, which is correct per D122). No functional defect; D122's text amended with a dated
+correction pointer rather than rewritten.
+
+**D123/D124 — process ruling on a real, recurring git-index hazard, occurring 4-for-4 times in one**
+**evening.** Three independent Implementer-role sessions running truly concurrent `git add`/`git
+commit` against one *shared* working tree (not separate worktrees) each hit the same race — one
+session's in-flight index state getting swept into another's commit — self-caught and fixed live
+every time (`git reset --soft HEAD~1` + selective `git restore --staged`, re-verified via
+`git show --stat`) with **zero data loss** in every occurrence, only some commit-message
+misattribution (C.0's actual diff ended up inside a commit labeled for C.3, cross-referenced and
+confirmed by content, not message, before crediting either sub-wave). **D123: going forward,**
+**genuinely parallel IMPLEMENTER-role coding tracks use separate git worktrees**, not one shared
+tree — a going-forward policy, not remediation. A fourth occurrence (this time PLANNER's own doc
+edit colliding with an IMPLEMENTER commit) prompted a scope clarification (no new D-number): D123's
+worktree mandate applies specifically to parallel *coding* tracks, not the ordinary
+PLANNER-writes-docs/IMPLEMENTER-commits-code overlap this project runs on constantly — the existing
+discipline (check `git status` immediately before every commit, explicit pathspec, never bare
+commit/`-A`) already caught all four instances cleanly, no strengthening needed.
+
+**Milestone status at the close of this span:** Milestone B: B.0-B.3, B.5a-B.5e, B.6, B.7, B.8 all
+closed PARITY PASS; **B.9** (remote-tank smoothing) and **B.10** (join client's outbound `CL*`
+protocol) remain open, deliberately deferred per D118. Milestone C: **C.0, C.5, C.3 closed PARITY
+PASS**; **C.1** (key-remap, real risk), **C.2** (alliance panel, disclosed fog-of-war divergence),
+**C.4** (messages panel, needs a new `GameState` field) not yet started. Full uncompressed entries
+(every pre-brief, completion report, PARITY audit, and PLANNER ruling in this span, D109 through
+Milestone C's full close) preserved in git history per D28.
