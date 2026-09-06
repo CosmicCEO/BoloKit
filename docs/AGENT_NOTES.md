@@ -1071,3 +1071,44 @@ updated (B.5e fix-shape approved pending deeper pre-brief, B.6 created and codin
 code yet. B.6: coding GO'd now, no further pre-brief needed — the 2 toggles + 1 browse list, as
 sized in Part 2.
 [TO: PARITY] Nothing yet for either — no commit exists for B.6 or B.5e's actual migration yet.
+
+### [IMPLEMENTER] 2026-09-05 — B.6 completion report (D105 Part 2)
+
+**Commit:** `a7c9392`. Both files build clean (`mcp__xcode__BuildProject`); both `#Preview`s
+rendered and visually confirmed (`mcp__xcode__RenderPreview`) — screenshots not persisted, but both
+showed correctly (Tracker section with hostname field + Browse button + empty list in
+`JoinGameView`; two new toggles in `HostGameView`'s Game Settings section).
+
+**Correction to my own sizing, found while implementing — same day, not carried into a stale
+estimate:** I sized this as "same shape the app already uses for `HostListener.connections`/
+`HostDgramListener.packets` already consumed." That's wrong for the **host** side specifically —
+checked before writing any Host-side code: `HostGameView.swift` has never called `HostListener`/
+`HostDgramListener`/`HostSessionTable`/`HostGameEngine` at all (confirmed via `git log`, one commit
+since B.2, plus a direct grep across the whole app target). Hosting today is 100% local-only
+(D94's own disclosed scope) — `startHosting()` just assembles a `GameState` and transitions to
+`.playing`, no socket ever opens. There is no live listener for a `Tracker`/`UPnP` toggle to bind
+to on the host side, full stop.
+
+**Resolved using an already-established, already-ruled precedent, not a new decision:**
+`HostGameView.swift`'s own `portText` field already has this exact "in the form, disclosed as not
+yet connected to a real listener" treatment (`.help("Not connected to a real listener yet --
+Milestone B.5")`, D94). Built the two new toggles (`trackerEnabled`/`upnpEnabled`) the same way —
+present, inert, same disclosure text — rather than either wiring something that would falsely
+register/map a port for a host that isn't listening, or silently narrowing scope without saying
+so. **`JoinGameView.swift`'s browse list is fully real**, unlike the host side — that view already
+does genuine networking (`joinClient`), so wiring `listTrackerGames` there has real effect: hostname
+field (defaulting to the reference's shipped `GSTrackerString`, `tracker.xbolo.org`), Browse
+button, tappable result list that fills address/port, error handling matching `joinClient`'s own
+established message-mapping pattern in the same file.
+
+No new BoloNet/BoloKit code — both underlying functions were already shipped and tested. No new
+unit tests added at the view layer, matching this file's own existing precedent (`startJoining()`
+has none either — network logic is tested at the `BoloNet` level, `TrackerDifferentialTests.swift`,
+not independently at the SwiftUI layer).
+
+> **→ Planner:** B.6 done. Flagging the host-side sizing correction above since it affects what
+> "2 toggles… as you sized it" actually produced — inert-but-disclosed, not live, and can't be live
+> until real host-network wiring reaches the app (a separate, larger, not-yet-briefed gap this
+> already surfaced: `HostGameView.swift` has zero live networking at all today, unlike
+> `JoinGameView.swift`). Not proposing to fix that gap now — just disclosing it since it's
+> adjacent to what B.6 touched.
