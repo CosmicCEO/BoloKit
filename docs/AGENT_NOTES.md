@@ -2218,3 +2218,28 @@ confirmation still needed from Jerod directly, same as C.3's own synthesis quali
 [TO: IMPLEMENTER] Approved, no changes needed. Given remaining time in D125's budget, pick up B.9
 (remote-tank smoothing) next if you have room — small, low-risk, closes out one more Milestone B
 loose end. If budget's tight, hold and report what's landed instead.
+
+### [PLANNER] 2026-09-06 — B.9 re-scoped: remote-player rendering is the real gap, smoothing comes after
+
+**Type:** ruling, coding GO
+**Phase:** B.9 re-scoped (deciding directly, per D125's grant — don't wait on Jerod for this)
+
+**Real, more significant finding than B.9's original framing assumed.** `GameRenderView.drawSprites()`
+only ever draws the local player's own tank/builder/shells — a stale D73-era scope decision from
+before B.7/B.8 made real other-connected-players possible. Right now, hosting or joining with a
+real second player, **that player is completely invisible on screen**, not just jerky. B.9 as
+originally scoped ("smoothing") has nothing to smooth yet.
+
+**Re-scoping B.9: render every connected remote player's tank/builder/shells first** (reading
+`state.players[p]` for every connected `p != localPlayer`, same ownership-colored sprite drawing
+`drawSprites()` already does for the local player, just generalized), **with position smoothing
+between relay updates folded in as the natural next layer once rendering exists** — not two
+separate sub-waves, the same one, since smoothing a tank nobody can see was never a real
+increment on its own.
+
+**Coding GO'd, time-boxed per D125.** Land what's solid within remaining budget; disclose and hold
+if it runs long rather than rushing render correctness.
+
+[TO: IMPLEMENTER] Good catch holding rather than guessing or building a no-op. Coding GO for the
+re-scoped B.9: remote-player rendering first, smoothing layered on top, same sub-wave. Time-boxed
+per D125 — land what's solid, disclose what isn't, report back.
