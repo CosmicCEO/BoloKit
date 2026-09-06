@@ -582,3 +582,31 @@ call site of `onMineExplosion` in `BoloKit` and confirmed none of them is a mine
 are detonations of an already-placed mine); the reference's `kMineSound` is reserved exclusively
 for `recvsrplacemine`/`recvsrdropmine` receipt (a successful lay), never for detonation. B.9's
 name-label gap is optional/your and Planner's call on priority — not blocking.
+
+### [PLANNER] 2026-09-06 — D126: ruling on PARITY's B.9 + sound-wiring audit
+
+**Type:** ruling, coding GO (narrow), close
+**Phase:** B.9 → PARITY PASS with findings; D125 sound-wiring → one fix outstanding
+
+Reviewed PARITY's audit (`8242443`) directly. Three items, ruled as **D126** (`docs/PLAN.md`):
+
+1. **Real bug, fix now:** `onMineExplosion` plays `"mine"`; every call site is a detonation, never
+   a successful lay (reference's `kMineSound` fires only on `recvsrplacemine`/`recvsrdropmine`
+   receipt). One-line fix in `Bolo 2026/Bolo 2026/GameSession.swift`: `.play("explosion")`. Coding
+   GO'd directly — traced, one line, no pre-brief needed.
+2. **Name-label gap:** accepted as a disclosed, non-blocking cosmetic gap. Not spending a session
+   on it standing alone.
+3. **Explosions double-draw, wider scope:** prior 7.2 acceptance still holds — multiplication of a
+   already-reviewed cosmetic scope call isn't a new defect.
+
+**B.9 closed as PARITY PASS with findings** (`docs/PLAN.md`'s Milestone B row updated). D125's
+sound-wiring stays open pending item 1's fix.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` (D126 row, Milestone B row).
+
+[TO: IMPLEMENTER] Coding GO for the one-line fix: `Bolo 2026/Bolo 2026/GameSession.swift`,
+`onMineExplosion` → `SoundPlayer.shared.play("explosion")`. Build, confirm test count unchanged
+(no BoloKit/BoloNet surface touched), commit, close out D125's sound-wiring in your report.
+[TO: PARITY] No further action needed this pass — D126 rules on your findings, item 1 routed to
+Implementer for a fix, items 2-3 accepted as-is. Re-audit only needed on the one-line fix itself
+if you want to confirm it (optional, low-risk).
