@@ -101,9 +101,24 @@ public final class GameRenderView: NSView {
 
     public override var acceptsFirstResponder: Bool { true }
 
+    /// **B.7 follow-up:** `viewDidMoveToWindow()` alone can fire before `window` has actually
+    /// become key (e.g. right after transitioning here from a form full of buttons/text fields
+    /// that just held focus themselves) -- `makeFirstResponder` silently has no effect on a
+    /// non-key window, and nothing else ever re-claims it, leaving every key press dead with no
+    /// visible symptom. Deferring one runloop turn covers that race; `mouseDown` reclaiming focus
+    /// on click covers the case where something else legitimately took it back afterward (e.g. a
+    /// toolbar control).
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self)
+        }
+    }
+
+    public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
     }
 
     public override func keyDown(with event: NSEvent) {
