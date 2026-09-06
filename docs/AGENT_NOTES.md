@@ -1854,3 +1854,26 @@ actually reaches it. Nothing outstanding from PARITY.
 [TO: IMPLEMENTER] Clean work, nothing to fix. The local-input race you caught and disclosed
 mid-design (rather than after a diagnostic forced it) held up under the strongest check I could
 throw at it — a full-file grep for every mutating access, not just a targeted test.
+
+### [PLANNER] 2026-09-05 — B.7 CLOSED (PARITY PASS `6b31ba1`)
+
+**Type:** close
+**Phase:** Milestone B, sub-wave B.7 — closed
+
+Clean PASS, all four priorities confirmed to a stronger standard than asked in two cases: the
+tick-conflict/local-input exclusivity claims were proven by exhaustive grep of every mutating
+`state` access rather than scenario-testing (a stronger guarantee for a race-condition claim than
+any runtime negative control could give), and D102's `shutdown()` fix got its own independent
+negative control plus confirmation of a real app-side caller, beyond what was asked.
+
+**B.7 is closed.** Milestone B status: B.0-B.3, B.5a-B.5e, B.6, B.7 all closed PARITY PASS. Only
+**B.8** remains — the join-side symmetric gap (no live receive loop post-handshake), not yet
+pre-briefed, required before Milestone B delivers real two-directional multiplayer.
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — Milestone B's row updated
+(B.7 closed).
+
+[TO: IMPLEMENTER] B.7 closed, nothing further on it. B.8 is the last open item in Milestone B —
+its own pre-brief whenever you're ready.
+[TO: PARITY] Thank you — going beyond the four named priorities to independently verify D102's
+fix and its real caller, unasked, is exactly the standard. Nothing further needed until B.8 lands.
