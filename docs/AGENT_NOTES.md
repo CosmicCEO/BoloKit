@@ -1145,3 +1145,53 @@ changes array length/positions), not just asserted; (3) confirm `drawLabel`'s ca
 (not raw) as claimed. Test count: expect 511 (unchanged, app-target-only change). Same scope
 guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO.
 [TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
+
+### [PARITY] 2026-09-07 — Audit B.9 disclosed remainder (`46e6f60`)
+
+**Type:** post-commit audit. Standing limitation restated: no Swift toolchain compile/run in this
+environment beyond `swift test`, which was actually run this pass (see below); correctness against
+the C oracle is hand-traced, not simulated.
+
+**Verdict: PASS.**
+
+Independently confirmed, each against the actual diff/source rather than the completion report's
+description of it:
+
+- `remoteBuilderSmoothers` (`Bolo 2026/Bolo 2026/GameRenderView.swift:73`) is declared, updated, and
+  consumed with the identical shape as `remoteTankSmoothers` (line 65): same
+  `[i, default: RemotePositionSmoother()].update(rawPosition:tick:)` call in the same loop body
+  (`GameRenderView.swift:106-109`), same `smoothers[i]?.smoothedPosition(atTick:) ?? raw` consume
+  pattern at the draw site (builder loop vs. tank loop, both gated on `connected` and
+  `i != localPlayer`/`i == state.localPlayer`). One-shot-per-index lifecycle matches; no double
+  bookkeeping introduced.
+- Shell-smoothing skip reasoning holds up against the actual mutation sites, not just the report's
+  assertion: `Sources/BoloKit/GameObjects.swift:228` declares `shells: [Shell]`, and
+  `Sources/BoloKit/ShellTick.swift:410/449/465` and `PillTick.swift:224` /
+  `TankLocalTick.swift:867` do `append`/`remove(at:)` on that array every tick as shots fire and
+  expire. Array indices genuinely aren't stable per-shell identifiers across ticks — keying a
+  `RemotePositionSmoother` by index would splice a new shell's raw position onto a stale smoother's
+  interpolation target from a different, now-gone shell. Real reasoning, not an excuse.
+- `drawLabel`'s call site (`GameRenderView.swift:271-273`, inside the same `state.players.indices`
+  loop as the tank sprite draw, unconditional per D65) matches `Reference/c/Mac OS
+  X/GSBoloView.m:328-330`'s `if (vis > 0.90) { [self drawLabel:...at:client.players[i].tank...] }`
+  case — the reference's `drawLabel:at:` target is `client.players[i].tank` (raw), matching the
+  same object the sprite is drawn at (also raw, `GSBoloView.m:321-325`) since the C client has no
+  smoothing concept. Swift correctly draws both the sprite and the label at the same `smoothed`
+  local (`GameRenderView.swift:271`, `smoothed = remoteTankSmoothers[i]?.smoothedPosition(...) ??
+  other.tank`) — consistent substitution, sprite and label never diverge. `drawLabel`'s own
+  attribute/positioning body (`GameRenderView.swift:315-325`) is a reasonable non-byte-exact port of
+  `GSBoloView.m:453-463`'s coordinate flip, correctly noting this view is already top-left-origin
+  (D66) so no flip term is needed — checked the cited C lines directly, the flip math they replace
+  (`FWIDTH*16.0 - point.y*16.0 + 8.0`) is indeed a y-flip specific to the reference's bottom-left
+  coordinate space.
+- Test count: ran `swift test` myself (not trusted from the report) — `511 tests in 8 suites`
+  passed, unchanged from the pre-Phase-2 count. Consistent with the diff touching only
+  `Bolo 2026/Bolo 2026/GameRenderView.swift`, an Xcode-target file outside the SPM package (no
+  `Sources/`/`Tests/` files in `git show 46e6f60 --stat`).
+
+No citation drift found — every `file:line` in the completion report and PLANNER's activation
+pointed at what it claimed.
+
+[TO: PLANNER] `46e6f60` PASSES. All three priority checks confirmed independently; test count
+511/511 verified by direct run, not taken on the report's word.
+[TO: IMPLEMENTER] Nothing further needed on this item.
