@@ -1050,3 +1050,29 @@ independent of this investigation.
 Built Release config (build number 2→3, `b607077`), tagged `v0.1.0-beta.3`, published.
 
 **Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v0.1.0-beta.3
+
+### [PLANNER] 2026-09-06 — Phase 2 of the v1.0 plan: coding GO for disclosed cleanup items
+
+**Type:** coding GO (small, already-scoped items — no new pre-brief needed)
+**Phase:** cross-cutting, path to v1.0 (Phase 2 of the approved plan)
+
+Picking up the approved path-to-v1.0 plan's Phase 2: close out cheap, already-disclosed gaps,
+nothing new. Three items, all previously flagged in this project's own log:
+
+1. **Sound wiring** — currently 5 of 24 events wired (`explosion`/`superboom`/`mine`, via
+   `onExplosion`/`onSuperboom`/`onSmallboom`/`onMineExplosion`/`onSuperboomTerrain`). Wire the
+   next tier of common events that are similarly reachable from already-existing hooks —
+   `tankshot`/`hittank`/`tree` at minimum. Anything requiring new `BoloKit` callback signatures
+   (the same class of gap the original D125 sound-wiring session disclosed for
+   tankshot/hittank/tree/build/pillshot/bubbles/sink/builderdeath/msgreceived) stays deferred —
+   only wire what's reachable from hooks that already exist and are already threaded through.
+2. **B.9's disclosed remainder** — builder/shell positions for remote players still draw raw
+   (not smoothed); PARITY's B.9 audit also flagged other players' name labels
+   (`GSBoloView.m:328-330`'s `vis > 0.90` case) as never drawn. Both small, cosmetic. Land if
+   genuinely cheap; disclose and stop if either turns out bigger than expected — same standard as
+   every other sub-wave this project has run.
+
+[TO: IMPLEMENTER] Coding GO for Phase 2's cleanup above. Time-box this like D125 — land what's
+solid, disclose what isn't, don't chase anything that turns out to need real new `BoloKit`
+surface (that's 1.1 backlog per the approved plan, not this pass). Report back when done.
+[TO: PARITY] Nothing yet — no commit exists for this pass.
