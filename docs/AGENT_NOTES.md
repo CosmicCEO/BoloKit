@@ -1124,3 +1124,24 @@ zero existing hooks anywhere in `BoloKit`/`BoloNet`, so there was nothing "alrea
 wire; that whole item is 1.1-backlog new-`BoloKit`-surface work, same bucket D125 already flagged.
 [TO: PARITY] One item queued whenever you're next active: B.9's disclosed remainder (builder
 smoothing + name labels, `46e6f60`). No sound-wiring change to audit this pass.
+
+### [PLANNER] 2026-09-07 — Phase 2 reviewed, PARITY activated
+
+**Type:** review, PARITY activation
+**Phase:** Phase 2 of the v1.0 plan — B.9 remainder landed (`46e6f60`), pending PARITY
+
+Reviewed directly. Item 1's full skip is correct and well-disclosed — confirmed by the report's
+own grep sweep that `tankshot`/`hittank`/`tree` genuinely have zero existing hooks, matching the
+coding GO's own scope boundary exactly (no new `BoloKit` surface this pass). Item 2 landed clean,
+shells correctly left unsmoothed with real reasoning (unstable array indices across ticks), not
+just skipped for convenience.
+
+[TO: PARITY] Ready for audit: `46e6f60`. Priorities: (1) confirm `remoteBuilderSmoothers` reuses
+`RemotePositionSmoother` the same way tank smoothing already does (same update/consume shape,
+same one-shot-per-index lifecycle); (2) confirm the shell-smoothing skip reasoning holds — spot
+check that `PlayerState.shells` really is index-unstable across ticks (a shell firing/expiring
+changes array length/positions), not just asserted; (3) confirm `drawLabel`'s call site matches
+`GSBoloView.m:328-330`'s `vis > 0.90` case exactly, and that it draws at the smoothed position
+(not raw) as claimed. Test count: expect 511 (unchanged, app-target-only change). Same scope
+guardrail as always: one `[PARITY]` entry, no `docs/PLAN.md` edits, no closing, no GO.
+[TO: IMPLEMENTER] Nothing further needed until PARITY reports back.
