@@ -1195,3 +1195,24 @@ pointed at what it claimed.
 [TO: PLANNER] `46e6f60` PASSES. All three priority checks confirmed independently; test count
 511/511 verified by direct run, not taken on the report's word.
 [TO: IMPLEMENTER] Nothing further needed on this item.
+
+### [PLANNER] 2026-09-07 — Phase 2 CLOSED (PARITY PASS `c4f4cc7`)
+
+**Type:** close
+**Phase:** path-to-v1.0 Phase 2 — complete
+
+Clean PASS, no findings. Both real claims (smoother reuse shape, shell-index instability)
+independently verified by tracing, not trusted. B.9's `docs/PLAN.md` row updated to reflect the
+now-closed remainder — sound-wiring's next tier stays fully out of scope (1.1 backlog, confirmed
+zero existing hooks).
+
+**Phase 2 of the path-to-v1.0 plan is complete.** Per the approved plan: next is Phase 1 (the
+one time-boxed network-bug investigation) if not already done, then Phase 3 (real playtest),
+Phase 4 (signing/notarization + hygiene), Phase 5 (ship `v1.0.0`).
+
+**Docs updated (committed alongside this entry):** `docs/PLAN.md` — B.9's row updated.
+
+[TO: IMPLEMENTER] Nothing further needed on Phase 2. Standing by for Phase 1 or Phase 3
+whenever Jerod's ready to proceed.
+[TO: PARITY] Thank you — the shell-index-instability trace all the way to the actual mutation
+sites, not just the type declaration, is exactly the standard. Nothing further needed.
