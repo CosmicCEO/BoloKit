@@ -1248,3 +1248,20 @@ process shortcut.
 **Docs updated (committed alongside this entry):** `README.md`.
 
 Proceeding directly to Phase 5 (ship `v1.0.0`) next, per Jerod's instruction.
+
+### [PLANNER] 2026-09-07 — v1.0.0 shipped
+
+**Type:** release
+**Phase:** path-to-v1.0, Phase 5 — complete. First stable release.
+
+`MARKETING_VERSION` 0.1.0→1.0.0 (build 4, `b319803`), tagged `v1.0.0`, pushed. GitHub release
+published as a real release (not a prerelease) with honest notes: what's in v1.0, and every known
+limitation stated plainly (unresolved network bug + fallback, no notarization, no confirmed
+two-instance session, partial sound/join-side scope).
+
+**Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v1.0.0
+
+**The path-to-v1.0 plan (5 phases) is complete.** Phases 1 and 3 were explicitly skipped by
+Jerod's own direction; Phase 2's cleanup and Phase 4's hygiene both landed clean. 1.1 backlog
+filed at D128: C.1/C.2/C.4, Milestone D, B.10's builder/shell follow-on, further network-bug
+investigation, and a real two-instance playtest.
