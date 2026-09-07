@@ -1216,3 +1216,35 @@ Phase 4 (signing/notarization + hygiene), Phase 5 (ship `v1.0.0`).
 whenever Jerod's ready to proceed.
 [TO: PARITY] Thank you — the shell-index-instability trace all the way to the actual mutation
 sites, not just the type declaration, is exactly the standard. Nothing further needed.
+
+### [PLANNER] 2026-09-07 — Phase 4: signing/hygiene done, notarization deferred; Phases 1/3 skipped per Jerod's direction
+
+**Type:** ruling, hygiene pass
+**Phase:** path-to-v1.0, Phase 4 — complete; Phases 1/3 explicitly skipped by Jerod's own call
+
+**Jerod's direction:** skip Phase 1 (network-bug investigation) and Phase 3 (live playtest)
+entirely, go straight to Phase 4 then ship. Logged as the explicit scope call it is, not a
+process shortcut.
+
+**Phase 4 work:**
+- Full test suite: 511 (`BoloKitTests`, includes `BoloGlyphs`/`BoloSounds` asset-pipeline tests)
+  + 183 (`DifferentialTests`) = **694 total**. One pre-existing, already-documented flaky test
+  reconfirmed (`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`, a
+  real-network-timing test flagged multiple times this session, e.g. D125's own completion
+  report) — fails intermittently (~1 in 5 runs), passes clean on rerun every time, unrelated to
+  any code this session touched. Not chased further, per this project's own established
+  precedent for this exact test.
+- Real Xcode build (`mcp__xcode__BuildProject`) clean.
+- **Notarization: deferred to 1.1, by Jerod's direct choice.** Only a free "Apple Development"
+  identity exists (`security find-identity -v` confirmed no "Developer ID Application" cert) —
+  real notarization requires a paid Apple Developer Program enrollment ($99/yr), a real external
+  action Jerod hasn't taken. Shipping v1.0 with the real (non-ad-hoc) Development signing already
+  in place from earlier this session, not full notarization. Users will see one Gatekeeper
+  warning on first launch of a fresh download (right-click → Open bypasses it) — documented
+  plainly in the README and will be documented in the release notes.
+- README's Status section reconciled with actual current state (B.10 closed, sound/preferences/
+  HUD closed, test count, notarization caveat, network-bug caveat all stated plainly).
+
+**Docs updated (committed alongside this entry):** `README.md`.
+
+Proceeding directly to Phase 5 (ship `v1.0.0`) next, per Jerod's instruction.

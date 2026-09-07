@@ -15,18 +15,25 @@ terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox ph
 chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire codec, tick
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
-are all complete and PARITY-verified against the C reference. ~690 differential + unit tests
-passing. The **`Bolo 2026` app is playable, host-and-join multiplayer today**: a window opens,
-renders a real map from generated assets, and drives a tank via the actual physics engine,
-keyboard-controlled and tick-driven, over a real live network session (host accepts real
-connections; joining clients see the world and move their own tank via relayed broadcasts).
-**Milestone B** (Host/Join UI wired to the networking layer) is closed except for **B.10**
-(the join client's own outbound pill/build/mine protocol surface, still open). **Milestone C**
-(full HUD, key remap, alliance/chat, sound, preferences) is in progress -- HUD status panel +
-kick/ban (C.0), procedural sound synthesis (C.3), and the preferences shell (C.5) are closed;
-key remap (C.1), the alliance panel (C.2), and the messages panel (C.4) are not yet started.
-**Milestone D** (zoom/scroll polish, signing/notarization) is queued behind Milestone C. See
-`docs/PLAN.md` for the full wave-by-wave status and decisions log.
+are all complete and PARITY-verified against the C reference. 694 differential + unit tests
+passing (one pre-existing, documented flaky timing test excluded from that count's stability
+claim -- see `docs/PLAN.md`). **`Bolo 2026` v1.0 is playable, host-and-join multiplayer**: a
+window opens, renders a real map from generated assets, and drives a tank via the actual physics
+engine, keyboard-controlled and tick-driven, over a real live network session -- the host accepts
+real connections and joining clients see the world, move their own tank, and interact with pills/
+bases/mines via relayed broadcasts. **Milestone B** (Host/Join UI wired to the networking layer)
+is fully closed, including **B.10**'s join-side outbound protocol. **Milestone C** (full HUD, key
+remap, alliance/chat, sound, preferences) is partially done -- HUD status panel + kick/ban (C.0),
+procedural sound synthesis (C.3, 24 effects generated, 5 wired to gameplay events), and the
+preferences shell (C.5) are closed; key remap (C.1), the alliance panel (C.2), and the messages
+panel (C.4) are deferred to a 1.1 release. **Milestone D** (zoom/scroll polish, full notarization)
+is also deferred to 1.1 -- v1.0 ships with real Apple Development code signing but not notarized
+(no paid Developer Program enrollment yet), so a fresh download needs a one-time right-click →
+Open to bypass Gatekeeper's warning. A known, unresolved environment issue on some machines causes
+`Network.framework`'s listener creation to fail; the app falls back automatically to local-only
+play in that case, with an on-screen notice -- root cause not found despite investigation (ruled
+out: beta-OS-specific, ad-hoc signing). See `docs/PLAN.md` for the full wave-by-wave status and
+decisions log.
 
 ## Approach
 
