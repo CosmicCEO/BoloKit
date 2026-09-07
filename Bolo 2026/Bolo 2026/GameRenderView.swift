@@ -64,6 +64,14 @@ public final class GameRenderView: NSView {
     /// deliberately NOT smoothed this pass (disclosed scope, not an oversight).
     private var remoteTankSmoothers: [Int: RemotePositionSmoother] = [:]
 
+    /// Phase 2 cleanup: extends B.9's smoothing to remote builders too -- `PlayerState.builder`
+    /// is one stable `Vec2f` per player index, same shape as `tank`, so the identical per-index
+    /// `RemotePositionSmoother` treatment applies directly. Shells (`[Shell]`, unstable indices
+    /// across ticks as shots fire/expire) are NOT smoothed here -- disclosed remaining gap, not
+    /// an oversight; keying a smoother by array index would mismatch a stale smoother against a
+    /// newly-fired shell at the same slot.
+    private var remoteBuilderSmoothers: [Int: RemotePositionSmoother] = [:]
+
     /// Set by `GameSession` -- applies a key transition's `InputFlags` change to the session's
     /// own owned `GameState`. Never called from inside a `runTick`/tick-timer call (§2 above).
     public var onInputFlagsChange: ((KeyInputChange) -> Void)?
@@ -98,6 +106,8 @@ public final class GameRenderView: NSView {
         where newState.players[i].connected && i != newState.localPlayer {
             remoteTankSmoothers[i, default: RemotePositionSmoother()]
                 .update(rawPosition: newState.players[i].tank, tick: newState.ticks)
+            remoteBuilderSmoothers[i, default: RemotePositionSmoother()]
+                .update(rawPosition: newState.players[i].builder, tick: newState.ticks)
         }
         needsDisplay = true
     }
@@ -236,8 +246,12 @@ public final class GameRenderView: NSView {
             drawExplosion(explosion, ctx)
         }
 
-        for player in state.players where player.connected {
-            drawBuilder(player, ctx)
+        for i in state.players.indices where state.players[i].connected {
+            let player = state.players[i]
+            let position = i == state.localPlayer
+                ? player.builder
+                : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? player.builder)
+            drawBuilder(player, at: position, ctx)
         }
 
         for i in state.players.indices
@@ -256,6 +270,9 @@ public final class GameRenderView: NSView {
             // which shouldn't happen since it always runs immediately before `draw(_:)`.
             let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
             drawSprite(base + headingColumn(other.dir), at: smoothed, ctx)
+            // `GSBoloView.m:328-330`'s `vis > 0.90` label case, unconditionally true under D65's
+            // full-visibility v1 scope (B.9 disclosed remainder, Phase 2 cleanup).
+            drawLabel(other.name, at: smoothed, ctx)
         }
 
         if state.players.indices.contains(state.localPlayer) {
@@ -276,7 +293,7 @@ public final class GameRenderView: NSView {
         }
     }
 
-    private func drawBuilder(_ player: PlayerState, _ ctx: CGContext) {
+    private func drawBuilder(_ player: PlayerState, at position: Vec2f, _ ctx: CGContext) {
         switch player.builderStatus {
         case .goto, .work, .wait, .return:
             // GSBoloView alternates BUILD0/BUILD1 off a per-tick sequence counter
@@ -284,12 +301,32 @@ public final class GameRenderView: NSView {
             // equivalent field for -- substituting `GameState.ticks` (always available,
             // monotonic), which drives the same cosmetic alternation with no gameplay effect.
             let frame = (state.ticks / 5) % 2 == 0 ? BUILD1IMAGE : BUILD0IMAGE
-            drawSprite(frame, at: player.builder, ctx)
+            drawSprite(frame, at: position, ctx)
         case .parachute:
-            drawSprite(BUILD2IMAGE, at: player.builder, ctx)
+            drawSprite(BUILD2IMAGE, at: position, ctx)
         case .ready:
             break
         }
+    }
+
+    /// Mirrors `drawLabel:at:withAttributes:` (`GSBoloView.m:453-463`) -- white text centered on
+    /// `point.x`, drawn just above the tank sprite. The reference computes
+    /// `FWIDTH*16 - point.y*16 + 8` to flip into its own unflipped-view coordinate space; this
+    /// view is already +y-down top-left-origin (D66/this file's own header), so no flip term is
+    /// needed here, just an upward offset above the sprite.
+    private static let labelAttributes: [NSAttributedString.Key: Any] = [
+        .foregroundColor: NSColor.white,
+        .font: NSFont.systemFont(ofSize: 11),
+    ]
+
+    private func drawLabel(_ name: String, at point: Vec2f, _ ctx: CGContext) {
+        guard !name.isEmpty else { return }
+        let string = NSAttributedString(string: name, attributes: Self.labelAttributes)
+        let textSize = string.size()
+        let tile = CGFloat(tileSize)
+        let x = CGFloat(point.x) * tile - textSize.width * 0.5
+        let y = CGFloat(point.y) * tile - tile - textSize.height
+        string.draw(at: CGPoint(x: x, y: y))
     }
 
     private func drawExplosion(_ explosion: Explosion, _ ctx: CGContext) {
