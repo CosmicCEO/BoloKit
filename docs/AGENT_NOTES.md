@@ -1076,3 +1076,51 @@ nothing new. Three items, all previously flagged in this project's own log:
 solid, disclose what isn't, don't chase anything that turns out to need real new `BoloKit`
 surface (that's 1.1 backlog per the approved plan, not this pass). Report back when done.
 [TO: PARITY] Nothing yet — no commit exists for this pass.
+
+### [IMPLEMENTER] 2026-09-07 — Phase 2 completion report
+
+**Type:** completion report
+**Phase:** Phase 2 of the v1.0 plan (disclosed cleanup items)
+
+**Item 1 — sound wiring, next tier: disclosed and skipped entirely, no code changed.** Traced
+`tankshot`/`hittank`/`tree` against every hook actually exposed by `BoloKit`/`BoloNet` (grepped
+`TCPSession.swift`, `HostSession.swift`, `RunTick.swift`, `TankTick.swift`, `TankLocalTick.swift`
+for every `on*` closure). The only sound-relevant hooks that exist are the 5 already wired
+(`onExplosion`/`onSuperboom`/`onSmallboom`/`onMineExplosion`/`onSuperboomTerrain`) plus a handful
+of unrelated status-change callbacks (`onPlayerStatusChanged`/`onPillStatusChanged`/
+`onBaseStatusChanged`/`onTankStatusChanged`, none of which carry a sound-cause distinction).
+`tankshot`/`hittank`/`tree` have **no** existing callback anywhere in `BoloKit`/`BoloNet` — this
+is exactly the new-`BoloKit`-surface class the original D125 session (and this pass's own coding
+GO) explicitly ruled out of scope. Nothing wired; no closures added to `GameSession.swift`.
+
+**Item 2 — B.9's disclosed remainder: both pieces landed, `46e6f60`.**
+1. **Remote builder smoothing.** `PlayerState.builder` is one stable `Vec2f` per player index —
+   identical shape to `tank`, which `RemotePositionSmoother` already handles. Added a second
+   per-index dictionary (`remoteBuilderSmoothers`) in `GameRenderView`, updated alongside the
+   existing tank smoothers in `render(_:)`, consumed in the builder draw loop (local player still
+   draws raw — no smoother needed for one's own builder). Shells (`PlayerState.shells: [Shell]`)
+   were **not** extended — array indices are unstable across ticks as shots fire/expire, so
+   keying a smoother by index would interpolate a brand-new shell from a stale smoother's old
+   target. Disclosed, left raw, matching the original B.9 audit's own framing of this as a
+   separate, harder problem.
+2. **Other players' name labels.** Added `drawLabel(_:at:_:)`, mirroring
+   `GSBoloView.m:453-463`'s `drawLabel:at:withAttributes:` (white text, centered on the tank's x,
+   drawn just above the sprite) at the reference's `vis > 0.90` call site
+   (`GSBoloView.m:328-330`), unconditionally true here under D65. Drawn at the smoothed tank
+   position, not raw, so the label tracks the same delayed/interpolated point as the sprite.
+
+**Build/test:** `swift build --build-tests` clean; `swift test` — 511/511 passing, unchanged from
+before this pass (no BoloKit/BoloNet surface touched, no SPM test files changed — all edits
+confined to `Bolo 2026/Bolo 2026/GameRenderView.swift`, an Xcode-target file outside the SPM
+package). Xcode `BuildProject` on `Bolo 2026.xcodeproj` — build succeeded.
+
+**Commit:** `46e6f60` — "Phase 2: B.9 disclosed remainder -- remote builder smoothing +
+other-player name labels". Single file changed (`GameRenderView.swift`), 42 insertions/5
+deletions.
+
+[TO: PLANNER] Item 2 fully landed (`46e6f60`), both pieces PARITY-owed. Item 1 (sound wiring next
+tier) is a full skip this pass — confirmed by direct grep that `tankshot`/`hittank`/`tree` have
+zero existing hooks anywhere in `BoloKit`/`BoloNet`, so there was nothing "already reachable" to
+wire; that whole item is 1.1-backlog new-`BoloKit`-surface work, same bucket D125 already flagged.
+[TO: PARITY] One item queued whenever you're next active: B.9's disclosed remainder (builder
+smoothing + name labels, `46e6f60`). No sound-wiring change to audit this pass.
