@@ -1265,3 +1265,71 @@ two-instance session, partial sound/join-side scope).
 Jerod's own direction; Phase 2's cleanup and Phase 4's hygiene both landed clean. 1.1 backlog
 filed at D128: C.1/C.2/C.4, Milestone D, B.10's builder/shell follow-on, further network-bug
 investigation, and a real two-instance playtest.
+
+### [IMPLEMENTER] 2026-09-09 — 1.1: D128 backlog C.1 — key remap (`eb37f91`)
+
+**Type:** coding, single D128 backlog item.
+
+Built a real, rebindable key-remap feature, closing the gap `PreferencesView.swift`'s own
+comments had flagged as "C.1's territory."
+
+**Correction to the task's own framing, confirmed by reading `keyEvent:forKey:`
+(`Reference/c/Mac OS X/GSXBoloController.m:1650-1717`) end to end:** `InputKeymap.swift` was
+*not* only-LMINE going in — it already ported all 8 `InputFlags`-mask actions (accel/brake/
+turnL/turnR/lmine/shoot/incre/decre) correctly, including the `autoSlowdownBool==true`
+accel→brake coupling. What was actually missing: (1) no remap capability at all — a hardcoded
+`switch` over literal keycodes, no dictionary, no persistence, no UI; (2) the reference's other
+6 `GSKeyConfigDict` actions (scrollUp/Down/Left/Right, tankView, pillView) were entirely
+unported — zero code anywhere in `Bolo 2026/` for them.
+
+**Shipped:**
+- `Sources/BoloKit/InputKeymap.swift` reworked: `InputAction` (14 cases, mask + view families),
+  `KeyBindings` (rebindable `[InputAction: UInt16]`, `default` seeded from
+  `DefaultPreferences.plist`'s literal `GSKeyConfigDict`, `dictionaryRepresentation`/
+  `init(dictionaryRepresentation:)` as the Foundation-free persistence seam). `inputFlagsChange`
+  now takes `bindings:`; added `nonMaskAction(forKeyCode:bindings:)` for the 6 view actions.
+  **No conflict rejection, matching `applyKeyConfig:` exactly** (D-note: last-write-wins:
+  `resolve(keyCode:)` picks the first `InputAction.allCases`-order match on a collision —
+  documented tie-break, unreachable in the shipped UI's own normal use same as the reference).
+- `Bolo 2026/Bolo 2026/KeyBindingsStore.swift` (new): `UserDefaults`+`JSONEncoder` persistence
+  under the reused literal key `GSKeyConfigDict`, same "reuse the reference's own default name"
+  convention `PreferencesView.swift` already used for its other 4 keys.
+- `PreferencesView.swift`: added a `Key Bindings` tab (`TabView` alongside the existing
+  `General` tab) — one row per action, click-to-capture-next-keystroke via a local
+  `NSEvent` monitor, persists immediately through `KeyBindingsStore`.
+- `GameRenderView.swift`: `keyDown`/`keyUp`/`flagsChanged` now resolve through a live
+  `bindings: KeyBindings` (defaults from `KeyBindingsStore.load()`) instead of a hardcoded
+  keycode switch; added `scroll(dx:dy:)`/`centerOnLocalPlayerTank()`/
+  `centerOnNearestFriendlyPill()`, ported from `scrollUp:`/`scrollDown:`/`scrollLeft:`/
+  `scrollRight:`/`tankCenter:`/`pillCenter:` (`GSXBoloController.m:1236-1306`, `1529-1647`).
+  Two disclosed simplifications, not fidelity requirements called out for this item: the
+  reference's mouse-cursor-warp-after-scroll is dropped (cosmetic, no gameplay effect, real
+  `CGWarpMouseCursorPosition`-equivalent complexity for a nice-to-have); `pillCenter:`'s
+  viewport-relative pill-cycling is simplified to "first eligible owned armed pill" (no
+  per-call cycling state).
+- Tests: `Tests/BoloKitTests/InputKeymapTests.swift` — defaults-match-plist, rebind/resolve
+  (including the documented collision tie-break), `dictionaryRepresentation` round-trip and
+  missing-key backfill, mask vs. view action resolution for all 14 actions.
+
+**Verified:**
+- `swift build` clean, `swift test`: **514 → 520** (D28: net gain, no coverage shrink).
+- `xcodebuild` for the `Bolo 2026` scheme: **BUILD SUCCEEDED**.
+- **Visually verified** via `mcp__xcode__RunProject` + `osascript`/`screencapture` (device-
+  interaction MCP tools don't support a macOS destination, only iOS/watchOS/tvOS simulators —
+  used AppleScript UI scripting + `screencapture` instead): launched the app, opened
+  Preferences (Cmd+,), confirmed the new `Key Bindings` tab renders all 14 actions with their
+  correct default key labels (W/S/A/D/Shift/Space/E/Q/arrows/X/C). Did not get a clean
+  screenshot confirming an in-place rebind completing (a click meant for the "Shoot" row's
+  button apparently missed and instead sent a keystroke to the game view underneath, rotating
+  the tank on screen) — the rebind *logic* itself is covered by the unit tests above, but that
+  specific interactive click-then-capture UI flow is disclosed as not screenshot-verified.
+
+**Deliberately excluded, flagging for PLANNER rather than deciding solo:** builder-tool
+selection (digit keys 1-5 → `setBuilderToolInteger:`) is part of the reference's keyboard
+surface but is *not* in `GSKeyConfigDict` (not remappable even upstream) and has zero existing
+UI/wiring anywhere in this port (no click-to-build path exists yet at all). Recommend treating
+it as separate future scope rather than folding it into C.1 — it's a whole feature (mouse-driven
+builder commands), not a keymap gap.
+
+**Docs updated (committed alongside this entry):** none besides this file — `docs/PLAN.md` not
+touched per role boundary.
