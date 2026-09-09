@@ -1297,3 +1297,35 @@ after the fact.
 
 [TO: IMPLEMENTER] Nothing coding-GO'd yet from this. Standing by for Jerod's direction on
 sequencing the new items against the rest of the 1.1 backlog.
+
+### [IMPLEMENTER] 2026-09-09 — B.10 CL* builder-task/shell-impact follow-on: architecture blocker, not implemented
+
+**Type:** finding, no code changes
+**Phase:** 1.1 backlog (D128 follow-on item)
+
+Investigated extending B.10's tile-entry detect-and-send pattern to the builder-task and
+shell-impact `CL*` sends (`sendclbuildroad/wall/boat/pill`, `sendclrepairpill`, `sendclplacemine`,
+`sendcldamage`, `sendcltouch`, `sendclsmallboom`, `sendclsuperboom`, `sendcldropmine/boat/pills`,
+`sendclrefuel`, `sendclhittank`). Confirms D127's original deferral reasoning rather than
+overriding it.
+
+**Why B.10's pattern doesn't extend:** tile-entry is a stateless per-tick fact (diff tank
+position, look at the tile). Builder-task and shell-impact outcomes are the *output of a
+multi-tick state machine* (`Sources/BoloKit/BuilderTick.swift`, `Sources/BoloKit/ShellTick.swift`)
+— "a build just finished" or "a shell just hit something" only exists after actually running
+that simulation locally. The join client tracks no `builderTask`/shell-list state today to even
+diff against. All the `CL*` wire structs already exist in `Sources/BoloNet/ClientMessages.swift`
+(decode-only) — the gap is entirely on the "what local state must the join client run to know
+when to send" side, not the wire format.
+
+**No code/test changes made** (build/test counts unchanged) — implementing this as a same-shape
+extension of B.10 isn't possible; it needs either (a) porting a detection-only subset of
+`BuilderTick`/`ShellTick` into the join client as new local state, or (b) staying deferred until
+a real client/server split exists. A narrower slice (input-triggered sends like
+`sendcldropmine`/`sendcldropboat`/`sendcldroppills`/`sendclrefuel`/`sendclgrabtrees`) may be
+separable from the continuous-collision shell-impact sends — flagged as PLANNER's call, not
+resolved here.
+
+[TO: PLANNER] This needs its own pre-brief/architecture ruling before any coding GO, not a
+straight IMPLEMENTER task — recommend re-scoping as its own tracked item rather than leaving it
+folded into the general "B.10 follow-on" label.
