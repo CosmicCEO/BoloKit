@@ -647,6 +647,62 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
     #expect(await engine.table.isConnected(1) == false)
 }
 
+// C.2 (D128): `submitRequestAlliance`/`submitLeaveAlliance` are the sanctioned entry points for
+// a UI button to change the host's own local alliance -- same "route through the merged stream,
+// never touch `state` directly" reasoning as `submitLocalInputChange` above. Proves the mask
+// actually lands on `state.players[state.localPlayer].alliance` and only that player's own bit
+// -- other connected players' own alliance masks (here player 1's, set via a real dispatched
+// `CLSetAlliance` first, same proof-of-real-join convention the other tests in this file use)
+// are untouched.
+@Test func hostGameEngineSubmitRequestAllianceUpdatesOnlyLocalPlayersMask() async throws {
+    let (engine, tcpPort, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+    }
+    defer { engine.stop() }
+    engine.start()
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Ally", pass: "").encode())
+    try await sendDatagram(joinClient, CLSetAlliance(alliance: 0b10).encode())
+    try await waitForCondition(timeout: 3) { engine.state.players[1].alliance == 0b10 }
+
+    engine.submitRequestAlliance(players: UInt16(1 << 1))
+    try await waitForCondition(timeout: 3) {
+        engine.state.players[0].alliance & UInt16(1 << 1) != 0
+    }
+    #expect(engine.state.players[0].alliance & UInt16(1 << 1) != 0)
+    #expect(engine.state.players[1].alliance == 0b10)  // untouched by player 0's own request
+}
+
+// Same shape as the request test above, for `submitLeaveAlliance`/`leaveAlliance`'s own
+// "never clears own bit" guard.
+@Test func hostGameEngineSubmitLeaveAllianceClearsMaskButKeepsOwnBit() async throws {
+    let (engine, _, _) = try await makeEngine { state in
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[0].alliance = UInt16(1 << 0) | UInt16(1 << 1)
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = UInt16(1 << 1) | UInt16(1 << 0)
+    }
+    defer { engine.stop() }
+    engine.start()
+
+    // Try to clear player 0's own bit too -- must be a no-op for that bit (`leaveAlliance`'s
+    // `keepMask` guard, `SessionLogic.swift:235`).
+    engine.submitLeaveAlliance(players: UInt16(1 << 0) | UInt16(1 << 1))
+    try await waitForCondition(timeout: 3) {
+        engine.state.players[0].alliance & UInt16(1 << 1) == 0
+    }
+    #expect(engine.state.players[0].alliance & UInt16(1 << 0) != 0)
+    #expect(engine.state.players[0].alliance & UInt16(1 << 1) == 0)
+}
+
 // B.7 (D108): `onTickRendered` is the app's only sanctioned way to read a live `state` snapshot
 // off the engine -- fired every tick with a value-type copy, never the live `state` itself.
 @Test func hostGameEngineFiresOnTickRenderedEveryTick() async throws {
