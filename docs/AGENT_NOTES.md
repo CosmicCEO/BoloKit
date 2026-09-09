@@ -1789,3 +1789,27 @@ Full ruling text: `docs/PLAN.md` D130. Pushing 20 local commits to `origin/main`
 NEUTRAL-owner/mine-clear divergence, B.10's builder-task/shell-impact `CL*` follow-on, Milestone D
 polish/notarization, further network-bug investigation, real two-instance playtest. No coding GO
 issued yet on any of these — normal PLANNER discretion applies before the next pre-brief.
+
+### [PLANNER] 2026-09-09 — D131: coding GO for sendsrflood + serverloadmap
+
+Jerod's own call on backlog sequencing: `sendsrflood`'s missing broadcast callback and
+`serverloadmap`'s NEUTRAL-owner/mine-clear divergence (both from D129's function-coverage audit)
+go next, ahead of B.10's `CL*` follow-on and the real playtest.
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first (standard two-stage pattern):
+1. `sendsrflood` (`server.c:3261`) — add the missing broadcast-to-client callback so `flood()`/
+   `floodAt()` notify clients over the network, mirroring the existing
+   `onShouldBroadcastDropPill`/`SRDropPill` pattern (D50/Wave 6.4c) one-for-one.
+2. `serverloadmap` (`bmap_server.c:21`) — port its NEUTRAL-owner-forcing/mine-clearing-at-load
+   logic as its own function, distinct from `clientloadmap`/`decodeBMap`. Read the actual C body
+   directly before proposing a Swift shape; don't assume convergence with the client path.
+
+Full ruling: `docs/PLAN.md` D131. B.10 follow-on, Milestone D, further network-bug investigation,
+and the real playtest remain queued, not GO'd.
+
+Also: new user-level skill `network-framework-notes` (`~/.claude/skills/`, generic, not
+XBolo-specific) now covers Network.framework/NWListener gotchas including this project's own
+EINVAL history — worth a look if the network-bug investigation is ever picked back up. It has
+since been updated externally to also cover the newer structured-concurrency
+`NetworkConnection`/`NetworkListener` API (iOS/macOS 26+) as a candidate not yet tried against
+the EINVAL bug — flagged here for whoever eventually resumes that investigation, not actioned now.
