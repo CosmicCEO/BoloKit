@@ -235,12 +235,18 @@ public func floodTest(x: Int, y: Int, state: inout GameState) {
 /// This is the one real gap D100 found: `RecvCL.swift`'s ~15 `explosionAt`/`superboomAt` call
 /// sites already fire this correctly (Wave 6.6); chain/flood cascades, driven straight from
 /// `runTick`, never had an equivalent broadcast hook at all.
+///
+/// **D129 (Wave 1.1):** `onShouldBroadcastFlood` mirrors `sendsrflood(x, y)`
+/// (`server.c:3261`), whose only call site is `floodat()`'s `kCraterTerrain`
+/// case (`server.c:4038-4056`) — fired right after the terrain write, before
+/// the point is rescheduled, matching C's statement order exactly.
 public func floodAt(
     x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
-    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
+    onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in }
 ) {
     guard let terrain = state.terrain[x, y] else { return }
     switch terrain {
@@ -252,6 +258,7 @@ public func floodAt(
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
     case .crater:
         state.terrain[x, y] = .river
+        onShouldBroadcastFlood(x, y)
         state.floods[writeSlot(state.ticks, count: floodTicks + 1)].append(Pointi(x: Int32(x), y: Int32(y)))
     default:
         break
@@ -266,7 +273,8 @@ public func flood(
     onMineExplosion: (Pointi) -> Void = { _ in },
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
-    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
+    onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in }
 ) {
     let slot = Int(state.ticks) % (floodTicks + 1)
     let scheduled = state.floods[slot]
@@ -275,10 +283,10 @@ public func flood(
     for point in scheduled {
         let x = Int(point.x)
         let y = Int(point.y)
-        floodAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        floodAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        floodAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        floodAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
+        floodAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
     }
 }
 

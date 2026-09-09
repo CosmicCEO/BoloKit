@@ -75,7 +75,12 @@ public func runTick(
     // B.5d (D100/D103): the one real mine-chain broadcast gap — `chain`/`flood`'s own cascading
     // `explosionAt(player: playerNeutral, ...)` calls, unlike every `RecvCL.swift` call site
     // (Wave 6.6, already wired), had no broadcast hook of their own until now.
-    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
+    // D129 (Wave 1.1): `flood()`'s own crater-to-river conversion never had a
+    // broadcast hook, mirroring `sendsrflood()`'s only call site in `floodat()`
+    // (server.c:4038-4056). `chain`/`chainAt` never call `sendsrflood`, so this
+    // is threaded only into the `flood(...)` call below, not `chain(...)`.
+    onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in }
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -214,7 +219,8 @@ public func runTick(
     )
     flood(
         state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
-        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom,
+        onShouldBroadcastFlood: onShouldBroadcastFlood
     )
 
     // 6. Lagged-player status callback. Mirrors client.c:437-447's two
