@@ -71,6 +71,12 @@ enum HostEngineEvent {
     /// so a UI button must route through the merged stream rather than calling either directly.
     case kickPlayer(player: Int)
     case banPlayer(player: Int)
+    /// **C.2 (D128):** host's own local alliance request/leave, same reasoning as
+    /// `kickPlayer`/`banPlayer` above -- `requestAlliance`/`leaveAlliance` (`SessionLogic.swift`)
+    /// take `state: inout GameState`, so a UI button must route through the merged stream rather
+    /// than calling either directly.
+    case requestAlliance(players: UInt16)
+    case leaveAlliance(players: UInt16)
     case tick
 }
 
@@ -204,6 +210,17 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation?.yield(.banPlayer(player: player))
     }
 
+    /// **C.2 (D128):** host-local alliance request, routed through the merged stream -- see
+    /// `HostEngineEvent.requestAlliance`'s own doc comment.
+    public func submitRequestAlliance(players: UInt16) {
+        continuation?.yield(.requestAlliance(players: players))
+    }
+
+    /// Same reasoning as `submitRequestAlliance` above, for leaving an alliance.
+    public func submitLeaveAlliance(players: UInt16) {
+        continuation?.yield(.leaveAlliance(players: players))
+    }
+
     /// The single consumer -- the only place in this type that ever mutates `state`.
     private func handle(_ event: HostEngineEvent) async {
         switch event {
@@ -267,6 +284,26 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .banPlayer(let player):
             await hostBanPlayer(player: player, state: &state, table: table)
+
+        case .requestAlliance(let players):
+            let localPlayer = state.localPlayer
+            var broadcast: [UInt8]?
+            requestAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
+                broadcast = SRSetAlliance(player: UInt8(localPlayer), alliance: alliance).encode()
+            })
+            if let broadcast {
+                await table.sendToAllExcept(localPlayer, broadcast)
+            }
+
+        case .leaveAlliance(let players):
+            let localPlayer = state.localPlayer
+            var broadcast: [UInt8]?
+            leaveAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
+                broadcast = SRSetAlliance(player: UInt8(localPlayer), alliance: alliance).encode()
+            })
+            if let broadcast {
+                await table.sendToAllExcept(localPlayer, broadcast)
+            }
 
         case .tick:
             await tick()

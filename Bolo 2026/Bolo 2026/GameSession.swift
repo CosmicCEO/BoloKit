@@ -206,6 +206,53 @@ public final class GameSession {
         hostEngine?.submitBanPlayer(player)
     }
 
+    /// **C.2 (D128):** alliance request, wired across all three of `GameSession`'s paths --
+    /// unlike kick/ban this is every player's own right (not host-only), matching the reference's
+    /// `requestAlliance:`/`leaveAlliance:` `IBAction`s (`GSXBoloController.m:1308,1350`), which any
+    /// client can invoke on itself.
+    ///
+    /// - Host path: routes through `HostGameEngine`'s merged stream (`submitRequestAlliance`),
+    ///   same reasoning as `kickPlayer` above.
+    /// - Join path: mutates only a scratch copy of `state` to compute the outgoing mask, then
+    ///   sends `CLSetAlliance` directly -- `self.state` is NOT mutated here; the host's own
+    ///   eventual `SRSetAlliance` broadcast (`recvSrSetAlliance`, already wired in
+    ///   `TCPSession.dispatch`) is what actually updates `state`, matching this path's existing
+    ///   "local input is advisory, the host's broadcast is truth" discipline (see this class's
+    ///   B.8 header).
+    /// - Single-process path: no other real players to inform, so mutate `state` directly.
+    public func requestAlliance(_ players: UInt16) {
+        if let hostEngine {
+            hostEngine.submitRequestAlliance(players: players)
+            return
+        }
+        if let tcpSession {
+            var scratch = state
+            BoloKit.requestAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+                let message = CLSetAlliance(alliance: alliance)
+                Task { try? await tcpSession.send(message.encode()) }
+            })
+            return
+        }
+        BoloKit.requestAlliance(withPlayers: players, state: &state)
+    }
+
+    /// Same reasoning as `requestAlliance` above, for leaving an alliance.
+    public func leaveAlliance(_ players: UInt16) {
+        if let hostEngine {
+            hostEngine.submitLeaveAlliance(players: players)
+            return
+        }
+        if let tcpSession {
+            var scratch = state
+            BoloKit.leaveAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+                let message = CLSetAlliance(alliance: alliance)
+                Task { try? await tcpSession.send(message.encode()) }
+            })
+            return
+        }
+        BoloKit.leaveAlliance(withPlayers: players, state: &state)
+    }
+
     public func start() {
         if let hostEngine {
             hostEngine.start()
