@@ -32,6 +32,12 @@ int defaulttile_oracle(int x, int y);
 int readrun_flat(size_t *y, size_t *x, struct BMAP_Run *run, void *data, int *terrain);
 int writerun_flat(struct BMAP_Run run, const void *buf, int *terrain);
 
+// D129: standalone extracts of serverloadmap()'s (bmap_server.c:21-252)
+// server-only load-time post-processing -- pill/base-site terrain
+// normalization and the pill speed rescale -- for differential testing.
+int serverloadmap_normalize_terrain_oracle(int terrain);
+int serverloadmap_pillspeed_oracle(int rawSpeed);
+
 // Permanent verbatim extracts from client.c for oracle testing (Wave 5.0)
 float rounddir_oracle(float dir);
 Vec2f collisiondetect_oracle(Vec2f p, float radius, int (*func)(Pointi square));

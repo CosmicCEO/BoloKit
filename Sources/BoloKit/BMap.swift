@@ -602,6 +602,116 @@ public func decodeBMap(_ bytes: [UInt8], into state: inout GameState) -> Bool {
     return true
 }
 
+// MARK: - Server-only load post-processing (D129)
+//
+// Ported from `serverloadmap()` (`Reference/c/bmap_server.c:21-252`) --
+// specifically the parts with NO counterpart in `clientloadmap()`/
+// `decodeBMap`: pill/base owner is always forced to NEUTRAL regardless of
+// the file's stored owner byte (lines 79/94, "ignore pill/base owner");
+// pill speed is rescaled from the stored 0-50 byte to a 0-MAXTICKSPERSHOT
+// tick count and clamped (lines 81-85); all start locations are cleared
+// to sea terrain (lines 134-137); and any "mined" terrain variant sitting
+// under a pill or base is cleared to its unmined equivalent (lines
+// 139-252), since a pill/base square can never itself be mined.
+//
+// Applied only on the host's own map-load path, never on `decodeBMap`'s
+// join-client caller (`BoloNet/JoinClientApply.swift:81`) -- matching the
+// C source's own split into two separate functions
+// (`serverloadmap()`/`clientloadmap()`) rather than one shared decode.
+// There is currently no Swift call site that decodes raw file bytes into
+// a host's own initial `GameState` (`HostGameEngine.init(initialState:)`
+// takes an already-built `GameState`; `HostListener.swift:239` only
+// *encodes*) -- this function exists for whatever future map-loading
+// integration wires the host's own load path, same as `encodeBMap` was
+// added ahead of its own call site in Wave 6.4b.
+
+/// The terrain-normalization half of `serverloadmap()`'s pill/base-site
+/// cleanup (`bmap_server.c:140-193`, identical again at `198-251` for
+/// bases). Preserves the C's own fallthrough bug at `167-169`/`225-227`
+/// verbatim: `.minedRubble` writes `.rubble0` then falls into the
+/// `.minedGrass` case with no `break`, so the net observable result is
+/// `.grass0`, not rubble -- not "fixed" here, per this port's established
+/// precedent for verbatim bugs (see `MineChain.swift`'s NaN-clamp note).
+public func serverNormalizeSiteTerrain(_ terrain: Terrain) -> Terrain {
+    switch terrain {
+    case .sea, .boat, .wall, .river, .forest,
+         .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3,
+         .minedSea, .minedForest:
+        return .grass0
+
+    case .minedSwamp:
+        return .swamp0
+
+    case .minedCrater:
+        return .crater
+
+    case .minedRoad:
+        return .road
+
+    case .minedRubble, .minedGrass:
+        return .grass0
+
+    case .swamp0, .swamp1, .swamp2, .swamp3,
+         .crater, .road,
+         .rubble0, .rubble1, .rubble2, .rubble3,
+         .grass0, .grass1, .grass2, .grass3:
+        return terrain
+    }
+}
+
+/// The pill-speed half of `serverloadmap()`'s load-time transform
+/// (`bmap_server.c:81-85`): rescales the stored 0-50 byte to a
+/// 0-`maxTicksPerShot` tick count and clamps. `decodeBMap`/
+/// `clientloadmap()` (`bmap_client.c:76`) keeps the raw byte verbatim --
+/// this rescale is server-only.
+public func serverPillSpeedRescaled(_ rawSpeed: UInt8) -> UInt8 {
+    var speed = (Int(rawSpeed) * maxTicksPerShot) / 50
+    if speed > maxTicksPerShot { speed = maxTicksPerShot }
+    return UInt8(speed)
+}
+
+/// Applies `serverloadmap()`'s server-only load-time post-processing to a
+/// `state` already populated by `decodeBMap`. Ordering matches the C
+/// exactly: starts are cleared to sea BEFORE the pill/base terrain
+/// normalization runs, so a pill/base sitting on a start tile normalizes
+/// starting from sea, not from whatever the run data originally painted
+/// there.
+///
+/// NOT ported here (logged as a PLANNER question in `AGENT_NOTES.md`):
+/// `serverloadmap()`'s own run-decode loop is lenient in ways `decodeBMap`
+/// is strict about -- it `break`s instead of failing on a truncated run
+/// stream (`bmap_server.c:113-116`) and tolerates trailing bytes after the
+/// sentinel (`122-124`) instead of failing -- so a malformed map the real
+/// server would still accept, `decodeBMap` rejects outright, and this
+/// post-process never runs on it. Full `serverloadmap()` parity on
+/// malformed input is not claimed by this function.
+public func serverPostProcessLoadedMap(_ state: inout GameState) {
+    for i in state.pills.indices {
+        state.pills[i].owner = playerNeutral  /* ignore pill owner */
+        state.pills[i].speed = serverPillSpeedRescaled(state.pills[i].speed)
+    }
+
+    for i in state.bases.indices {
+        state.bases[i].owner = playerNeutral  /* ignore base owner */
+    }
+
+    for start in state.starts {
+        state.terrain[Int(start.x), Int(start.y)] = .sea
+    }
+
+    for pill in state.pills {
+        if let t = state.terrain[Int(pill.x), Int(pill.y)] {
+            state.terrain[Int(pill.x), Int(pill.y)] = serverNormalizeSiteTerrain(t)
+        }
+    }
+
+    for base in state.bases {
+        if let t = state.terrain[Int(base.x), Int(base.y)] {
+            state.terrain[Int(base.x), Int(base.y)] = serverNormalizeSiteTerrain(t)
+        }
+    }
+}
+
 // MARK: - Full-file encode (Wave 6.4b, G-1)
 //
 // Ported from `serversavemap()` (`Reference/c/bmap_server.c:259-346`) --
