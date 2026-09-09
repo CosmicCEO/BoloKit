@@ -84,6 +84,12 @@ enum HostEngineEvent {
     case setAllowJoin(Bool)
     case toggleAllowJoin
     case unbanPlayer(index: Int)
+    /// **1.1 backlog C.4:** the host's own outbound chat message, submitted from the messages
+    /// panel's send button via `submitLocalSendMessage` -- same "route through the merged stream"
+    /// reasoning as `localInputChanged` above (`computeMessageMask` reads `state.players`, so this
+    /// can't be computed off-thread against a copy that might already be stale by the time it's
+    /// relayed).
+    case sendMessage(text: String, target: MessageTarget)
     case tick
 }
 
@@ -108,6 +114,11 @@ public final class HostGameEngine: @unchecked Sendable {
     /// single-process-per-role model reuses one struct across roles; this port keeps them
     /// separate, matching D39's precedent for exactly this class of C-side conflation.
     private var localSeq: Int32 = 0
+    /// **1.1 backlog C.4:** monotonic id for `ChatMessage`s fired via `onMessageReceived`, the
+    /// join-side/single-process equivalent of `SwiftUI`'s `Identifiable` needing a stable key --
+    /// no wire-level counterpart exists (the reference's own `NSTextView` scrollback has no id at
+    /// all, just appended text) so this is purely a display-layer concern invented for this port.
+    private var nextMessageID: UInt64 = 0
 
     /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
     /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
@@ -117,6 +128,13 @@ public final class HostGameEngine: @unchecked Sendable {
     /// place that knows the callback fires from off-main (the consumer `Task` has no actor
     /// isolation of its own).
     public var onTickRendered: (@MainActor (GameState) -> Void)?
+
+    /// **1.1 backlog C.4:** fired whenever this host's own local chat send resolves to a mask
+    /// that includes the host's own player slot -- mirrors a real client receiving its own
+    /// `SRSendMesg` back over the wire (`sendsrsendmesg`'s `sendToMask` loop, `HostSession.swift:
+    /// 243`, includes the sender whenever the sender's own bit is set in the mask it computed),
+    /// except the host has no socket to itself so this is the direct in-process equivalent.
+    public var onMessageReceived: (@MainActor (ChatMessage) -> Void)?
 
     public init(initialState: GameState, listener: HostListener, dgramListener: HostDgramListener) {
         self.state = initialState
@@ -252,6 +270,12 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation?.yield(.unbanPlayer(index: index))
     }
 
+    /// **1.1 backlog C.4:** the messages panel's own send action -- see `HostEngineEvent.sendMessage`'s
+    /// doc comment for why this can't compute the mask/relay directly from the caller's thread.
+    public func submitLocalSendMessage(text: String, target: MessageTarget) {
+        continuation?.yield(.sendMessage(text: text, target: target))
+    }
+
     /// The single consumer -- the only place in this type that ever mutates `state`.
     private func handle(_ event: HostEngineEvent) async {
         switch event {
@@ -290,8 +314,27 @@ public final class HostGameEngine: @unchecked Sendable {
             // read the right length for this opcode) but logically invalid -- treat it the same
             // as a dead connection (abnormal disconnect) rather than silently ignoring a message
             // and leaving the connection's read position potentially desynced.
+            // Snapshot the two fields `onSendMesg` below needs to read *before* `state` goes
+            // into `dispatchHostMessage`'s own `&state` exclusive-access window -- the callback
+            // fires synchronously from inside that call, so reading `self.state` from within it
+            // (rather than a value captured beforehand) would be the identical nested-access
+            // violation this file's own header already flags for `onSpawn` above.
+            let localPlayerIndex = state.localPlayer
+            let playerNames = state.players.map(\.name)
             do {
-                try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: player, state: &state, table: table)
+                try await dispatchHostMessage(
+                    opcode: opcode, bytes: bytes, player: player, state: &state, table: table,
+                    callbacks: CLDispatchCallbacks(onSendMesg: { [weak self] sender, to, mask, text in
+                        guard let self, mask & (1 << localPlayerIndex) != 0 else { return }
+                        self.nextMessageID += 1
+                        let senderIndex = Int(sender)
+                        let name = playerNames.indices.contains(senderIndex) ? playerNames[senderIndex] : ""
+                        let message = ChatMessage(id: self.nextMessageID, player: senderIndex, senderName: name, text: text, to: to)
+                        if let onMessageReceived = self.onMessageReceived {
+                            Task { await onMessageReceived(message) }
+                        }
+                    })
+                )
             } catch {
                 await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
                 return
@@ -347,6 +390,26 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .unbanPlayer(let index):
             unbanPlayer(index: index, state: &state)
+
+        case .sendMessage(let text, let target):
+            let sender = state.localPlayer
+            guard state.players.indices.contains(sender) else { break }
+            let mask = computeMessageMask(target: target, sender: sender, players: state.players)
+            let bytes = SRSendMesg(player: UInt8(sender), to: target.rawValue, text: text).encode()
+            await table.sendToMask(UInt16(bitPattern: mask), bytes)
+            // The host has no socket to itself, so the "sender receives their own message back"
+            // half of `sendToMask`'s real network round trip (see `onMessageReceived`'s own doc
+            // comment) has to be done directly here instead.
+            if (UInt16(bitPattern: mask) & (1 << sender)) != 0 {
+                nextMessageID += 1
+                let message = ChatMessage(
+                    id: nextMessageID, player: sender, senderName: state.players[sender].name,
+                    text: text, to: target.rawValue
+                )
+                if let onMessageReceived {
+                    await onMessageReceived(message)
+                }
+            }
 
         case .tick:
             await tick()

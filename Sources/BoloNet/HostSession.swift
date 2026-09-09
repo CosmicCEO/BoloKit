@@ -397,13 +397,21 @@ public func hostPauseResumeServer(state: inout GameState, table: HostSessionTabl
 public struct CLDispatchCallbacks {
     public var onMineExplosion: (Pointi) -> Void = { _ in }
     public var onSuperboomTerrain: (Pointi) -> Void = { _ in }
+    /// **1.1 backlog C.4:** fired for every `CLSendMesg` this dispatch relays, with the mask it
+    /// was relayed under -- the host itself has no `HostSessionTable` slot/connection of its own
+    /// (only remote players do), so `HostGameEngine`'s own display panel needs this to learn
+    /// whether the sending player's chosen target mask happens to include the host, mirroring how
+    /// a real client would receive its own `SRSendMesg` back over the wire it doesn't have.
+    public var onSendMesg: (UInt8, UInt8, UInt16, String) -> Void = { _, _, _, _ in }
 
     public init(
         onMineExplosion: @escaping (Pointi) -> Void = { _ in },
-        onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in }
+        onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in },
+        onSendMesg: @escaping (UInt8, UInt8, UInt16, String) -> Void = { _, _, _, _ in }
     ) {
         self.onMineExplosion = onMineExplosion
         self.onSuperboomTerrain = onSuperboomTerrain
+        self.onSendMesg = onSendMesg
     }
 }
 
@@ -510,7 +518,9 @@ public func dispatchHostMessage(
         // Pure masked relay (`sendsrsendmesg`, `server.c:3147-3173`) -- no
         // `GameState` effect, no `recvCl*` function (Wave 6.2/6.6's own
         // prior finding, restated in `RecvCL.swift`'s header).
-        pending.append(.mask(UInt16(bitPattern: msg.mask), SRSendMesg(player: UInt8(player), to: msg.to, text: msg.text).encode()))
+        let maskU16 = UInt16(bitPattern: msg.mask)
+        pending.append(.mask(maskU16, SRSendMesg(player: UInt8(player), to: msg.to, text: msg.text).encode()))
+        callbacks.onSendMesg(UInt8(player), msg.to, maskU16, msg.text)
 
     case .dropBoat:
         guard let msg = CLDropBoat.decode(bytes) else { throw HostSessionError.malformedMessage }

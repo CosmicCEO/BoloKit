@@ -415,6 +415,41 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(r2 == expected)
 }
 
+/// **1.1 backlog C.4:** `CLDispatchCallbacks.onSendMesg` -- added so `HostGameEngine`'s own
+/// messages panel can learn whether a relayed message's mask happens to include the host (which
+/// has no `HostSessionTable` slot/connection of its own to relay through). Verifies both the
+/// callback fires with the exact (player, to, mask, text) the wire message carried, AND that the
+/// pre-existing masked-relay broadcast (previous test) still happens unchanged alongside it.
+@Test func dispatchSendMesgAlsoFiresOnSendMesgCallbackWithRelayedMaskAndText() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    let mask: Int16 = Int16(bitPattern: UInt16(1 << 0) | UInt16(1 << 2))
+    try await sendBytes(links[1].clientEnd, CLSendMesg(to: 255, mask: mask, text: "hi").encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+
+    var captured: (player: UInt8, to: UInt8, mask: UInt16, text: String)?
+    try await dispatchHostMessage(
+        opcode: opcode, bytes: bytes, player: 1, state: &state, table: table,
+        callbacks: CLDispatchCallbacks(onSendMesg: { player, to, mask, text in
+            captured = (player, to, mask, text)
+        })
+    )
+
+    #expect(captured?.player == 1)
+    #expect(captured?.to == 255)
+    #expect(captured?.mask == UInt16(bitPattern: mask))
+    #expect(captured?.text == "hi")
+
+    // The relay itself is unaffected by the new callback -- same expectation as the sibling test.
+    let expected = SRSendMesg(player: 1, to: 255, text: "hi").encode()
+    let r0 = try await receiveExactly(links[0].clientEnd, expected.count)
+    let r2 = try await receiveExactly(links[2].clientEnd, expected.count)
+    #expect(r0 == expected)
+    #expect(r2 == expected)
+}
+
 @Test func dispatchHangUpConsumesTheMessageWithNoBroadcastOrStateChange() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }

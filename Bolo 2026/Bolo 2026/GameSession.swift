@@ -91,6 +91,16 @@ public final class GameSession {
     public private(set) var recentTickIntervals: [TimeInterval] = []
     private var lastTickTime: DispatchTime?
 
+    /// **1.1 backlog C.4:** the messages panel's own scrollback -- kept here, not on `GameState`,
+    /// matching the reference's own design: `printmessage`/`messagesTextView` is a pure display
+    /// sink with no simulation effect (`recvclsendmesg`/`recvsrsendmesg`'s own zero-`GameState`-
+    /// effect finding, restated in `ChatMessage.swift`'s header). Populated on all three paths --
+    /// the host path via `HostGameEngine.onMessageReceived` below, the join path via
+    /// `SRDispatchCallbacks.onSendMesg` in `handleJoinEvent`, and the single-process path directly
+    /// inside `sendMessage` itself (no relay exists to receive it back through).
+    public private(set) var messages: [ChatMessage] = []
+    private var nextMessageID: UInt64 = 0
+
     public init(initialState: GameState, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = initialState
         self.ticksSinceLastUpdate = Array(repeating: 0, count: initialState.players.count)
@@ -133,6 +143,9 @@ public final class GameSession {
         }
         hostEngine.onTickRendered = { [weak view] renderedState in
             view?.render(renderedState)
+        }
+        hostEngine.onMessageReceived = { [weak self] message in
+            self?.messages.append(message)
         }
     }
 
@@ -251,6 +264,40 @@ public final class GameSession {
             return
         }
         BoloKit.leaveAlliance(withPlayers: players, state: &state)
+    }
+
+    /// **1.1 backlog C.4:** the messages panel's send action, mirroring `sendmessage()`'s own
+    /// three-way dispatch (`client.c:6705-6759`) across this port's three paths:
+    /// - host: routed through `HostGameEngine`'s merged event stream (`submitLocalSendMessage`),
+    ///   same reasoning as `kickPlayer`/`banPlayer` above.
+    /// - join: mask computed here (client-side, matching `sendmessage`'s own `switch` -- the
+    ///   server/host only ever relays the mask a `CLSendMesg` already carries, never recomputes
+    ///   it; confirmed by reading `recvclsendmesg`, `server.c:2059-2087`, which does nothing but
+    ///   `ntohs` the mask it was sent), then sent as a real `CLSendMesg` over `tcpSession`. Not
+    ///   appended to `messages` here -- the host's own relay (`sendsrsendmesg`'s `sendToMask`)
+    ///   includes the sender whenever the sender's own mask bit is set, so it comes back through
+    ///   `handleJoinEvent`'s `.tcpMessage` case below, the same round trip a real two-instance
+    ///   session has.
+    /// - single-process (D73, no networking at all): appended directly -- there is no relay to
+    ///   receive it back through, so this is the one path where "send" and "display" are the same
+    ///   step rather than two ends of a wire round trip.
+    public func sendMessage(text: String, target: MessageTarget) {
+        if let hostEngine {
+            hostEngine.submitLocalSendMessage(text: text, target: target)
+            return
+        }
+        if let tcpSession {
+            let localPlayer = state.localPlayer
+            guard state.players.indices.contains(localPlayer) else { return }
+            let mask = computeMessageMask(target: target, sender: localPlayer, players: state.players)
+            let message = CLSendMesg(to: target.rawValue, mask: mask, text: text)
+            Task { try? await tcpSession.send(message.encode()) }
+            return
+        }
+        nextMessageID += 1
+        let localPlayer = state.localPlayer
+        let name = state.players.indices.contains(localPlayer) ? state.players[localPlayer].name : ""
+        messages.append(ChatMessage(id: nextMessageID, player: localPlayer, senderName: name, text: text, to: target.rawValue))
     }
 
     public func start() {
@@ -414,7 +461,21 @@ public final class GameSession {
             renderView.render(state)
 
         case .tcpMessage(let message):
-            try? TCPSession.dispatch(message, state: &state)
+            // Snapshot player names before `dispatch` takes `&state` -- reading `self.state` from
+            // inside `onSendMesg` below, while this same call already holds `state` as an
+            // exclusive `inout` binding, would be a nested-access violation (same reasoning as
+            // `HostGameEngine.swift`'s own `onSendMesg` wiring, `HostGameEngine.swift:264-281`).
+            let playerNames = state.players.map(\.name)
+            let callbacks = SRDispatchCallbacks(onSendMesg: { [weak self] player, to, text in
+                guard let self else { return }
+                self.nextMessageID += 1
+                let senderIndex = Int(player)
+                let name = playerNames.indices.contains(senderIndex) ? playerNames[senderIndex] : ""
+                self.messages.append(
+                    ChatMessage(id: self.nextMessageID, player: senderIndex, senderName: name, text: text, to: to)
+                )
+            })
+            try? TCPSession.dispatch(message, state: &state, callbacks: callbacks)
 
         case .udpDatagram(let data):
             udpSession.apply(data, myOwnSeq: localSeq, state: &state)

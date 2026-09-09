@@ -1661,3 +1661,105 @@ connection exists; noted in the test file itself.
 — if a future 1.1 UI wave wants a distinct "prevent new joins without also touching allowJoin's
 own semantics" toggle, that would need to be a new, explicitly-invented feature (no C precedent),
 not a port, and should get its own ticket rather than being folded into this one retroactively.
+
+### [IMPLEMENTER] 2026-09-09 — C.4 (messages panel) closed, not yet PARITY-reviewed
+
+**Type:** feature, 1.1 backlog
+**Scope:** C.4 -- the messages/chat panel deferred at D128, per that row's own pre-plan
+("small net-new `GameState` field -- no message-history model exists yet"). Landed without a new
+`GameState` field -- see below for why.
+
+**What was actually missing, read from the reference first:** `printmessage`/`sendmessage`
+(`client.c:1260,6705-6759`) are both pure display/relay functions with zero simulation effect --
+already-confirmed by this port's own prior findings (`RecvCL.swift`/`RecvSR.swift` headers:
+`recvclsendmesg`/`recvsrsendmesg` have no `recvCl*`/`recvSr*` counterpart at all, for exactly this
+reason). The relay plumbing (`CLSendMesg`/`SRSendMesg` wire structs, `HostSession.swift`'s
+`sendsrsendmesg`-mirroring mask relay at line 243/493, `TCPSession.swift`'s join-side decode at
+line 272-273 with an already-existing but previously-unused `SRDispatchCallbacks.onSendMesg` hook)
+was already fully wired end-to-end before this session -- confirmed by reading it, not assumed.
+What was missing was only the player-facing send/display half.
+
+**What was built:**
+- `Sources/BoloNet/ChatMessage.swift` (new) -- `MessageTarget` enum (`.everyone`/`.allies`/
+  `.nearby`, deliberately no `.game` case since `MSGGAME` is server-only per `sendmessage`'s own
+  `switch`, `client.c:6718-6742`), `computeMessageMask(target:sender:players:)` (a direct port of
+  that same `switch`, including the `MSGNEARBY` `mag2f(sub2f(...)) < 8.5` distance check -- caught
+  my own wrong assumption that `mag2f` was squared magnitude; it isn't, `Vector.swift:107` calls
+  `sqrt`, so `8.5` is a real tile-distance threshold, not a squared one -- fixed before landing,
+  see the test below that pins this down), and `ChatMessage` (a display-layer struct with
+  `displayText` baking in `recvsrsendmesg`'s own `"%s: %s"` format, `client.c:1517`).
+- `Sources/BoloNet/HostGameEngine.swift` -- new `.sendMessage(text:target:)` event + 
+  `submitLocalSendMessage` (host's own outbound send, same merged-event-stream-routing reasoning
+  as `submitKickPlayer`/`submitBanPlayer`) and `onMessageReceived` callback (fired when the host's
+  own local send's mask includes itself, OR when a remote player's relayed send's mask includes
+  the host -- the host has no `HostSessionTable` slot/connection to itself, so it can't just
+  receive its own relay back over a socket like a real client would).
+- `Sources/BoloNet/HostSession.swift` -- `CLDispatchCallbacks` gained `onSendMesg(player, to,
+  mask, text)`, fired alongside the existing masked-relay broadcast in `dispatchHostMessage`'s
+  `.sendMesg` case (previously that case only queued the broadcast, no callback existed at all).
+  **Correctness note, self-caught before committing:** the callback closure inside
+  `HostGameEngine.handle(_:)`'s `.clMessage` case must not read `self.state` directly (only
+  `state.localPlayer`/`state.players[...].name`, snapshotted into local `let`s *before* the
+  `dispatchHostMessage(..., state: &state, ...)` call) -- the callback fires synchronously nested
+  inside that call's own exclusive `&state` access window, so reading `self.state` from within it
+  would be the identical nested-access violation this file's own header already documents for
+  `onSpawn`. Caught by re-reading that header rather than by a runtime trap.
+- `Bolo 2026/Bolo 2026/GameSession.swift` -- `messages: [ChatMessage]` (kept on `GameSession`,
+  not `GameState`, matching the reference's own design: the scrollback is a pure display sink
+  with no simulation effect, same reasoning `PlayerStatusView`'s header gives for why `GameSession`
+  isn't `ObservableObject`) and `sendMessage(text:target:)`, dispatching across all three paths:
+  host (routes through `submitLocalSendMessage`), join (computes the mask client-side --
+  confirmed against `recvclsendmesg`, `server.c:2059-2087`, that the server only `ntohs`'s the
+  mask a `CLSendMesg` already carries and never recomputes it -- then sends a real `CLSendMesg`;
+  the sender's own copy arrives back through the host's relay, wired via `SRDispatchCallbacks.
+  onSendMesg` in `handleJoinEvent`'s `.tcpMessage` case, not appended synchronously), and
+  single-process (D73, no networking at all -- appended directly, since there's no relay to
+  receive it back through). Same nested-`&state`-access caveat as above applies to the join-side
+  wiring too; fixed the same way (snapshot player names before `TCPSession.dispatch(...,
+  state: &state, ...)`).
+- `Bolo 2026/Bolo 2026/MessagesView.swift` (new) -- a `NavigationStack` sheet matching
+  `PlayerStatusView`'s exact shape (`List` + `TimelineView`-driven polling + "Done" toolbar
+  action), plus a target picker and send text field. Wired into `GameView.swift` as a "Messages"
+  toolbar button next to the existing "Status" one, opening the same sheet-style presentation.
+
+**Tests (before/after, D28):** 694 -> 702 (511 `BoloKitTests` unchanged + 183 -> 191
+`DifferentialTests`, +8 new: 7 in `Tests/DifferentialTests/ChatMessageTests.swift` for
+`computeMessageMask`'s three targets -- including the exact-`8.5`-boundary and
+squared-vs-plain-magnitude case that caught my own bug above -- plus `ChatMessage.displayText`
+and `MessageTarget`'s case set, and 1 in `Tests/DifferentialTests/HostSessionTests.swift`
+(`dispatchSendMesgAlsoFiresOnSendMesgCallbackWithRelayedMaskAndText`) confirming the new
+`onSendMesg` callback fires with the exact relayed values alongside the pre-existing masked
+broadcast, unchanged). All 702 pass (`swift test`, both targets run separately and together).
+
+**Build status:** SPM package (`swift build`) clean, no warnings from new code. Xcode app target
+(`Bolo 2026.xcodeproj`, scheme `Bolo 2026`, destination "My Mac") built successfully via
+`mcp__xcode__BuildProject` after `git submodule update --init --recursive` (this worktree's
+`Reference/c` submodule wasn't checked out yet -- needed for the `CXBolo` C target's own build,
+unrelated to this feature).
+
+**Visual verification: NOT done, stated explicitly rather than guessed at.**
+`mcp__xcode__DeviceInteractionStartWorkspaceSession` refused: "The device you are targeting is
+not supported for Device Interaction. Supported: iOS/watchOS/tvOS Simulator" -- this app's only
+run destination is "My Mac" (a native macOS target, D21/D72), and this project's device-
+interaction tooling only supports iOS/watchOS/tvOS simulators, not macOS. No screenshot was
+taken; the UI was verified by build success and code review only, not by looking at it.
+
+**Scope discipline held:** no `server.c` network-layer items touched (`sendsrflood`,
+`serverloadmap`, host-admin surface untouched); `docs/PLAN.md` not edited (PLANNER's own row for
+D128/C.4 is unchanged by this commit); B.10's join-side `CL*` follow-on and the alliance panel
+(C.2) are untouched.
+
+**Known, disclosed gaps, not blockers:**
+- No message-history persistence across a reconnect/rejoin -- matches the reference exactly
+  (`messagesTextView`'s scrollback is process-lifetime only, never persisted either).
+- `MessageTarget.nearby`'s distance check reads `players[sender].tank`/`players[i].tank`
+  positions at send time -- correct per `sendmessage`'s own `switch`, but on the join path this
+  is the client's own last-known copy of other players' positions (from the most recent
+  `CLUpdate`), not the host's authoritative one; a real client has the identical staleness (same
+  network-latency shape everything else in this port already accepts).
+- Not independently PARITY-reviewed as of this entry.
+
+[TO: PLANNER] C.4 implemented and self-tested; ready for PARITY review whenever picked up.
+[TO: PARITY] Suggest starting from `computeMessageMask`'s `mag2f`-magnitude-not-squared finding
+above (a real bug I caught in my own first draft, now pinned by a test) as the kind of thing
+worth re-deriving independently rather than trusting my own fix.
