@@ -1265,3 +1265,47 @@ two-instance session, partial sound/join-side scope).
 Jerod's own direction; Phase 2's cleanup and Phase 4's hygiene both landed clean. 1.1 backlog
 filed at D128: C.1/C.2/C.4, Milestone D, B.10's builder/shell follow-on, further network-bug
 investigation, and a real two-instance playtest.
+
+### [IMPLEMENTER] 2026-09-09 — D129: `sendsrflood` broadcast hook (Wave 1.1)
+
+**Type:** coding, single D129 backlog item.
+**Worktree:** `.claude/worktrees/agent-a6cebe300a756fa3f`, branch `worktree-agent-a6cebe300a756fa3f`.
+**Commit:** `34f7560` "1.1: sendsrflood broadcast hook".
+
+**Task:** `Reference/c/server.c:3261`'s `sendsrflood(x, y)` had no ported broadcast hook, unlike
+every sibling op (`sendsrsmallboom`, `sendsrdropmine`, etc.), which each have a matching
+`onShouldBroadcast*` callback wired into the host session.
+
+**Finding before coding:** the wire side was already fully ported and just sitting unused —
+`Sources/BoloNet/ServerMessages.swift` already had `ServerOpcode.flood = 12` and a complete
+`SRFlood` struct (x/y, `wireSize`, `encode()`, `decode()`), and `Sources/BoloNet/TCPSession.swift`
+already framed/decoded `.flood` with it. Confirmed `sendsrflood`'s only C call site is
+`floodat()`'s `kCraterTerrain` case (`server.c:4038-4056`) — fired right after the terrain write
+(`server.terrain[y][x] = kRiverTerrain`), before rescheduling into `server.floods`. `chainat()`
+never calls `sendsrflood`, so no wiring belongs on the chain path.
+
+**Changes:**
+- `Sources/BoloKit/MineChain.swift` — added `onShouldBroadcastFlood: (Int, Int) -> Void` to
+  `floodAt`/`flood`, fired in `floodAt`'s `.crater` case immediately after `state.terrain[x, y] =
+  .river`, matching C's statement order exactly. Threaded through all 4 neighbor `floodAt` calls
+  inside `flood`.
+- `Sources/BoloKit/RunTick.swift` — added the same parameter to `runTick`, threaded only into its
+  `flood(...)` call site (not `chain(...)`, per the finding above).
+- `Sources/BoloNet/HostGameEngine.swift` — wired `onShouldBroadcastFlood` in `tick()`'s
+  `runTick(...)` call to `pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode())`, mirroring
+  the existing `onGrow`/`onShouldBroadcastSmallBoom` entries.
+- `Tests/BoloKitTests/MineChainTests.swift` — added 3 tests mirroring the existing
+  `floodAtBroadcastsSmallBoomOnDetonationWithNeutralCauser`/`floodAtDoesNotBroadcastWhenNotDetonating`
+  pair: `floodAtBroadcastsFloodOnCraterToRiverConversion`,
+  `floodAtDoesNotBroadcastFloodWhenDetonatingMinedTerrain`, and
+  `floodBroadcastsFloodForEachScheduledCraterNeighborConvertedToRiver` (exercises the callback
+  through `flood()` itself, not just `floodAt`, since `flood()` is the real per-tick entry point).
+
+**Test counts (D28):** before 694 (511 `BoloKitTests`-suite + 183 `DifferentialTests`), after 697
+(514 + 183) — 3 new tests, no shrink anywhere. `swift build` clean; `swift test` all passing (one
+run initially reported a `DifferentialTests` failure right after the `Reference/c` submodule had
+to be freshly checked out in this worktree — a rerun with the submodule warm passed clean; not
+reproducible, not related to this change).
+
+**Scope note:** touched only this one D129 item, per instruction — did not touch other
+unaccounted D129 broadcast-hook gaps (separate parallel tasks) or `docs/PLAN.md`.
