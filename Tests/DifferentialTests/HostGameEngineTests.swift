@@ -313,6 +313,24 @@ private func receiveMatchingCLUpdate(
 /// not a mechanism this test's healthy, still-connected UDP socket can rely on. Cancelling the
 /// connection explicitly after the timeout is what actually unblocks `receiveMessage`'s pending
 /// completion handler.
+/// Same shape as every other test file's own private helper of this name (`HostListenerTests.swift`,
+/// `JoinClientTests.swift`, etc.) -- reads a join rejection's single status byte off the raw TCP
+/// stream (not a datagram-framed message; `processJoinAttempt` writes it with `sendBytes`, plain
+/// stream bytes).
+private func receiveExactly(_ connection: NWConnection, _ count: Int) async throws -> [UInt8] {
+    try await withCheckedThrowingContinuation { continuation in
+        connection.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
+            if let error {
+                continuation.resume(throwing: error)
+            } else if let data, data.count == count {
+                continuation.resume(returning: Array(data))
+            } else {
+                continuation.resume(throwing: HarnessError.shortRead)
+            }
+        }
+    }
+}
+
 private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanoseconds: UInt64 = 300_000_000) async -> Bool {
     async let receiveResult: Bool = {
         do {
@@ -701,6 +719,70 @@ private func confirmNoCLUpdateArrives(_ connection: NWConnection, timeoutNanosec
     }
     #expect(engine.state.players[0].alliance & UInt16(1 << 0) != 0)
     #expect(engine.state.players[0].alliance & UInt16(1 << 1) == 0)
+}
+
+// 1.1 (D129): `submitPauseResumeServer`/`submitSetAllowJoin`/`submitToggleAllowJoin`/
+// `submitUnbanPlayer` are the sanctioned entry points for the host-admin command surface --
+// same "route through the merged stream" reasoning as `submitKickPlayer`/`submitBanPlayer` above.
+@Test func hostGameEngineSubmitPauseResumeServerTogglesPauseState() async throws {
+    let (engine, _, _) = try await makeEngine()
+    defer { engine.stop() }
+    engine.start()
+
+    engine.submitPauseResumeServer()
+    try await waitForCondition(timeout: 3) { engine.state.serverPauseTicks == -1 }
+    #expect(engine.state.serverPauseTicks == -1)
+
+    let pausedTicks = engine.state.ticks
+    try await Task.sleep(nanoseconds: 100_000_000)
+    #expect(engine.state.ticks == pausedTicks)  // simulation genuinely frozen, not just flagged
+
+    engine.submitPauseResumeServer()
+    try await waitForCondition(timeout: 3) { engine.state.serverPauseTicks != -1 }
+    #expect(engine.state.serverPauseTicks == Int(ticksPerSec) * 5)  // resume countdown, not an
+    // immediate unfreeze (`SessionLogic.resumeServer`'s own doc comment)
+}
+
+@Test func hostGameEngineSubmitToggleAllowJoinRejectsANewJoin() async throws {
+    let (engine, tcpPort, _) = try await makeEngine()
+    defer { engine.stop() }
+    engine.start()
+
+    #expect(engine.state.allowJoin)
+    engine.submitToggleAllowJoin()
+    try await waitForCondition(timeout: 3) { !engine.state.allowJoin }
+    #expect(!engine.state.allowJoin)
+
+    let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+    joinClient.start(queue: .main)
+    defer { joinClient.cancel() }
+    try await sendDatagram(joinClient, JoinPreamble(name: "Locked Out", pass: "").encode())
+    let response = try await receiveExactly(joinClient, 1)
+    #expect(response == [JoinStatusByte.disallow.rawValue])
+
+    engine.submitSetAllowJoin(true)
+    try await waitForCondition(timeout: 3) { engine.state.allowJoin }
+    #expect(engine.state.allowJoin)
+}
+
+// `unbanPlayer`'s "removes an entry, and a subsequent join from that identity succeeds" behavior
+// is covered end-to-end at the pure `SessionLogic` layer
+// (`SessionLogicTests.UnbanPlayerTests.unbannedIdentityCanSubsequentlyJoin`) -- doing it again
+// here over a real `NWConnection` would need the live connection's exact `remoteAddressDescription`
+// string (`HostListener.swift`, includes the ephemeral client port) to pre-seed a matching
+// `BannedPlayer`, which isn't knowable before the connection exists. This test only exercises the
+// engine plumbing: `submitUnbanPlayer(index:)` reaches `state.bannedPlayers` through the merged
+// stream, same contract `submitKickPlayer`/`submitBanPlayer` already have their own tests for.
+@Test func hostGameEngineSubmitUnbanPlayerRemovesTheEntry() async throws {
+    let (engine, _, _) = try await makeEngine { state in
+        state.bannedPlayers = [BannedPlayer(name: "Reformed", address: "1.2.3.4")]
+    }
+    defer { engine.stop() }
+    engine.start()
+
+    engine.submitUnbanPlayer(index: 0)
+    try await waitForCondition(timeout: 3) { engine.state.bannedPlayers.isEmpty }
+    #expect(engine.state.bannedPlayers.isEmpty)
 }
 
 // B.7 (D108): `onTickRendered` is the app's only sanctioned way to read a live `state` snapshot

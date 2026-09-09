@@ -319,3 +319,160 @@ private let netGameVersionForTest: UInt8 = 1
         #expect(broadcast?.1 == 0xBEEF)
     }
 }
+
+// MARK: - Host-admin: pause/resume, allow-join, unban (1.1, D129)
+
+@Suite struct PauseServerTests {
+
+    @Test func pausesFromRunningAndBroadcasts255() {
+        var state = GameState()
+        var broadcast: UInt8?
+        pauseServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == -1)
+        #expect(broadcast == 255)
+    }
+
+    @Test func alreadyPausedIsANoOpNoBroadcast() {
+        var state = GameState(serverPauseTicks: -1)
+        var broadcast: UInt8?
+        pauseServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == -1)
+        #expect(broadcast == nil)
+    }
+
+    @Test func resumeStartsAFiveSecondCountdownNotImmediateUnfreeze() {
+        var state = GameState(serverPauseTicks: -1)
+        var broadcast: UInt8?
+        resumeServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == Int(ticksPerSec) * 5)
+        #expect(broadcast == 5)
+    }
+
+    @Test func resumeWhenNotIndefinitelyPausedIsANoOp() {
+        // Mid-countdown (server.pause > 0, getpauseserver() false): resumeserver() does nothing.
+        var state = GameState(serverPauseTicks: Int(ticksPerSec) * 3)
+        var broadcast: UInt8?
+        resumeServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == Int(ticksPerSec) * 3)
+        #expect(broadcast == nil)
+    }
+
+    @Test func runningIsANoOpToo() {
+        var state = GameState(serverPauseTicks: 0)
+        var broadcast: UInt8?
+        resumeServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == 0)
+        #expect(broadcast == nil)
+    }
+
+    @Test func toggleFlipsRunningToPaused() {
+        var state = GameState()
+        var broadcast: UInt8?
+        pauseResumeServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == -1)
+        #expect(broadcast == 255)
+    }
+
+    @Test func toggleFlipsIndefinitelyPausedToResumeCountdown() {
+        var state = GameState(serverPauseTicks: -1)
+        var broadcast: UInt8?
+        pauseResumeServer(state: &state, onShouldBroadcastPause: { broadcast = $0 })
+        #expect(state.serverPauseTicks == Int(ticksPerSec) * 5)
+        #expect(broadcast == 5)
+    }
+
+    /// Pinning the tri-state: calling pause mid-resume-countdown re-pauses indefinitely rather
+    /// than being absorbed by the in-flight countdown.
+    @Test func pauseDuringResumeCountdownRePausesIndefinitely() {
+        var state = GameState(serverPauseTicks: Int(ticksPerSec) * 3)
+        pauseServer(state: &state)
+        #expect(state.serverPauseTicks == -1)
+    }
+
+    /// End-to-end: pause freezes `runTick`'s advance, resume starts a countdown that keeps it
+    /// frozen for 5 more seconds (with `onPause` firing each second boundary), and only once the
+    /// countdown fully drains does simulation actually resume.
+    @Test func resumeKeepsSimulationFrozenUntilCountdownDrains() {
+        var state = GameState(players: [PlayerState()], ticks: 0)
+        pauseServer(state: &state)
+        runTick(state: &state, ticksSinceLastUpdate: [])
+        #expect(state.ticks == 0)  // still frozen while paused indefinitely
+
+        var pauseEvents: [Int] = []
+        resumeServer(state: &state)
+        #expect(state.serverPauseTicks == Int(ticksPerSec) * 5)
+
+        for _ in 0..<(Int(ticksPerSec) * 5 - 1) {
+            runTick(state: &state, ticksSinceLastUpdate: [], onPause: { pauseEvents.append($0) })
+        }
+        #expect(state.ticks == 0)  // still frozen for the whole 5-second countdown
+        #expect(state.serverPauseTicks == 1)
+        #expect(pauseEvents == [4, 3, 2, 1])  // fires on each second boundary, not the first tick
+
+        runTick(state: &state, ticksSinceLastUpdate: [], onPause: { pauseEvents.append($0) })
+        #expect(state.serverPauseTicks == 0)
+        #expect(pauseEvents.last == 0)
+
+        runTick(state: &state, ticksSinceLastUpdate: [])
+        #expect(state.ticks == 1)  // simulation genuinely advancing again
+    }
+}
+
+@Suite struct AllowJoinAdminTests {
+
+    @Test func setAllowJoinAssignsDirectly() {
+        var state = GameState(allowJoin: true)
+        setAllowJoin(false, state: &state)
+        #expect(!state.allowJoin)
+        setAllowJoin(true, state: &state)
+        #expect(state.allowJoin)
+    }
+
+    @Test func toggleAllowJoinFlips() {
+        var state = GameState(allowJoin: true)
+        toggleAllowJoin(state: &state)
+        #expect(!state.allowJoin)
+        toggleAllowJoin(state: &state)
+        #expect(state.allowJoin)
+    }
+}
+
+@Suite struct UnbanPlayerTests {
+
+    @Test func removesTheEntryAtIndex() {
+        var state = GameState(bannedPlayers: [
+            BannedPlayer(name: "A", address: "1.1.1.1"),
+            BannedPlayer(name: "B", address: "2.2.2.2"),
+        ])
+        unbanPlayer(index: 0, state: &state)
+        #expect(state.bannedPlayers == [BannedPlayer(name: "B", address: "2.2.2.2")])
+    }
+
+    @Test func outOfRangeIndexIsASilentNoOp() {
+        var state = GameState(bannedPlayers: [BannedPlayer(name: "A", address: "1.1.1.1")])
+        unbanPlayer(index: 5, state: &state)
+        #expect(state.bannedPlayers == [BannedPlayer(name: "A", address: "1.1.1.1")])
+        unbanPlayer(index: -1, state: &state)
+        #expect(state.bannedPlayers == [BannedPlayer(name: "A", address: "1.1.1.1")])
+    }
+
+    @Test func unbannedIdentityCanSubsequentlyJoin() {
+        let banned = [BannedPlayer(name: "A", address: "1.2.3.4")]
+        let rejected = evaluateJoinRequest(
+            name: "A", password: "", version: netGameVersionForTest, address: "1.2.3.4",
+            passwordRequired: false, serverPassword: "", allowJoin: true,
+            bannedPlayers: banned, players: [PlayerState()], ticksSinceLastUpdate: [0]
+        )
+        #expect(rejected == .rejected(.banned))
+
+        var state = GameState(bannedPlayers: banned)
+        unbanPlayer(index: 0, state: &state)
+
+        let accepted = evaluateJoinRequest(
+            name: "A", password: "", version: netGameVersionForTest, address: "1.2.3.4",
+            passwordRequired: false, serverPassword: "", allowJoin: true,
+            bannedPlayers: state.bannedPlayers, players: [PlayerState()], ticksSinceLastUpdate: [0]
+        )
+        #expect(accepted == .accepted(player: 0, rejoin: false))
+    }
+}

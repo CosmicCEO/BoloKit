@@ -1574,3 +1574,90 @@ builder commands), not a keymap gap.
 
 **Docs updated (committed alongside this entry):** none besides this file — `docs/PLAN.md` not
 touched per role boundary.
+
+### [IMPLEMENTER] 2026-09-09 — 1.1: host-admin command surface (pause/resume, allow-join, unban)
+
+**Type:** pre-brief + completion report (combined — coding-GO was implicit in the task hand-off).
+**Wave:** 1.1 backlog item, D129 (host-admin command surface flagged missing in
+`docs/PARITY_FUNCTION_COVERAGE.md`, though that file doesn't exist in this checkout —
+proceeded from primary `Reference/c` source directly).
+
+**Prerequisite found and fixed:** `Reference/c` submodule was not checked out in this worktree
+(empty directory) — ran `git submodule update --init Reference/c` before reading any C source.
+
+**Read directly before coding** (`server.c:369-571`, `bolo.c:52/100/104`, `server.h:360-374`):
+`pauseserver`/`resumeserver`/`pauseresumeserver`, `getallowjoinserver`/`setallowjoinserver`/
+`togglejoinserver`, `lockserver`/`unlockserver`, `unbanplayer`.
+
+**Judgment call (flagged for PLANNER, not resolved silently): `lockserver`/`unlockserver` are NOT
+ported as a "server lock" admin feature.** Direct read of both bodies shows they're a bare
+`pthread_mutex_lock(&server.mutex)`/`unlock` pair — every one of `kickplayer`/`banplayer`/
+`pauseresumeserver`/`togglejoinserver` brackets its own body with them purely to serialize
+concurrent access to the global `server` struct across threads (`server.h:374`: "lock server
+first before calling these"). There is no distinct user-facing "lock the game" feature anywhere
+in the C reference — the task's framing ("Server lock: lockserver/unlockserver") was a
+misreading of a threading primitive as a game feature. `HostGameEngine`'s existing single-
+consumer actor loop already guarantees every `state` mutation is serialized by construction,
+making the mutex structurally redundant here — the same class of skip `SessionLogic.swift`'s own
+file header already documents for `increasevis`/`refresh`/`printmessage` (no `GameState` effect,
+a C-threading-model artifact, not an observable protocol/gameplay behavior). Consequence: "locked
+host rejects new joins" and "allowJoin=false rejects new joins" collapse into the same single
+real feature (`allowJoin` is the only thing in the C that gates new joins by host command) —
+already covered by the pre-existing `EvaluateJoinRequestTests.rejectsWhenJoinNotAllowed` test, no
+new test needed for it.
+
+**Second correction from direct read: `unbanplayer(int index)` (`server.c:550-571`) is
+positional**, not a name/address match — it walks `server.bannedplayers` with a plain counter.
+`SessionLogic.unbanPlayer(index:state:)` matches this; an out-of-range index is a silent no-op in
+the C (`if (node != NULL) { removelist(...) }`), replicated as a bounds guard.
+
+**Third finding: pause/resume is a tri-state countdown already half-implemented.**
+`server.pause == -1` (indefinite) vs. `> 0` (counting down) vs. `0` (running) already exists in
+this port as `GameState.serverPauseTicks`, and `RunTick.swift`'s tick gate (lines 87-95) already
+consumes it correctly — this task only needed the *entry points* (`pauseServer`/`resumeServer`/
+`pauseResumeServer` in `SessionLogic.swift`), not new state or a new tick-gate. Confirmed by
+direct read that `resumeserver()` does NOT unfreeze immediately: it sets
+`server.pause = TICKSPERSEC*5` and the simulation stays frozen for 5 more seconds while it counts
+down — a test (`resumeKeepsSimulationFrozenUntilCountdownDrains`) pins this exactly, including
+`onPause` firing at each second boundary. Also replicated both real no-op guards: `pauseServer`
+no-ops if already paused; `resumeServer` no-ops unless currently paused indefinitely (so a
+mid-countdown `pauseServer` call re-pauses to `-1` rather than being absorbed).
+
+**Implemented** (`Sources/BoloKit/SessionLogic.swift`): `pauseServer`/`resumeServer`/
+`pauseResumeServer`, `setAllowJoin`/`toggleAllowJoin`, `unbanPlayer(index:)` — all pure,
+`GameState`-mutating, closures for broadcast decisions, no `import Foundation`, matching
+`kickPlayer`/`banPlayer`'s exact shape. (`Sources/BoloNet/HostSession.swift`):
+`hostPauseResumeServer` — the only new admin op that broadcasts (`SRPause`, reusing the existing
+wire message `handlePlayerDisconnect` already sends for pause-on-exit); `setAllowJoin`/
+`toggleAllowJoin`/`unbanPlayer` have no async wrapper since none of C's equivalents call
+`sendsr*` (confirmed by direct read) — `HostGameEngine` calls the pure function directly.
+(`Sources/BoloNet/HostGameEngine.swift`): new `HostEngineEvent` cases + `submitPauseResumeServer`/
+`submitSetAllowJoin`/`submitToggleAllowJoin`/`submitUnbanPlayer(index:)` + matching `handle()`
+switch cases, mirroring `submitKickPlayer`/`submitBanPlayer` exactly. No UI wiring (out of scope
+per task).
+
+**Tests (700 → 717, D28 — no shrink, net +17):** `Tests/BoloKitTests/SessionLogicTests.swift`
+gained `PauseServerTests` (9 — no-op guards both directions, toggle both ways, the 5-second
+resume-countdown-freeze end-to-end test, mid-countdown re-pause), `AllowJoinAdminTests` (2),
+`UnbanPlayerTests` (3 — index removal, out-of-range no-op, unbanned identity's subsequent join
+succeeding via `evaluateJoinRequest`). `Tests/DifferentialTests/HostGameEngineTests.swift` gained
+3 engine-level tests for the new `submit*` entry points (`submitPauseResumeServer` over a real
+tick timer confirming the sim actually freezes, not just a flag; `submitToggleAllowJoin` rejecting
+a real over-the-wire join with the correct `JoinStatusByte.disallow`; `submitUnbanPlayer` removing
+a `bannedPlayers` entry through the merged stream). The full over-the-wire "ban → unban → rejoin
+succeeds" path is intentionally only tested at the pure `SessionLogic` layer, not re-derived over a
+real `NWConnection` — doing so needs the live connection's exact `remoteAddressDescription` string
+(includes the ephemeral client port) to pre-seed a matching ban, which isn't knowable before the
+connection exists; noted in the test file itself.
+
+**Build:** clean (`swift build`, no new warnings). **Tests:** both `BoloKitTests` (525 tests) and
+`DifferentialTests` (186 tests) targets pass in full, exit 0.
+
+**Files touched:** `Sources/BoloKit/SessionLogic.swift`, `Sources/BoloNet/HostSession.swift`,
+`Sources/BoloNet/HostGameEngine.swift`, `Tests/BoloKitTests/SessionLogicTests.swift`,
+`Tests/DifferentialTests/HostGameEngineTests.swift`. Code commit: `c2d31b2`.
+
+**Question for PLANNER:** please confirm the `lockserver`/`unlockserver` = N/A ruling above stands
+— if a future 1.1 UI wave wants a distinct "prevent new joins without also touching allowJoin's
+own semantics" toggle, that would need to be a new, explicitly-invented feature (no C precedent),
+not a port, and should get its own ticket rather than being folded into this one retroactively.

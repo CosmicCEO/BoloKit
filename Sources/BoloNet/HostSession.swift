@@ -362,6 +362,23 @@ public func hostBanPlayer(player: Int, state: inout GameState, table: HostSessio
     await table.disconnect(player)
 }
 
+// MARK: - Host-admin: pause/resume, allow-join, unban (1.1, D129)
+
+/// Async wrapper for `SessionLogic.pauseResumeServer` -- the only host-admin entry point here
+/// that broadcasts (`SRPause`, reusing the existing wire message; `sendsrpause` is the same
+/// message `handlePlayerDisconnect` above already sends for pause-on-player-exit, not a new one).
+/// `setAllowJoin`/`toggleAllowJoin`/`unbanPlayer` have no async wrapper -- confirmed by direct
+/// read of `server.c` that none of `setallowjoinserver`/`togglejoinserver`/`unbanplayer` ever
+/// call `sendsr*`, so the pure `SessionLogic` function is the whole implementation; a caller
+/// (`HostGameEngine`) can mutate `state` directly with no `table` involvement.
+public func hostPauseResumeServer(state: inout GameState, table: HostSessionTable) async {
+    var broadcast: [UInt8]?
+    pauseResumeServer(state: &state, onShouldBroadcastPause: { seconds in broadcast = SRPause(pause: seconds).encode() })
+    if let broadcast {
+        await table.sendToAll(broadcast)
+    }
+}
+
 // MARK: - CL* dispatch
 
 /// Every `onMineExplosion`/`onSuperboomTerrain` a `recvCl*` call can fire, grouped the same way

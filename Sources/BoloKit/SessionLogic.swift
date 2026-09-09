@@ -259,3 +259,72 @@ public func recvClSetAlliance(player: Int, alliance: UInt16, state: inout GameSt
     state.players[player].alliance = alliance
     onShouldBroadcastAlliance(player, alliance)
 }
+
+// MARK: - Host-admin: pause/resume, allow-join, unban (1.1, D129)
+//
+// `lockserver()`/`unlockserver()` (`server.c:454-476`) are NOT ported here or anywhere in this
+// port: reading the actual bodies (confirmed directly, not assumed from the name) shows they are
+// a bare `pthread_mutex_lock`/`pthread_mutex_unlock` pair on `server.mutex` -- every one of C's
+// admin functions (`kickplayer`/`banplayer`/`pauseresumeserver`/`togglejoinserver`) calls
+// `lockserver()` first purely to serialize concurrent access to the global `server` struct across
+// threads (`server.h:374`: "lock server first before calling these"). There is no user-facing
+// "lock the game" feature anywhere in the C reference. `HostGameEngine`'s single-consumer actor
+// loop (`HostGameEngine.swift`'s own file header) already guarantees every `state` mutation is
+// serialized by construction, making this mutex structurally redundant here -- the same class of
+// skip this file's own header already documents for `increasevis`/`refresh`/`printmessage` (no
+// `GameState` effect, a mechanism artifact of C's threading model, not an observable behavior).
+
+/// Ported from `pauseserver()` (`server.c:373-378`). No-op when already paused
+/// (`getpauseserver()`'s guard) -- real business logic, not a defensive addition: mid-countdown
+/// (`serverPauseTicks > 0`), calling this re-pauses to `-1` instead of leaving the countdown
+/// running, matching C's own `if (!getpauseserver())` guard exactly.
+public func pauseServer(state: inout GameState, onShouldBroadcastPause: (UInt8) -> Void = { _ in }) {
+    guard state.serverPauseTicks != -1 else { return }
+    state.serverPauseTicks = -1
+    onShouldBroadcastPause(255)
+}
+
+/// Ported from `resumeserver()` (`server.c:380-384`). No-op unless currently paused indefinitely
+/// (`getpauseserver()`'s guard) -- calling this mid-countdown (`serverPauseTicks > 0`) does
+/// nothing, matching C exactly. Resuming does NOT unfreeze the simulation immediately: it starts
+/// a `TICKSPERSEC*5` countdown (`runTick`'s existing pause gate, `RunTick.swift:87-95`, already
+/// ticks this down and fires `onPause` each second) -- the sim stays frozen for five more seconds.
+public func resumeServer(state: inout GameState, onShouldBroadcastPause: (UInt8) -> Void = { _ in }) {
+    guard state.serverPauseTicks == -1 else { return }
+    state.serverPauseTicks = Int(ticksPerSec) * 5
+    onShouldBroadcastPause(UInt8(state.serverPauseTicks / Int(ticksPerSec)))
+}
+
+/// Ported from `pauseresumeserver()` (`server.c:387-408`) -- the `lockserver()`/`unlockserver()`
+/// calls bracketing its body are the mutex discussed above, not ported; its only real logic is
+/// the toggle between `resumeServer`/`pauseServer` based on `getpauseserver()`.
+public func pauseResumeServer(state: inout GameState, onShouldBroadcastPause: (UInt8) -> Void = { _ in }) {
+    if state.serverPauseTicks == -1 {
+        resumeServer(state: &state, onShouldBroadcastPause: onShouldBroadcastPause)
+    } else {
+        pauseServer(state: &state, onShouldBroadcastPause: onShouldBroadcastPause)
+    }
+}
+
+/// Ported from `setallowjoinserver()` (`server.c:423-425`). Trivial flag flip -- no broadcast, no
+/// other `GameState` effect (confirmed by direct read; unlike pause, nothing in `server.c` sends a
+/// wire message when `allowjoin` changes).
+public func setAllowJoin(_ allowJoin: Bool, state: inout GameState) {
+    state.allowJoin = allowJoin
+}
+
+/// Ported from `togglejoinserver()` (`server.c:427-448`) -- again, the `lockserver()`/
+/// `unlockserver()` bracket is the mutex, not ported; the only real logic is the flip itself.
+public func toggleAllowJoin(state: inout GameState) {
+    state.allowJoin.toggle()
+}
+
+/// Ported from `unbanplayer()` (`server.c:550-571`). **Positional index into the ban list**, not
+/// a name/address match (confirmed by direct read -- the C walks `server.bannedplayers` with a
+/// plain counter, unlike `evaluateJoinRequest`'s ban *check*, which does match on name+address).
+/// An out-of-range index is a silent no-op in the C (`if (node != NULL) { removelist(...) }`),
+/// replicated here as a bounds guard rather than a precondition.
+public func unbanPlayer(index: Int, state: inout GameState) {
+    guard state.bannedPlayers.indices.contains(index) else { return }
+    state.bannedPlayers.remove(at: index)
+}
