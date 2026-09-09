@@ -299,7 +299,8 @@ public final class HostGameEngine: @unchecked Sendable {
             },
             onShouldBroadcastSmallBoom: { player, x, y in
                 pending.append(SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode())
-            }
+            },
+            onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) }
         )
 
         for bytes in pending {

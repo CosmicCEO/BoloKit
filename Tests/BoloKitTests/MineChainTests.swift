@@ -195,6 +195,53 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, ticks: UInt
     #expect(broadcasts.isEmpty)
 }
 
+// D129 (Wave 1.1): `sendsrflood(x, y)` (`server.c:3261`) has exactly one call
+// site — `floodat()`'s `kCraterTerrain` case (`server.c:4038-4056`), fired
+// right after the crater-to-river terrain write. `onShouldBroadcastFlood`
+// mirrors that exactly.
+@Test func floodAtBroadcastsFloodOnCraterToRiverConversion() {
+    var state = makeState(players: [])
+    state.terrain[50, 50] = .crater
+    var broadcasts: [(Int, Int)] = []
+    floodAt(x: 50, y: 50, state: &state, onShouldBroadcastFlood: { broadcasts.append(($0, $1)) })
+    #expect(state.terrain[50, 50] == .river)
+    #expect(broadcasts.count == 1)
+    #expect(broadcasts.first?.0 == 50)
+    #expect(broadcasts.first?.1 == 50)
+}
+
+@Test func floodAtDoesNotBroadcastFloodWhenDetonatingMinedTerrain() {
+    var state = makeState(players: [connectedPlayer()])
+    state.terrain[50, 50] = .minedGrass
+    var floodBroadcasts: [(Int, Int)] = []
+    var smallBoomBroadcasts: [(UInt8, Int, Int)] = []
+    floodAt(
+        x: 50, y: 50, state: &state,
+        onShouldBroadcastSmallBoom: { smallBoomBroadcasts.append(($0, $1, $2)) },
+        onShouldBroadcastFlood: { floodBroadcasts.append(($0, $1)) }
+    )
+    #expect(floodBroadcasts.isEmpty)
+    #expect(smallBoomBroadcasts.count == 1)
+}
+
+@Test func floodBroadcastsFloodForEachScheduledCraterNeighborConvertedToRiver() {
+    var state = makeState(players: [])
+    let (x, y) = (50, 50)
+    state.terrain[x, y - 1] = .crater
+    state.terrain[x - 1, y] = .crater
+    state.terrain[x + 1, y] = .grass0  // not water/crater -- default, no broadcast
+    state.terrain[x, y + 1] = .crater
+    state.floods[Int(state.ticks) % (floodTicks + 1)].append(Pointi(x: Int32(x), y: Int32(y)))
+
+    var broadcasts: [(Int, Int)] = []
+    flood(state: &state, onShouldBroadcastFlood: { broadcasts.append(($0, $1)) })
+
+    #expect(broadcasts.count == 3)
+    #expect(state.terrain[x, y - 1] == .river)
+    #expect(state.terrain[x - 1, y] == .river)
+    #expect(state.terrain[x, y + 1] == .river)
+}
+
 // MARK: - chainAt / chain: ring-buffer delay
 
 @Test func chainReactionDetonatesMinedNeighborAfterExactDelay() {
