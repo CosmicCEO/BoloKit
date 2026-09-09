@@ -1373,3 +1373,67 @@ reproducible, not related to this change).
 
 **Scope note:** touched only this one D129 item, per instruction — did not touch other
 unaccounted D129 broadcast-hook gaps (separate parallel tasks) or `docs/PLAN.md`.
+
+### [IMPLEMENTER] 2026-09-09 — D129: serverloadmap NEUTRAL-owner/mine-clearing parity
+
+**Type:** parity gap fix, single item from D129's `serverloadmap` line.
+
+**C-vs-Swift difference found**, reading `Reference/c/bmap_server.c:21-252` against
+`Reference/c/bmap_client.c:19-187` (the already-ported `clientloadmap()`/`decodeBMap`):
+
+- **Owner forcing (`bmap_server.c:79,94`):** server always sets `server.pills[i].owner =
+  NEUTRAL` / `server.bases[i].owner = NEUTRAL` — "ignore pill/base owner" — regardless of the
+  byte stored in the file. Client keeps the stored owner verbatim (`bmap_client.c:74,85`).
+- **Pill speed rescale (`bmap_server.c:81-85`):** server rescales the stored 0-50 byte via
+  `(speed*MAXTICKSPERSHOT)/50` and clamps to `MAXTICKSPERSHOT`. Client keeps the raw byte
+  (`bmap_client.c:76`).
+- **Start-location clearing (`bmap_server.c:134-137`):** server clears every start tile to sea
+  terrain. Client has no equivalent pass.
+- **Pill/base mine-clearing (`bmap_server.c:139-252`):** server normalizes the terrain
+  underneath every pill/base — any "mined" terrain variant clears to its unmined equivalent
+  (mined-sea/boat/wall/river/forest/damagedWall→grass0, mined-swamp→swamp0, mined-crater→
+  crater, mined-road→road, mined-grass→grass0). Client has no equivalent pass (it only derives
+  `seentiles`/`images` from already-decoded terrain — out of scope per D65).
+- **A real C bug preserved verbatim, not fixed:** lines 167-169/225-227 have a fallthrough —
+  `kMinedRubbleTerrain` writes `kRubbleTerrain0` then falls into the `kMinedGrassTerrain` case
+  with no `break`, so the net observable result is `kGrassTerrain0`, not rubble. Ported this way
+  intentionally (Swift `switch` doesn't fall through by default, so I wrote the observable
+  result directly rather than mimicking the fallthrough syntax).
+- **Ordering:** starts-to-sea runs BEFORE pill/base terrain normalization, so a pill/base
+  sitting on a start tile normalizes starting from sea, not from whatever the run data painted.
+
+**Logged as a question for PLANNER, not resolved solo:** `serverloadmap()`'s own run-decode
+loop is lenient in ways `decodeBMap` is strict about — it `break`s instead of failing on a
+truncated run stream (`bmap_server.c:113-116`) and tolerates trailing bytes after the sentinel
+(`122-124`) instead of failing. A malformed map the real server would still accept, `decodeBMap`
+rejects outright, so this session's post-process function never runs on it. Full
+`serverloadmap()` byte-level leniency parity is explicitly NOT claimed — flagging for PLANNER to
+decide whether that's in scope for a future wave or accepted as a permanent, documented gap.
+
+**What changed:**
+- `Sources/BoloKit/BMap.swift`: added `serverNormalizeSiteTerrain(_:)`,
+  `serverPillSpeedRescaled(_:)`, and `serverPostProcessLoadedMap(_:)` (public) — the server-only
+  load-time post-processing with no counterpart in `decodeBMap`. Not wired into any call site:
+  confirmed by reading `HostGameEngine.swift`/`HostListener.swift` that there is currently no
+  Swift call site that decodes raw map-file bytes into a host's own initial `GameState` —
+  `HostGameEngine.init(initialState:)` takes an already-built `GameState`, and
+  `HostListener.swift:239` only *encodes* (`encodeBMap`) to send to joining clients. This mirrors
+  `encodeBMap`'s own precedent (Wave 6.4b): shipped ahead of its real call site for whenever
+  host-side map-file loading is wired up.
+- `Sources/CXBolo/bmap.c` + `Sources/CXBolo/include/CXBolo.h`: added
+  `serverloadmap_normalize_terrain_oracle(int)` and `serverloadmap_pillspeed_oracle(int)` —
+  standalone, global-free extracts of `serverloadmap()`'s two math/switch transforms, verbatim
+  from `bmap_server.c`, for differential testing (no existing oracle wrapper covered this).
+- `Tests/DifferentialTests/BMapDifferentialTests.swift`: 5 new tests — an exhaustive
+  `Terrain.allCases` diff against `serverloadmap_normalize_terrain_oracle` (proves the
+  mined-rubble→grass0 fallthrough-bug result), a 0...255 diff against
+  `serverloadmap_pillspeed_oracle`, and three behavioral tests on
+  `serverPostProcessLoadedMap`: forces NEUTRAL owner on both a pill and a base with a non-NEUTRAL
+  stored owner; clears `.minedRubble`→`.grass0` and `.minedSwamp`→`.swamp0` under a pill/base
+  respectively; and proves start-clearing runs before pill normalization.
+
+**Test counts (D28):** before 694 (511 `BoloKitTests`/asset-pipeline + 183 `DifferentialTests`),
+after 699 (511 + 188). Build clean (`swift build`), `swift test` clean — all 699 pass (the one
+pre-existing flaky real-network-timing test noted in D125/prior entries wasn't hit this run).
+
+**Scope discipline:** only this one D129 item touched. `docs/PLAN.md` not modified.

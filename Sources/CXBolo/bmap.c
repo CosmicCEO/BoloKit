@@ -85,3 +85,72 @@ int tiletoterrain(int tile) {
     return -1;
   }
 }
+
+/* D129: `serverloadmap()`'s pill/base-site terrain normalization
+   (Reference/c/bmap_server.c:140-193, identical again at 198-251 for
+   bases) VERBATIM, extracted as a standalone terrain-in/terrain-out
+   function so it can run without server.h's globals. Preserves the real
+   fallthrough bug at 167-169/225-227: kMinedRubbleTerrain writes
+   kRubbleTerrain0 then falls into the kMinedGrassTerrain case with no
+   `break`, so the net observable result is kGrassTerrain0, not rubble. */
+int serverloadmap_normalize_terrain_oracle(int terrain) {
+  switch (terrain) {
+  case kSeaTerrain:
+  case kBoatTerrain:
+  case kWallTerrain:
+  case kRiverTerrain:
+  case kForestTerrain:
+  case kDamagedWallTerrain0:
+  case kDamagedWallTerrain1:
+  case kDamagedWallTerrain2:
+  case kDamagedWallTerrain3:
+  case kMinedSeaTerrain:
+  case kMinedForestTerrain:
+    return kGrassTerrain0;
+
+  case kMinedSwampTerrain:
+    return kSwampTerrain0;
+
+  case kMinedCraterTerrain:
+    return kCraterTerrain;
+
+  case kMinedRoadTerrain:
+    return kRoadTerrain;
+
+  case kMinedRubbleTerrain:
+    /* falls through, verbatim */
+
+  case kMinedGrassTerrain:
+    return kGrassTerrain0;
+
+  case kSwampTerrain0:
+  case kSwampTerrain1:
+  case kSwampTerrain2:
+  case kSwampTerrain3:
+  case kCraterTerrain:
+  case kRoadTerrain:
+  case kRubbleTerrain0:
+  case kRubbleTerrain1:
+  case kRubbleTerrain2:
+  case kRubbleTerrain3:
+  case kGrassTerrain0:
+  case kGrassTerrain1:
+  case kGrassTerrain2:
+  case kGrassTerrain3:
+    return terrain;
+
+  default:
+    assert(0);
+    return -1;
+  }
+}
+
+/* D129: `serverloadmap()`'s pill speed rescale (bmap_server.c:81-85)
+   VERBATIM: `(rawSpeed*MAXTICKSPERSHOT)/50`, clamped to MAXTICKSPERSHOT. */
+int serverloadmap_pillspeed_oracle(int rawSpeed) {
+  int speed = (rawSpeed * MAXTICKSPERSHOT) / 50;
+  if (speed > MAXTICKSPERSHOT) {
+    speed = MAXTICKSPERSHOT;
+  }
+  return speed;
+}

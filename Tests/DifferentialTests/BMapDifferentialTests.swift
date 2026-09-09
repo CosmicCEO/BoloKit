@@ -215,4 +215,74 @@ import CXBolo
 
         #expect(rebuilt.storage == original.storage)
     }
+
+    // MARK: - serverPostProcessLoadedMap (D129)
+
+    @Test func testServerNormalizeSiteTerrainMatchesOracle() {
+        for terrain in Terrain.allCases {
+            let c = CXBolo.serverloadmap_normalize_terrain_oracle(terrain.rawValue)
+            let s = BoloKit.serverNormalizeSiteTerrain(terrain).rawValue
+            #expect(c == s, "serverloadmap terrain normalization mismatch for \(terrain)")
+        }
+    }
+
+    @Test func testServerPillSpeedRescaleMatchesOracle() {
+        for raw in 0...255 {
+            let c = CXBolo.serverloadmap_pillspeed_oracle(Int32(raw))
+            let s = Int32(BoloKit.serverPillSpeedRescaled(UInt8(raw)))
+            #expect(c == s, "serverloadmap pill speed rescale mismatch for raw \(raw)")
+        }
+    }
+
+    /// Non-NEUTRAL owner in the file must be forced to NEUTRAL on the
+    /// server's own load path -- `bmap_server.c:79,94` ("ignore
+    /// pill/base owner") -- unlike `decodeBMap`/`clientloadmap()`, which
+    /// keeps the stored owner byte verbatim.
+    @Test func testServerPostProcessForcesNeutralOwner() {
+        var state = GameState()
+        state.terrain = .mapDefault()
+        state.pills = [Pill(x: 20, y: 20, armour: 2, owner: 3, speed: 10, counter: 0)]
+        state.bases = [Base(x: 30, y: 30, armour: 5, owner: 4, shells: 1, mines: 1)]
+
+        serverPostProcessLoadedMap(&state)
+
+        #expect(state.pills[0].owner == playerNeutral)
+        #expect(state.bases[0].owner == playerNeutral)
+    }
+
+    /// A pill/base sitting on a "mined" terrain variant at load time must
+    /// have that mine cleared -- `bmap_server.c:139-252` -- with no
+    /// counterpart in `decodeBMap`. Also proves the `.minedRubble` ->
+    /// `.grass0` fallthrough-bug result (`167-169`), not `.rubble0`.
+    @Test func testServerPostProcessClearsMinesUnderPillsAndBases() {
+        var state = GameState()
+        state.terrain = .mapDefault()
+        state.terrain[20, 20] = .minedRubble
+        state.terrain[30, 30] = .minedSwamp
+        state.pills = [Pill(x: 20, y: 20, armour: 2, owner: playerNeutral, speed: 0, counter: 0)]
+        state.bases = [Base(x: 30, y: 30, armour: 5, owner: playerNeutral, shells: 1, mines: 1)]
+
+        serverPostProcessLoadedMap(&state)
+
+        #expect(state.terrain[20, 20] == .grass0)
+        #expect(state.terrain[30, 30] == .swamp0)
+    }
+
+    /// Start locations clear to sea BEFORE pill/base normalization runs
+    /// (`bmap_server.c:134-137` precedes `139-252`), so a pill sitting on
+    /// a start tile normalizes from sea (a no-op, stays `.sea`... but sea
+    /// is itself in the "clear to grass" bucket per the switch, so the
+    /// observable result is `.grass0`), not from whatever was painted
+    /// there before the start-clear ran.
+    @Test func testServerPostProcessClearsStartsBeforeNormalizingPills() {
+        var state = GameState()
+        state.terrain = .mapDefault()
+        state.terrain[15, 15] = .wall
+        state.starts = [Start(x: 15, y: 15, dir: 0)]
+        state.pills = [Pill(x: 15, y: 15, armour: 2, owner: playerNeutral, speed: 0, counter: 0)]
+
+        serverPostProcessLoadedMap(&state)
+
+        #expect(state.terrain[15, 15] == .grass0)
+    }
 }
