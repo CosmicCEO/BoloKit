@@ -1265,3 +1265,35 @@ two-instance session, partial sound/join-side scope).
 Jerod's own direction; Phase 2's cleanup and Phase 4's hygiene both landed clean. 1.1 backlog
 filed at D128: C.1/C.2/C.4, Milestone D, B.10's builder/shell follow-on, further network-bug
 investigation, and a real two-instance playtest.
+
+### [PLANNER] 2026-09-09 — Function-level parity coverage audit (D129)
+
+**Type:** completeness audit, new artifact
+**Phase:** 1.1 backlog groundwork
+
+Fanned out 3 parallel PARITY-style audit operatives (per `superpowers:dispatching-parallel-agents`)
+to check whether every top-level function in `Reference/c` is accounted for in the Swift port —
+ported, explicitly deferred by a logged decision, or unaccounted. Split: `client.c` (109 funcs),
+`server.c` (103 funcs), support files `bmap*.c`/`tiles.c`/`bolo.c`/`tracker.c`/`images.c` (~35
+funcs). Full table committed at `docs/PARITY_FUNCTION_COVERAGE.md`.
+
+**Result:** `client.c` clean (0 unaccounted). `server.c` + support files surfaced 17 unaccounted,
+in two corroborating clusters — see D129 in `docs/PLAN.md` for full text: (1) the host-admin
+command surface (manual pause/resume, allow-join toggle, server lock, unban) is missing at both
+the `bolo.c` wrapper layer and the `server.c` implementation layer; (2) `sendsrflood` has no
+client-broadcast callback, unlike every sibling `sendsr*` op; (3) `serverloadmap`'s NEUTRAL-owner/
+mine-clearing-at-load logic has no counterpart distinct from the already-ported `clientloadmap`.
+
+Filed as new 1.1-backlog items (D129), additive to D128's existing backlog — not actioned yet, no
+coding GO issued.
+
+**Also:** updated the personal `swift-port-director` skill (`~/.claude/skills/swift-port-director/
+SKILL.md`, outside this repo) to require a function-inventory table during pre-planning on future
+port projects, so this kind of check happens before porting starts rather than being reconstructed
+after the fact.
+
+**Docs updated (committed alongside this entry):** `docs/PARITY_FUNCTION_COVERAGE.md` (new),
+`docs/PLAN.md` (D129).
+
+[TO: IMPLEMENTER] Nothing coding-GO'd yet from this. Standing by for Jerod's direction on
+sequencing the new items against the rest of the 1.1 backlog.
