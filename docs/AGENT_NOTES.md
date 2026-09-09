@@ -1265,3 +1265,72 @@ two-instance session, partial sound/join-side scope).
 Jerod's own direction; Phase 2's cleanup and Phase 4's hygiene both landed clean. 1.1 backlog
 filed at D128: C.1/C.2/C.4, Milestone D, B.10's builder/shell follow-on, further network-bug
 investigation, and a real two-instance playtest.
+
+### [IMPLEMENTER] 2026-09-09 — D128 backlog C.2: alliance panel (player-facing UI)
+
+**Type:** feature, closes one item of the D128 1.1 backlog (C.2).
+
+**Gap closed:** `requestalliance`/`leavealliance` (`client.c:6314-6455`) and the protocol
+messages were already ported at the state/protocol layer (`SessionLogic.swift:196,226,258`,
+`RecvSR.swift:594`) but had no player-facing UI and no local-player outbound entry point on any
+of `GameSession`'s three paths (host/join/single-process) — the identical shape C.0/D119 already
+closed for kick/ban, just never extended to alliances.
+
+**What was built:**
+- `Sources/BoloNet/HostGameEngine.swift`: new `HostEngineEvent.requestAlliance`/`.leaveAlliance`
+  cases + `submitRequestAlliance(players:)`/`submitLeaveAlliance(players:)` methods, routed
+  through the existing merged event stream (same shape as `submitKickPlayer`/`submitBanPlayer`).
+  The consumer's `handle(_:)` case calls `SessionLogic.requestAlliance`/`leaveAlliance` against
+  the live `state`, then broadcasts `SRSetAlliance` to every other connected player via
+  `table.sendToAllExcept` whenever `onSendSetAlliance` fires (i.e. on every call, matching the
+  reference's own unconditional `sendbuf` regardless of whether the request went mutual).
+- `Bolo 2026/Bolo 2026/GameSession.swift`: new `requestAlliance(_:)`/`leaveAlliance(_:)` methods
+  covering all three paths. Host path delegates to the engine's new submit methods. Join path
+  computes the outgoing mask against a **scratch copy** of `state` (never mutates `self.state`
+  directly) and sends `CLSetAlliance` over `tcpSession` — the host's own eventual `SRSetAlliance`
+  broadcast remains the sole source of truth for `state`, matching this path's existing "local
+  input is advisory" discipline (documented in the method's own doc comment). Single-process path
+  mutates `state` directly (no network to inform).
+- `Bolo 2026/Bolo 2026/AlliancePanelView.swift` (new file): multi-select list of other connected
+  players with a live Allied/Hostile status dot (`testAlliance`, same tint convention as
+  `PlayerStatusView`'s `OwnershipStatus`), "Request Alliance"/"Leave Alliance" buttons building a
+  bitmask from the selection — same `TimelineView(.periodic(...))` poll-`session.state` convention
+  `PlayerStatusView` already established, since `GameSession` is deliberately not
+  `ObservableObject`. No accept/deny dialog, matching the reference (unilateral-until-mutual).
+  Unlike Kick/Ban, **not** gated on `canKickBan`/host-only — every player has this right in the
+  reference (`requestAlliance:`/`leaveAlliance:` are plain client-side `IBAction`s with no
+  server-role check), so the panel is always available.
+- `Bolo 2026/Bolo 2026/GameView.swift`: new "Alliances" toolbar button opening
+  `AlliancePanelView` as a sheet, alongside the existing "Status" button.
+
+**Tests (694 → 696, D28):** `Tests/DifferentialTests/HostGameEngineTests.swift` gained
+`hostGameEngineSubmitRequestAllianceUpdatesOnlyLocalPlayersMask` (proves the mask lands on the
+local player's own slot only, via a real dispatched `CLSetAlliance` from a joined test client to
+prove the other slot's mask is real and untouched) and
+`hostGameEngineSubmitLeaveAllianceClearsMaskButKeepsOwnBit` (regression for `leaveAlliance`'s own
+bit guard). The underlying state-logic (`requestAlliance`/`leaveAlliance`/`recvClSetAlliance`)
+already had thorough coverage in `SessionLogicTests.swift` from the original Wave 6.3 port — not
+duplicated here, only the new outbound wiring is newly tested.
+
+**Build status:** `swift build` and the Xcode app-target build (`Bolo 2026.xcodeproj`, via
+`mcp__xcode__BuildProject`) both succeed. `swift test` run in isolation for
+`DifferentialTests`/`BoloKitTests` targets both pass clean (185 + 511). One pre-existing test,
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`, flakes only when the
+*entire* suite runs concurrently under load (confirmed: passes reliably 3/3 in isolation,
+unrelated to this change — a timing-sensitive network test, not alliance code).
+
+**Visual verification: not performed, explicitly.** Attempted
+`mcp__xcode__DeviceInteractionStartWorkspaceSession` — it rejected the target with "The device you
+are targeting is not supported for Device Interaction. Supported: iOS/watchOS/tvOS
+[Simulator] 27.0+" — this app's only run destination is "My Mac" (a native macOS/AppKit+SwiftUI
+app, D21/D72), which the available device-interaction tooling cannot screenshot or drive. No
+other screenshot mechanism was available in this session. The panel's correctness is verified by
+the build succeeding and the new engine-level tests above, not by eye.
+
+**Scope discipline:** touched only the alliance UI + `GameSession`/`HostGameEngine` wiring +
+tests, per the task's own scope fence — no `server.c` network-layer items (`sendsrflood`,
+`serverloadmap`), no host-admin surface beyond this panel, no B.10 CL* follow-on, `docs/PLAN.md`
+untouched.
+
+**Worktree:** `/Users/jerodprice/Developer/XBolo/.claude/worktrees/agent-ab3e50cb33ddb8c9c`,
+branch `worktree-agent-ab3e50cb33ddb8c9c`, commit `20be903` ("7.x: C.2 alliance panel").
