@@ -71,6 +71,13 @@ enum HostEngineEvent {
     /// so a UI button must route through the merged stream rather than calling either directly.
     case kickPlayer(player: Int)
     case banPlayer(player: Int)
+    /// **1.1 (D129):** host-admin pause/resume, allow-join toggle, unban -- same reasoning as
+    /// `kickPlayer`/`banPlayer` above, routed through the merged stream since each takes
+    /// `state: inout GameState`.
+    case pauseResumeServer
+    case setAllowJoin(Bool)
+    case toggleAllowJoin
+    case unbanPlayer(index: Int)
     case tick
 }
 
@@ -204,6 +211,30 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation?.yield(.banPlayer(player: player))
     }
 
+    /// **1.1 (D129):** host-only manual pause/resume toggle -- `pauseresumegame()`/
+    /// `togglejoingame()` (`bolo.c`)'s Swift entry points, same reasoning as `submitKickPlayer`
+    /// above.
+    public func submitPauseResumeServer() {
+        continuation?.yield(.pauseResumeServer)
+    }
+
+    /// Same reasoning as `submitPauseResumeServer` above, for `setallowjoinserver`.
+    public func submitSetAllowJoin(_ allowJoin: Bool) {
+        continuation?.yield(.setAllowJoin(allowJoin))
+    }
+
+    /// Same reasoning as `submitPauseResumeServer` above, for `togglejoinserver`.
+    public func submitToggleAllowJoin() {
+        continuation?.yield(.toggleAllowJoin)
+    }
+
+    /// Same reasoning as `submitPauseResumeServer` above, for `unbanplayer` -- `index` is
+    /// positional into `state.bannedPlayers`, not a player slot (see `SessionLogic.unbanPlayer`'s
+    /// own doc comment).
+    public func submitUnbanPlayer(index: Int) {
+        continuation?.yield(.unbanPlayer(index: index))
+    }
+
     /// The single consumer -- the only place in this type that ever mutates `state`.
     private func handle(_ event: HostEngineEvent) async {
         switch event {
@@ -267,6 +298,18 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .banPlayer(let player):
             await hostBanPlayer(player: player, state: &state, table: table)
+
+        case .pauseResumeServer:
+            await hostPauseResumeServer(state: &state, table: table)
+
+        case .setAllowJoin(let allowJoin):
+            setAllowJoin(allowJoin, state: &state)
+
+        case .toggleAllowJoin:
+            toggleAllowJoin(state: &state)
+
+        case .unbanPlayer(let index):
+            unbanPlayer(index: index, state: &state)
 
         case .tick:
             await tick()
