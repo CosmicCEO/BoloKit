@@ -79,6 +79,11 @@ public final class GameRenderView: NSView {
     /// mirroring `keyevent()`'s one-shot immediate mine plant (D88 §3).
     public var onLayMineKeyDown: (() -> Void)?
 
+    /// D128 backlog C.1 -- the live, rebindable keymap. Defaults to whatever was last persisted
+    /// (`PreferencesView`'s rebind UI writes through `KeyBindingsStore`); `GameSession` re-pushes
+    /// a fresh value here whenever the settings UI saves a change (see `GameSession.swift`).
+    public var bindings: KeyBindings = KeyBindingsStore.load()
+
     public init(tilesImage: CGImage, spritesImage: CGImage) {
         self.tilesImage = tilesImage
         self.spritesImage = spritesImage
@@ -151,20 +156,8 @@ public final class GameRenderView: NSView {
     /// -- the enclosing `NSScrollView`'s own layout may not have settled on this runloop turn yet,
     /// so its `contentView.bounds.size` (used below) isn't trustworthy any earlier.
     private func centerOnLocalPlayerSpawn() {
-        guard state.players.indices.contains(state.localPlayer) else { return }
-        guard let scrollView = enclosingScrollView else { return }
-
-        let size = CGFloat(tileSize)
-        let point = state.players[state.localPlayer].tank
-        let visible = scrollView.contentView.bounds.size
-        let maxX = max(0, CGFloat(mapPixelSize) - visible.width)
-        let maxY = max(0, CGFloat(mapPixelSize) - visible.height)
-        let origin = NSPoint(
-            x: min(max(0, CGFloat(point.x) * size - visible.width / 2), maxX),
-            y: min(max(0, CGFloat(point.y) * size - visible.height / 2), maxY)
-        )
-        scrollView.contentView.scroll(to: origin)
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        centerViewport(on: state.players.indices.contains(state.localPlayer)
+            ? state.players[state.localPlayer].tank : nil)
     }
 
     public override func keyDown(with event: NSEvent) {
@@ -179,25 +172,95 @@ public final class GameRenderView: NSView {
         applyKeyChange(keyCode: event.keyCode, isDown: false)
     }
 
-    /// LMINE's default binding (Shift, keycode 56) is a modifier key -- its transitions arrive
+    /// LMINE's binding is a modifier key by default (Shift, keycode 56) -- its transitions arrive
     /// here, not `keyDown`/`keyUp`. Tracking just the one bit actually bound (rather than porting
-    /// `GSBoloView.m:489-498`'s fully generic 8-bit modifier diff) is sufficient because no
-    /// remap UI exists yet to bind anything else to a modifier key.
+    /// `GSBoloView.m:489-498`'s fully generic 8-bit modifier diff) is sufficient because LayMine
+    /// is the only modifier-key default the reference ships and the settings UI only lets it be
+    /// rebound to another key, never a chord.
     private var shiftPressed = false
 
     public override func flagsChanged(with event: NSEvent) {
         let pressed = event.modifierFlags.contains(.shift)
         guard pressed != shiftPressed else { return }
         shiftPressed = pressed
-        applyKeyChange(keyCode: lmineKeyCode, isDown: pressed)
+        if let lmineKeyCode = bindings.keyCode(for: .layMine) {
+            applyKeyChange(keyCode: lmineKeyCode, isDown: pressed)
+        }
     }
 
     private func applyKeyChange(keyCode: UInt16, isDown: Bool) {
-        guard let change = inputFlagsChange(forKeyCode: keyCode, isDown: isDown) else { return }
-        onInputFlagsChange?(change)
-        if keyCode == lmineKeyCode, isDown {
-            onLayMineKeyDown?()
+        if let change = inputFlagsChange(forKeyCode: keyCode, isDown: isDown, bindings: bindings) {
+            onInputFlagsChange?(change)
+            if bindings.resolve(keyCode: keyCode) == .layMine, isDown {
+                onLayMineKeyDown?()
+            }
+            return
         }
+        // Full action set (D128 backlog C.1): the 6 view actions (scroll/tank-center/pill-center)
+        // have no InputFlags effect, only fire on key-down, matching `keyEvent:forKey:`'s own
+        // `if (event) { ... }` guards around every one of those branches
+        // (`GSXBoloController.m:1688-1717`).
+        guard isDown, let action = nonMaskAction(forKeyCode: keyCode, bindings: bindings) else { return }
+        switch action {
+        case .scrollUp: scroll(dx: 0, dy: -64)
+        case .scrollDown: scroll(dx: 0, dy: 64)
+        case .scrollLeft: scroll(dx: -64, dy: 0)
+        case .scrollRight: scroll(dx: 64, dy: 0)
+        case .tankView: centerOnLocalPlayerTank()
+        case .pillView: centerOnNearestFriendlyPill()
+        default: break
+        }
+    }
+
+    /// Ported from `scrollUp:`/`scrollDown:`/`scrollLeft:`/`scrollRight:`
+    /// (`GSXBoloController.m:1236-1306`) -- the same fixed 64pt nudge those use at the reference's
+    /// own default zoom level (`kZoomLevels[zoomLevel]` divisor dropped since v1 has no zoom
+    /// system, D120). The reference also warps the mouse cursor to stay over the same map point
+    /// after the scroll -- deliberately not ported: it's a cosmetic nicety with no gameplay
+    /// effect, and `CGWarpMouseCursorPosition`-equivalent AppKit code would add real complexity
+    /// for a nice-to-have (disclosed remaining gap, not an oversight).
+    private func scroll(dx: CGFloat, dy: CGFloat) {
+        guard let scrollView = enclosingScrollView else { return }
+        var rect = scrollView.contentView.bounds
+        rect.origin.x += dx
+        rect.origin.y += dy
+        scrollView.contentView.scrollToVisible(rect)
+    }
+
+    /// Ported from `tankCenter:` (`GSXBoloController.m:1529-1552`) -- centers the visible rect on
+    /// the local player's own tank. Shares `centerOnLocalPlayerSpawn`'s clamped-origin math since
+    /// both are "center the viewport on this map point" (that method's only difference is running
+    /// once at load time on the tank's spawn position rather than its live one).
+    private func centerOnLocalPlayerTank() {
+        centerViewport(on: state.players.indices.contains(state.localPlayer)
+            ? state.players[state.localPlayer].tank : nil)
+    }
+
+    /// Ported from `pillCenter:` (`GSXBoloController.m:1566-1647`) -- centers on the local
+    /// player's nearest owned, armed (non-onboard, non-destroyed) pillbox. The reference cycles
+    /// through every owned pill starting from whichever one the viewport is already centered on;
+    /// this v1 port simplifies to "the first eligible owned pill" (deterministic, no viewport-
+    /// relative cycling state to track) -- disclosed simplification, not a fidelity requirement
+    /// PLANNER called out for this backlog item.
+    private func centerOnNearestFriendlyPill() {
+        guard state.players.indices.contains(state.localPlayer) else { return }
+        let owner = UInt8(state.localPlayer)
+        let pill = state.pills.first { $0.owner == owner && $0.isArmed }
+        centerViewport(on: pill.map { Vec2f(x: Float($0.x), y: Float($0.y)) })
+    }
+
+    private func centerViewport(on point: Vec2f?) {
+        guard let point, let scrollView = enclosingScrollView else { return }
+        let size = CGFloat(tileSize)
+        let visible = scrollView.contentView.bounds.size
+        let maxX = max(0, CGFloat(mapPixelSize) - visible.width)
+        let maxY = max(0, CGFloat(mapPixelSize) - visible.height)
+        let origin = NSPoint(
+            x: min(max(0, CGFloat(point.x) * size - visible.width / 2), maxX),
+            y: min(max(0, CGFloat(point.y) * size - visible.height / 2), maxY)
+        )
+        scrollView.contentView.scroll(to: origin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     // MARK: - Terrain (D65: every tile visible, straight `mapimage()` call)
