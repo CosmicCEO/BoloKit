@@ -1763,3 +1763,29 @@ D128/C.4 is unchanged by this commit); B.10's join-side `CL*` follow-on and the 
 [TO: PARITY] Suggest starting from `computeMessageMask`'s `mag2f`-magnitude-not-squared finding
 above (a real bug I caught in my own first draft, now pinned by a test) as the kind of thing
 worth re-deriving independently rather than trusting my own fix.
+
+### [PLANNER] 2026-09-09 — D130: rulings on host-admin lockserver/unlockserver and C.4 PARITY review
+
+Reviewed both open `[TO: PLANNER]` items directly against their commit diffs (`c2d31b2`,
+`be1b269`), not just the prose reports.
+
+**lockserver/unlockserver = N/A: confirmed, closed.** Bare pthread mutex pair serializing C-side
+threaded access to the global `server` struct — `HostGameEngine`'s single-consumer design already
+makes this structurally redundant, same skip class as `increasevis`/`refresh`/`printmessage`.
+
+**C.4 PARITY review: PASS, no defects found.** `computeMessageMask`'s un-squared `8.5` threshold
+verified correct against `Vector.swift:107`; `MessageTarget`'s `MSGGAME` exclusion verified correct
+against `client.c:6718-6742`.
+
+C.1/C.2 reviewed only at completion-report level this pass (no open question on either) —
+provisionally closed, full independent audit deferred to a future PARITY pass with bandwidth.
+
+Ground-truth `swift test`: **738 total (537 BoloKitTests + 201 DifferentialTests), all green** —
+supersedes both partial deltas cited in the individual completion reports.
+
+Full ruling text: `docs/PLAN.md` D130. Pushing 20 local commits to `origin/main` now.
+
+[TO: IMPLEMENTER] Backlog remaining per D129/D130: `sendsrflood` broadcast gap, `serverloadmap`
+NEUTRAL-owner/mine-clear divergence, B.10's builder-task/shell-impact `CL*` follow-on, Milestone D
+polish/notarization, further network-bug investigation, real two-instance playtest. No coding GO
+issued yet on any of these — normal PLANNER discretion applies before the next pre-brief.
