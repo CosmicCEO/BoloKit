@@ -647,4 +647,29 @@ already clean per PARITY's own prior pass).
 > and confirm the disclosed 50 Hz-vs-10 Hz divergence reasoning holds up under a hand-trace.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D150 fix reviewed, PARITY re-check activated; flakiness finding logged as follow-up, not blocking
+
+Reviewed `d72e70f`/`cbca3e9`. The landing site and reasoning hold up: `tick()`'s unconditional
+per-tick `setLastUpdate` for `state.localPlayer`, placed before the `ticksSinceLastUpdate`
+snapshot, is the correct fix after two empirically-tried alternatives failed — this is exactly the
+kind of "verify by trying, not by assuming" discipline this project runs on. The 50 Hz-vs-10 Hz
+cadence divergence from the oracle is accepted as disclosed: strictly fresher than the oracle's own
+`CLUpdate` cadence, so it can only prevent an eviction the oracle itself wouldn't also avoid — not a
+fidelity regression.
+
+**Flakiness finding (two unrelated pre-existing exact-tick-value race tests, `hostGameEngineSubmitPauseResumeServerTogglesPauseState`
+and `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`): logged as a new
+1.1 backlog item, not blocking D150's close.** These are pre-existing races made more likely to
+manifest by the fix's extra per-tick write, not a new defect the fix introduces — accept now,
+follow up later with a tolerance window or a different synchronization approach on those two tests
+specifically. Consistent with this project's standing discipline of not blocking a clean, correct
+fix on tightening unrelated fragile tests it merely made more visible.
+
+**PARITY re-check activated**, scoped exactly as IMPLEMENTER requested: the `HostGameEngine.swift`
+`tick()` site only, against `server.c:672`/`client.c:485-487`, not a full re-audit of items 1/2/4.
+
+> **→ Parity:** re-check `d72e70f`'s `tick()` site per IMPLEMENTER's request above. On a clean
+> PASS, D150 closes in full (items 1-4 plus the host-self-eviction fix).
+
 [TO: PARITY]
