@@ -737,7 +737,13 @@ public func tankLocalTick(
     state: inout GameState,
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // D148(A): new sound-only hook — fires on the local player's own shell fire, mirroring
+    // `onExplosion`/`onSuperboom`'s shape (no payload needed, `SoundPlayer` just plays a fixed
+    // name). No reference near/far split here (see this function's own header note pattern in
+    // `SoundPlayer.swift`'s D125 header) — fog-of-war is out of v1 scope (D65), and this is
+    // always the local player's own action.
+    onTankShot: () -> Void = {}
 ) {
     guard old.x >= 0, old.x < 256, old.y >= 0, old.y < 256 else { return }
 
@@ -867,6 +873,7 @@ public func tankLocalTick(
         state.players[player].shells.append(shell)
         state.local.shells -= 1
         state.local.shellCounter = 0
+        onTankShot()
     }
 
     state.local.shellCounter += 1

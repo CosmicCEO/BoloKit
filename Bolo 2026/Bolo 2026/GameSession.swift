@@ -382,16 +382,18 @@ public final class GameSession {
         }
         lastTickTime = now
 
-        // D125: sound-effect triggers -- see SoundPlayer.swift's own header for exactly which
-        // 5 of the 24 names are wired in this time-boxed pass, and why the rest (tankshot/
-        // hittank/tree/build/etc., which need new BoloKit callback threading) aren't yet.
+        // D125/D148(A): sound-effect triggers -- see SoundPlayer.swift's own header for exactly
+        // which names are wired, and why the rest (hittank/build/etc., which still need new
+        // BoloKit callback threading) aren't yet.
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
             onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") },
             onExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboom: { SoundPlayer.shared.play("superboom") },
-            onSmallboom: { SoundPlayer.shared.play("explosion") }
+            onSmallboom: { SoundPlayer.shared.play("explosion") },
+            onTankShot: { SoundPlayer.shared.play("tankshot") },
+            onTreeHarvest: { _ in SoundPlayer.shared.play("tree") }
         )
         renderView.render(state)
     }

@@ -676,6 +676,31 @@ private func safeStationaryState(player: PlayerState, local: LocalPlayerState) -
     #expect(state.local.shellCounter == 4)
 }
 
+@Test func tankLocalTickFiresOnTankShotCallbackWhenShellFires() {
+    var player = connectedPlayer()
+    player.inputFlags = [.shoot]
+    player.dir = 0
+    var (state, old) = safeStationaryState(
+        player: player, local: LocalPlayerState(shells: 5, shellCounter: shellFireThresholdTicks + 1)
+    )
+    var fired = 0
+    tankLocalTick(old: old, state: &state, onTankShot: { fired += 1 })
+    #expect(state.players[0].shells.count == 1)
+    #expect(fired == 1)
+}
+
+@Test func tankLocalTickDoesNotFireOnTankShotCallbackBelowThreshold() {
+    var player = connectedPlayer()
+    player.inputFlags = [.shoot]
+    var (state, old) = safeStationaryState(
+        player: player, local: LocalPlayerState(shells: 5, shellCounter: shellFireThresholdTicks)
+    )
+    var fired = 0
+    tankLocalTick(old: old, state: &state, onTankShot: { fired += 1 })
+    #expect(state.players[0].shells.isEmpty)
+    #expect(fired == 0)
+}
+
 @Test func tankLocalTickDeadPlayerSkipsDrainRefuelFire() {
     var player = connectedPlayer(dead: true)
     player.inputFlags = [.shoot]

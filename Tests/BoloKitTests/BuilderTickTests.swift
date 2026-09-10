@@ -339,6 +339,37 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, local: Loca
     #expect(state.players[0].builderWait == 0)
 }
 
+@Test func gotoArrivalOnGetTreeFiresOnTreeHarvestCallback() {
+    var player = connectedPlayer()
+    player.builderTask = .getTree
+    player.builderTarget = Pointi(x: 50, y: 50)
+    player.builder = Vec2f(x: 50.5, y: 50.5)
+    player.builderStatus = .goto
+    var state = makeState(players: [player])
+    state.terrain[50, 50] = .forest
+
+    var harvested: Pointi?
+    builderTick(player: 0, state: &state, onTreeHarvest: { harvested = $0 })
+
+    #expect(harvested == Pointi(x: 50, y: 50))
+    #expect(state.players[0].builderTrees == forestTreeYield)
+}
+
+@Test func gotoArrivalOnGetTreeOverMinedTerrainDoesNotFireOnTreeHarvestCallback() {
+    var player = connectedPlayer()
+    player.builderTask = .getTree
+    player.builderTarget = Pointi(x: 50, y: 50)
+    player.builder = Vec2f(x: 50.5, y: 50.5)
+    player.builderStatus = .goto
+    var state = makeState(players: [player])
+    state.terrain[50, 50] = .minedGrass
+
+    var harvested: Pointi?
+    builderTick(player: 0, state: &state, onTreeHarvest: { harvested = $0 })
+
+    #expect(harvested == nil)
+}
+
 @Test func gotoArrivalOnGetTreeOverMinedTerrainTriggersExplosionInsteadOfHarvest() {
     var player = connectedPlayer()
     player.builderTask = .getTree

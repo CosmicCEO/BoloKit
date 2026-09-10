@@ -230,16 +230,24 @@ public func builderCollision(target: Pointi, task: BuilderTask, owner: Int, stat
 // is never refunded, success or not).
 
 /// Ported from `recvclgrabtrees()` (server.c:2347).
-private func grabTrees(at point: Pointi, state: inout GameState, onMineExplosion: (Pointi) -> Void) -> Int {
+private func grabTrees(
+    at point: Pointi, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    // D148(A): fires only on an actual completed harvest (the two success cases below), not on
+    // the mine-explosion failure cases or the no-op default — mirrors how `onMineExplosion`
+    // itself only fires in the mined-terrain branches of this same function.
+    onTreeHarvest: (Pointi) -> Void = { _ in }
+) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let terrain = state.terrain[x, y] else { return 0 }
     switch terrain {
     case .forest:
         state.terrain[x, y] = .grass3
+        onTreeHarvest(point)
         return forestTreeYield
     case .minedForest:
         state.terrain[x, y] = .minedGrass
+        onTreeHarvest(point)
         return forestTreeYield
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
         onMineExplosion(point)
@@ -569,6 +577,7 @@ private func readyTick(player: Int, state: inout GameState) {
 /// prior behavior exactly — zero change for host/single-process (D28).
 private func arriveAtTarget(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onTreeHarvest: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
@@ -586,7 +595,9 @@ private func arriveAtTarget(
 
     switch state.players[player].builderTask {
     case .getTree:
-        state.players[player].builderTrees = grabTrees(at: target, state: &state, onMineExplosion: onMineExplosion)
+        state.players[player].builderTrees = grabTrees(
+            at: target, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest
+        )
 
     case .buildRoad:
         if !tankOnABoatTest(x: Int(target.x), y: Int(target.y), state: state) {
@@ -651,6 +662,7 @@ private func arriveAtTarget(
 @discardableResult
 private func gotoTick(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onTreeHarvest: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
@@ -658,7 +670,10 @@ private func gotoTick(
     var diff = center - state.players[player].builder
 
     if mag2f(diff) < 0.00001 {
-        return arriveAtTarget(player: player, state: &state, onMineExplosion: onMineExplosion, joinArrive: joinArrive)
+        return arriveAtTarget(
+            player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
+            joinArrive: joinArrive
+        )
     }
 
     let builder = state.players[player].builder
@@ -823,6 +838,7 @@ public func builderTick(
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onTreeHarvest: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
 ) -> JoinOutboundBuilderCL? {
     guard state.players[player].connected else { return nil }
@@ -832,7 +848,10 @@ public func builderTick(
         readyTick(player: player, state: &state)
 
     case .goto:
-        return gotoTick(player: player, state: &state, onMineExplosion: onMineExplosion, joinArrive: joinArrive)
+        return gotoTick(
+            player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
+            joinArrive: joinArrive
+        )
 
     case .work:
         // Unreachable in the host/single-process path (`joinArrive == nil`): gotoTick's arrival

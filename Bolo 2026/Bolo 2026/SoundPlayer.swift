@@ -20,6 +20,12 @@
 //  `ShellTick.swift`'s `killTank` (`hittank`) for the remaining named-priority sounds is real
 //  `BoloKit` surgery, not attempted in this pass -- disclosed, not silently dropped.
 //
+//  **D148(A) follow-up:** `tankshot` (cannon fire) and `tree` (harvest-complete) are now wired
+//  too, via new `onTankShot`/`onTreeHarvest` callbacks threaded through `TankLocalTick.swift`'s
+//  shell-fire branch and `BuilderTick.swift`'s `grabTrees`/`arriveAtTarget` `.getTree` completion
+//  respectively (see those files' own doc comments at the fire sites). `hittank`'s `ShellTick.
+//  swift`/`killTank` wiring is still not attempted -- out of D148(A)'s scope.
+//
 //  **`far*` variants and remote-player-triggered sounds are explicitly NOT wired.** The
 //  reference's own near/far choice is a `client.fog[y][x] > 0` check (`client.c:1368` and
 //  elsewhere) -- fog-of-war/seen-tiles is out of v1 scope entirely (D65: "treat every tile as

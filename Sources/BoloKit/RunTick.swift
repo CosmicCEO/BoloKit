@@ -80,7 +80,12 @@ public func runTick(
     // broadcast hook, mirroring `sendsrflood()`'s only call site in `floodat()`
     // (server.c:4038-4056). `chain`/`chainAt` never call `sendsrflood`, so this
     // is threaded only into the `flood(...)` call below, not `chain(...)`.
-    onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in }
+    onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in },
+    // D148(A): new sound-only hooks, threaded through to `tankLocalTick`'s shell-fire branch and
+    // `builderTick`/`arriveAtTarget`'s `.getTree` completion — see `TankLocalTick.swift`/
+    // `BuilderTick.swift`'s own doc comments at the fire sites.
+    onTankShot: () -> Void = {},
+    onTreeHarvest: (Pointi) -> Void = { _ in }
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -264,11 +269,13 @@ public func runTick(
     tankLocalTick(
         old: Pointi(x: Int32(localOld.x), y: Int32(localOld.y)), state: &state,
         onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
-        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onTankShot: onTankShot
     )
 
     for player in state.players.indices {
-        builderTick(player: player, state: &state, onMineExplosion: onMineExplosion)
+        builderTick(
+            player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest
+        )
     }
 
     pillTick(
