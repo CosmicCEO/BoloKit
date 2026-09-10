@@ -449,6 +449,28 @@ public final class HostGameEngine: @unchecked Sendable {
         // would re-run `removePlayer`'s own drop-pills logic a second time). Collected separately
         // from `pending` since it needs `table.disconnect`, not just a broadcast.
         var disconnectedPlayers: [Int] = []
+        // D150 continuation (PARITY finding): without this, `table`'s slot for
+        // `state.localPlayer` never advances and `RunTick.swift`'s 9-second lag-eviction loop
+        // (below, via `ticksSinceLastUpdate`) self-evicts the host in every hosted game -- the
+        // exact defect PARITY found in `5c3c605`. Refreshing here, unconditionally every tick, is
+        // a deliberate divergence from the oracle's own cadence, not an attempt to claim exact
+        // equivalence: `server.c:672` only refreshes `lastupdate` when a CLUpdate is actually
+        // *received*, which for a real client (including the host's own loopback-socket
+        // connection to its own server, per PLANNER's ruling) only happens at `client.c:485-487`'s
+        // 10 Hz send cadence -- the same cadence this port's own outbound self-CLUpdate already
+        // uses below (`localSeq % 5 == 0`, line ~531). That site was tried first and rejected: it
+        // runs after this function's own `ticksSinceLastUpdate` snapshot (just below) within the
+        // *same* tick, so a refresh placed there is invisible to that tick's own eviction check --
+        // structurally too late, not just a cadence difference. Refreshing at 50 Hz (every tick)
+        // instead of 10 Hz is strictly fresher than the oracle, never staler, so it can only ever
+        // *prevent* an eviction the oracle itself would also not perform -- confirmed via the
+        // negative-control test PARITY suggested (`HostGameEngineTests.swift`'s
+        // `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer`, manual seed line removed).
+        // `state.players.indices.contains` (not `table`'s own `maxPlayers`-sized `slots`, which is
+        // always >= `state.players.count`) is the stricter of the two possible bounds checks.
+        if state.players.indices.contains(state.localPlayer) {
+            await table.setLastUpdate(state.ticks, for: state.localPlayer)
+        }
         let ticksSinceLastUpdate = await table.allTicksSinceLastUpdate(currentTick: state.ticks)
         lastKnownTicksSinceLastUpdate = ticksSinceLastUpdate
 

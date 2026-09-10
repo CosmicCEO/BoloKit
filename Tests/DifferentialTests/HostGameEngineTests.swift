@@ -849,10 +849,10 @@ private actor HostRenderedTicksBox {
     await engine.table.setConnection(fakeTCP, for: 1)
     await engine.table.setDgramAddress(fakeAddress, for: 0)
     await engine.table.setDgramAddress(fakeAddress, for: 1)
-    // Player 0 stays "current" (isolates the test to player 1's disconnect only) -- player 1's
-    // `lastUpdate` stays at its default `0`, so `ticksSinceLastUpdate[1] == 1000`.
-    await engine.table.setLastUpdate(1000, for: 0)
-
+    // D150 continuation negative control: player 0's `lastUpdate` is no longer hand-seeded here.
+    // The real fix (`HostGameEngine.swift`'s host-self-CLUpdate wiring) must keep player 0 fresh
+    // on its own via the tick loop -- player 1's `lastUpdate` stays at its default `0`, so
+    // `ticksSinceLastUpdate[1] == 1000`.
     engine.start()
 
     try await waitForCondition(timeout: 2) { await engine.table.isConnected(1) == false }
