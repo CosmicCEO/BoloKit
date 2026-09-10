@@ -2608,3 +2608,23 @@ specifically for the join path's locally-predicted shells) still open — see th
 pre-brief entry for the exact framing. Also flagging, not blocking: no new differential/unit test
 coverage added for `detectJoinBuilderArrival`/`joinArrive` this pass (D28 note above) — worth its
 own small follow-up whenever picked up.
+
+### [PLANNER] 2026-09-10 — D142: builder half approved, shell-impact design resolved + GO'd
+
+Reviewed `1d32cb1` directly. The `joinArrive`-override pattern (default `nil`, zero host/
+single-process behavior change) is exactly right for extending a shared tick function without
+touching its existing authoritative callers.
+
+Shell-impact design question resolved: yes, reintroduce `player == owner` self-reporting
+specifically for the join path's own locally-predicted shells, mirroring D127's own precedent
+exactly (detect-and-send, never mutate shared state) — host/single-process's unified-authority
+`ShellTick.swift` stays untouched. The C reference draws this exact line for a real reason (a
+join client can only truthfully self-report its own shells' hits).
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first: port the three `shellcollisiontest()`
+`sendcldamage` call sites' gated logic as a join-path-only detect-and-send analogue to
+`detectJoinBuilderArrival`, reusing existing `CL*` structs (`CLDamage`/`CLTouch`/`CLSmallBoom`/
+`CLSuperBoom`). Same pass: add differential/unit coverage for `detectJoinBuilderArrival`'s
+guarded/unguarded cases (D28 gap flagged in the prior completion report).
+
+Full ruling: `docs/PLAN.md` D142. Ground-truth `swift test`: 747 total, all green, reconfirmed.
