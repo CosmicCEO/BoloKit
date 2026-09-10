@@ -2817,3 +2817,90 @@ explicitly out of scope this pass (unverifiable in this environment regardless).
 target actually runs via `xcodebuild test`, report a real baseline count.
 
 Full ruling: `docs/PLAN.md` D144.
+
+### [IMPLEMENTER] 2026-09-10 — D144 pre-brief: `Bolo 2026Tests` target mechanism + scope
+
+**Mechanism (the project-file-surgery question PLANNER asked to review before execution):**
+Xcode MCP tooling is available and functional here (`XcodeOpenWorkspace` on `Bolo
+2026.xcodeproj` succeeded; `XcodeListTargets` confirms the project currently has exactly one
+target, `Bolo 2026`, application type). `XcodeListTemplates` confirms a `Unit Testing Bundle`
+template (`com.apple.dt.unit.multiPlatform.unitTestBundle`) with a `testingSystem` option whose
+`possibleValues` include `"Swift Testing"` directly — no XCTest bridging needed anywhere in this
+pass, no concrete technical reason found requiring XCTest. Plan: `XcodeNewTarget` with that
+template, `productName: "Bolo 2026Tests"`, `options: {"testingSystem": "Swift Testing",
+"languageChoice": "Swift"}`. This lets Xcode itself own the `.pbxproj` diff (new target, build
+phases, scheme test action) rather than hand-editing the file — avoids exactly the team-ID/
+build-setting-reordering class of trouble this project has hit before per D144's own framing.
+After creation: inspect the diff via `git diff --stat`/`git diff project.pbxproj` before
+committing, same rigor as any other change, not blind trust in the tool.
+
+**Read-through findings, scope for this pass:**
+
+1. **`GameSession.swift`'s dispatch methods are already `public`** (`canKickBan`, `kickPlayer`,
+   `banPlayer`, `requestAlliance`, `leaveAlliance`, `sendMessage`) — directly callable from a
+   separate test target with a plain `import` (no `@testable` needed for these specific members,
+   though the test target will use `@testable import` anyway for anything not-yet-public it turns
+   out to need). The single-process init (`GameSession(initialState:tilesImage:spritesImage:)`)
+   is the only one of the three constructors safe to exercise in a headless test — the
+   `hostEngine:`/`tcpSession:udpSession:` inits pull in real `BoloNet` networking/listener
+   machinery, out of scope here (D144 named pure dispatch logic, not a networking-integration
+   pass).
+2. **Trivial `CGImage` for `tilesImage`/`spritesImage`, confirmed safe by direct read of
+   `GameRenderView.swift`:** `init(tilesImage:spritesImage:)` (line 97-101) only stores the two
+   images and sizes the `NSRect` off a fixed `mapPixelSize` constant — never touches either
+   image's actual dimensions. `render(_:)` (117-128) doesn't touch the images either. The only
+   dimension-dependent code is `draw(_:)`'s `cropping(to:)` calls (`drawTerrain`/`drawSprite`),
+   both already `guard let ... else { return }` — `CGImage.cropping(to:)` returns `nil` (not a
+   crash) for an out-of-bounds rect, so a 1×1 synthetic image degrades to "draws nothing," never a
+   crash, and a headless test never calls `draw(_:)` anyway (no real display). A tiny helper
+   (`CGContext(data: nil, width: 1, height: 1, ...).makeImage()`) is used to build both. No
+   existing "trivial image for tests" helper existed anywhere in the repo (confirmed by search) —
+   this is new, self-contained in the test target only.
+3. **`HostGameView`'s `handleMapPickerResult`/`applyDecodedMap` are currently `private`** —
+   `private` in Swift is file-scoped, so a separate test-target file cannot call them even via
+   `@testable import` (that only lifts `internal` to visible, never `private`). **Judgment call,
+   flagging explicitly per Step 2's own rule:** narrowing `private` to `internal` (dropping the
+   keyword; SwiftUI `View` structs commonly do this for testability, no access-control regression
+   since the type itself stays `internal`/file-local usage elsewhere is unaffected) on exactly
+   these two methods, nothing else in the file. `applyDecodedMap` doesn't need `mutating` (its
+   `@State` writes go through `State`'s `nonmutating set`), so this is a pure visibility change,
+   zero behavior change — confirmed by reading the existing method bodies, no `mutating` keyword
+   needed either before or after.
+4. **`computeMessageMask` call sites in app-target files:** only one exists,
+   `GameSession.sendMessage`'s join-path branch (`GameSession.swift:325`) — `computeMessageMask`
+   itself is `BoloKitTests`-covered already (BoloKit source). The app-target-side wrapping here is
+   just "compute mask, build `CLSendMesg`, send over `tcpSession`" — the `tcpSession` send can't
+   be exercised headlessly without a real connection, so this call site's mask-computation step
+   is covered indirectly by testing `sendMessage`'s single-process branch (same mask/target
+   plumbing, no network) rather than duplicating a live-socket test. Flagging this as the scope
+   line: the *networked* halves of `sendMessage`/`requestAlliance`/`leaveAlliance` (host/join
+   branches) are out of scope for headless testing this pass — only the single-process branch,
+   `canKickBan`'s `false`-by-default value (no `hostEngine`), and the two `HostGameView` map
+   helpers get direct coverage.
+5. **No other zero-coverage pure logic found** worth adding this pass after reading
+   `MessagesView.swift` in full — its own logic is either trivial view glue (`send()` just forwards
+   to `sendMessage`, already covered above) or `computeMessageMask`, already covered per (4).
+   `JoinGameView.swift`/`NewGameView.swift`/`PreferencesView.swift`/`PlayerStatusView.swift`/
+   `AlliancePanelView.swift` not read this pass — D144's own text named `GameSession`/
+   `HostGameView`/`MessagesView` specifically; broadening further is PLANNER's call, not assumed
+   here.
+
+**Planned test file layout (`Bolo 2026Tests/`):**
+- `GameSessionTests.swift` — single-process `sendMessage` (message appended with correct
+  id/player/name/text/to), `canKickBan == false`, `kickPlayer`/`banPlayer` no-op safely (no
+  `hostEngine`, must not crash), single-process `requestAlliance`/`leaveAlliance` (state mutated
+  directly, no `tcpSession`).
+- `HostGameViewTests.swift` — `applyDecodedMap` with a valid encoded map (success path,
+  `mapState` populated), an intentionally-corrupt byte buffer (`"Incompatible Map Version"`), and
+  a valid-but-empty-starts map if one can be constructed (`"Map Has No Start Points"`).
+  `handleMapPickerResult`'s `.failure` case (mapErrorMessage stays nil, matches current early-
+  return behavior — flagging this as a pre-existing zero-message gap in the source itself, not
+  introduced by this test).
+
+**Judgment call (2) above — `private` → default/internal on two `HostGameView` methods — is the
+one substantive source change bundled into this otherwise test-only pass; flagging it clearly
+per Step 2 rather than folding it in quietly.**
+
+[TO: PLANNER] Proceeding with the plan above (Xcode MCP `XcodeNewTarget`, Swift Testing,
+`Bolo 2026Tests`) unless redirected. Will report the resulting `.pbxproj` diff size and the new
+target's real `xcodebuild test` count in the completion report.
