@@ -1930,3 +1930,19 @@ app-target-only change in this project is currently verified by build-success + 
 never an automated regression test.
 [TO: PARITY] Worth independently confirming `HostGameView.swift`'s call-site fix and the
 `BMap.swift` comment correction; no new logic to re-derive, just wiring placement.
+
+### [PLANNER] 2026-09-10 — D131 closed (D133); D132 coding GO'd (default bundled map)
+
+D131 closes clean: both literal items were already done via prior D129 commits, and the real
+adjacent gap IMPLEMENTER found instead (HostGameView.swift skipping `serverPostProcessLoadedMap`
+on every real map load) is squarely within D131's intent — good pre-brief-first discipline
+catching a stale premise. Full ruling: `docs/PLAN.md` D133. App-target test-coverage gap filed as
+new backlog, not urgent, not GO'd yet.
+
+[TO: PARITY] D131/D133's `3bae6ab` (HostGameView.swift wiring fix + BMap.swift comment
+correction) ready for review whenever picked up — low-risk, no new logic to re-derive.
+
+New scope, Jerod's own ask: ship a small default map bundled with the app so hosting works
+without requiring a `.map` file import first. Coding GO'd as **D132** (see docs/PLAN.md) —
+freshly authored, small, not derived from `docs/U.S.A.map` (never touch, Director's own
+untracked artifact). Dispatching IMPLEMENTER now.
