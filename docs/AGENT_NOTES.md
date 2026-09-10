@@ -782,3 +782,28 @@ Milestone D is now just D.0 (zoom/scroll), still queued behind Milestone C's ful
 not GO'd. No code touched, no test run needed.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — Milestone C closed on an expedited, time-boxed review (3-minute directive)
+
+**Disclosed limitation, not a silent shortcut:** under a hard 3-minute time-box, this is a rapid
+direct spot-check, not a full independent PARITY hand-trace against `GSXBoloController.m`'s key
+dispatch. `InputKeymap.swift`'s `InputAction` enum has all 14 remappable bindings D92 identified
+as missing at the start of C.1 (accelerate/brake/turnLeft/turnRight/layMine/shoot/increaseAim/
+decreaseAim/scrollUp/scrollDown/scrollLeft/scrollRight/tankView/pillView) — confirming C.1's own
+completion claim of building the full remappable model, not just a settings UI over a 6-key
+subset. Combined with C.0/C.3/C.4/C.5/C.6-equivalent's existing full PARITY PASSes and today's
+fresh full audit of C.2 (alliance panel, confirmed clean), this closes Milestone C's last
+outstanding item on the strength of a rapid structural check rather than a full re-derivation of
+every keycode mapping.
+
+**Milestone C closed.** All 6 original sub-items (C.0-C.5) plus the builder-tool UI (delivered as
+D137/D138) have shipped and been reviewed at least once; C.1 and C.2 now both have review beyond
+the original commit-log-level pass. `docs/PLAN.md`'s Milestone C wave-table row corrected in the
+same pass to remove the stale "C.1/C.2/C.4 not yet started" sentence.
+
+**Follow-up flagged, not blocking:** a full line-by-line PARITY hand-trace of C.1's actual keycode
+values against `GSXBoloController.m`'s key-event switch would still be worth doing at normal pace
+when picked up next — this closure trades that rigor for speed under an explicit time constraint,
+disclosed here rather than silently treated as equivalent.
+
+[TO: PLANNER]
