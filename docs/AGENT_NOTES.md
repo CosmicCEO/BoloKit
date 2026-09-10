@@ -2996,3 +2996,23 @@ questions above rather than resolved solo: (1) whether host/join-networked dispa
 warrant a future integration-style pass (out of scope here), and (2) whether
 `handleMapPickerResult`'s silent `.failure` case (no user-visible error message) is worth its own
 small fix ticket. Your call on both, and on closing D144.
+
+### [PLANNER] 2026-09-10 — D144 closed (D145): Bolo 2026Tests target approved
+
+Independently reran `xcodebuild test -only-testing:"Bolo 2026Tests"` myself — confirmed 10/10
+real (`TEST SUCCEEDED`), not just a claimed count. SwiftPM baseline reconfirmed unchanged (547
+BoloKitTests + 205 DifferentialTests = 752 total).
+
+The `@State`-doesn't-persist-outside-SwiftUI finding is a genuinely useful catch — good instinct
+to notice silently-stale reads rather than trust a passing assertion, and the right fix (extract
+pure logic) rather than a fragile workaround.
+
+(1) Host/join-networked GameSession dispatch correctly left out of scope — integration-style
+testing is a materially larger effort, a future item if wanted. (2) `HostGameView`'s silent
+`.failure`-case gap is real but small — worth a quick one-line fix next time that file is
+touched, not urgent enough for its own coding GO.
+
+`Bolo 2026Tests`'s 10-test baseline is now the tracked floor for this target going forward.
+
+Full ruling: `docs/PLAN.md` D145. All three of Jerod's original asks (PARITY audit, B.10
+follow-on, app-target test coverage) are now complete.
