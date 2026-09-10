@@ -673,3 +673,67 @@ fix on tightening unrelated fragile tests it merely made more visible.
 > PASS, D150 closes in full (items 1-4 plus the host-self-eviction fix).
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-10 — D150 re-check: `d72e70f`'s `tick()` self-`setLastUpdate` fix — PASS
+
+**Type:** post-commit re-check, narrow scope per PLANNER's activation (this entry, not a full
+re-audit — items 1/2/4 already confirmed clean in the prior pass and not re-touched here).
+Standing limitation restated: no Swift toolchain compile-and-run beyond what `swift test` itself
+exercises in this environment; verified via hand-trace against `Reference/c/` plus the one test
+run named below, not a broader build/run session.
+
+**Verdict: PASS.** The fix, its landing site, and its own disclosed reasoning all hold up.
+
+Independently confirmed:
+
+- `Sources/BoloNet/HostGameEngine.swift:456-461` (`tick()`): the unconditional
+  `if state.players.indices.contains(state.localPlayer) { await table.setLastUpdate(state.ticks,
+  for: state.localPlayer) }` sits immediately before line 463's
+  `let ticksSinceLastUpdate = await table.allTicksSinceLastUpdate(currentTick: state.ticks)` —
+  confirmed by direct read, matches the completion report's own citation exactly, no drift.
+- `Reference/c/server.c:672`: `server.players[clupdate.hdr.player].lastupdate = server.ticks;` —
+  confirmed this is inside the datagram-socket `CLUpdate`-receipt handler (the `recvfrom` loop
+  starting above `:650`), gated on `seq` advancing past the player's last-seen `seq`
+  (`:668-672`). Citation is accurate: this is receipt-triggered, not polled.
+- `Reference/c/client.c:485-487`: `if (client.players[client.player].seq%5 == 0) { if
+  (sendclupdate()) LOGFAIL(errno) }` — confirmed this is the outbound self-`CLUpdate` send site,
+  gated at a 5-tick (10 Hz at 50 Hz tick rate) cadence. Citation accurate down to the line.
+- `Reference/c/server.c:1191`: `if (server.ticks - server.players[i].lastupdate >=
+  9*TICKSPERSEC)` — the eviction check itself, confirmed unconditional on `cntlsock != -1` only
+  (no host exemption), matching PLANNER's earlier ruling that the host is architecturally just
+  another connected client to this loop.
+- `Sources/BoloKit/RunTick.swift:190-191`: `ticksSinceLastUpdate[player] >= 9 *
+  UInt64(ticksPerSec)` — confirmed the port's own eviction threshold is bit-for-bit the same
+  `9 * TICKSPERSEC` constant, not a re-derived or drifted value.
+- Ran the negative-control test directly: `swift test --filter
+  hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer` → **passed** (0.021s). Read the test body
+  (`Tests/DifferentialTests/HostGameEngineTests.swift:821-864`): player 0 (`state.localPlayer`'s
+  default index, confirmed via `Sources/BoloKit/GameState.swift:96`) has no manual `setLastUpdate`
+  seed anywhere in the file (grepped, zero hits) and survives; player 1, genuinely never
+  refreshed, gets evicted (`isConnected(1) == false`) as expected. This is a real, passing,
+  affirmative demonstration of the fix's mechanism, not just a citation check.
+
+**Reasoning re-derived, not just re-read:** the "strictly fresher, never staler" claim holds
+under a hand-trace of both directions —
+(1) *can the fix cause an eviction the oracle wouldn't?* No: refreshing every tick (50 Hz) makes
+the port's own `ticksSinceLastUpdate` for the host's slot bounded at ~0-1 tick continuously,
+strictly smaller than the oracle's own bound (~5 ticks plus loopback latency, itself well under
+the 450-tick/9s threshold in any case) — a smaller age value can only make eviction *less* likely,
+never more.
+(2) *can the fix mask a genuine host stall the oracle would catch?* No: the refresh lives inside
+`tick()` itself, so it only fires when `tick()` fires — a truly stalled host (the process not
+advancing at all) stops calling `tick()` and therefore stops refreshing, exactly mirroring the
+oracle's own client, which would likewise stop sending self-`CLUpdate`s if genuinely stalled. The
+two "tried and rejected" alternatives named in the completion report (`.localInputChanged`,
+untested by the existing negative control; the outbound `localSeq % 5 == 0` site, structurally too
+late within the same tick) are correctly characterized — confirmed the `localSeq % 5 == 0` site
+(`HostGameEngine.swift`, ~line 531 per the report) does run after the `tick()`-top snapshot within
+the same tick, so a refresh placed there would indeed be invisible to that tick's own read, same
+defect class as before.
+
+**No citation drift found.** All four `file:line` references (two Swift, two C) point exactly to
+the code described, no phantom-bug or off-by-line issues.
+
+D150 closes in full (items 1-4 plus the host-self-eviction fix) as far as PARITY is concerned.
+
+[TO: PLANNER]
