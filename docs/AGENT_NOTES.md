@@ -412,9 +412,17 @@ seconds.**
    construction, and the host **drops its own onboard pills, sets `state.players[0].connected =
    false`, and fires `onPlayerDisconnected(0)`** — which (`HostGameEngine.swift:478-482`) broadcasts
    `SRPlayerDisc(player: 0)` to every real connected peer and tears down the host's own table slot.
-   Every hosted game — including single-player/solo local play with `state.ticks` still advancing
-   — silently marks the host disconnected 9 seconds in, and any real peer present gets told the host
-   left. This also means the HUD's own new item-3 feature renders wrong for the host itself: the
+   Every game that goes through the real `HostGameEngine` construction path in
+   `HostGameView.swift:startHosting()` (the success branch — `HostListener`/`HostDgramListener`
+   both construct without throwing, the normal case) silently marks the host disconnected 9 seconds
+   in, whether or not any other player has joined, and any real peer present gets told the host
+   left. **Correction, checked before filing:** the `catch`/`onStartHostingLocalOnly` fallback path
+   (`HostGameView.swift:278`, D109's "real listener construction failed" branch, routed to
+   `AppRootView`'s `.hostingFallback` case) renders a bare `GameState` via `GameView` directly with
+   no `HostGameEngine`/`HostSessionTable`/tick-timer involved at all — confirmed by reading
+   `AppRootView.swift:65-69` — so that specific fallback mode is genuinely unaffected; my first pass
+   at this sentence overstated the blast radius to "all solo local play" before checking. This also
+   means the HUD's own new item-3 feature renders wrong for the host itself: the
    host's own name in `PlayerStatusGrid` goes green→yellow→red exactly per the same 50/150-tick
    schedule, ending permanently red/white ("presumed dropped") — a directly user-visible defect in
    the very feature this pass added, for the account that will see it every single game.
@@ -457,23 +465,19 @@ directly, not by running it; a clean run of that suite would not have caught thi
 one test that exercises the 9-second eviction path manually neutralizes the exact slot that's
 broken (see above) rather than exercising player 0's own real, un-worked-around behavior.
 
-> **→ Planner:** do not close D150 on this commit. Item 3's `setLastUpdate` wiring fix needs one
-> more call site — the host's own slot (`state.localPlayer`, seated in `HostGameView.swift`'s
-> `startHosting()`) needs an equivalent seed/refresh, or `RunTick.swift`'s eviction loop needs to
-> exclude it, or `HostGameEngine`'s own tick needs to keep the host's slot "current" some other way
-> (e.g. seed `lastUpdate` to `state.ticks` every tick for `state.localPlayer` specifically, mirroring
-> how the C's own architecture never has this problem because the server process has no analogous
-> "local player" slot at all — a real port-shape difference, not a literal C line to cite). Items 1,
-> 2, 4 are clean and don't need rework.
+> **→ Planner:** do not close D150 on this commit. Item 3's `setLastUpdate` wiring fix needs to
+> reach the host's own slot (`state.localPlayer`, seated in `HostGameView.swift`'s
+> `startHosting()`, which never touches `HostSessionTable`) — not prescribing where that fix
+> belongs (design/implementation call, not PARITY's to make); the binding constraint either way is
+> that `HostSessionTable.slots[localPlayer].lastUpdate` must stay current for as long as the host
+> is actually present, or `RunTick.swift`'s 9-second eviction loop must exclude that slot by some
+> other means. Items 1, 2, 4 are clean and don't need rework.
 > **→ Implementer:** the fix needs to reach the host's own slot, not just remote peers reached via
-> `HostDgramListener`/`HostListener`. Recommend re-reading `HostGameView.swift:241-267`'s
-> `startHosting()` (where the host seats itself with no `HostSessionTable` interaction at all) and
-> deciding whether the fix belongs there (seed once at start) or in `HostGameEngine.tick()` (refresh
-> every tick, matching "the host is always current to itself" semantics) — the second matches the
-> reference's real invariant more closely (the C's server never distinguishes "self" because it has
-> no self-player), but either closes the gap. Re-run
-> `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer` without its line-854 workaround as a
-> negative control once fixed — it should then pass without that manual seed.
+> `HostDgramListener`/`HostListener` — awaiting PLANNER's ruling on where before coding. Once fixed,
+> recommend re-running `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer`
+> (`HostGameEngineTests.swift:821-866`) with its line-854 `setLastUpdate(1000, for: 0)` workaround
+> removed as a negative control — it should still pass without that manual seed once the real fix
+> is in place.
 
 [TO: PLANNER]
 [TO: IMPLEMENTER]
