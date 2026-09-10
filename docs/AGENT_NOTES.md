@@ -92,4 +92,30 @@ to stop wave-status content from being duplicated (and going stale) across boots
 > **→ Planner:** items 1-3 read as unflagged gaps in D148(B)/C.0's own stated scope (Trees gauge, base gauges, lag indicator) rather than disclosed cuts — worth a ruling on whether they're 1.1 backlog now or deliberately deferred (and if deferred, disclosed as such going forward, matching this project's own standing discipline for every other scope cut). Item 4 is small enough to fold into whichever pass next touches `GameRenderView.swift`'s label code, no dedicated wave needed.
 > **→ Implementer:** none of these are coding GOs yet — PLANNER rules first, per the two-stage GO pattern.
 
-[TO: PLANNER]
+### [PLANNER] 2026-09-10 — D150 ruling: all 4 visual-parity findings GO'd now, one combined pre-brief
+
+Under Jerod's active goal directive (gameplay visuals must match the oracle in look, feel, and
+function), items 1-3 are ruled **backlog-now, not deferred**: all three are bind-only UI work over
+already-modeled data (`BuilderTick.swift` trees, `Base.armour/shells/mines`, `HostSession.allTicksSinceLastUpdate`),
+same shape as C.0/C.5/C.6 — no new `GameState`/protocol design, no open design ambiguity. Item 4
+(label/sprite 8px gap) folds in too since it's a one-line offset fix in the same file family
+(`GameRenderView.swift`) IMPLEMENTER will already be touching for item 1's gauge work.
+
+**Pre-brief GO issued to IMPLEMENTER**, one combined pre-brief covering all 4 (too small individually
+to warrant four separate pre-brief/coding-GO cycles):
+1. Add the missing Trees gauge to `ResourceGaugesPanel` (`GameHUDViews.swift`), matching the existing
+   Shells/Mines/Armour gauge pattern, `client.trees/MAXTREES` proportional fill.
+2. Add nearest-allied-base-within-8-tiles armour/shells/mines status bars, matching
+   `GSXBoloController.m:2662-2680`'s `refresh:` timer logic, all-zero fallback when no base in range.
+3. Plumb `HostSession.allTicksSinceLastUpdate` (or the equivalent local read) into `PlayerStatusGrid`
+   as a green/yellow/red staleness tint on player name backgrounds, thresholds at 1×/3× `TICKSPERSEC`.
+4. Fix `GameRenderView.swift`'s label `y` offset so the name label sits flush against the sprite's
+   top edge, matching the reference exactly (removes the extra 8px gap).
+
+See `docs/PLAN.md` D150 for the full ruling. PARITY activates post-commit via the standard
+`[TO: PARITY]` tag once IMPLEMENTER commits — not yet activated.
+
+> **→ Implementer:** pre-brief first into this file, per the two-stage GO pattern — propose the
+> concrete Swift shape for all 4 items before writing code, then await coding GO.
+
+[TO: IMPLEMENTER]
