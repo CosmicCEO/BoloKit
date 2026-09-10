@@ -3036,3 +3036,90 @@ can be extracted into a pure, testable function (possibly via `Bolo 2026Tests`'s
 D144/D145).
 
 Full ruling: `docs/PLAN.md` D146.
+
+### [IMPLEMENTER] 2026-09-10 — D146 pre-brief: root-cause confirmed, zero-length-segment theory holds
+
+**Confirmed real and reachable, not just plausible-sounding.** Traced `resolveBuilderTask`/
+`queueBuilderCommand` (`Sources/BoloKit/BuilderCommand.swift`) directly: **neither has a distance
+check against the builder's own current tile** — `queueBuilderCommand` (lines 125-133) gates only
+on `builderStatus != .parachute`, `pendingBuilderCommand == nil`, `!dead`, then stores
+`(command, target)` verbatim; `resolveBuilderTask` (lines 48-112) resolves purely from
+`state.terrain[x, y]`, with no reference anywhere to the builder's own position. Confirmed the
+`.ready` branch in `BuilderTick.swift:433-435` sets `state.players[player].builderTarget =
+pendingBuilderTarget` directly, again with no equality-to-current-position guard. So: a player
+standing on a forest tile who clicks `.tree` targeting that exact same tile (precisely what
+tree-harvesting in place looks like) gets `builderTarget` set to their own current tile, full
+stop — a real, reachable path, exactly matching D146's theory.
+
+`drawBuilderTaskIndicators` (`GameRenderView.swift:146-171`) then computes `from` from
+`player.builder` (live fractional position, unsmoothed for the local player) and `to` from
+`player.builderTarget` (tile-center-snapped), and unconditionally does
+`move`/`addLine`/`strokePath` with an active `setLineDash` — for the same-tile case, `from` and
+`to` land on the exact same point (builder's live position was already at the tile center it's
+standing on), producing the zero-length stroke that crashed under Metal's debug draw-call
+validation (`CA::OGL::MetalContext::stroke_lines` → `WideLineRenderer::flush()` →
+`MTLReportFailure`).
+
+**No alternate root cause found** — this is the confirmed cause, not a re-diagnosis.
+
+### [IMPLEMENTER] 2026-09-10 — D146 completion report: crash fixed, guard extracted + tested
+
+**Fix:** `Bolo 2026/Bolo 2026/GameRenderView.swift`'s `drawBuilderTaskIndicators` now guards each
+player's stroke with `Self.isDegenerateBuilderIndicatorLine(from:to:)` before
+`move`/`addLine`/`strokePath`, `continue`-ing past that player's indicator when the segment is
+degenerate. Extracted as a small `static func` on `GameRenderView` (epsilon 0.5pt on each axis,
+not exact equality — `from` carries the builder's live fractional sub-tile position while `to` is
+tile-center-snapped, so an arrived-but-not-dead-center builder could differ by a sub-pixel amount
+that's still not worth drawing) rather than left inline, since it was trivially testable in
+isolation without an `NSView`/`CGContext` — same pattern `Bolo 2026Tests` established at D144/D145
+(pure static logic pulled out of view code). Nothing else in `drawBuilderTaskIndicators` or the
+surrounding draw loop touched.
+
+**Regression test — `Bolo 2026/Bolo 2026Tests/GameRenderViewTests.swift` (new file, 3 tests):**
+`sameTileTreeHarvestProducesADegenerateIndicatorLine()` reconstructs Jerod's exact trigger using
+the real `BoloKit` APIs, not synthetic geometry alone — builds a `PlayerState` standing on a
+forest tile, calls `queueBuilderCommand(command: .tree, target: <own tile>, ...)`, confirms it's
+actually queued (`pendingBuilderCommand == .tree`, no distance rejection), confirms
+`resolveBuilderTask` returns `.getTree` for that target, mirrors `BuilderTick.swift`'s `.ready`
+branch by setting `builderTarget` from the pending target, then computes the same `from`/`to`
+`CGPoint`s `drawBuilderTaskIndicators` computes and asserts `from == to` and that
+`isDegenerateBuilderIndicatorLine` returns `true` for them — i.e., confirms the guard actually
+fires for the real crash geometry, not just for made-up coordinates. Two more tests cover a normal
+non-degenerate line (guard doesn't fire) and a sub-pixel near-equal case (guard fires,
+per the epsilon rationale above).
+
+Hit one setup bug while writing the test: `PlayerState()`'s default `dead = true` silently made
+`queueBuilderCommand` a no-op the first pass (`pendingBuilderCommand` stayed `nil`) — fixed by
+explicitly setting `dead = false`, which is itself a small confirmation that the "builder isn't
+dead" gate really is load-bearing and exercised by this test, not just present in the code.
+
+**Test counts:**
+- SwiftPM (`swift test`): 752 total, unchanged (205 DifferentialTests + 547 BoloKitTests) — no
+  BoloKit/BoloNet surface touched at all, pure app-target rendering fix + app-target test file.
+- App target (`xcodebuild ... -only-testing:"Bolo 2026Tests" test`): **10 → 13** (3 new, D144/D145's
+  floor of 10 preserved and grown, no shrink, D28).
+
+Both suites run clean, no failures.
+
+**Verification of the actual fix (per D146's item 4):** confirmed via the new test's assertion
+that `isDegenerateBuilderIndicatorLine(from:to:)` returns `true` for the exact geometry the real
+crash scenario produces — that guard sitting directly ahead of `ctx.move`/`addLine`/`strokePath`
+in `drawBuilderTaskIndicators` means that call is now provably unreachable for a same-tile task.
+Could not re-run the actual crashing app scenario live (no way to script a real mouse-driven
+tree-harvest-in-place through this session's tooling), so this is proof the guard condition holds
+for the confirmed-real trigger, not a live re-crash-and-confirm-fixed — flagging that distinction
+plainly rather than overclaiming.
+
+**Files touched:** `Bolo 2026/Bolo 2026/GameRenderView.swift` (guard + extracted static func),
+`Bolo 2026/Bolo 2026Tests/GameRenderViewTests.swift` (new). Nothing else — did not touch the
+unrelated working-tree changes already present (`CLAUDE.md` modified, `docs/PLANNER.md` deleted,
+`docs/IMPLEMENTER.md` untracked, the Director-owned `docs/` artifacts, `.claude/`, `Resources/`)
+since those predate this session and aren't part of D146's scope.
+
+[TO: PLANNER] D146 fixed and tested — root cause confirmed exactly as theorized (same-tile
+builder command, no distance check in `resolveBuilderTask`/`queueBuilderCommand`), one-line guard
++ extracted pure function + 3 new regression tests. Test counts: SwiftPM 752/752 unchanged, app
+target 10→13 (D28: no shrink, real growth). Not declaring D146 closed — that's your call.
+[TO: PARITY] Not a parity-relevant change (port-original UX indicator from D137, no reference
+counterpart) — optional re-audit of the guard logic itself if you want independent confirmation,
+low-risk, your call.

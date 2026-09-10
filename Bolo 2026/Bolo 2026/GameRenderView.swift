@@ -160,7 +160,17 @@ public final class GameRenderView: NSView {
                     x: (CGFloat(player.builderTarget.x) + 0.5) * tile,
                     y: (CGFloat(player.builderTarget.y) + 0.5) * tile
                 )
-                ctx.move(to: CGPoint(x: CGFloat(from.x) * tile, y: CGFloat(from.y) * tile))
+                let fromPoint = CGPoint(x: CGFloat(from.x) * tile, y: CGFloat(from.y) * tile)
+                // D146: a same-tile task (e.g. harvesting a tree the builder is already
+                // standing on -- `resolveBuilderTask`/`queueBuilderCommand`,
+                // `Sources/BoloKit/BuilderCommand.swift`, have no distance check and will
+                // happily set `builderTarget == builder`'s current tile) produces a
+                // degenerate zero-length segment here. Stroking that with an active dash
+                // pattern crashes (`SIGABRT` in AppKit/QuartzCore/Metal's debug draw-call
+                // validation, zero app-code frames) rather than silently no-op'ing -- skip
+                // the draw entirely rather than feed it a degenerate segment.
+                guard !Self.isDegenerateBuilderIndicatorLine(from: fromPoint, to: to) else { continue }
+                ctx.move(to: fromPoint)
                 ctx.addLine(to: to)
                 ctx.strokePath()
             case .ready, .parachute:
@@ -168,6 +178,18 @@ public final class GameRenderView: NSView {
             }
         }
         ctx.restoreGState()
+    }
+
+    /// D146: true when `from`/`to` are close enough that stroking a dashed line between them
+    /// is degenerate (zero/near-zero length) -- the exact geometry that crashed under Metal's
+    /// debug draw-call validation. Small epsilon rather than exact equality: `from` carries the
+    /// builder's live fractional sub-tile position while `to` is tile-center-snapped, so a
+    /// builder that has arrived but isn't dead-center on its own target tile could differ by a
+    /// sub-pixel amount that's still not worth drawing a visible line for. Pure/static so it's
+    /// directly testable without an `NSView`/`CGContext`, matching `Bolo 2026Tests`'s D144/D145
+    /// pattern of extracting pure logic out of view code rather than testing the view itself.
+    static func isDegenerateBuilderIndicatorLine(from: CGPoint, to: CGPoint) -> Bool {
+        abs(from.x - to.x) <= 0.5 && abs(from.y - to.y) <= 0.5
     }
 
     // MARK: - Keyboard input (D88 §2)
