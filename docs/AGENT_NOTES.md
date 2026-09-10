@@ -1946,3 +1946,65 @@ New scope, Jerod's own ask: ship a small default map bundled with the app so hos
 without requiring a `.map` file import first. Coding GO'd as **D132** (see docs/PLAN.md) —
 freshly authored, small, not derived from `docs/U.S.A.map` (never touch, Director's own
 untracked artifact). Dispatching IMPLEMENTER now.
+
+### [IMPLEMENTER] 2026-09-10 — D132 pre-brief: bundled default map
+
+**`encodeBMap` check:** already exists (`Sources/BoloKit/BMap.swift:736`, landed Wave 6.4b/G-1,
+predates this session) — `serversavemap()`'s inverse of `decodeBMap`, byte-for-byte, already
+round-trip-tested by `BMapDecodeTests.swift`. No new codec work needed.
+
+**Map contents (freshly authored, not derived from `docs/U.S.A.map`):**
+- Terrain: `TerrainGrid.mapDefault()` verbatim — sea inside the [10,245]² mine zone, mined-sea
+  border ring, no custom runs. Confirmed `serverNormalizeSiteTerrain(.sea) == .grass0`
+  (`BMap.swift:638-641`), so pills/bases sitting on default sea terrain load onto grass after
+  `serverPostProcessLoadedMap` runs — no hand-authored terrain features needed to make pill/base
+  sites valid. This keeps map authoring to plain data (starts/pills/bases arrays), not a
+  hand-drawn island.
+- 4 `Start`s, corners of the mine zone: (40,40) dir 4, (216,40) dir 12, (40,216) dir 4,
+  (216,216) dir 12 (dir units are 1/16 turn; exact heading isn't gameplay-critical for a v1 proof
+  map — precise "facing land" tuning is not claimed).
+- 2 `Pill`s at (128,60) and (128,196), armour 15 (full), speed 25 (raw byte, rescaled by
+  `serverPillSpeedRescaled` on load same as any imported map). Owner byte irrelevant —
+  `serverPostProcessLoadedMap` forces `playerNeutral` on load regardless of what's authored.
+- 2 `Base`s at (60,128) and (196,128), armour/shells/mines 90 each (max stock per
+  `BMapBaseInfo`'s doc comment).
+- All coordinates inside the seaRect/mine-zone bounds; scale matches "handful of starts, a
+  couple of pills/bases, mostly open/sea" per D132's text.
+
+**Bundling approach — judgment call, flagging explicitly:** D132 offered two options (build-time
+generator target à la `BoloGlyphs`/`BoloSounds`, or a one-time script/test emitting a checked-in
+binary resource). Chose a **third variant of the second option**: rather than a binary `.map`
+resource file added to the Xcode target's Copy Bundle Resources phase, the exact `encodeBMap`
+output bytes are embedded as a committed Swift `[UInt8]` literal in a new app-target source file
+(`Bolo 2026/Bolo 2026/DefaultMap.swift`), generated once via a throwaway `BoloKitTests` case that
+called `encodeBMap` and dumped the byte array as Swift source text (not kept as a permanent test
+— the map-authoring function it called is permanent, see below). Reasoning: the available Xcode
+MCP tooling in this session (`XcodeWrite`) writes text/source content and auto-adds it to the
+project; it has no exposed primitive for adding a binary file to a Copy Bundle Resources phase
+without direct `.pbxproj` editing, which is exactly the kind of manual project-file surgery this
+project's tooling has been avoiding elsewhere. The two are functionally identical at runtime —
+`decodeBMap` is called on the exact same byte sequence either way, satisfying D132's "loaded
+through the exact same decodeBMap → serverPostProcessLoadedMap path" requirement — the only
+difference is *where* those bytes live before `main()` (linked into the binary as Swift data vs.
+copied into the app bundle as a loose file read via `Bundle.main`). Flagging for PLANNER: if a
+real bundled-resource-file form is wanted specifically (e.g. so the map is user-inspectable/
+swappable post-build without a recompile), that needs either direct `.pbxproj` editing or a
+build-time generator target wired the same way D72's Run Script phase invokes `BoloGlyphs` —
+willing to redo it that way if ruled necessary, flagging rather than guessing since D132 named
+both forms as acceptable but this session's tooling only cleanly supports one of them.
+
+**Map-authoring function:** permanent, added to `Sources/BoloKit/BMap.swift` as
+`public func defaultBundledMapState() -> GameState` — kept in `BoloKit` (not app-target-only)
+since it's pure map data with no UI dependency, consistent with `mapDefault()`/other map-shape
+helpers already living there.
+
+**Wiring:** `HostGameView`'s `mapState`/`mapURL` initialized from the embedded bytes on
+`.onAppear` (SwiftUI's real "view appeared" hook, per D132 item 3) via the identical
+`decodeBMap` → starts-empty guard → `serverPostProcessLoadedMap` sequence
+`handleMapPickerResult` already runs, factored into a shared private helper so both paths share
+one code path (no duplicated logic to drift). `mapURL` stays `nil` for the bundled case (no real
+file URL) — the "Choose Map…" button's filename label only shows once a user overrides via the
+picker, unaffected.
+
+[TO: PLANNER] Proceeding to code against this pre-brief now; flagging the bundling-mechanism
+judgment call above for review rather than treating it as settled.
