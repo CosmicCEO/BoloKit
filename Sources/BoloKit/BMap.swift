@@ -741,12 +741,76 @@ public func serverPostProcessLoadedMap(_ state: inout GameState) {
 // to become valid, since `serverPostProcessLoadedMap` normalizes any site's terrain on load
 // (`serverNormalizeSiteTerrain(.sea) == .grass0`), the same as it would for any real imported map.
 
+/// A simple rectilinear approximation of Alabama's outline (D135 scope amendment), sized to
+/// this map's coordinate space: a rectangular main body, a corner notch on the southeast
+/// (echoing the Chattahoochee River border cut), and a narrow southward panhandle tail
+/// (echoing the coastal strip down to Mobile Bay). Approximated from general geographic
+/// knowledge, not sourced from any GIS/map data file (`docs/U.S.A.map` was never read).
+///
+/// Every existing start/pill/base coordinate is confirmed to fall inside this shape (see the
+/// D135 pre-brief in `docs/AGENT_NOTES.md`), so no site coordinates needed to move.
+private func isAlabamaSilhouette(x: Int32, y: Int32) -> Bool {
+    // Main rectangular body.
+    let mainBody = (x >= 30 && x <= 226 && y >= 30 && y <= 226)
+    // Southeast corner notch: trimmed short of the (216, 216) start/pill/base sites so land
+    // coverage there is untouched.
+    let southeastNotch = (x >= 222 && x <= 226 && y >= 205 && y <= 226)
+    // Coastal panhandle: a narrow tail extending south past the main body, toward the coast.
+    let panhandle = (x >= 100 && x <= 156 && y >= 226 && y <= 245)
+    return (mainBody && !southeastNotch) || panhandle
+}
+
+/// Draws a simple straight-line `terrain` feature between two points via a basic Bresenham
+/// walk, clamped to in-bounds grid cells. Used for D135's second scope amendment (roads/rivers)
+/// — a coarse approximation, not a curved/authentic river or highway course.
+private func drawLine(from a: (x: Int32, y: Int32), to b: (x: Int32, y: Int32), terrain: Terrain, into grid: inout TerrainGrid) {
+    var x0 = a.x, y0 = a.y
+    let x1 = b.x, y1 = b.y
+    let dx = abs(x1 - x0), sx: Int32 = x0 < x1 ? 1 : -1
+    let dy = -abs(y1 - y0), sy: Int32 = y0 < y1 ? 1 : -1
+    var err = dx + dy
+    while true {
+        grid[Int(x0), Int(y0)] = terrain
+        if x0 == x1 && y0 == y1 { break }
+        let e2 = 2 * err
+        if e2 >= dy { err += dy; x0 += sx }
+        if e2 <= dx { err += dx; y0 += sy }
+    }
+}
+
 /// Builds the small default map's `GameState`: 4 starts near the mine-zone's corners, 2 pills, 2
 /// bases, otherwise stock `mapDefault()` terrain. Used both to generate the bundled map bytes
 /// (see `Bolo 2026/Bolo 2026/DefaultMap.swift`) and directly in tests.
 public func defaultBundledMapState() -> GameState {
     var state = GameState()
     state.terrain = .mapDefault()
+    // D135: carve a connected landmass so starts/pills/bases sit on land and tanks can drive
+    // between them, instead of `mapDefault()`'s all-sea grid producing isolated single-tile
+    // grass islands at each site after normalization. Shaped as an Alabama silhouette per D135's
+    // scope amendment rather than a plain rectangle/blob.
+    for y in Int32(30)...Int32(245) {
+        for x in Int32(30)...Int32(226) {
+            if isAlabamaSilhouette(x: x, y: y) {
+                state.terrain[Int(x), Int(y)] = .grass0
+            }
+        }
+    }
+    // D135 second amendment: a coarse road network connecting the 4 "city" start sites and 2
+    // pill/base rows (approximating a highway grid), plus 3 major rivers with simple straight-
+    // line courses (approximating the Tennessee, Alabama, and Tombigbee rivers' general
+    // directions). All coordinates are rough approximations from general geographic knowledge,
+    // not sourced from any GIS/map/atlas data file — timeboxed per PLANNER's note, not claiming
+    // real-world accuracy. Site tiles (starts/pills/bases) are re-normalized after this by
+    // `serverPostProcessLoadedMap` regardless of what terrain these lines paint under them.
+    drawLine(from: (40, 40), to: (216, 40), terrain: .road, into: &state.terrain)
+    drawLine(from: (40, 216), to: (216, 216), terrain: .road, into: &state.terrain)
+    drawLine(from: (40, 40), to: (40, 216), terrain: .road, into: &state.terrain)
+    drawLine(from: (216, 40), to: (216, 216), terrain: .road, into: &state.terrain)
+    drawLine(from: (128, 60), to: (128, 196), terrain: .road, into: &state.terrain)
+    drawLine(from: (60, 128), to: (196, 128), terrain: .road, into: &state.terrain)
+    drawLine(from: (30, 55), to: (226, 70), terrain: .river, into: &state.terrain)   // Tennessee
+    drawLine(from: (90, 120), to: (190, 210), terrain: .river, into: &state.terrain) // Alabama
+    drawLine(from: (60, 60), to: (110, 226), terrain: .river, into: &state.terrain)  // Tombigbee
     state.starts = [
         Start(x: 40, y: 40, dir: 4),
         Start(x: 216, y: 40, dir: 12),
