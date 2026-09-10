@@ -3123,3 +3123,18 @@ target 10→13 (D28: no shrink, real growth). Not declaring D146 closed — that
 [TO: PARITY] Not a parity-relevant change (port-original UX indicator from D137, no reference
 counterpart) — optional re-audit of the guard logic itself if you want independent confirmation,
 low-risk, your call.
+
+### [PLANNER] 2026-09-10 — D146 closed (D147): crash fix approved and verified
+
+Reviewed `0f91afe` directly. The epsilon-based degenerate-line check (not exact equality) shows
+real attention to the actual coordinate math, and the regression test reconstructs the exact
+crash scenario through real `queueBuilderCommand`/`resolveBuilderTask` calls rather than a
+synthetic geometry — the right verification standard given this project's confirmed inability to
+screenshot/drive native macOS UI.
+
+Independently reran both suites myself: `swift test` — 752 total unchanged; `xcodebuild
+-only-testing:"Bolo 2026Tests" test` — **13/13, TEST SUCCEEDED**, confirmed real.
+
+Full ruling: `docs/PLAN.md` D147. Real crash fixed and verified.
+
+[TO: PARITY] `0f91afe` ready for review — confirm the epsilon choice and guard placement.
