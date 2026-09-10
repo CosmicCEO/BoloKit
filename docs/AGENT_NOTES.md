@@ -2008,3 +2008,71 @@ picker, unaffected.
 
 [TO: PLANNER] Proceeding to code against this pre-brief now; flagging the bundling-mechanism
 judgment call above for review rather than treating it as settled.
+
+### [IMPLEMENTER] 2026-09-10 — D132 completion report
+
+**Implemented against the pre-brief above, commit `35d4769`.**
+
+- `Sources/BoloKit/BMap.swift`: added `defaultBundledMapState()` — 4 starts (mine-zone corners),
+  2 pills, 2 bases, over stock `mapDefault()` terrain. Freshly authored, not derived from
+  `docs/U.S.A.map` (never read that file this session).
+- `Bolo 2026/Bolo 2026/DefaultMap.swift` (new): embeds the exact `encodeBMap` byte output (50
+  bytes) as a `let defaultMapFileBytes: [UInt8]` literal, generated once via a throwaway
+  `BoloKitTests` case that was deleted after capturing output (not kept as permanent test scope —
+  see the permanent regression test added instead, below).
+- `Bolo 2026/Bolo 2026/HostGameView.swift`: factored `handleMapPickerResult`'s decode/post-process/
+  validate logic into a shared `applyDecodedMap(bytes:)`, called both from the file-picker path
+  (unchanged behavior) and from a new `.onAppear { if mapState == nil { applyDecodedMap(bytes:
+  defaultMapFileBytes) } }` — hosting is now immediately available without touching the picker.
+  `mapURL` stays `nil` for the bundled case (no real file to show as a filename).
+
+**Bundling-mechanism judgment call (flagged in pre-brief, repeating here for visibility):** used a
+committed Swift byte-array literal in an app-target source file, not a binary resource in Copy
+Bundle Resources. Functionally equivalent at runtime (same `decodeBMap` call on the same bytes)
+but not literally "a file in the app bundle." Confirmed the project's `Bolo 2026.xcodeproj` uses
+`PBXFileSystemSynchronizedRootGroup` — dropping `DefaultMap.swift` into the folder was picked up
+automatically by `xcodebuild`, no manual `.pbxproj` target-membership edit needed for this form.
+Flagging again: if PLANNER wants a literal bundled-resource-file instead, that needs either direct
+`.pbxproj` Copy-Bundle-Resources editing or a build-time generator target (D72 pattern) — neither
+attempted this session.
+
+**New tests (permanent), `Tests/BoloKitTests/BMapDecodeTests.swift`:**
+- `defaultBundledMapEncodesToTheEmbeddedAppBundleBytes` — pins `encodeBMap(defaultBundledMapState())`
+  to the exact literal embedded in `DefaultMap.swift`, so any future change to
+  `defaultBundledMapState()` without regenerating the app-target literal fails loudly here instead
+  of silently drifting.
+- `defaultBundledMapSurvivesDecodeAndServerPostProcess` — round-trips through `decodeBMap` +
+  `serverPostProcessLoadedMap`, asserting 4 starts / 2 pills / 2 bases survive, ownership is forced
+  to `playerNeutral`, and start tiles are sea — proving the bundled map is actually hostable, not
+  just well-formed bytes.
+
+**Build:** `swift build` clean. `xcodebuild -project "Bolo 2026.xcodeproj" -scheme "Bolo 2026"
+-destination "platform=macOS" build` — **BUILD SUCCEEDED** (real build, no MCP toolchain hang this
+session).
+
+**Tests (D28, before/after):** 738 → 740 (539 BoloKitTests [+2], 201 DifferentialTests [same
+count]). Both suites run standalone and together. One DifferentialTests suite run showed a
+`hostGameEngine…` timing-sensitive flake (a different test each of two repeated full-suite runs:
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`, then
+`hostGameEngineSubmitPauseResumeServerTogglesPauseState`) — both pass reliably in isolation
+(3/3 each), consistent with this project's documented toolchain/timing instability under full-suite
+parallel load (`project_xcode_toolchain_hang.md`), not caused by this session's changes (neither
+touches `HostGameEngine`/networking). Not chasing further per that project note's own guidance to
+reproduce with a standalone binary before assuming a production bug — flagging instead of silently
+re-running until green.
+
+**Files touched:** `Sources/BoloKit/BMap.swift`, `Bolo 2026/Bolo 2026/DefaultMap.swift` (new),
+`Bolo 2026/Bolo 2026/HostGameView.swift`, `Tests/BoloKitTests/BMapDecodeTests.swift`,
+`docs/AGENT_NOTES.md`. (Left `Bolo 2026.xcodeproj/project.pbxproj`'s incidental
+alphabetical-resort diff from `xcodebuild` unstaged — no functional change, not part of this
+commit.)
+
+[TO: PLANNER] D132 implemented and tested; not declaring it "done" per role boundaries. Two things
+need a ruling: (1) is the embedded-Swift-literal bundling form acceptable, or is a literal
+bundled-resource-file required (would need `.pbxproj` editing or a D72-style generator target);
+(2) the known `HostGameEngineTests` full-suite flake (unrelated to this change, pre-existing
+per the project's own toolchain-instability note) — worth its own tracked item if not already one.
+[TO: PARITY] `defaultBundledMapState()`'s map data has no C-oracle equivalent to trace against
+(it's new, not ported) — the applicable review is the `HostGameView.swift` wiring (shared
+`applyDecodedMap` helper) and whether the bundled map round-trips correctly through
+`decodeBMap`/`serverPostProcessLoadedMap`, both covered by the two new tests above.
