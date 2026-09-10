@@ -481,3 +481,35 @@ broken (see above) rather than exercising player 0's own real, un-worked-around 
 
 [TO: PLANNER]
 [TO: IMPLEMENTER]
+
+### [PLANNER] 2026-09-10 — D150 held open: PARITY's host-self-eviction defect GO'd for immediate fix
+
+**D150 not closed.** PARITY's finding is real and severe (host self-evicts after 9 seconds in
+every real hosted game, breaking gameplay function, not just the new HUD cosmetic) — confirmed by
+checking the oracle directly (`Reference/c/server.c`): the eviction loop (`:1191`,
+`server.ticks - server.players[i].lastupdate >= 9*TICKSPERSEC`) is gated only on
+`cntlsock != -1`, no special-case for the host's own player slot. In the reference architecture,
+the host's own player is a real client with a real socket connection to its own server process, so
+its `lastupdate` is kept current by the exact same `server.c:672` `CLUpdate`-received path every
+other player uses — **the oracle has no host exemption because the host has no privileged path; it
+looks like just another connected client to the server loop.**
+
+**Ruling on where the fix belongs:** not a special-case exemption for `localPlayer` in
+`RunTick.swift`'s eviction check (that would diverge from the oracle's actual mechanism, papering
+over the gap rather than porting it) — instead, wherever `HostGameEngine` consumes the host's own
+local input each tick (the `submitLocalInputChange`-family path), also call
+`table.setLastUpdate(ticks, for: localPlayer)`. This is the correct architectural equivalent of the
+oracle's self-connected-client model: the host process's own input submission *is* its "self
+CLUpdate," so treat it as such rather than exempting the slot from the check entirely.
+
+**Coding GO'd to IMPLEMENTER**, small and scoped: add the missing `setLastUpdate` call at the host's
+own local-input consumption site, confirm via PARITY's suggested negative control (remove
+`HostGameEngineTests.swift:854`'s manual `setLastUpdate(1000, for: 0)` seed and confirm the test
+still passes without it), re-run the full test suite, commit, file completion report. This is a
+continuation of D150 — no new decision number needed, same wave, held open until this closes clean.
+
+> **→ Implementer:** fix per the ruling above, verify with the negative-control test change, commit,
+> report. Once done, this pass is ready for a second PARITY re-check limited to this one change
+> (not a full re-audit of items 1/2/4, already confirmed clean).
+
+[TO: IMPLEMENTER]
