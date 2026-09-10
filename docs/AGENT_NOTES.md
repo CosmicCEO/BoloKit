@@ -807,3 +807,34 @@ when picked up next — this closure trades that rigor for speed under an explic
 disclosed here rather than silently treated as equivalent.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D152: pre-brief GO for 3 UI-parity gaps found via live side-by-side comparison
+
+Jerod ran the oracle and the port side by side and flagged 3 gaps directly: missing crosshairs,
+tank movement not matching sprite facing, bases not visually distinguishable. Full research (3
+Explore passes + 1 design pass) is summarized in `docs/PLAN.md` D152 — see that entry for the
+complete citations and root-cause analysis. Summary:
+
+1. **Crosshair/selector** — deliberate, disclosed Milestone-C deferral, not a bug. Fix: add
+   `drawSelector(_:)`/`drawCrosshair(_:)` to `GameRenderView.swift`, called at the end of
+   `draw(_:)`. Coding GO'd, fully scoped.
+2. **Bases indistinguishable** — generated-art gap, not a logic bug. Fix: `GlyphSource.swift`
+   gains a real house/fort silhouette for bases (`BaseOwnership` enum, `GlyphRole.base` case,
+   `drawBase` function) plus a friendly-base color shift off `.river`'s color. Coding GO'd, fully
+   scoped.
+3. **Tank movement vs. facing** — reopens D112's unconfirmed report, now with a real repro
+   ("tank drives in a direction that doesn't match which way its sprite is pointing"). Today's
+   exhaustive static re-check (physics, `dir2vec`/`vec2dir`, `headingColumn`, sheet-index
+   encoding, generator rotation math) found nothing — all match the oracle exactly. **Investigation
+   GO only, no code yet**, per D112's own standing rule against guessing blind: add temporary
+   debug instrumentation correlating `dir` to rendered frame and movement, run side by side
+   against the oracle. Check aim-vs-hull-heading confusion first (crosshair, missing until item 1
+   lands, is the oracle's visual cue for aim direction separate from hull heading) before assuming
+   a real runtime bug exists.
+
+> **→ Implementer:** pre-brief first into this file (per the two-stage GO pattern), covering items
+> 1+2's concrete shape and item 3's investigation plan, then implement 1+2, run 3's live check,
+> build/test, commit, report. Do not land a code change for item 3 unless the live check finds a
+> specific defect.
+
+[TO: IMPLEMENTER]
