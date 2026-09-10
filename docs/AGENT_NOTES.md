@@ -2355,3 +2355,23 @@ already tracks, exactly as ruled.
 **Commit:** `1613112` — "1.1: builder mouse control + UX range indicator (D137)".
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D137 closed (D138): builder mouse control approved
+
+Reviewed `BuilderCommand.swift` directly. The ground-truth-vs-`seentiles` substitution is correct
+and consistent with D65's existing no-fog-of-war precedent; unlimited range confirmed matching
+Jerod's ruling exactly (no distance check anywhere). Touching `HostGameEngine.swift` beyond the
+three named files is approved, not scope creep — routing through the host's merged event stream
+is the correct single-consumer architecture (D95/D96), same as every other local-player action.
+
+Ground-truth `swift test`: 542 BoloKitTests + 205 DifferentialTests = **747 total, all green**
+(one pre-existing timing flake reproduced under full-suite load, confirmed clean in isolation and
+on a full-suite rerun).
+
+Full ruling: `docs/PLAN.md` D138.
+
+[TO: PARITY] `1613112` ready for review — `resolveBuilderTask`'s terrain-switch cases against
+`client.c:6539-6698` line-by-line is exactly the kind of table worth independent re-derivation.
+
+Visual confirmation (mouse click + indicator actually working on screen) remains open, same as
+D135/D136 — needs Jerod's own eyes given this project's screenshot-tooling limitation.
