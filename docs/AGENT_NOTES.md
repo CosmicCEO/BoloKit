@@ -3171,3 +3171,41 @@ ownership need new `GameState` tracking or does something already exist? One dis
 non-conflicting, split if not.
 
 Full ruling and plan doc: `docs/PLAN.md` D148, `/Users/jerodprice/.claude/plans/discover-claude-skills-for-gentle-church.md`.
+
+### [IMPLEMENTER] 2026-09-10 — D148(A) pre-brief: cannon-fire + tree-harvest sound wiring
+
+**Scope:** D148 item (A) only — wire `tankshot`/`tree` sounds. Root cause and file locations were
+already fully identified in D148's dispatch text; no research subagents used (cost-conscious
+instruction), confirmed directly by reading the named files.
+
+**Fire sites confirmed:**
+- `Sources/BoloKit/TankLocalTick.swift:858-870`'s shell-fire branch inside `tankLocalTick` (the
+  single local-player fire site; `tankshotsound`/`SRShoot` broadcast bookkeeping is a `BoloNet`
+  wire concern, out of scope here) — new `onTankShot: () -> Void = {}` parameter, called right
+  after `state.players[player].shells.append(shell)`.
+- `Sources/BoloKit/BuilderTick.swift:233-250`'s `grabTrees(at:state:onMineExplosion:)` — called
+  only from `arriveAtTarget`'s `.getTree` case (line 589), the actual tree-harvest-completion
+  point (ported from `recvclgrabtrees()`, server.c:2347). New `onTreeHarvest: (Pointi) -> Void =
+  { _ in }` parameter, fired only in the `.forest`/`.minedForest` success branches (mirroring how
+  `onMineExplosion` already only fires in the mined-terrain failure branches of this same
+  function) — not fired in the `default` (no-op) case, since nothing was actually harvested.
+
+**Near/far distinction:** confirmed via `Reference/c/client.c:1368-1373` (tankshot) and
+`Reference/c/server.c` grab-trees response handler (~line 1644-1649, `kTreeSound`/`kFarTreeSound`)
+— both gate on `client.fog[y][x] > 0`. `SoundPlayer.swift`'s own header (D125) already establishes
+this project's answer: fog-of-war is out of v1 scope (D65, "treat every tile as fully visible"),
+and every sound wired via these callbacks is inherently the local player's own on-screen action,
+never a remote relay — so, exactly like the existing `explosion`/`superboom` wiring, only the near
+variant is wired; no new distance logic invented. Noting this matches D148's own guidance to just
+wire near and flag the gap rather than build new logic.
+
+**Threading plan:** `onTankShot`/`onTreeHarvest` added as new trailing default-`nil`-behavior
+(no-op) parameters on `tankLocalTick`, `grabTrees`, `arriveAtTarget`, `gotoTick`, `builderTick`,
+and `runTick`, then wired in `GameSession.swift` alongside the existing 5 call sites (`play
+("tankshot")` / `play("tree")`). Every existing call site keeps compiling unchanged (all new
+params default). No `GameState` changes, no wire-protocol changes.
+
+**Test plan:** extend existing BoloKitTests coverage for `tankLocalTick` shell-fire and
+`builderTick`/`arriveAtTarget` `.getTree` completion with assertions that the new callbacks fire
+exactly when a shell is actually appended / trees are actually gained, reusing existing test
+patterns in `Tests/BoloKitTests` rather than new infrastructure.
