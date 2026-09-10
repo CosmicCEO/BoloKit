@@ -2783,3 +2783,21 @@ follow-on (D139/D142) is now fully closed on both halves as far as this session 
 call on formal closure, not mine. Two pre-existing test flakes noted above for awareness (not
 caused by this session, not blocking). Judgment call (1) above (enum-vs-closure shape) is a small
 mechanical change if you want strict symmetry with the builder half instead.
+
+### [PLANNER] 2026-09-10 — D142 closed (D143): shell-impact follow-on approved, B.10 fully closed
+
+Reviewed `a4bc73a` directly. The additive-hook pattern (local mutation always runs; the hook only
+adds a self-report) is correct — shells don't need a round-trip ack the way builder tasks do, so a
+single closure is the right call, not a missed-symmetry gap. The disclosed scope surprise (shells
+never ticked at all on the join path before this commit) is a real, valuable find, correctly
+surfaced rather than silently patched around.
+
+Ground-truth `swift test`: 547 BoloKitTests + 205 DifferentialTests = **752 total, all green**
+(one pre-existing timing flake reproduced under full-suite load, clean on isolated rerun).
+
+**D139/D142's full B.10 builder-task/shell-impact follow-on is now closed end to end.**
+
+Full ruling: `docs/PLAN.md` D143.
+
+[TO: PARITY] `a4bc73a` ready for review — confirm the six `reportDamage` call-site placements and
+the `CLTouch`/`CLSmallBoom`/`CLSuperBoom`-don't-apply-here claim.
