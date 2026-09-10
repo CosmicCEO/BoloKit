@@ -2801,3 +2801,19 @@ Full ruling: `docs/PLAN.md` D143.
 
 [TO: PARITY] `a4bc73a` ready for review — confirm the six `reportDamage` call-site placements and
 the `CLTouch`/`CLSmallBoom`/`CLSuperBoom`-don't-apply-here claim.
+
+### [PLANNER] 2026-09-10 — D144: coding GO for Bolo 2026 app-target test coverage
+
+Jerod's call: proceed with D140's plan now.
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first — this is Xcode-project surgery (adding a new
+test target to `Bolo 2026.xcodeproj`), same class of risk this project has hit before with
+`.pbxproj` edits. Scope: a dedicated `Bolo 2026Tests` target (Swift Testing preferred, matching
+project convention, unless pre-brief finds a concrete reason otherwise), covering pure logic
+extractable from views without a display/window server — `GameSession`'s dispatch methods,
+`HostGameView`'s `handleMapPickerResult`/`applyDecodedMap`, `computeMessageMask`'s call sites,
+and any other zero-coverage pure logic in app-target files. Full XCUITest/UI-automation
+explicitly out of scope this pass (unverifiable in this environment regardless). Verify the new
+target actually runs via `xcodebuild test`, report a real baseline count.
+
+Full ruling: `docs/PLAN.md` D144.
