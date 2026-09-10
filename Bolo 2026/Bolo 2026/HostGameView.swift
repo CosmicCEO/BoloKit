@@ -180,17 +180,30 @@ struct HostGameView: View {
         applyDecodedMap(bytes: Array(data))
     }
 
+    /// D144: outcome type for `decodeAndPostProcessMap` below -- pulled out of `applyDecodedMap`
+    /// so the actual decode/post-process/validate logic is a true, `@State`-free pure function,
+    /// directly unit-testable. (Discovered empirically this pass, not assumed: a `HostGameView`
+    /// instantiated directly in a test and called with `applyDecodedMap` alone did NOT reliably
+    /// persist `@State` writes back to the caller's own copy of the struct -- `@State`'s storage
+    /// depends on SwiftUI's environment installation, not just a shared reference-type box, so
+    /// direct-construction testing of `@State` mutation silently no-ops instead of crashing. Every
+    /// `GameSessionTests` case, which touches zero `@State`, passed cleanly by contrast --
+    /// isolating the cause to `@State` specifically, confirmed by a real `xcodebuild test` run
+    /// showing 4/4 `GameSessionTests` green against 6/6 originally-written `HostGameViewTests`
+    /// failing on stale-nil reads.)
+    enum MapLoadOutcome {
+        case success(GameState)
+        case failure(String)
+    }
+
     /// Shared by both the bundled default map (D132) and a user-imported file (D131): decode,
     /// server-post-process, and validate, in the exact same order either way. Factored out so the
-    /// two call sites can't silently drift on which steps they run.
-    private func applyDecodedMap(bytes: [UInt8]) {
-        mapErrorMessage = nil
-        mapState = nil
-
+    /// two call sites can't silently drift on which steps they run. Pure -- no `@State`, no
+    /// `self` -- see `MapLoadOutcome`'s own comment above for why that separation matters.
+    static func decodeAndPostProcessMap(bytes: [UInt8]) -> MapLoadOutcome {
         var decoded = GameState()
         guard decodeBMap(bytes, into: &decoded) else {
-            mapErrorMessage = "Incompatible Map Version"
-            return
+            return .failure("Incompatible Map Version")
         }
         // D131: this is the host's own map-load path -- `serverloadmap()`'s counterpart
         // (`Reference/c/bmap_server.c:21-252`), not `clientloadmap()`'s. Forces pill/base owner
@@ -207,11 +220,22 @@ struct HostGameView: View {
         // time the host's own tank dies, not on load. Catching it here, at the same "can't use
         // this map" moment as the other two failure messages above, not deferred to a crash.
         guard !decoded.starts.isEmpty else {
-            mapErrorMessage = "Map Has No Start Points"
-            return
+            return .failure("Map Has No Start Points")
         }
 
-        mapState = decoded
+        return .success(decoded)
+    }
+
+    private func applyDecodedMap(bytes: [UInt8]) {
+        mapErrorMessage = nil
+        mapState = nil
+
+        switch Self.decodeAndPostProcessMap(bytes: bytes) {
+        case .failure(let message):
+            mapErrorMessage = message
+        case .success(let decoded):
+            mapState = decoded
+        }
     }
 
     private func startHosting() async {

@@ -21,6 +21,20 @@
                ReferencedContainer = "container:Bolo 2026.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "621536A430531BF40087F86E"
+               BuildableName = "Bolo 2026Tests.xctest"
+               BlueprintName = "Bolo 2026Tests"
+               ReferencedContainer = "container:Bolo 2026.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -29,6 +43,18 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "621536A430531BF40087F86E"
+               BuildableName = "Bolo 2026Tests.xctest"
+               BlueprintName = "Bolo 2026Tests"
+               ReferencedContainer = "container:Bolo 2026.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
