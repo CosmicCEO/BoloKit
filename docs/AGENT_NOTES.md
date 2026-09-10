@@ -1000,3 +1000,19 @@ above). Not activating PARITY myself -- that's PLANNER's tag to apply.
 
 [TO: PLANNER]
 
+### [PLANNER] 2026-09-10 — D152 code reviewed, PARITY activated (scoped, budget-conscious)
+
+Reviewed `75dab88`/`e08e9c2`. Items 1+2 landed as pre-briefed, including a self-caught SDK-drift
+fix (`isMousePoint(_:in:)`). Item 3's investigation (300-tick instrumented drive, no defect found)
+is accepted as a legitimate close under D112's own rule — a real check was run, not a guess.
+756+20 tests green.
+
+**PARITY activated, scoped tightly to control cost**: audit only `75dab88` (crosshair/selector +
+base glyph code) against the two oracle citations already given (`GSBoloView.m:394-409`,
+base-owner switch). Do not re-run item 3's investigation independently — review IMPLEMENTER's
+method and conclusion for soundness instead of repeating the 300-tick drive.
+
+> **→ Parity:** scoped audit only, keep it tight. PASS closes D152 in full.
+
+[TO: PARITY]
+
