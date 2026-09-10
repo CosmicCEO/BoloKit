@@ -737,3 +737,28 @@ the code described, no phantom-bug or off-by-line issues.
 D150 closes in full (items 1-4 plus the host-self-eviction fix) as far as PARITY is concerned.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D150 CLOSED — PARITY PASS (`72a27cf` auditing `d72e70f`)
+
+**D150 closed.** All 4 original visual-parity findings (Trees gauge, base resource status bars,
+player-lag color indicator, label-offset fix) plus the host-self-eviction defect found and fixed
+mid-wave are now PARITY-confirmed clean. Full commit chain: pre-brief `f1d1059` → code `5c3c605` →
+completion report `571f593` → PARITY FAIL `5f2e073`/`d4dc91f` → PLANNER hold-open ruling `2d80924`
+→ fix `d72e70f` → completion report `cbca3e9` → PLANNER review `cebedb1` → **PARITY PASS `72a27cf`**.
+
+Satisfies Jerod's active session goal ("gameplay visuals shall match the oracle in look, feel, and
+function") for the scope this wave covered — the fresh visual-parity sweep that opened this cycle
+found exactly these 4 gaps and no others across the full current rendering/HUD surface
+(`GameRenderView.swift`, `GameHUDViews.swift`, `PlayerStatusView.swift`, `AlliancePanelView.swift`);
+all 4 are now closed. The disclosed C.2 fog-of-war gap remains a separately-ruled, accepted v1-shape
+gap (D65/D130), not reopened by this wave.
+
+**Follow-up backlog item logged, not blocking:** the two pre-existing exact-tick-value race tests
+made more flaky by the eviction fix's extra per-tick write (`hostGameEngineSubmitPauseResumeServerTogglesPauseState`,
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`) need a tolerance-window
+or resync fix at some future pass — not part of this wave's scope.
+
+756 tests green (551 BoloKitTests + 205 DifferentialTests), real `xcodebuild` build confirmed
+during D150's implementation pass. No open Q/D-log item currently blocks further work.
+
+[TO: PLANNER]
