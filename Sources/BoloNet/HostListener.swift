@@ -228,6 +228,11 @@ private func runJoinHandshake(
 
         applyJoin(player: player, name: joinPreamble.name, address: address, rejoin: rejoin, state: &state)
         await table.setConnection(connection, for: player)
+        // D150(3) discovered-defect fix: `server.c:844`'s "initialize player" block seeds
+        // `lastupdate = server.ticks` at the moment of accept, same as the CLUpdate-path
+        // fix in `HostDgramListener.swift` -- without this, a freshly-joined player is
+        // born already maximally "stale" until their first dgram packet arrives.
+        await table.setLastUpdate(state.ticks, for: player)
         // server.c:844's literal seed -- the TCP connection's own address,
         // port included (usually UDP-wrong; T-3 corrects it on the first
         // real UDP packet, `HostDgramListener.swift`). A non-IPv4 peer

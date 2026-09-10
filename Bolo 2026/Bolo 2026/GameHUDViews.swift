@@ -72,6 +72,12 @@ extension BuilderCommandKind: CaseIterable {
 /// D148(B): shell/mine/armor gauges, mirroring the reference's `playerShellsStatusBar`/
 /// `playerMinesStatusBar` (`GSXBoloController.m:278-279,2554-2555`) and base ammo bars
 /// (`~2673-2674`). Pure display of existing `GameState` fields -- no new simulation state.
+///
+/// D150(1)/(2): extended with the reference's 4th player gauge (`playerTreesStatusBar`,
+/// `:2557-2558`) and its separate "nearest allied base within 8 tiles" cluster
+/// (`baseArmourStatusBar`/`baseShellsStatusBar`/`baseMinesStatusBar`, `:2652-2680`) -- see the
+/// D150 pre-brief in `docs/AGENT_NOTES.md` for the full trace against the reference's `dist`/
+/// mutual-alliance scan.
 struct ResourceGaugesPanel: View {
     let session: GameSession
 
@@ -79,20 +85,49 @@ struct ResourceGaugesPanel: View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
             let snapshot = session.state
             let localPlayer = snapshot.localPlayer
-            // D148(B) (advisor-flagged): `mines` lives per-player (`state.players[localPlayer]`,
+            // D148(B) (advisor-flagged): `mines`/`trees` live per-player (`state.players[localPlayer]`,
             // not `state.local`, per D105/D106), and this panel polls from first frame -- including
             // `#Preview`'s demo state and any moment `localPlayer` isn't a valid index yet. Guard
             // it the same way `GameSession` itself does everywhere else, rather than trapping like
             // D146's crash.
             let mines = snapshot.players.indices.contains(localPlayer)
                 ? snapshot.players[localPlayer].mines : 0
+            let trees = snapshot.players.indices.contains(localPlayer)
+                ? snapshot.players[localPlayer].trees : 0
+            let base = Self.nearestBase(snapshot: snapshot)
             VStack(alignment: .leading, spacing: 8) {
                 gauge(label: "Shells", value: Int(snapshot.local.shells), max: maxShells, color: .orange)
                 gauge(label: "Mines", value: mines, max: maxMines, color: .purple)
                 gauge(label: "Armor", value: Int(snapshot.local.armour), max: maxArmour, color: .green)
+                gauge(label: "Trees", value: trees, max: maxTrees, color: .brown)
+                gauge(label: "Base Armor", value: Int(base?.armour ?? 0), max: maxBaseArmour, color: .green)
+                gauge(label: "Base Shells", value: Int(base?.shells ?? 0), max: maxBaseShells, color: .orange)
+                gauge(label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
             }
             .padding(8)
         }
+    }
+
+    /// **D150(2):** ported from `GSXBoloController.m:2562-2563,2652-2669`'s `refresh:` timer --
+    /// nearest base (by real Euclidean distance, `mag2f`/`vector.c:82-84` is `sqrt(dot2f(...))`,
+    /// not squared) owned by a player mutually allied with the local player, within 8 tiles of
+    /// the local tank. `nil` (all-zero display, `:2675-2679`) when no such base exists, or the
+    /// local player index isn't valid yet (same guard style as `mines`/`trees` above).
+    static func nearestBase(snapshot: GameState) -> Base? {
+        guard snapshot.players.indices.contains(snapshot.localPlayer) else { return nil }
+        let tank = snapshot.players[snapshot.localPlayer].tank
+        var best: Base?
+        var bestDist: Float = 8.0
+        for candidate in snapshot.bases where candidate.owner != playerNeutral {
+            guard testAlliance(snapshot.localPlayer, Int(candidate.owner), players: snapshot.players)
+            else { continue }
+            let d = mag2f(sub2f(tank, make2f(Float(candidate.x) + 0.5, Float(candidate.y) + 0.5)))
+            if d < bestDist {
+                best = candidate
+                bestDist = d
+            }
+        }
+        return best
     }
 
     @ViewBuilder

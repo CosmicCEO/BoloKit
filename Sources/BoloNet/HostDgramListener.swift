@@ -176,6 +176,14 @@ public func processDgramPacket(
     case .applied(let player, let tank, let newSeq, let portUpdate, let relayTo):
         state.players[player].tank = tank
         await table.setSeq(newSeq, for: player)
+        // D150(3) discovered-defect fix: `server.c:672`'s `dgramserver()` sets
+        // `lastupdate = server.ticks` exactly here, on every accepted CLUpdate/tank packet.
+        // This call was missing entirely -- `HostSessionTable.lastUpdate` was a dead field,
+        // permanently 0, making `allTicksSinceLastUpdate` return `state.ticks` itself (ever-
+        // growing) for every player rather than real per-player staleness. See
+        // `docs/AGENT_NOTES.md`'s D150 pre-brief for the full trace, including the pre-
+        // existing `RunTick.swift` disconnect-eviction consumer this also silently fixes.
+        await table.setLastUpdate(state.ticks, for: player)
 
         var updatedAddress = senderAddress
         if let portUpdate {

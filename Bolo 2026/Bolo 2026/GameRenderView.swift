@@ -483,10 +483,16 @@ public final class GameRenderView: NSView {
     }
 
     /// Mirrors `drawLabel:at:withAttributes:` (`GSBoloView.m:453-463`) -- white text centered on
-    /// `point.x`, drawn just above the tank sprite. The reference computes
+    /// `point.x`, drawn flush against the sprite's own top edge. The reference computes
     /// `FWIDTH*16 - point.y*16 + 8` to flip into its own unflipped-view coordinate space; this
     /// view is already +y-down top-left-origin (D66/this file's own header), so no flip term is
-    /// needed here, just an upward offset above the sprite.
+    /// needed here.
+    ///
+    /// **D150(4) fix:** this used to compute `point.y*tile - tile - textSize.height`, an extra
+    /// `tile - 8` (8px at `tileSize == 16`) below the sprite's real top edge -- `drawSprite`
+    /// below draws the sprite's origin at `point.y*tile - 8`, not `point.y*tile - tile`. That
+    /// left a consistent 8px gap between the label and the sprite the reference doesn't have.
+    /// Corrected to anchor off the same `- 8` `drawSprite` uses.
     private static let labelAttributes: [NSAttributedString.Key: Any] = [
         .foregroundColor: NSColor.white,
         .font: NSFont.systemFont(ofSize: 11),
@@ -498,7 +504,7 @@ public final class GameRenderView: NSView {
         let textSize = string.size()
         let tile = CGFloat(tileSize)
         let x = CGFloat(point.x) * tile - textSize.width * 0.5
-        let y = CGFloat(point.y) * tile - tile - textSize.height
+        let y = CGFloat(point.y) * tile - 8 - textSize.height
         string.draw(at: CGPoint(x: x, y: y))
     }
 

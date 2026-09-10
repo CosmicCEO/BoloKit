@@ -99,13 +99,47 @@ struct PlayerStatusGrid: View {
         return .hostile
     }
 
+    /// **D150(3):** mirrors `setPlayerStatus:`'s connection-staleness coloring
+    /// (`GSXBoloController.m:2196-2210`) -- green under `TICKSPERSEC` ticks since the last real
+    /// update, yellow from 1x up to (not including) 3x, red background/white text at 3x or more
+    /// (thresholds compared with `>=`, matching the reference exactly). `nil` when
+    /// `GameSession.connectionAge` has no data for this slot (join/single-process path, or a
+    /// disconnected player never assigned an age) -- rendered as today's plain, untinted text.
+    private func staleness(forPlayer index: Int) -> LagTint? {
+        guard let age = session.connectionAge(for: index) else { return nil }
+        let threshold = UInt64(ticksPerSec)
+        if age >= threshold * 3 { return .dropped }
+        if age >= threshold { return .lagging }
+        return .fresh
+    }
+
+    private enum LagTint {
+        case fresh, lagging, dropped
+
+        var background: Color {
+            switch self {
+            case .fresh: return .green
+            case .lagging: return .yellow
+            case .dropped: return .red
+            }
+        }
+
+        var foreground: Color {
+            self == .dropped ? .white : .primary
+        }
+    }
+
     @ViewBuilder
     private func playerRow(_ index: Int, snapshot: GameState) -> some View {
         let player = snapshot.players[index]
         let status = status(forPlayer: index, snapshot: snapshot)
+        let lag = staleness(forPlayer: index)
         HStack {
             Circle().fill(status.tint).frame(width: 10, height: 10)
             Text(player.name.isEmpty ? "Player \(index)" : player.name)
+                .foregroundStyle(lag?.foreground ?? Color.primary)
+                .padding(.horizontal, 4)
+                .background(lag?.background.opacity(0.6) ?? Color.clear)
             Spacer()
             Text(status.label).foregroundStyle(.secondary)
             if session.canKickBan && index != snapshot.localPlayer {

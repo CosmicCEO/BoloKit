@@ -101,6 +101,15 @@ enum HostEngineEvent {
 
 public final class HostGameEngine: @unchecked Sendable {
     public private(set) var state: GameState
+
+    /// D150(3): the last `tick()`'s per-player connection-staleness snapshot, mirroring
+    /// `state`'s own "plain stored property read cross-thread by `GameSession`" precedent
+    /// immediately above -- lets the HUD's lag-color indicator read a synchronous value
+    /// instead of `await`ing into `table` (a `HostSessionTable` actor) from SwiftUI's
+    /// `TimelineView` render path. Set at the same point `tick()` already computes this
+    /// array for `runTick`'s own disconnect-eviction consumer (`:443` below) -- no new
+    /// computation, just retaining what was previously discarded after one use.
+    public private(set) var lastKnownTicksSinceLastUpdate: [UInt64] = []
     public let table: HostSessionTable
 
     private let listener: HostListener
@@ -441,6 +450,7 @@ public final class HostGameEngine: @unchecked Sendable {
         // from `pending` since it needs `table.disconnect`, not just a broadcast.
         var disconnectedPlayers: [Int] = []
         let ticksSinceLastUpdate = await table.allTicksSinceLastUpdate(currentTick: state.ticks)
+        lastKnownTicksSinceLastUpdate = ticksSinceLastUpdate
 
         runTick(
             state: &state,
