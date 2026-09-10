@@ -236,3 +236,85 @@ call; proceeding to code per Auto Mode.
 > to).
 
 [TO: PLANNER]
+
+### [IMPLEMENTER] 2026-09-10 — D150 completion report: Trees/base HUD gauges, lag-color indicator, label fix
+
+Coded per this session's own pre-brief (previous entry), committed `5c3c605` (code) on top of
+`f1d1059` (pre-brief). All 4 items implemented, plus the discovered `setLastUpdate` dead-wiring
+fix the pre-brief flagged as required for item 3 to work at all.
+
+**1. Trees gauge** — `ResourceGaugesPanel` (`GameHUDViews.swift`) now reads
+`snapshot.players[localPlayer].trees` against `maxTrees` (40), same bounds-guard pattern as the
+existing `mines` read. Matches `GSXBoloController.m:2557-2558`.
+
+**2. Base status bars** — `ResourceGaugesPanel.nearestBase(snapshot:)` (`static`, unit-testable)
+scans `snapshot.bases`, keeps the nearest non-neutral, mutually-allied-with-local-player base
+within 8.0 tiles (real Euclidean distance via `mag2f`/`sub2f`/`make2f`, matching
+`GSXBoloController.m:2562-2669`'s `dist`/scan exactly), then 3 more gauges against
+`maxBaseArmour`/`Shells`/`Mines` (90 each), `?? 0` fallback when `nil` (no base in range) — matches
+`:2675-2679`'s all-zero branch.
+
+**3. Player lag-color indicator** — `PlayerStatusGrid.playerRow` (`PlayerStatusView.swift`) now
+tints the name `Text`'s background green/yellow/red (white foreground only on red) via a new
+`staleness(forPlayer:)` helper reading `GameSession.connectionAge(for:)`, thresholds at
+`ticksPerSec`/`3*ticksPerSec` compared with `>=`, matching `GSXBoloController.m:2196-2210` exactly.
+`connectionAge` (new on `GameSession`) returns `hostEngine?.lastKnownTicksSinceLastUpdate[player]`,
+`nil` on the join/single-process path — **disclosed scope narrowing, same shape as the existing
+`canKickBan`:** join-side clients see no lag tint this pass. Flagged in the pre-brief, not new here.
+
+**Discovered-defect fix (required for item 3 to mean anything):** `HostSessionTable.setLastUpdate`
+was dead code — never called anywhere — so `allTicksSinceLastUpdate` always returned `state.ticks`
+itself (ever-growing from connect) for every player, not real staleness. This also silently broke
+`RunTick.swift`'s existing 9-second disconnect-eviction consumer of the same array (previously
+shipped, PARITY-passed code with a live bug PARITY's rendering/HUD-scoped sweep couldn't have
+caught). Fixed with 2 one-line calls mirroring `server.c:672`/`:844`'s real update points:
+`HostDgramListener.swift`'s `processDgramPacket` `.applied` case (next to the existing `setSeq`
+call) and `HostListener.swift`'s `runJoinHandshake` `.accepted` case (next to `setConnection`).
+`HostGameEngine` gained `public private(set) var lastKnownTicksSinceLastUpdate: [UInt64]`, set at
+the same point `tick()` already computed the (previously discarded-after-use) local value — same
+"plain stored property read cross-thread" precedent `state` itself already established.
+
+**4. Label-offset fix** — `GameRenderView.swift`'s `drawLabel` now computes
+`y = point.y*tile - 8 - textSize.height` (was `- tile -`), anchoring off the same `-8` `drawSprite`
+uses for its own origin, removing the extra 8px gap. One line, no other callers affected.
+
+**Verification:**
+- `swift build` — clean (`BoloKit`/`BoloNet`/`BoloGlyphs`/`BoloSounds`).
+- `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" build` — `BUILD
+  SUCCEEDED`, no `BoloGlyphs` Run Script hang this session (no substitution needed).
+- `swift test` — full suite, before/after both **756/756** (551 `BoloKitTests` + 205
+  `DifferentialTests`) — D28: no coverage shrink, and no test was added or needed to be for this
+  pass's own bind-only view code (no new pure logic beyond `nearestBase`/`staleness`, both trivial
+  enough that PLANNER/PARITY may want a unit test added on the next pass touching this file; not
+  added here to stay within this pass's own scope). One transient run reported a spurious
+  `DifferentialTests` failure with no failing test named in the summary; a clean re-run (twice)
+  showed all 756 passing — logged as flaky, not a regression, since it didn't reproduce and no
+  code in this diff touches anything `DifferentialTests` exercises differently across runs.
+- **No live GUI screenshot this session** (disclosed, not silently skipped): exercising all 4
+  features live needs a running multiplayer session with a nearby allied base, non-default tree
+  count, and a peer at a specific connection age — more setup than this pass's effort budget
+  covers. Substituted direct code review against the oracle (this report + the pre-brief) plus the
+  successful `xcodebuild` (proves the SwiftUI/AppKit code type-checks and links, not runtime
+  correctness) instead. Flagging for PARITY/PLANNER rather than claiming a screenshot happened.
+
+**Judgment calls, all disclosed above and in the pre-brief:** (a) join-side clients get no lag
+tint this pass (`connectionAge` → `nil`); (b) the `setLastUpdate` fix, beyond this pass's literal
+4-item scope but required for item 3 to be meaningful — flagged rather than silently folded in;
+(c) no live GUI verification this session, substituted per the bootstrap's own allowance for a
+different (not the toolchain-hang) reason: effort budget, not a hang.
+
+Ready for PARITY audit — not activating PARITY myself (PLANNER's `[TO: PARITY]` tag only).
+
+> **→ Planner:** all 4 D150 items done, plus the `setLastUpdate` defect fix. Recommend tagging
+> `[TO: PARITY]` for this commit (`5c3c605`) when ready — including the `HostSession`/
+> `HostDgramListener`/`HostListener` wiring fix flagged in the pre-brief, not just the 4 named UI
+> findings.
+> **→ Parity:** please specifically re-check (1) `nearestBase`'s mutual-alliance/8-tile-distance
+> math against `GSXBoloController.m:2562-2669`, (2) the lag-tint thresholds/`>=` comparison against
+> `:2196-2210`, (3) the `setLastUpdate` wiring fix against `server.c:672,844` and whether
+> `RunTick.swift`'s 9-second eviction now behaves correctly end-to-end (this pass didn't add a new
+> differential test for that specific consumer), (4) the label-offset arithmetic against
+> `GSBoloView.m:441-463`.
+
+[TO: PLANNER]
+[TO: PARITY]
