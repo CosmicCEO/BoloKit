@@ -618,12 +618,13 @@ public func decodeBMap(_ bytes: [UInt8], into state: inout GameState) -> Bool {
 // join-client caller (`BoloNet/JoinClientApply.swift:81`) -- matching the
 // C source's own split into two separate functions
 // (`serverloadmap()`/`clientloadmap()`) rather than one shared decode.
-// There is currently no Swift call site that decodes raw file bytes into
-// a host's own initial `GameState` (`HostGameEngine.init(initialState:)`
-// takes an already-built `GameState`; `HostListener.swift:239` only
-// *encodes*) -- this function exists for whatever future map-loading
-// integration wires the host's own load path, same as `encodeBMap` was
-// added ahead of its own call site in Wave 6.4b.
+//
+// **D131 correction:** this comment previously (incorrectly) claimed there was no Swift call
+// site that decodes raw file bytes into a host's own initial `GameState`. That was already false
+// at the time it was written -- `Bolo 2026/Bolo 2026/HostGameView.swift`'s
+// `handleMapPickerResult` (Milestone B.2, landed 2026-09-05, four days before this file's own
+// D129 commit) is exactly that call site, and had been calling `decodeBMap` directly with no
+// post-process since it landed. Wired as of D131 -- see that file's own comment at the call site.
 
 /// The terrain-normalization half of `serverloadmap()`'s pill/base-site
 /// cleanup (`bmap_server.c:140-193`, identical again at `198-251` for

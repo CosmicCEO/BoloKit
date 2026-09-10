@@ -1813,3 +1813,120 @@ EINVAL history — worth a look if the network-bug investigation is ever picked 
 since been updated externally to also cover the newer structured-concurrency
 `NetworkConnection`/`NetworkListener` API (iOS/macOS 26+) as a candidate not yet tried against
 the EINVAL bug — flagged here for whoever eventually resumes that investigation, not actioned now.
+
+### [IMPLEMENTER] 2026-09-10 — D131 pre-brief: both named items already landed; real gap found instead
+
+**Read directly before writing anything**, per process: `Reference/c/server.c:3261-3277`
+(`sendsrflood`) and its only call site `floodat()` (`server.c:4038-4056`); `Reference/c/
+bmap_server.c:21-252` (`serverloadmap`) in full.
+
+**Item 1, `sendsrflood`: already fully implemented, before D131 was even written.** Commit
+`34f7560` ("1.1: sendsrflood broadcast hook", D129, 2026-09-09) already added
+`onShouldBroadcastFlood` to `floodAt`/`flood` (`Sources/BoloKit/MineChain.swift:239-289`),
+threaded it through `RunTick.swift:83,220-223`, and wired `SRFlood` encoding in
+`HostGameEngine.swift:446`. Confirmed by direct read of all three files plus
+`Tests/BoloKitTests/MineChainTests.swift:200-237`'s 3 broadcast tests. D130/D131's backlog text
+("sendsrflood broadcast gap") is stale — written after D129's audit surfaced the gap but the fix
+had already landed in the same D129 session, and the backlog line in D130/D131 wasn't refreshed
+against it. **No code change needed for item 1.**
+
+**Item 2, `serverloadmap`: the porting itself was already done too** — commit `9c55d9c` ("1.1:
+serverloadmap NEUTRAL-owner/mine-clearing parity", D129, 2026-09-09) added
+`serverNormalizeSiteTerrain`/`serverPillSpeedRescaled`/`serverPostProcessLoadedMap` to
+`Sources/BoloKit/BMap.swift:605-713`, matching `bmap_server.c:79-94` (NEUTRAL-owner forcing +
+pill speed rescale), `:134-137` (start-tile-to-sea clear), and `:140-251` (mined-terrain
+normalization under pills/bases, including the real, verbatim-preserved `kMinedRubbleTerrain`
+fallthrough bug at `:167-169`/`:225-227`). Tests already exist
+(`Tests/DifferentialTests/BMapDifferentialTests.swift:219-284`).
+
+**But that commit's own comment (`BMap.swift:621-624`) is wrong, and the real gap is there:** it
+states "There is currently no Swift call site that decodes raw file bytes into a host's own
+initial `GameState`." That was false even at commit time — `Bolo 2026/Bolo 2026/
+HostGameView.swift`'s `handleMapPickerResult` (landed 2026-09-05 in Milestone B.2, commit
+`ea089d9`, four days *before* `9c55d9c`) is exactly that call site: it calls `decodeBMap(Array
+(data), into: &decoded)` directly (line 172) to build the host's own `mapState`, with no
+`serverPostProcessLoadedMap` call anywhere in the file. Confirmed via
+`git log --date=short -- "Bolo 2026/Bolo 2026/HostGameView.swift"`: `ea089d9` predates `9c55d9c`.
+This means every real map a human host loads through this app's UI currently skips
+NEUTRAL-owner-forcing, pill-speed rescaling, start-tile-clearing, and mined-terrain
+normalization entirely — the exact parity gap D129/D131 were meant to close, still open in the
+one place it's user-reachable.
+
+**Plan:** add one call, `serverPostProcessLoadedMap(&decoded)`, in `HostGameView.swift`'s
+`handleMapPickerResult`, right after the `decodeBMap` success guard and before the
+`starts.isEmpty` check (ordering matches `serverPostProcessLoadedMap`'s own doc comment: starts
+are cleared to sea as part of that call, and the empty-starts guard should run against the
+already-loaded, not-yet-post-processed `starts` array either way since post-processing doesn't
+add/remove starts, only mutates terrain — order between the guard and the post-process call is
+therefore not order-sensitive for that specific check, but placing post-process immediately after
+decode, before any other logic touches `decoded`, is the more literal mirror of C's
+`serverloadmap()` doing both in one function). Add a regression test at the `Bolo 2026`
+app-target level if one exists, or note if this file has no existing test target (need to check
+in the coding step). No `BoloKit`/`BoloNet` package changes needed — this is purely an app-target
+wiring fix.
+
+**Flag for PLANNER:** this is scope adjacent to, not identical to, D131's literal text (which
+named the two `sendsrflood`/`serverloadmap` *port* items, both already done). The actual
+remaining work is a one-line wiring bug in the app target connecting an already-ported function
+to its one real call site. Proceeding under D131's spirit (closing the serverloadmap parity gap
+end-to-end) rather than stopping to ask, since the fix is small, unambiguous, and squarely within
+what D131 was trying to accomplish — but flagging explicitly since it's not literally "port
+serverloadmap" as GO'd.
+
+[TO: PLANNER] Pre-brief only so far; fix + tests to follow in this same session, reported below.
+
+### [IMPLEMENTER] 2026-09-10 — D131 completion report: both named items already closed; real HostGameView wiring gap fixed
+
+**Verified via direct read + `git log --date=short`, not assumption:**
+- `sendsrflood` (item 1): already fully ported and wired, commit `34f7560` (D129, 2026-09-09), 
+  before D131 was written. `Sources/BoloKit/MineChain.swift`, `RunTick.swift`,
+  `Sources/BoloNet/HostGameEngine.swift:446` all confirmed correct against `server.c:3261-3277`/
+  `4038-4056`. No code change.
+- `serverloadmap` (item 2) porting: already done, commit `9c55d9c` (D129, 2026-09-09) —
+  `serverNormalizeSiteTerrain`/`serverPillSpeedRescaled`/`serverPostProcessLoadedMap` in
+  `Sources/BoloKit/BMap.swift:605-713`, verbatim-preserving the `kMinedRubbleTerrain` fallthrough
+  bug (`bmap_server.c:167-169`), already tested (`BMapDifferentialTests.swift:219-284`).
+
+**Real gap found instead, and fixed:** `9c55d9c`'s own doc comment claimed "there is currently no
+Swift call site that decodes raw file bytes into a host's own initial `GameState`" — false at
+commit time. `Bolo 2026/Bolo 2026/HostGameView.swift`'s `handleMapPickerResult` (Milestone B.2,
+`ea089d9`, 2026-09-05 — four days *earlier*) is exactly that call site and was calling
+`decodeBMap` with no post-process. Every real map loaded through the app's host UI was silently
+skipping NEUTRAL-owner-forcing, pill-speed rescale, start-tile-clear, and mined-terrain
+normalization — the actual open half of D129/D131's `serverloadmap` gap.
+
+**Fix:** one call, `serverPostProcessLoadedMap(&decoded)`, added in `handleMapPickerResult`
+immediately after the `decodeBMap` success guard, before the starts-empty check
+(`Bolo 2026/Bolo 2026/HostGameView.swift`). Corrected the stale/incorrect claim in
+`Sources/BoloKit/BMap.swift`'s doc comment to point at the real call site instead of asserting
+none exists.
+
+**Build:** `swift build` clean. `xcodebuild -project "Bolo 2026.xcodeproj" -scheme "Bolo 2026"
+-destination "platform=macOS" build` — **BUILD SUCCEEDED** (no MCP toolchain hang this session,
+real build ran to completion via `xcodebuild` directly).
+
+**Tests (D28, before/after):** 738 -> 738 (537 BoloKitTests + 201 DifferentialTests, both run
+standalone and together, all green). No shrink, no net-new test either — this is a one-line
+app-target UI wiring fix; the `Bolo 2026` Xcode app target has no dedicated test target at all
+(confirmed: no `*Tests*` directory under `Bolo 2026/`), so there was no test harness this fix
+could add a regression test into without standing up new test infrastructure, which is out of
+D131's scope. The underlying transform (`serverPostProcessLoadedMap`) already has full coverage
+at the package level (`BMapDifferentialTests.swift`) — what was untested is purely "does the app
+call it," which is a wiring fact, not new logic.
+
+**Files touched:** `Bolo 2026/Bolo 2026/HostGameView.swift`, `Sources/BoloKit/BMap.swift`
+(comment fix only), `docs/AGENT_NOTES.md`.
+
+[TO: PLANNER] D131's two literal items were both already closed before this session started
+(stale backlog bookkeeping in D130/D131's own text — worth a note for future backlog GOs: cross-
+check `git log` before re-issuing a GO on an item, not just the prose summary). The actual
+outstanding parity gap was a wiring bug in `HostGameView.swift` connecting the already-ported
+`serverPostProcessLoadedMap` to its one real call site, now fixed. Flagging two things for a
+ruling: (1) whether this should be logged as its own decision number since it's not literally
+what D131 named, even though it's squarely within D131's intent; (2) whether the `Bolo 2026` app
+target's total lack of a test harness (noted above, and previously disclosed at the C.4 entry re:
+no VoiceOver/device-interaction screenshot support either) is worth its own backlog item — every
+app-target-only change in this project is currently verified by build-success + code review only,
+never an automated regression test.
+[TO: PARITY] Worth independently confirming `HostGameView.swift`'s call-site fix and the
+`BMap.swift` comment correction; no new logic to re-derive, just wiring placement.

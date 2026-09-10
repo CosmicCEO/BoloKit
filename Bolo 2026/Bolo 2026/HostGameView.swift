@@ -173,6 +173,15 @@ struct HostGameView: View {
             mapErrorMessage = "Incompatible Map Version"
             return
         }
+        // D131: this is the host's own map-load path -- `serverloadmap()`'s counterpart
+        // (`Reference/c/bmap_server.c:21-252`), not `clientloadmap()`'s. Forces pill/base owner
+        // to NEUTRAL, rescales pill speed, clears start tiles to sea, and normalizes any "mined"
+        // terrain variant sitting under a pill/base -- none of which `decodeBMap` above does
+        // (that's the shared client-side decode only). Must run before the starts-empty check
+        // below is meaningless either way (post-process never adds/removes starts), but must run
+        // before `mapState` is published, since `HostGameView.swift` is the actual real call site
+        // `Sources/BoloKit/BMap.swift:621-624`'s doc comment incorrectly claimed didn't exist.
+        serverPostProcessLoadedMap(&decoded)
         // Not a literal port -- a defensive check this port needs that the reference's map
         // format doesn't itself require: `spawn(state:)` (Wave 5.6, wired real per D88 §4)
         // indexes `state.starts` unconditionally, so a map with none would crash the very first
