@@ -2502,3 +2502,54 @@ shoot/lay-mine on the join path pending B.10), not a new finding, and is PLANNER
 B.10 follow-on to close, not a PARITY finding.
 
 [TO: PLANNER] D131-D138 backlog clears audit clean, 4/4 PASS, no fixes needed.
+
+### [IMPLEMENTER] 2026-09-10 — D139 item (2) pre-brief: B.10 builder-task/shell-impact `CL*` follow-on
+
+Traced `Reference/c/client.c` directly per D139's instructions. Findings:
+
+**Builder half — tractable now, not a new state machine.** `builderlogic()`'s `kBuilderGoto` arrival
+switch (`client.c:4805-4877`) calls one of `sendclgrabtrees` (4817), `sendclbuildroad` (4823),
+`sendclbuildwall` (4834), `sendclbuildboat` (4845), `sendclbuildpill` (4856), `sendclrepairpill`
+(4867), or `sendclplacemine` (4877) — guarded by `!tankonaboattest`/`!tanktest` exactly where
+`BuilderTick.swift`'s existing `arriveAtTarget` already has matching guards (it calls
+`tankOnABoatTest`/`tankTest`, both already `public`). Crucially, `recvsrbuilderack()`
+(`client.c:2572-2629`) — the ack that transitions `kBuilderWork` → `kBuilderWait` — is **already
+fully ported**: `RecvSR.swift:397`'s `recvSrBuilderAck` has the identical per-task switch, and the
+full round trip already works end-to-end for the host: `HostSession.swift:589-730` already
+dispatches all six `recvCl*` build/grab/repair/mine handlers and replies with `SRBuilderAck`;
+`TCPSession.swift:344-345` already decodes `.builderAck` and calls `recvSrBuilderAck` on receipt.
+**Nothing missing in `BoloNet` — confirmed, matching D127's own "verify don't assume" finding.**
+The only real gap: `BuilderTick.swift`'s own `builderTick`/`gotoTick`/`arriveAtTarget` collapse the
+round trip for host/single-process (comment at `BuilderTick.swift:797-802` says so explicitly) —
+applying the mutation inline and jumping straight to `.wait`, skipping `.work` entirely. The join
+path needs the *uncollapsed* shape C already has: on arrival, detect-and-send instead of mutating,
+transition to `.work`, and let the already-existing `recvSrBuilderAck` (already wired into the join
+client's own TCP receive loop) drive `.work` → `.wait` when the host's real ack arrives. This is
+the same "own-entity prediction local, shared-world mutation deferred" split D127 already
+established for tile entry — not a new pattern.
+
+**Shell half — genuinely bigger, flagging per D139 item 6 rather than coding around it.**
+There is no `sendclshoot`/equivalent in the reference at all — shells are 100% locally predicted,
+with no network message on fire. The only outbound sends live in `shellcollisiontest()`
+(`client.c:5126-5218`): three `sendcldamage(p.x, p.y, shell->boat)` calls, each explicitly gated
+`if (player == client.player)` (lines ~5142, ~5170, ~5197) — i.e., C only trusts a shell's *owner*
+to self-report its own hits. `ShellTick.swift`'s own file header (lines 8-19) documents that this
+port **deliberately dropped that `player == client.player` gate** on the grounds that BoloKit has
+one unified authoritative simulation, not N independently-computing clients — true for host/
+single-process, but backwards for the join path, which has no authority over shared state at all
+(same principle D127 applied to tile entry). Making the join path's own locally-simulated shells
+report hits via `CLDamage`/`CLTouch`/`CLSmallBoom`/`CLSuperBoom` (all already present in
+`ClientMessages.swift`, zero new wire surface) means **partially reintroducing the exact
+client-authority split this port's own header says was deliberately removed** — a reversal of a
+documented, already-audited design decision, not a mechanical wiring gap. That's a call for
+PLANNER, not something to resolve by tracing further.
+
+**Scope for this session, per D139 item 6's own "split and flag" authorization:** implementing the
+builder half now (tractable, small, mirrors D127's precedent exactly); shell-impact sends **not**
+attempted this session — flagged as its own question below.
+
+[TO: PLANNER] Question: does closing the join-path shell-impact gap mean reintroducing a
+`player == owner` self-report gate for the join client's own shells specifically (leaving host/
+single-process's unified-authority simulation in `ShellTick.swift` untouched), or is there a
+different shape preferred? Recommend treating this as its own sub-item (own pre-brief, own GO)
+rather than folding into this pass, same as D116→D127's own split precedent.
