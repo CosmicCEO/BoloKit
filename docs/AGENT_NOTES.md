@@ -2553,3 +2553,58 @@ attempted this session — flagged as its own question below.
 single-process's unified-authority simulation in `ShellTick.swift` untouched), or is there a
 different shape preferred? Recommend treating this as its own sub-item (own pre-brief, own GO)
 rather than folding into this pass, same as D116→D127's own split precedent.
+
+### [IMPLEMENTER] 2026-09-10 — D139 item (2) completion report: builder-task CL* follow-on (builder half only)
+
+**Implemented, against this session's own pre-brief above.** `Sources/BoloKit/BuilderTick.swift`:
+`arriveAtTarget`/`gotoTick`/`builderTick` all gained an optional `joinArrive: ((Int, GameState) ->
+JoinOutboundBuilderCL?)?` parameter, defaulting `nil` — every pre-existing call site (`RunTick.
+swift`, host/single-process) is untouched, `.work` staying genuinely unreachable there exactly as
+before. Added `JoinOutboundBuilderCL` (the 7-case outbound-message enum, mirroring
+`JoinOutboundCL`'s existing shape from `TankLocalTick.swift`/D127) and `detectJoinBuilderArrival`
+— a read-only analogue of the arrival switch, gated by the same `tankTest`/`tankOnABoatTest` guards
+C's own `sendclbuildroad`/`sendclbuildwall`/`sendclbuildboat`/`sendclbuildpill`/`sendclrepairpill`
+call sites use (`client.c:4805-4877`), returning `nil` (→ `.wait`, nothing sent) when blocked,
+matching the reference exactly.
+
+`Bolo 2026/Bolo 2026/GameSession.swift`: `onBuilderCommand` is now wired on the join path (calls
+`queueBuilderCommand` directly against local `state`, mirroring `HostGameEngine.submitLocal
+BuilderCommand`'s own `queueBuilderCommand` call one-for-one). The `.tick` handler now calls
+`builderTick(player:state:joinArrive:)` alongside the existing `detectJoinTileEntry` call, and
+sends whichever `CL*` message `detectJoinBuilderArrival` returns via the existing `tcpSession.send`
+path — no new convenience wrapper, matching D127's own explicit choice to skip that polish.
+Updated both header comments (`GameSession.swift:166-186`'s join-path scope doc, and
+`BuilderTick.swift`'s own `arriveAtTarget`/`builderTick` headers) to describe the real, current
+behavior rather than leaving the pre-D139 "builderTick never runs on join" text stale.
+
+**Zero new `BoloNet` wire surface** — confirmed as expected: all seven `CL*` structs
+(`CLGrabTrees`/`CLBuildRoad`/`CLBuildWall`/`CLBuildBoat`/`CLBuildPill`/`CLRepairPill`/
+`CLPlaceMine`) already existed in `ClientMessages.swift`, and the full host-side receive path
+(`HostSession.swift:589-730`, all six `recvCl*` handlers + `SRBuilderAck` replies) and the join
+client's own receive path (`TCPSession.swift:344-345` → `recvSrBuilderAck`, already ported at
+`RecvSR.swift:397`) were already fully wired from earlier waves — this follow-on only needed to
+make the join path's own local builder tick actually produce and send the message.
+
+**Judgment call, flagged rather than silently decided:** `CLPlaceMine`'s wire struct carries a
+`mines` byte that C's own `sendclplacemine` (`client.c:3372-3389`) never sets and
+`HostSession.swift`'s own comment confirms is "decoded but never forwarded" — sent as `0` here,
+matching that existing precedent exactly, not a new decision.
+
+**Test counts: 747 before, 747 after (542 BoloKitTests + 205 DifferentialTests), fully green** —
+no new tests added this pass (flagging per D28: existing `BuilderCommandDifferentialTests`/
+`TankTickDifferentialTests` don't exercise the new `joinArrive` path at all; a differential/unit
+test for `detectJoinBuilderArrival` against the guarded/unguarded cases would be a natural
+follow-up PARITY or a future pre-brief should call out, not silently skipped forever). Xcode app
+target (`Bolo 2026`) builds clean (`xcodebuild ... build`, no substitution needed this pass — the
+BoloGlyphs Run Script hang did not reproduce).
+
+**Not attempted, per this session's own pre-brief:** the shell-impact half of D139 item (2). Real
+architectural question filed above (D139 pre-brief section), not resolved here — recommend its own
+pre-brief/GO cycle rather than folding into this commit's scope.
+
+[TO: PLANNER] Builder half of D139 item (2) done, commit `1d32cb1`. Shell-impact half's own
+question (reintroducing `shellcollisiontest`'s dropped `player == owner` authority gate,
+specifically for the join path's locally-predicted shells) still open — see this session's earlier
+pre-brief entry for the exact framing. Also flagging, not blocking: no new differential/unit test
+coverage added for `detectJoinBuilderArrival`/`joinArrive` this pass (D28 note above) — worth its
+own small follow-up whenever picked up.
