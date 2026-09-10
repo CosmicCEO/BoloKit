@@ -762,3 +762,23 @@ or resync fix at some future pass — not part of this wave's scope.
 during D150's implementation pass. No open Q/D-log item currently blocks further work.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D151: Milestone D rescoped, C-oracle attribution made overt
+
+Jerod's two direct calls: (1) drop signing/notarization from Milestone D permanently — no paid
+Apple Developer Program enrollment, not pursuing one; (2) keep `Reference/c` in-tree permanently
+(over removing it and linking externally) and make the attribution to the original oracle overt.
+
+**Doc-only changes, made directly (no Implementer/PARITY cycle — these are PLANNER's own docs):**
+- `docs/PLAN.md`: new decision D151; D61 corrected in place with a pointer to D151; Q29 removed
+  from Open Questions (closed, not pursuing); Milestone D wave-table row rescoped to D.0 only.
+- `README.md`: new "## Oracle & Attribution" section after the intro paragraph, crediting
+  `github.com/bananazon/xbolo`/Stuart Cheshire and stating `Reference/c` stays in-tree
+  permanently as a live oracle; Status section's Milestone D sentence reworded to drop "yet" on
+  notarization (now permanent, not pending).
+- `LICENSE` left unchanged — already carries full correct attribution.
+
+Milestone D is now just D.0 (zoom/scroll), still queued behind Milestone C's full close per D93,
+not GO'd. No code touched, no test run needed.
+
+[TO: PLANNER]

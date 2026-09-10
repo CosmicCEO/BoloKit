@@ -8,6 +8,15 @@ This repository exists to learn modern Xcode, Swift, on-device AI (FoundationMod
 Bolo is not otherwise unmaintained — [WinBolo 2](https://store.steampowered.com/app/4672140/WinBolo/) shipped in 2026 with native Mac support.
 This project is a personal learning vehicle, not a competing distribution.
 
+## Oracle & Attribution
+
+This is a derivative Swift port of **[XBolo](https://github.com/bananazon/xbolo)** (MIT-licensed),
+itself a clone of Stuart Cheshire's original *Bolo*. `Reference/c` holds XBolo's C/Objective-C
+source in-tree as a git submodule — kept there permanently, not as a historical artifact pending
+removal, because it's a live, executable oracle: every ported module is checked against it with
+differential tests, and PARITY audits hand-trace new Swift work against it directly. See `LICENSE`
+for the full attribution chain and license terms.
+
 ## Status
 
 Phase 3 (incremental Swift port, C oracle as spec) is complete. Waves 1-5 -- leaf utilities,
@@ -30,9 +39,10 @@ tile-entry, builder-task, and shell-impact reporting). **Milestone C** is partia
 status panel + kick/ban (C.0), key remap (C.1), the alliance panel (C.2), messages panel (C.4),
 procedural sound synthesis (C.3, 24 effects generated, several wired to gameplay events including
 cannon fire and tree harvest), and the preferences shell (C.5) are closed. **Milestone D**
-(zoom/scroll polish, full notarization) remains deferred -- the app ships with real Apple
-Development code signing but not notarized (no paid Developer Program enrollment yet), so a fresh
-download needs a one-time right-click → Open to bypass Gatekeeper's warning. A known, unresolved
+(zoom/scroll polish) remains deferred -- signing/notarization is out of scope permanently (no paid
+Apple Developer Program enrollment), so the app ships with real Apple Development code signing,
+not notarized, and a fresh download needs a one-time right-click → Open to bypass Gatekeeper's
+warning. A known, unresolved
 environment issue on some machines causes `Network.framework`'s listener creation to fail; the
 app falls back automatically to local-only play in that case, with an on-screen notice -- root
 cause not found despite investigation (ruled out: beta-OS-specific, ad-hoc signing), deliberately
