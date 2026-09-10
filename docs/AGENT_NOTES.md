@@ -119,3 +119,120 @@ See `docs/PLAN.md` D150 for the full ruling. PARITY activates post-commit via th
 > concrete Swift shape for all 4 items before writing code, then await coding GO.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-10 — D150 pre-brief: Trees gauge, base status bars, lag-color indicator, label-offset fix
+
+Combined pre-brief for all 4 D150 items, per PLANNER's ruling. Read `GSXBoloController.m:2554-2558`
+(Trees gauge), `:2652-2680` (base status bars + `dist`/`base` init at `:2562-2563`), `:2196-2210`
+(`setPlayerStatus:` lag coloring), `GSBoloView.m:441-463` (`drawSprite:`/`drawLabel:`) directly, plus
+the current Swift in `GameHUDViews.swift`, `PlayerStatusView.swift`, `GameRenderView.swift`,
+`GameSession.swift`, `HostSession.swift`, `HostGameEngine.swift`, `HostDgramListener.swift`,
+`HostListener.swift`, `DgramClientApply.swift`/`UDPSession.swift`.
+
+**1. Trees gauge (`GameHUDViews.swift`).** `client.trees` is per-player (`PlayerState.trees`,
+`GameObjects.swift:213`), same slot `mines` already reads from — add a 4th `gauge(...)` call in
+`ResourceGaugesPanel.body` reading `snapshot.players[localPlayer].trees` with the same
+indices-bounds guard the existing `mines` read already uses, `max: maxTrees` (`Physics.swift:95`,
+already `40`, matches C's `MAXTREES`). No new state.
+
+**2. Base status bars (`GameHUDViews.swift`).** Reference (`:2562-2563,2652-2669`): `dist` seeds at
+`8.0` (tile units, real Euclidean distance — `mag2f` is `sqrt(dot2f(...))`, not squared, confirmed
+against `vector.c:82-84`), scans every base, keeps the nearest one that passes a **mutual**-alliance
+test against the owner, falls back to all-zero if none found. Swift already has every piece:
+`mag2f`/`sub2f`/`make2f` (`Vector.swift`) and `testAlliance(_:_:players:)` (`GameObjects.swift:429`,
+already the mutual-bitmask check, cleaner than re-deriving the reference's inline dual-`&`).
+Plan: a private helper in `ResourceGaugesPanel` —
+```swift
+private func nearestBase(snapshot: GameState) -> Base? {
+    guard snapshot.players.indices.contains(snapshot.localPlayer) else { return nil }
+    let tank = snapshot.players[snapshot.localPlayer].tank
+    var best: Base?
+    var bestDist: Float = 8.0
+    for base in snapshot.bases where base.owner != playerNeutral {
+        guard testAlliance(snapshot.localPlayer, Int(base.owner), players: snapshot.players) else { continue }
+        let d = mag2f(sub2f(tank, make2f(Float(base.x) + 0.5, Float(base.y) + 0.5)))
+        if d < bestDist { best = base; bestDist = d }
+    }
+    return best
+}
+```
+then 3 more gauges (`Armour`/`Shells`/`Mines` labeled distinctly from the player ones, e.g. "Base
+Armor"/"Base Shells"/"Base Mines") reading `nearestBase?.armour ?? 0` etc. against
+`maxBaseArmour`/`maxBaseShells`/`maxBaseMines` (`Physics.swift:143,146,149`, all `90`, matching
+`MAXBASEARMOUR`/`SHELLS`/`MINES`). Reuses `GameHUDMath.gaugeFraction` unchanged.
+
+**3. Lag-color indicator (`PlayerStatusView.swift`) — judgment call + a discovered defect fix.**
+Read `HostSession.swift` end-to-end to find the plumbing path PLANNER named, and found
+`HostSessionTable.setLastUpdate(_:for:)` (`HostSession.swift:170`) is **never called anywhere in
+the codebase** — `grep -rn "setLastUpdate" Sources/` turns up only its own definition. Every
+slot's `lastUpdate` is permanently `0`, so `allTicksSinceLastUpdate(currentTick:)` always returns
+`state.ticks` itself (ever-growing from connect), not real per-player staleness. Cross-checked
+against `RunTick.swift:190-191`'s existing 9-second disconnect-eviction consumer of the same
+array — that consumer has the identical bug today (every connected player would get force-
+disconnected ~9s after joining, unconditionally), independent of this pre-brief's own scope.
+This is a real, previously-undiscovered defect, not something PARITY's sweep could have caught by
+reading `GameHUDViews.swift`/`PlayerStatusView.swift` alone (it lives entirely in `BoloNet`'s
+wiring) — flagging per the bootstrap's "newly-discovered defect" rule rather than silently working
+around it.
+
+Fix (mirrors `server.c:672` — `dgramserver()` sets `lastupdate = server.ticks` exactly when a
+CLUpdate/tank packet arrives for that player — and `server.c:844`, same reset at initial join):
+add `await table.setLastUpdate(state.ticks, for: player)` in `HostDgramListener.swift`'s
+`processDgramPacket`'s `.applied` case, right next to the existing `await table.setSeq(newSeq, for:
+player)`; and the same call in `HostListener.swift`'s `runJoinHandshake`'s `.accepted` case, right
+after `table.setConnection(connection, for: player)`, seeding a freshly-joined player at
+`state.ticks` so they aren't born already "stale." Both are one-line additions mirroring an
+adjacent, already-correct call in the same function — not new design, no protocol change.
+
+Data-plumbing shape once the source is real: `HostGameEngine` gets a new
+`public private(set) var lastKnownTicksSinceLastUpdate: [UInt64] = []`, set right where `tick()`
+already computes the (currently-discarded-after-use) local `ticksSinceLastUpdate` (`:443`) —
+mirrors the exact `public private(set) var state` pattern `HostGameEngine` already uses for the
+same "read a plain stored property from outside the actor, same relaxed-synchronization precedent
+`GameSession.init(hostEngine:)` already relies on for `hostEngine.state`" reason. `GameSession`
+gets `public func connectionAge(for player: Int) -> UInt64?`, returning
+`hostEngine?.lastKnownTicksSinceLastUpdate[player]` (bounds-guarded), `nil` when there's no
+`hostEngine` — **disclosed scope narrowing**: this only lights up on the host path, exactly like
+`canKickBan`. A join-side client's own per-peer freshness data exists too (`UDPSession`'s already-
+correct private `remoteLastUpdates`, fed by `applyRemotePlayerUpdate`'s returned `lastUpdate` —
+confirmed *not* buggy, unlike `HostSessionTable`'s), but it's private to `UDPSession`, owned by
+`JoinGameView.swift`, not `GameSession`, and wiring a second, differently-shaped data path through
+for the join side is more than this pass's "bind-only, no new design" scope calls for. Flagging
+this as the one deliberate cut in this pre-brief: **join-side clients see no lag color at all this
+pass** (`connectionAge` returns `nil` → treated as fresh/no tint), same-shape gap as `canKickBan`'s
+existing host-only precedent, not a new kind of gap. Single-process play is unaffected either way
+(no other real connections exist).
+
+View side: `PlayerStatusGrid.playerRow` gets a `staleness(for:snapshot:)` helper —
+```swift
+private func staleness(for index: Int) -> (background: Color, whiteText: Bool)? {
+    guard let age = session.connectionAge(for: index) else { return nil }
+    let threshold = UInt64(ticksPerSec)
+    if age >= threshold * 3 { return (.red, true) }
+    if age >= threshold { return (.yellow, false) }
+    return (.green, false)
+}
+```
+applied as `.background(...)`/`.foregroundStyle(...)` on the row's name `Text`, `nil` (today's
+plain text) when `connectionAge` returns `nil`. Threshold comparison mirrors `client.c:2205,2208`'s
+`>=` exactly (not `>`).
+
+**4. Label-offset fix (`GameRenderView.swift:495-503`).** Current: `y = point.y*tile - tile -
+textSize.height`. Sprite's own top edge (`drawSprite`, `:517-521`) is at `point.y*tile - 8`. Fix:
+`y = point.y * tile - 8 - textSize.height` — label's bottom edge sits exactly at the sprite's top
+pixel row, matching `GSBoloView.m:453-463`'s flush placement (worked through in the PARITY finding).
+One-line change, no other callers.
+
+**No open questions for PLANNER** — all 4 items plus the `setLastUpdate` fix are mechanical/bind
+work over already-modeled data or an obvious 2-line wiring fix mirroring an adjacent already-correct
+call; proceeding to code per Auto Mode.
+
+> **→ Planner:** the `setLastUpdate` dead-wiring defect (found while implementing item 3) also
+> affects `RunTick.swift`'s 9-second disconnect-eviction logic, previously shipped and PARITY-passed
+> — fixing it as part of this pass corrects that too, disclosed here rather than silently folded in.
+> **→ Parity:** re-check `HostSessionTable`/`HostDgramListener`/`HostListener`'s `lastUpdate` wiring
+> specifically (not just the 4 named UI findings) once this commits — that's new ground PARITY's own
+> prior sweep didn't cover (it's `BoloNet` wiring, not the rendering/HUD surface that sweep scoped
+> to).
+
+[TO: PLANNER]
