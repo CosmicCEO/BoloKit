@@ -77,6 +77,31 @@ public struct Canvas16: Sendable {
         }
     }
 
+    /// Fills a thin rectangular bar from the cell center extending `length`
+    /// px toward `(dx, dy)` -- the same unit-vector convention as
+    /// `fillRotatedTriangle` (D70) -- used by `drawTank` (D148 item C) to
+    /// give the tank glyph an asymmetric turret/barrel feature so heading
+    /// reads as a directional vehicle rather than an ambiguous triangle.
+    public mutating func fillRotatedBar(dx: Double, dy: Double, length: Double, halfWidth: Double, _ r: UInt8, _ g: UInt8, _ b: UInt8, _ a: UInt8 = 255) {
+        let center = (8.0, 8.0)
+        let p0 = (0.0, -halfWidth)
+        let p1 = (length, -halfWidth)
+        let p2 = (length, halfWidth)
+        let p3 = (0.0, halfWidth)
+        func rotate(_ p: (Double, Double)) -> (Double, Double) {
+            (p.0 * dx - p.1 * dy + center.0, p.0 * dy + p.1 * dx + center.1)
+        }
+        let q0 = rotate(p0), q1 = rotate(p1), q2 = rotate(p2), q3 = rotate(p3)
+        for y in 0..<Canvas16.size {
+            for x in 0..<Canvas16.size {
+                let pt = (Double(x) + 0.5, Double(y) + 0.5)
+                if Canvas16.pointInTriangle(pt, q0, q1, q2) || Canvas16.pointInTriangle(pt, q0, q2, q3) {
+                    set(x, y, r, g, b, a)
+                }
+            }
+        }
+    }
+
     private static func sign(_ p1: (Double, Double), _ p2: (Double, Double), _ p3: (Double, Double)) -> Double {
         (p1.0 - p3.0) * (p2.1 - p3.1) - (p2.0 - p3.0) * (p1.1 - p3.1)
     }

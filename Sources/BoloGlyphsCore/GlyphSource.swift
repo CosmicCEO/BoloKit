@@ -136,4 +136,9 @@ private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroy
     let dir = Float(heading) * (kPif / 8.0)
     let v = dir2vec(dir)
     c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
+    // D148(C): a solid triangle alone reads as an ambiguous arrow at small
+    // sizes -- add a dark barrel extending past the hull's tip (6px) toward
+    // the same heading, using the same rotation convention as the hull, so
+    // rotation can never drift from `dir2vec`/D70's reference frame.
+    c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 5.0, halfWidth: 0.8, 20, 20, 20)
 }
