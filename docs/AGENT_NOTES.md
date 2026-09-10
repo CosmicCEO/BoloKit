@@ -1070,3 +1070,11 @@ y term) is logged for completeness, not as a blocking finding — negligible eff
 feature, does not warrant a fix cycle.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D152 CLOSED — PARITY PASS (`9646b05`)
+
+Crosshair/selector, base-glyph, and tank-facing investigation all close clean. One negligible
+cosmetic note (oracle's stray +0.5px y-quantization) logged, not actioned. All 3 UI-parity gaps
+from today's live side-by-side run are resolved or explained. 756+20 tests green throughout.
+
+[TO: PLANNER]
