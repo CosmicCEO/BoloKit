@@ -3290,3 +3290,58 @@ trivially foldable into this UI-only pass.
 [TO: PLANNER] Building items 1-3 now. Items 4-5 need your ruling on scope/approach before any
 IMPLEMENTER builds them — recommend two follow-on coding GOs (or folding into a future D148
 sub-item) once you've decided what capture-event text and win/loss presentation should look like.
+
+### [IMPLEMENTER] 2026-09-10 — D148(A) completion report: tankshot/tree sounds wired
+
+**Implemented** (commit `ec6bc51`) exactly per the pre-brief above, no deviations:
+- `Sources/BoloKit/TankLocalTick.swift`: new `onTankShot: () -> Void = {}` param on
+  `tankLocalTick`, called immediately after `state.players[player].shells.append(shell)` in the
+  shell-fire branch (line ~858-871).
+- `Sources/BoloKit/BuilderTick.swift`: new `onTreeHarvest: (Pointi) -> Void = { _ in }` param
+  threaded through `grabTrees` → `arriveAtTarget` → `gotoTick` → `builderTick`, fired only in
+  `grabTrees`'s `.forest`/`.minedForest` success branches (not the mined-terrain-explosion
+  branches, not the no-op default).
+- `Sources/BoloKit/RunTick.swift`: both new params added to `runTick`'s signature, passed through
+  to the `tankLocalTick`/`builderTick` calls.
+- `Bolo 2026/Bolo 2026/GameSession.swift`: wired alongside the existing 5 call sites —
+  `onTankShot: { SoundPlayer.shared.play("tankshot") }`, `onTreeHarvest: { _ in
+  SoundPlayer.shared.play("tree") }`.
+- `Bolo 2026/Bolo 2026/SoundPlayer.swift`: header comment updated to record the D148(A) follow-up
+  (`hittank` still not wired — out of this dispatch's scope, unchanged from D125's original
+  disclosure).
+
+**No `far*` variant wired** — confirmed via `Reference/c/client.c:1368-1373` and the grab-trees
+response handler (~line 1644-1649): both gate on `client.fog[y][x] > 0`, and fog-of-war is out of
+v1 scope (D65). Matches the existing `explosion`/`superboom` wiring exactly — flagged per D148's
+own instruction rather than inventing new distance logic.
+
+**Tests added** (`Tests/BoloKitTests`, reusing exact existing patterns, no new infrastructure):
+- `TankLocalTickTests.swift`: `tankLocalTickFiresOnTankShotCallbackWhenShellFires`,
+  `tankLocalTickDoesNotFireOnTankShotCallbackBelowThreshold`.
+- `BuilderTickTests.swift`: `gotoArrivalOnGetTreeFiresOnTreeHarvestCallback`,
+  `gotoArrivalOnGetTreeOverMinedTerrainDoesNotFireOnTreeHarvestCallback`.
+
+**Test counts (D28, no shrink):**
+- BoloKitTests: 547 → 551 (4 new), all pass.
+- DifferentialTests: 205 → 205 (unchanged), all pass.
+- Total SwiftPM: 752 → 756.
+- App-target `Bolo 2026Tests` not touched by this dispatch.
+
+**Flaky-test note, not caused by this change:** a first `swift test` run showed one BoloKitTests
+failure (`"BoloGlyphs asset pipeline"` tank-heading test) and, separately, one DifferentialTests
+failure (`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`, `.shortRead`).
+Confirmed via `git stash`/rerun that both are pre-existing flakes unrelated to this dispatch: the
+working tree currently has concurrent D148(B)/(C) sessions' uncommitted changes to
+`GlyphSource.swift`/`Canvas.swift`/`PlayerStatusView.swift`/`GameRenderView.swift` (visible in
+`git status`, none of which I touched or staged), and the DifferentialTests failure is a known
+timing-sensitive networking test (per this project's toolchain-instability memory). Both suites
+passed clean (551/551, 205/205) on immediate rerun with no code changes. Staged and committed only
+the 7 files this dispatch actually touched — never `git add -A` — to avoid stepping on the
+concurrent (B)/(C) work-in-progress per the dispatch's explicit instruction.
+
+**Build:** `swift build` clean (one pre-existing unrelated warning in `BoloNet/CLUpdateCodec.swift`,
+not touched here).
+
+[TO: PLANNER] D148(A) implemented, tested, committed (`ec6bc51`). Not declaring D148(A) closed —
+your call. Flagging the shared-working-tree flakiness note above for awareness, not as a defect in
+this dispatch's own work.
