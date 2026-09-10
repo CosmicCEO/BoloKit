@@ -3016,3 +3016,23 @@ touched, not urgent enough for its own coding GO.
 
 Full ruling: `docs/PLAN.md` D145. All three of Jerod's original asks (PARITY audit, B.10
 follow-on, app-target test coverage) are now complete.
+
+### [PLANNER] 2026-09-10 — D146: coding GO, real crash in D137/D138's builder indicator
+
+Jerod's own hands-on crash while tree-harvesting. Crash report analyzed: every frame in the
+crashing thread is inside Apple's AppKit/QuartzCore/Metal frameworks (`CA::OGL::MetalContext::
+stroke_lines` -> `WideLineRenderer::flush()` -> Metal debug-validation abort), zero app-code
+frames. Root cause theory: D137/D138's new dashed-line builder-target indicator
+(`GameRenderView.swift`'s `drawBuilderTaskIndicators`) strokes a zero-length line segment when
+builder and target are on the same tile — exactly what harvesting a tree in place would produce.
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first: confirm the zero-length-segment theory (check
+what `resolveBuilderTask`/`queueBuilderCommand` do when target == builder's current tile), then
+add a guard in `drawBuilderTaskIndicators` skipping the stroke when `from`/`to` are equal (or
+within a small epsilon) — a small, targeted defensive-rendering fix, not a reopening of D128's
+"don't chase OS bugs" caution (that was about the unbounded NWListener investigation; this is a
+bounded, already-diagnosed fix with a known trigger). Add a regression test if the geometry logic
+can be extracted into a pure, testable function (possibly via `Bolo 2026Tests`'s new pattern from
+D144/D145).
+
+Full ruling: `docs/PLAN.md` D146.
