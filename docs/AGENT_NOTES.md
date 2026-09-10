@@ -2235,3 +2235,25 @@ Full ruling: `docs/PLAN.md` D136.
 Note: visual confirmation of the new map is still open (Jerod eyeballed the prior, broken version
 in-app) — worth a follow-up look, not blocking closure given terrain-level verification already
 done.
+
+### [PLANNER] 2026-09-10 — D137: coding GO for builder mouse control + UX range indicator
+
+Jerod's own hands-on finding: no mouse control for the builder, no visual range indication.
+Researched against `Reference/c/` before scoping — the original has no builder range limit at
+all (`buildercommand()`, `client.c:6533-6538`, zero distance check) and no range indicator
+anywhere; mouse-driven builder control is 0% implemented in this port today (not partially done).
+Jerod's call: keep unlimited range (true to the original), but add a new UX indicator anyway —
+a disclosed departure from strict UI parity, simulation behavior unchanged.
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first:
+1. Port `buildercommand()`/`getbuildertaskforcommand()`'s decision logic to a pure `BoloKit`
+   function, differential-tested against the C oracle.
+2. `InputKeymap.swift`: builder-tool selection via digit keys 1-5 (C.1's explicitly-deferred item).
+3. `GameRenderView.swift`: real `mouseDown` handling — click to tile coords, call the new
+   command function, route through the existing local-player-action event path.
+4. A render-only UX indicator (line from builder to target while a task is active) — propose the
+   concrete shape at pre-brief.
+
+Check at pre-brief whether builder commands need `BoloNet` wiring for multiplayer visibility.
+
+Full ruling: `docs/PLAN.md` D137.
