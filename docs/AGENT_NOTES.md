@@ -3532,3 +3532,28 @@ default (`hiddenmines == false`) behavior (mines visible to all, via the existin
 reference itself doesn't support that way. A real `hiddenmines` fog-of-war-style feature is a
 separate, larger future item if wanted — not built here, not silently declared out of scope
 either. Not declaring D148(C) closed — your call.
+
+### [PLANNER] 2026-09-10 — D148 closed (D149): all 3 grouped dispatches approved
+
+Reviewed all three completion reports together, per the leaner batch process adopted at D148.
+Verified independently rather than trusting reports individually: `swift test` — 756 total
+(551 BoloKitTests + 205 DifferentialTests), one flake reproduced then cleared on isolated rerun;
+`xcodebuild -only-testing:"Bolo 2026Tests" test` — 19/19, TEST SUCCEEDED. Spot-checked the
+mine-visibility fix landed correctly despite a cross-session shared-commit situation.
+
+(A) sound wiring — approved, no notes. (B) HUD — approved; two proactively-caught defects (a
+D146-shaped crash risk, a first-responder-loss risk) fixed before shipping, and the event-log/
+win-loss split is correct discipline, not scope-cutting. (C) tank sprite + mines — approved; the
+mine-ownership re-scope is the best outcome of this batch: IMPLEMENTER investigated instead of
+building the assumed fix, found the C reference has no per-mine owner at all, and built the
+design it actually supports (all mines visible, no new simulation state).
+
+D123's worktree-isolation risk reconfirmed live (uncommitted edits briefly appeared reverted
+during 3-concurrent-session work) — no data lost, but worth applying next time 3+ sessions run
+genuinely concurrently.
+
+New backlog, not GO'd: event-log/capture-message plumbing, win/loss UI presentation,
+`hiddenmines`-style fog-of-war.
+
+Full ruling: `docs/PLAN.md` D149. All 7 of Jerod's playtest observations now addressed (5 fixed,
+2 correctly re-scoped/deferred as bigger separate items).
