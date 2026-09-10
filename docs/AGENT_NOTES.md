@@ -2216,3 +2216,22 @@ byte-literal tripwire test's bytes actually match a fresh `encodeBMap` run, and 
 `decodeBMap`/`serverPostProcessLoadedMap` handle the larger/denser run-data payload (6,525 bytes,
 up from 50) without any edge case the smaller D132 map didn't exercise — worth a specific look at
 whether the larger run count changes anything in `decodeBMap`'s run-parsing loop.
+
+### [PLANNER] 2026-09-10 — D135 closed (D136): Alabama-silhouette landmass approved
+
+Reviewed `c0f18e1` directly. The connected landmass (rectangular body + SE notch + panhandle),
+road grid, and 3 rivers correctly fix Jerod's playtest finding (isolated 1-tile grass islands,
+no connecting land). All 8 site coordinates confirmed inside the landmass. The two pill/base
+sites landing on `.road` instead of `.grass0` is fine, not a defect — real Bolo maps commonly
+site bases at road junctions, `serverNormalizeSiteTerrain` passes `.road` through unchanged.
+
+Ground-truth `swift test`: 740 total (539 BoloKitTests + 201 DifferentialTests), all green — one
+pre-existing timing flake reproduced under full-suite load, confirmed clean 201/201 in isolation.
+
+Full ruling: `docs/PLAN.md` D136.
+
+[TO: PARITY] `c0f18e1` ready for review — confirm `isAlabamaSilhouette`/`drawLine`/site placement.
+
+Note: visual confirmation of the new map is still open (Jerod eyeballed the prior, broken version
+in-app) — worth a follow-up look, not blocking closure given terrain-level verification already
+done.
