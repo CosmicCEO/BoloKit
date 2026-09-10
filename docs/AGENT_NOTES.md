@@ -3138,3 +3138,36 @@ Independently reran both suites myself: `swift test` — 752 total unchanged; `x
 Full ruling: `docs/PLAN.md` D147. Real crash fixed and verified.
 
 [TO: PARITY] `0f91afe` ready for review — confirm the epsilon choice and guard placement.
+
+### [PLANNER] 2026-09-10 — D148: 7 playtest gaps GO'd as 3 grouped dispatches, leaner process adopted
+
+Jerod's hands-on playtest surfaced 6 observations, sharpened to 7 by his own reference screenshot
+of the original's main window. Full root-cause research already done (3 parallel Explore agents,
+this session) — plan doc has file:line citations for all 7, no further research needed.
+
+Jerod also flagged real cost concern (2.4B tokens, ~$800 this session) with the per-item
+research/pre-brief/code/report/review/PARITY pattern used today. Adopting a leaner model for this
+batch: no more research subagents (cite the plan directly), 3 grouped IMPLEMENTER dispatches
+instead of 7, PARITY skipped for pure UX-layer work (reserved only if mine-ownership needs new
+simulation state), PLANNER batches ruling commits per dispatch not per finding.
+
+[TO: IMPLEMENTER] Three coding GOs, dispatched as separate sessions:
+
+**(A) Sound wiring** — thread `tankshot`(cannon fire)/`tree`(harvest-complete) callbacks through
+`TankLocalTick.swift`'s shoot path and wherever tree harvest completes, wire in `GameSession.swift`
+alongside the existing 5 call sites (`GameSession.swift:390-394`). Mirrors the existing
+explosion/superboom pattern exactly.
+
+**(B) Always-visible main-window HUD** — build-tool strip (left, click to select tool, supplements
+D137's silent digit keys), always-visible status grid (right, reuse `PlayerStatusView`'s content
+reflowed, not rebuilt), shell/mine/armor gauges (`GameState.players[localPlayer]`'s existing
+fields), persistent bottom event-log bar (separate from C.4's sheet chat), win/loss surfaced
+(verify first whether `RunTick.swift`/domination logic already computes this with no UI). One
+pre-brief; split further if it proves bigger, per D116/D127 precedent.
+
+**(C) Tank sprite legibility + visible own-mines** — `GlyphSource.swift`'s `drawTank` needs a
+turret/barrel asymmetry (still procedural, D67). Own-mines needs a design answer first: does mine
+ownership need new `GameState` tracking or does something already exist? One dispatch if
+non-conflicting, split if not.
+
+Full ruling and plan doc: `docs/PLAN.md` D148, `/Users/jerodprice/.claude/plans/discover-claude-skills-for-gentle-church.md`.
