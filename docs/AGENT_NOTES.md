@@ -512,4 +512,139 @@ continuation of D150 — no new decision number needed, same wave, held open unt
 > report. Once done, this pass is ready for a second PARITY re-check limited to this one change
 > (not a full re-audit of items 1/2/4, already confirmed clean).
 
-[TO: IMPLEMENTER]
+### [IMPLEMENTER] 2026-09-10 — D150 continuation pre-brief: host self-CLUpdate fix site
+
+**Type:** pre-brief for PLANNER's already-issued coding GO (previous entry) — small, single-call
+fix, kept proportionate.
+
+Confirmed the consumption site by reading `Sources/BoloNet/HostGameEngine.swift` directly:
+`submitLocalInputChange` (line 232) is the host's own per-tick local-input entry point (its own
+doc comment, line 228-231, calls it "the host's own local input"), yielding
+`.localInputChanged(set:clear:)` into the single merged event stream. The single consumer,
+`handle(_:)` (line 301, `private func handle(_ event: HostEngineEvent) async`), applies it at
+lines 370-372:
+
+```swift
+case .localInputChanged(let set, let clear):
+    state.players[state.localPlayer].inputFlags.formUnion(set)
+    state.players[state.localPlayer].inputFlags.subtract(clear)
+```
+
+This is the exact port-equivalent PLANNER named: the moment the host's own input is folded into
+`state`, once per tick, mirroring `server.c:672`'s `CLUpdate`-received path refreshing
+`lastupdate` for a real client. Adding `await table.setLastUpdate(state.ticks, for:
+state.localPlayer)` as a third line in this case matches the two existing call sites'
+own literal form exactly (`HostDgramListener.swift:186`, `HostListener.swift:235`, both
+`await table.setLastUpdate(state.ticks, for: player)`) — same tick source (`state.ticks`,
+`UInt64`), same table/actor (`table: HostSessionTable`, already in scope in `handle(_:)`, no new
+parameter needed), same call shape, just a different index expression (`state.localPlayer`
+instead of a remote `player` from the event payload).
+
+**Judgment call, disclosed:** placing the call inside `.localInputChanged` (fires whenever
+`submitLocalInputChange` yields, driven by the app's key handler — not a fixed per-tick cadence)
+rather than inside `tick()` (line 443, the actual fixed-cadence tick loop) unconditionally. This
+matches the oracle's own model exactly: `server.c:672` refreshes `lastupdate` on message
+*arrival*, not on a fixed schedule either — a real client only looks "fresh" as often as it
+actually sends `CLUpdate`. The host's local key handler fires far more often than once per tick in
+practice (every keydown/keyup), so this is at least as fresh as the oracle's own client-driven
+cadence, never less. No other call site changes.
+
+**No open questions.** Proceeding to implement.
+
+[TO: PLANNER]
+
+**Correction, filed same sitting after implementing (see completion report below): the
+`.localInputChanged` site named above was tried and empirically rejected.** It never fires in
+PARITY's own suggested negative-control test (`hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer`),
+which never calls `submitLocalInputChange` — with the fix only there, that test fails identically
+to the pre-fix defect once the manual `setLastUpdate(1000, for: 0)` seed (line 854) is removed.
+The actual landing site, why, and the resulting oracle-cadence divergence this forced are in the
+completion report immediately below. Leaving this paragraph in place rather than editing the
+analysis above out — the reasoning above wasn't wrong about the oracle's own event-driven model,
+it was wrong about this port's test coverage exercising that path at all.
+
+### [IMPLEMENTER] 2026-09-10 — D150 continuation: host self-CLUpdate fix implemented, landed at a different site than pre-briefed
+
+**Type:** completion report for PLANNER's coding GO (two entries up). Implements the fix for
+PARITY's host-self-eviction finding.
+
+**What shipped, and why it moved from the pre-briefed site:** the pre-brief above named
+`.localInputChanged` (`HostGameEngine.swift:370-372`). Empirically tested against PARITY's own
+suggested negative control and rejected — that event never fires in the test (it never calls
+`submitLocalInputChange`), so the fix was invisible to it. Also tried the host's own outbound
+self-`CLUpdate` site (`HostGameEngine.swift:531`, the `localSeq % 5 == 0`-gated block) — also
+rejected, for a structural reason, not just a timing one: `tick()` snapshots
+`ticksSinceLastUpdate` (line 458, just before calling `runTick`) *before* that site runs, so a
+refresh placed there is invisible to that same tick's own eviction check regardless of cadence.
+
+**Landed site:** the top of `tick()` (`HostGameEngine.swift`, immediately before the
+`ticksSinceLastUpdate` snapshot), unconditional every tick:
+```swift
+if state.players.indices.contains(state.localPlayer) {
+    await table.setLastUpdate(state.ticks, for: state.localPlayer)
+}
+```
+This is the only site of the three that precedes the eviction check's own data read within the
+same tick.
+
+**Disclosed divergence from the oracle's cadence (flagging per this project's own discipline, not
+folding it in quietly):** `server.c:672` only refreshes `lastupdate` on CLUpdate *receipt*, which
+for any real client — including the host's own loopback-socket connection to its own server, per
+PLANNER's ruling — happens at `client.c:485-487`'s 10 Hz send cadence (this port's own outbound
+self-CLUpdate mirrors that exactly, `localSeq % 5 == 0` at 50 Hz tick rate). This fix instead
+refreshes at 50 Hz (every tick), 5x more often than the oracle, because the 10 Hz site structurally
+cannot see its own effect in the same tick's eviction check (above). This is a one-directional
+divergence: strictly fresher than the oracle, never staler, so it can only ever *prevent* an
+eviction the oracle itself would also not perform — it cannot cause an eviction the oracle
+wouldn't, nor mask a genuine host stall (a real stalled host stops calling `tick()` at all, so
+this refresh stops firing too, same as the oracle's client). Not prescribing this as the final
+word if PLANNER wants a closer-cadence alternative (e.g. moving the check itself rather than the
+refresh) — flagging the trade-off rather than deciding it's the only option.
+
+**Verification:**
+- Negative control (PARITY's own suggestion): removed `HostGameEngineTests.swift:854`'s manual
+  `await engine.table.setLastUpdate(1000, for: 0)` seed. `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer`
+  passes without it, run individually, confirming the host's slot no longer needs a hand-fed
+  initial value to survive the eviction check.
+- `swift build`: clean.
+- `swift test` (BoloKitTests suite): 551/551 green, no change from before this fix, 0 regressions.
+- `swift test --filter DifferentialTests`: 205/205 green when run in isolation (individual test
+  and full-filtered-suite runs both clean on their own).
+
+**New finding, disclosed rather than hidden — increased flakiness in two unrelated, pre-existing
+tests when the full `DifferentialTests` suite runs as one process:** running the *entire* filtered
+suite repeatedely (not individual tests) surfaced `hostGameEngineSubmitPauseResumeServerTogglesPauseState`
+(exact mid-countdown value assertion, `HostGameEngineTests.swift:742`) and, once,
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` (`:437`, a `.shortRead`
+network hiccup) failing intermittently — roughly 40-50% of full-suite runs with this fix in place,
+versus 0/10 clean runs measured on the pre-fix code (`git stash`/`stash pop` A/B, 10 baseline runs
+vs. ~10 with-fix runs). Both failing tests assert an *exact* tick-count/timing value read
+immediately after a `waitForCondition` poll returns — a pre-existing race in the test's own design
+(asserting a value that a single fast tick can advance past between the poll noticing "condition
+now true" and the assertion actually reading state), previously accepted as occasional/flaky
+per PLANNER's prior D150 review ("one flaky run, non-reproducing on 2 clean re-runs"). This fix adds
+one more `await` into the same actor on every tick (50 Hz), which measurably increases the odds of
+a timer catch-up burst landing on exactly the wrong tick for those two assertions. **Not a
+correctness defect in this fix** — the negative-control test and the `lastUpdate`/eviction logic
+itself are unaffected and pass reliably; this is a timing-sensitivity increase in two already-known
+timing-fragile, unrelated tests. Flagging for PLANNER's triage rather than attempting to fix those
+two pre-existing test races myself, which is outside this fix's scope.
+
+**No other judgment calls beyond the two disclosed above** (landing site, oracle-cadence
+divergence). No test coverage removed — one line deleted from an existing test (the manual seed),
+replaced by the fix itself making that seed unnecessary; net test count unchanged (756 total:
+551 BoloKitTests + 205 DifferentialTests, same as PARITY's own D150 count).
+
+Ready for PARITY's requested re-check, limited to this one change (not a full item 1/2/4 re-audit,
+already clean per PARITY's own prior pass).
+
+> **→ Planner:** fix implemented and verified via the negative control; also surfaced a
+> flakiness increase in two unrelated pre-existing tests (exact-tick-value races), disclosed above
+> — worth a decision on whether those two tests need their own follow-up (loosen the exact
+> assertion, or add a small tolerance window) independent of this fix.
+> **→ Parity:** please re-check the `HostGameEngine.swift` `tick()` site (setLastUpdate call
+> immediately before the `ticksSinceLastUpdate` snapshot) against `server.c:672`/`client.c:485-487`
+> and confirm the disclosed 50 Hz-vs-10 Hz divergence reasoning holds up under a hand-trace.
+
+[TO: PLANNER]
+[TO: PARITY]
