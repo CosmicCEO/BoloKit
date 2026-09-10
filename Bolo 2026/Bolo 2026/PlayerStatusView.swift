@@ -23,13 +23,20 @@
 //  header explains why: `state` is deliberately not a single source of truth on every path). A
 //  `TimelineView` forces a periodic re-render that re-reads `session.state` fresh each time
 //  instead, the same "poll, don't observe" shape `GameRenderView` itself already uses each tick.
+//
+//  D148(B): the grid content used to live inline inside this file's own `NavigationStack`/
+//  `.toolbar` sheet chrome. Split into `PlayerStatusGrid` (just the `List` + row logic, no sheet
+//  chrome) so the always-visible main-window HUD (`GameView.swift`) can embed the identical
+//  content without a "Done" button or navigation title that only make sense in a sheet. This
+//  file's own `PlayerStatusView` is now a thin wrapper: `PlayerStatusGrid` + the sheet chrome it
+//  always had. No classification logic duplicated or changed.
 
 import BoloKit
 import SwiftUI
 
 /// The three-way classification `setPlayerStatus:`/`setPillStatus:`/`setBaseStatus:` each render
 /// as a distinct image. `.neutral` only ever applies to pills/bases (no unowned player slot).
-private enum OwnershipStatus {
+enum OwnershipStatus {
     case friendly
     case allied
     case hostile
@@ -54,44 +61,36 @@ private enum OwnershipStatus {
     }
 }
 
-struct PlayerStatusView: View {
+/// D148(B): the reusable grid content, independent of sheet-vs-embedded presentation. See this
+/// file's header for why it was split out of `PlayerStatusView`.
+struct PlayerStatusGrid: View {
     let session: GameSession
-    let onDone: () -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            statusList(snapshot: session.state)
+            list(snapshot: session.state)
         }
     }
 
-    private func statusList(snapshot: GameState) -> some View {
+    private func list(snapshot: GameState) -> some View {
         let connectedPlayerIndices = snapshot.players.indices.filter { snapshot.players[$0].connected }
-        return NavigationStack {
-            List {
-                Section("Players") {
-                    ForEach(connectedPlayerIndices, id: \.self) { index in
-                        playerRow(index, snapshot: snapshot)
-                    }
-                }
-                Section("Pillboxes") {
-                    ForEach(Array(snapshot.pills.enumerated()), id: \.offset) { offset, pill in
-                        ownershipRow(name: "Pillbox \(offset)", owner: pill.owner, snapshot: snapshot)
-                    }
-                }
-                Section("Bases") {
-                    ForEach(Array(snapshot.bases.enumerated()), id: \.offset) { offset, base in
-                        ownershipRow(name: "Base \(offset)", owner: base.owner, snapshot: snapshot)
-                    }
+        return List {
+            Section("Players") {
+                ForEach(connectedPlayerIndices, id: \.self) { index in
+                    playerRow(index, snapshot: snapshot)
                 }
             }
-            .navigationTitle("Status")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: onDone)
+            Section("Pillboxes") {
+                ForEach(Array(snapshot.pills.enumerated()), id: \.offset) { offset, pill in
+                    ownershipRow(name: "Pillbox \(offset)", owner: pill.owner, snapshot: snapshot)
+                }
+            }
+            Section("Bases") {
+                ForEach(Array(snapshot.bases.enumerated()), id: \.offset) { offset, base in
+                    ownershipRow(name: "Base \(offset)", owner: base.owner, snapshot: snapshot)
                 }
             }
         }
-        .frame(minWidth: 360, minHeight: 420)
     }
 
     private func status(forPlayer index: Int, snapshot: GameState) -> OwnershipStatus {
@@ -133,5 +132,23 @@ struct PlayerStatusView: View {
             Spacer()
             Text(status.label).foregroundStyle(.secondary)
         }
+    }
+}
+
+struct PlayerStatusView: View {
+    let session: GameSession
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            PlayerStatusGrid(session: session)
+                .navigationTitle("Status")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
+        }
+        .frame(minWidth: 360, minHeight: 420)
     }
 }

@@ -109,6 +109,18 @@ struct GameView: View {
             }
             .padding(8)
         }
+        .safeAreaInset(edge: .leading) {
+            BuilderToolStrip(session: session, reclaimFocus: reclaimMapFocus)
+        }
+        .safeAreaInset(edge: .trailing) {
+            VStack(spacing: 0) {
+                ResourceGaugesPanel(session: session)
+                Divider()
+                PlayerStatusGrid(session: session)
+                    .listStyle(.plain)
+            }
+            .frame(width: 220)
+        }
         .sheet(isPresented: $showingStatus) {
             PlayerStatusView(session: session, onDone: { showingStatus = false })
         }
@@ -118,6 +130,17 @@ struct GameView: View {
         .sheet(isPresented: $showingMessages) {
             MessagesView(session: session, onDone: { showingMessages = false })
         }
+    }
+
+    /// **D148(B):** every HUD control (tool strip today; the embedded status grid's Kick/Ban
+    /// buttons tomorrow) lives in the same window as `GameRenderView`, which is the first
+    /// responder for all driving/firing keys (`GameRenderView.swift`'s own `viewDidMoveToWindow`
+    /// doc comment already documents this exact failure mode -- a click elsewhere in the window
+    /// with nothing re-claiming first responder leaves every key press silently dead). Clicking a
+    /// HUD button does NOT go through `GameRenderView.mouseDown` (which already reclaims focus),
+    /// so every HUD action must reclaim it explicitly afterward.
+    private func reclaimMapFocus() {
+        session.renderView.window?.makeFirstResponder(session.renderView)
     }
 }
 

@@ -89,6 +89,15 @@ public final class GameRenderView: NSView {
     /// matching the reference's own `builderToolInteger` default of 0.
     public private(set) var selectedBuilderTool: BuilderCommandKind = .tree
 
+    /// **D148(B):** lets the always-visible build-tool strip (`GameView.swift`) drive the same
+    /// selection `keyDown`'s digit-key branch sets, without introducing a second source of truth.
+    /// Deliberately does NOT reclaim first responder itself -- the caller (a SwiftUI button
+    /// action) does that explicitly right after, matching this view's own `mouseDown` precedent
+    /// (`window?.makeFirstResponder(self)`) rather than hiding a responder change inside a setter.
+    public func selectBuilderTool(_ tool: BuilderCommandKind) {
+        selectedBuilderTool = tool
+    }
+
     /// D128 backlog C.1 -- the live, rebindable keymap. Defaults to whatever was last persisted
     /// (`PreferencesView`'s rebind UI writes through `KeyBindingsStore`); `GameSession` re-pushes
     /// a fresh value here whenever the settings UI saves a change (see `GameSession.swift`).
@@ -374,6 +383,18 @@ public final class GameRenderView: NSView {
                 }
                 if let cell = tilesImage.cropping(to: sheetSrcRect(forIndex: index)) {
                     ctx.draw(cell, in: dst)
+                }
+                // D148(C): mines were pure terrain state with no glyph ever drawn over the
+                // base tile (`mapimage()` intentionally returns the *unmined* image for every
+                // `minedX` terrain variant, matching autotiling's own neighbor-matching needs --
+                // see D148(C) pre-brief in AGENT_NOTES.md for why per-owner visibility was
+                // rejected: the C reference's `hiddenmines` option/per-observer reveal state
+                // isn't modeled anywhere in this port, so the correct default (matching the
+                // reference's `hiddenmines == false` behavior, which is this port's only
+                // modeled mode) is every mine visible to every player, not owner-only).
+                if isMinedTile(tileGrid, Int32(x), Int32(y)) != 0,
+                   let mineCell = tilesImage.cropping(to: sheetSrcRect(forIndex: MINE00IMAGE)) {
+                    ctx.draw(mineCell, in: dst)
                 }
             }
         }
