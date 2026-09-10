@@ -733,6 +733,37 @@ public func serverPostProcessLoadedMap(_ state: inout GameState) {
 /// C failure mode on the encode side to replicate; `serversavemap()`'s own
 /// `LOGFAIL`s are all allocation-failure or `readrun()`-internal, neither
 /// of which apply to a Swift array builder).
+// MARK: - Bundled default map (D132)
+//
+// A small, freshly-authored map (not derived from any external map file) shipped with the app so
+// hosting works before a user ever imports a `.map` file. Plain-data starts/pills/bases over
+// `mapDefault()`'s stock terrain -- no hand-drawn terrain features are needed for pill/base sites
+// to become valid, since `serverPostProcessLoadedMap` normalizes any site's terrain on load
+// (`serverNormalizeSiteTerrain(.sea) == .grass0`), the same as it would for any real imported map.
+
+/// Builds the small default map's `GameState`: 4 starts near the mine-zone's corners, 2 pills, 2
+/// bases, otherwise stock `mapDefault()` terrain. Used both to generate the bundled map bytes
+/// (see `Bolo 2026/Bolo 2026/DefaultMap.swift`) and directly in tests.
+public func defaultBundledMapState() -> GameState {
+    var state = GameState()
+    state.terrain = .mapDefault()
+    state.starts = [
+        Start(x: 40, y: 40, dir: 4),
+        Start(x: 216, y: 40, dir: 12),
+        Start(x: 40, y: 216, dir: 4),
+        Start(x: 216, y: 216, dir: 12),
+    ]
+    state.pills = [
+        Pill(x: 128, y: 60, armour: 15, owner: playerNeutral, speed: 25, counter: 0),
+        Pill(x: 128, y: 196, armour: 15, owner: playerNeutral, speed: 25, counter: 0),
+    ]
+    state.bases = [
+        Base(x: 60, y: 128, armour: 90, owner: playerNeutral, shells: 90, mines: 90),
+        Base(x: 196, y: 128, armour: 90, owner: playerNeutral, shells: 90, mines: 90),
+    ]
+    return state
+}
+
 public func encodeBMap(_ state: GameState) -> [UInt8] {
     var bytes: [UInt8] = Array("BMAPBOLO".utf8)
     bytes.append(1)  // CURRENT_MAP_VERSION (bolo.h:26)

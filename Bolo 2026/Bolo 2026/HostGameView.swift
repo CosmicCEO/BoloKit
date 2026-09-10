@@ -148,6 +148,15 @@ struct HostGameView: View {
         .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: [mapContentType]) { result in
             handleMapPickerResult(result)
         }
+        // D132: bundled default map, applied on first appearance only (`mapState == nil` guards
+        // against re-applying over a user's already-chosen map if this view re-appears). Goes
+        // through the exact same decode/post-process path as a user-imported map -- see
+        // `applyDecodedMap` below -- via the byte-for-byte `encodeBMap` output of
+        // `BoloKit.defaultBundledMapState()`, embedded in `DefaultMap.swift`.
+        .onAppear {
+            guard mapState == nil else { return }
+            applyDecodedMap(bytes: defaultMapFileBytes)
+        }
     }
 
     private func handleMapPickerResult(_ result: Result<URL, Error>) {
@@ -168,8 +177,18 @@ struct HostGameView: View {
             return
         }
 
+        applyDecodedMap(bytes: Array(data))
+    }
+
+    /// Shared by both the bundled default map (D132) and a user-imported file (D131): decode,
+    /// server-post-process, and validate, in the exact same order either way. Factored out so the
+    /// two call sites can't silently drift on which steps they run.
+    private func applyDecodedMap(bytes: [UInt8]) {
+        mapErrorMessage = nil
+        mapState = nil
+
         var decoded = GameState()
-        guard decodeBMap(Array(data), into: &decoded) else {
+        guard decodeBMap(bytes, into: &decoded) else {
             mapErrorMessage = "Incompatible Map Version"
             return
         }

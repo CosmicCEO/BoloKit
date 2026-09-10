@@ -122,3 +122,40 @@ private func encodeFullBMap(pills: [Pill], bases: [Base], starts: [Start], grid:
     #expect(bytes.count == preambleSize + 4)  // no pills/bases/starts, just the sentinel run
     #expect(Array(bytes.suffix(4)) == [4, 0xff, 0xff, 0xff])
 }
+
+/// D132: the bundled default map's exact byte layout, guarding against silent drift between
+/// `defaultBundledMapState()` and the byte literal embedded in
+/// `Bolo 2026/Bolo 2026/DefaultMap.swift` (that file's bytes were generated once from this same
+/// function's `encodeBMap` output -- if this function ever changes, that embedded literal must
+/// be regenerated to match, and this test's own byte comparison is the tripwire for that).
+@Test func defaultBundledMapEncodesToTheEmbeddedAppBundleBytes() {
+    let bytes = encodeBMap(defaultBundledMapState())
+    let expected: [UInt8] = [
+        66, 77, 65, 80, 66, 79, 76, 79, 1, 2, 2, 4, 128, 60, 255, 15, 25, 128, 196, 255,
+        15, 25, 60, 128, 255, 90, 90, 90, 196, 128, 255, 90, 90, 90, 40, 40, 4, 216, 40, 12,
+        40, 216, 4, 216, 216, 12, 4, 255, 255, 255,
+    ]
+    #expect(bytes == expected)
+}
+
+/// D132: the bundled map must survive the exact same decode -> server-post-process ->
+/// starts-empty-guard sequence `HostGameView.swift`'s `applyDecodedMap` runs on every map, real
+/// or bundled -- proving hosting is actually possible from this map without a live app.
+@Test func defaultBundledMapSurvivesDecodeAndServerPostProcess() {
+    let bytes = encodeBMap(defaultBundledMapState())
+    var decoded = GameState()
+    #expect(decodeBMap(bytes, into: &decoded))
+    serverPostProcessLoadedMap(&decoded)
+
+    #expect(!decoded.starts.isEmpty)
+    #expect(decoded.starts.count == 4)
+    #expect(decoded.pills.count == 2)
+    #expect(decoded.bases.count == 2)
+    // serverPostProcessLoadedMap forces NEUTRAL ownership regardless of authored owner byte.
+    #expect(decoded.pills.allSatisfy { $0.owner == playerNeutral })
+    #expect(decoded.bases.allSatisfy { $0.owner == playerNeutral })
+    // Start tiles are always cleared to sea by post-process.
+    for start in decoded.starts {
+        #expect(decoded.terrain[Int(start.x), Int(start.y)] == .sea)
+    }
+}
