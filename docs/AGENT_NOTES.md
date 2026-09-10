@@ -3209,3 +3209,84 @@ params default). No `GameState` changes, no wire-protocol changes.
 `builderTick`/`arriveAtTarget` `.getTree` completion with assertions that the new callbacks fire
 exactly when a shell is actually appended / trees are actually gained, reusing existing test
 patterns in `Tests/BoloKitTests` rather than new infrastructure.
+
+### [IMPLEMENTER] 2026-09-10 — D148 item (B) pre-brief: always-visible main-window HUD
+
+Per D148's leaner process, no research subagents — citing this session's own direct file reads
+against the plan's already-identified locations.
+
+**Zone-by-zone plan:**
+
+1. **Shell/mine/armor gauges (build first, simplest).** Confirmed field homes: local player's
+   `shells`/`armour` live on `GameState.local` (`LocalPlayerState`, `Sources/BoloKit/GameObjects.swift:346+`),
+   `mines` is per-player on `state.players[localPlayer].mines` (`GameObjects.swift:212`) — not on
+   `.local` (D105/D106 moved it off the singleton). Max values are `Physics.swift`'s
+   `maxShells`/`maxMines`/`maxArmour` (all `= 40`, lines 86/89/92) — public, importable directly,
+   no re-derivation. Building three vertical `ProgressView`-style bars reading these via the same
+   "poll `session.state` on a `TimelineView`" pattern `PlayerStatusView` already established
+   (`GameSession` isn't `ObservableObject` by design, per that file's own header). Extracting a
+   pure `static func gaugeFraction(value: Int, max: Int) -> Float` (clamped 0...1) for a
+   `Bolo 2026Tests` unit test, matching D144/D145/D146's precedent of pulling pure logic out of
+   view code.
+
+2. **Status grid (reflow, not rebuild).** `PlayerStatusView.swift`'s `statusList` currently wraps
+   its `List` in a `NavigationStack` + `.toolbar` "Done" button — chrome that only makes sense for
+   the sheet presentation. Splitting: extract the `List` body itself into a new `PlayerStatusGrid:
+   View` (players/pills/bases sections, unchanged row logic), with `PlayerStatusView` (the sheet)
+   now just wrapping `PlayerStatusGrid` in the `NavigationStack`/toolbar it always had. The
+   always-visible panel embeds `PlayerStatusGrid` directly, no sheet chrome. Zero duplication of
+   the friendly/allied/hostile/neutral classification logic (`status(forPlayer:)`,
+   `ownershipStatus(owner:)`) — same `session`/`onDone` shape minus `onDone` for the embedded case
+   (embedded panel has no "Done" concept).
+
+3. **Build-tool strip.** `GameRenderView` (`GameRenderView.swift:90`) is an `NSView` (reference
+   type) holding `selectedBuilderTool: BuilderCommandKind` as `private(set)`, set today only from
+   `keyDown`'s digit-key branch (`builderTool(forKeyCode:)`, `InputKeymap.swift:220-229`, 5 cases:
+   `.tree/.road/.wall/.pill/.mine`). Since `GameRenderView` is a class instance owned by
+   `GameSession.renderView` (confirmed `GameRenderRepresentable.makeNSView` returns
+   `session.renderView` directly, not a fresh instance), a SwiftUI button strip can safely call a
+   new `public func selectBuilderTool(_:)` on that same live instance (mirrors the existing
+   `keyDown` assignment) without any `@Published`/binding plumbing — reading the current selection
+   for highlighting uses the same `TimelineView` poll pattern as the gauges/status grid (no
+   `ObservableObject` conversion needed, consistent with the rest of this file's established
+   "poll, don't observe" convention).
+
+4. **Event-log bar — SPLITTING OUT, not building this pass.** Traced `computeMessageMask`/
+   `ChatMessage` (`Sources/BoloNet/ChatMessage.swift`): confirmed `MessageTarget` only has
+   `.everyone/.allies/.nearby` — the file's own header states `MSGGAME` (the C server's synthetic
+   system-message target, `bolo.h:162`) is deliberately NOT a case here, since no player ever
+   sends it. Cross-checked `RecvSR.swift`'s `recvSrCaptureBase`/`recvSrCapturePill` and
+   `RecvCL.swift`'s `onShouldBroadcastCaptureBase`/`onShouldBroadcastCapturePill` callbacks
+   (`RecvCL.swift:136-137,168-170`) — these fire on real capture events but carry no message/log
+   generation anywhere; `GameSession.swift`'s `messages` array (line 101) is populated only by
+   player-typed chat (`sendMessage`, line 333) and remote relay (line 565), never by a
+   capture/system event. **Confirmed: this is not "reflow existing content," it's new
+   event-to-message generation that would need new plumbing in `BoloNet`/`GameSession` (deciding
+   what text a capture event produces, wiring it through the existing capture callbacks) — a real
+   simulation/session-layer decision, not pure render work.** Flagging for PLANNER per this
+   dispatch's own instruction rather than inventing message text unprompted.
+
+5. **Win/loss surfacing — SPLITTING OUT, not building this pass.** Traced `RunTick.swift:100-172`:
+   both the time-limit win condition (`onTimeLimitWarning`, fires at `seconds ∈
+   {300,60,10,5,4,3,2,1,0}` before `timeLimit`) and the domination base-control win condition
+   (`onBaseControlWarning`, same countdown shape against `baseControlThreshold`, lines 126-172)
+   are **already fully computed** — real logic, not stubs, exactly mirroring `server.c:1102-1176`.
+   But grepping `GameSession.swift` for both callback names: **neither is wired to anything** —
+   `runTick`'s call site never supplies non-default closures for `onTimeLimitWarning`/
+   `onBaseControlWarning`, so they're silent no-ops today. This is a real, already-computed
+   condition with zero UI surfacing — genuinely unimplemented at the session/UI layer, not a
+   guess. Wiring it means deciding what "game over" looks like in this UI (a banner? forced return
+   to menu? which player is declared the winner from `state.bases[0].owner` at the fire moment?) —
+   a product decision, not a pure reflow, so flagging rather than building solo, per this
+   dispatch's explicit instruction to split out anything non-simple here.
+
+**In scope this pass:** gauges, status grid reflow, build-tool strip — all confirmed pure
+render/UI-layer reflows or small new UI reading existing state, no `BoloKit` changes needed for
+any of the three. **Out of scope, flagged as questions for PLANNER:** event-log bar (needs new
+`BoloNet`/`GameSession` event-to-message plumbing) and win/loss surfacing (needs a product
+decision on presentation + wiring already-computed `RunTick` callbacks) — both real, not
+trivially foldable into this UI-only pass.
+
+[TO: PLANNER] Building items 1-3 now. Items 4-5 need your ruling on scope/approach before any
+IMPLEMENTER builds them — recommend two follow-on coding GOs (or folding into a future D148
+sub-item) once you've decided what capture-event text and win/loss presentation should look like.
