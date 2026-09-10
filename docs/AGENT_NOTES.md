@@ -2711,3 +2711,75 @@ path at all yet" scope surprise per D142 item 4's own instruction to stop-and-fl
 since fixing D142 requires wiring it in regardless (there's nothing to self-report if it never
 runs), this session fixes it inline rather than blocking, and will call it out again in the
 completion report.
+
+### [IMPLEMENTER] 2026-09-10 — D142 completion report: shell-impact CL* follow-on for the join path
+
+**Implemented per this session's own pre-brief above, commit `a4bc73a`.**
+`Sources/BoloKit/ShellTick.swift`: `shellCollisionTest` gained `onSelfReportDamage: ((Int, Int,
+Bool) -> Void)? = nil`, invoked at all six of its `applyDamage(...)` call sites (pill:263,
+base-boat:~284, base-non-boat:~292, terrain-boat-road:~317, terrain-boat-default:~330,
+terrain-non-boat:~340 after the edit), gated `player == state.localPlayer` — the exact six
+`sendcldamage` sites in `client.c`'s `shellcollisiontest()` (5142/5170/5197/5256/5275/5338), each
+gated `player == client.player`. `shellTick` gained the same parameter, threaded straight through
+to its own `shellCollisionTest` call. Both default `nil`; `RunTick.swift`'s host call and
+`PillTick.swift:220`'s pill-return-fire call were left untouched (they simply omit the new
+parameter) — confirmed no behavior change there by full green `swift test` (see counts below).
+
+`Bolo 2026/Bolo 2026/GameSession.swift`'s join `.tick` handler now calls `shellTick(player:
+localPlayer, state: &state, onSelfReportDamage: ...)`, collecting hits and sending
+`CLDamage(x:y:boat:)` via the existing `tcpSession.send` path, same shape as the builder-half's
+`builderOutbound` handling landed in `1d32cb1`.
+
+**Scope-surprise disclosed in the pre-brief, confirmed and fixed inline:** `shellTick` was not
+called on the join path at all before this change — `GameSession.swift`'s own prior doc comment
+said so explicitly. Shells could already spawn there (`tankMoveTick`'s `.shoot` handling,
+`TankLocalTick.swift:858-868`, already ran on the join path) but then never moved, collided, or
+expired, since nothing called `shellAdvance`/`shellCollisionTest` for them. This pass wires
+`shellTick` into the join path for the first time as a necessary side effect of closing D142 (there
+is nothing to self-report if collision testing never runs) — not separately scoped, per this
+session's own pre-brief note that blocking on it would be pointless since D142 can't close without
+it either way.
+
+**`CLTouch`/`CLSmallBoom`/`CLSuperBoom` confirmed NOT applicable to `shellcollisiontest()`** —
+verified directly against `client.c`, all three are sent elsewhere (`shelllogic()`'s separate
+range-expiry and tank-death loops), never inside `shellcollisiontest()` itself. Only `CLDamage` is
+in scope for this pass; not fabricating uses for the other three. Zero new `BoloNet` wire surface,
+as expected — `CLDamage` already existed.
+
+**Judgment calls flagged (both disclosed in the pre-brief, repeating here per Step 4's own
+requirement):**
+1. A single `onSelfReportDamage` closure parameter was used instead of a `JoinOutboundShellCL`
+   enum (unlike the builder half's 7-case `JoinOutboundBuilderCL`) because there is exactly one
+   outbound message shape here (`CLDamage`) — a single-case enum would be pure ceremony. Small,
+   mechanical follow-up if PLANNER prefers strict structural symmetry instead.
+2. Tank-hit (`sendclhittank`) and shell-expiry (`sendcltouch`) self-reporting were explicitly left
+   untouched — out of scope per D142's own ruling text (named `shellcollisiontest()`'s
+   `sendcldamage` sites specifically), and both are pre-existing, already-disclosed generalizations
+   in this file's own header, not new gaps.
+
+**Test counts: 747 before this session (542 BoloKitTests + 205 DifferentialTests) → 752 after (547
+BoloKitTests + 205 DifferentialTests).** 5 new unit tests added to `ShellTickTests.swift`: guarded
+self-report fires on the local player's pill hit and on a second, structurally distinct terrain-hit
+branch; unguarded case (non-local player, real hit) never fires; no-hit case (local player, sea
+terrain) never fires; and a `shellTick`-level test confirming the parameter threads through to
+`shellCollisionTest` in the real per-tick driver, not just the leaf function. This closes the D28
+gap PLANNER flagged after the builder half (D139) — DifferentialTests count intentionally unchanged
+since these are pure Swift-only unit tests (`shellCollisionTest`'s collision resolution isn't a
+numeric oracle-fuzzable transform, same reasoning `ShellTickDifferentialTests.swift`'s own header
+already gives for why it only fuzzes `shellAdvance`).
+
+Two pre-existing, order-independent test flakes observed during this session, confirmed unrelated
+to this change (both pass cleanly in isolation, `swift test --filter <name>`, before and after this
+commit): `hostGameEngineSubmitPauseResumeServerTogglesPauseState` (an off-by-one-tick timing race,
+249 vs 250) and `hostGameEngineRelaysADgramPacketBetweenTwoRegisteredPlayers` (`.shortRead` under
+concurrent load). Neither touches `ShellTick.swift`/`GameSession.swift`; flagging for awareness, not
+claiming either is fixed here.
+
+`swift build` (SwiftPM) and `xcodebuild ... -scheme "Bolo 2026" build` both green, no substitution
+needed this pass (the BoloGlyphs Run Script hang did not reproduce).
+
+[TO: PLANNER] D142 shell-impact half complete, commit `a4bc73a`. B.10's builder-task/shell-impact
+follow-on (D139/D142) is now fully closed on both halves as far as this session can tell — PLANNER's
+call on formal closure, not mine. Two pre-existing test flakes noted above for awareness (not
+caused by this session, not blocking). Judgment call (1) above (enum-vs-closure shape) is a small
+mechanical change if you want strict symmetry with the builder half instead.
