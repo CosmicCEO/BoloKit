@@ -2904,3 +2904,95 @@ per Step 2 rather than folding it in quietly.**
 [TO: PLANNER] Proceeding with the plan above (Xcode MCP `XcodeNewTarget`, Swift Testing,
 `Bolo 2026Tests`) unless redirected. Will report the resulting `.pbxproj` diff size and the new
 target's real `xcodebuild test` count in the completion report.
+
+### [IMPLEMENTER] 2026-09-10 — D144 completion report: `Bolo 2026Tests` target stood up, 10/10 green
+
+**Mechanism, exactly as pre-briefed, commit `cfd5c80`.** `XcodeOpenWorkspace` on `Bolo
+2026.xcodeproj`, then `XcodeNewTarget` with `com.apple.dt.unit.multiPlatform.unitTestBundle`
+(`productName: "Bolo 2026Tests"`, `testingSystem: "Swift Testing"`, embedded in the `Bolo 2026`
+app). The `.pbxproj` diff (124 insertions/2 deletions, `git diff --stat` confirmed before
+committing) is entirely tool-generated — new target, build phases, and a
+`PBXFileSystemSynchronizedRootGroup` for the new `Bolo 2026Tests/` folder (this project already
+uses Xcode's newer synchronized-folder format, confirmed by grep before writing any test file —
+meaning `.swift` files just need to exist in that folder, no further `.pbxproj` file-reference
+edits needed for each test file added). **One gap the MCP tooling didn't close on its own,
+disclosed rather than silently worked around:** the new target wasn't wired into the shared
+scheme's `TestAction`/`BuildAction` by `XcodeNewTarget` itself — `RunAllTests` failed with
+`"Scheme \"Bolo 2026\" is not testable"` until I hand-edited
+`Bolo 2026.xcodeproj/xcshareddata/xcschemes/Bolo 2026.xcscheme` directly (added a
+`TestableReference` under `TestAction` and a `buildForTesting` `BuildActionEntry`, both pointing
+at the new target's existing blueprint ID from the tool-generated `.pbxproj`) — ordinary,
+low-risk scheme XML, not `.pbxproj` surgery, but flagging since it wasn't purely tool-mechanized
+end to end as hoped.
+
+**Real, disclosed mid-session finding that changed the pre-brief's own testing approach:**
+the pre-brief's original plan was to test `HostGameView.applyDecodedMap`/`handleMapPickerResult`
+directly by narrowing them (and `mapURL`/`mapState`/`mapErrorMessage`) from `private` to
+default/internal visibility. That compiled fine, but under a **real `xcodebuild test` run**, every
+assertion reading `view.mapState`/`view.mapErrorMessage` after calling `view.applyDecodedMap(...)`
+came back `nil` — even the "reject garbage bytes" case, which should have set an error message
+unconditionally. Root-caused empirically, not guessed: `GameSessionTests` (same session, same
+target, zero `@State` involved) passed 6/6 cleanly on the same run, isolating the cause to
+`@State` specifically — a `View` struct's `@State` storage does not reliably persist writes back
+to a caller holding the same struct value when instantiated directly outside SwiftUI's real
+environment (its backing storage depends on SwiftUI's own graph-installation machinery, not just
+a plain shared reference-type box, contrary to what the pre-brief assumed). **Fix: extracted the
+actual decode/post-process/validate logic out of `applyDecodedMap` into a new, genuinely pure,
+`@State`-free `static func HostGameView.decodeAndPostProcessMap(bytes:) -> MapLoadOutcome`**
+(`MapLoadOutcome` a small local `enum { case success(GameState), case failure(String) }`).
+`applyDecodedMap` itself now just calls it and assigns the result to `@State`, unchanged
+behavior, confirmed by re-running the full `xcodebuild test` after the refactor — same three
+outcomes (garbage bytes / no-starts / valid map), now actually asserted correctly. Reverted the
+`private` → internal widening on `applyDecodedMap`/`handleMapPickerResult`/`mapURL`/`mapState`/
+`mapErrorMessage` since none of them turned out to be needed once the pure core existed
+separately — smaller, cleaner diff than the pre-brief's own plan, not a scope expansion.
+
+**Final test file contents:**
+- `GameSessionTests.swift` (6 tests): single-process `sendMessage` appends a `ChatMessage` with
+  correct id/player/name/text/to; monotonic message IDs; `canKickBan == false` without a
+  `hostEngine`; `kickPlayer`/`banPlayer` are safe no-ops without one; single-process
+  `requestAlliance`/`leaveAlliance` mutate `state` directly (no `tcpSession`/`hostEngine`). Uses a
+  synthetic 1×1 `CGImage` (`CGContext(data: nil, width: 1, height: 1, ...).makeImage()`) for
+  `tilesImage`/`spritesImage` — confirmed safe by direct read of `GameRenderView.swift` before
+  writing it: `init`/`render(_:)` never touch image dimensions, `draw(_:)`'s `cropping(to:)` calls
+  already guard against `nil`, and `draw(_:)` is never invoked in a headless test anyway.
+- `HostGameViewTests.swift` (4 tests): `decodeAndPostProcessMap` rejects garbage bytes
+  ("Incompatible Map Version"), rejects a structurally-valid map with zero starts ("Map Has No
+  Start Points"), accepts a valid one-start map (confirms `serverPostProcessLoadedMap` actually
+  ran — the start tile is `.sea` after processing, not just decoded), and confirms pill ownership
+  is force-reset to `playerNeutral` regardless of the file's stored owner byte — all four
+  hand-assemble raw `BMAPBOLO` byte buffers rather than relying on `DefaultMap.swift`'s bundled
+  map, so each test's fixture is legible inline.
+
+**Judgment calls, both flagged explicitly:**
+1. The host/join-networked branches of `sendMessage`/`requestAlliance`/`leaveAlliance` (needing a
+   real `HostGameEngine`/`TCPSession`) and the `hostEngine:`/`tcpSession:udpSession:` `GameSession`
+   constructors are NOT covered this pass — D144's own scope named pure dispatch logic, and a
+   headless test can't exercise real `BoloNet` networking without becoming an integration test,
+   a different (and heavier) kind of coverage than this pass was asked for. Flagging as a gap for
+   PLANNER's awareness, not silently declaring full `GameSession` coverage.
+2. `handleMapPickerResult`'s `.failure` case (leaves `mapErrorMessage`/`mapState` at their
+   just-cleared `nil` with no user-visible message) is a pre-existing, disclosed-not-introduced
+   gap in the source itself — noted in the pre-brief, not fixed here (D144 is a testing pass, not
+   a behavior-fix pass; a silent `.failure` with no error text is arguably a real UX gap worth its
+   own small ticket, logging as a question for PLANNER rather than fixing solo).
+
+**Test counts:** new `Bolo 2026Tests` target — **10/10 green** (6 `GameSessionTests` + 4
+`HostGameViewTests`), verified via a real `xcodebuild test -project "Bolo 2026/Bolo
+2026.xcodeproj" -scheme "Bolo 2026" -destination 'platform=macOS'` run (full log tail pasted
+above this report's own drafting, `** TEST SUCCEEDED **`), not just `xcodebuild build` success.
+This is a **new, separately-tracked baseline** — not a change to the existing 752-count SwiftPM
+suite. SwiftPM baseline reconfirmed unchanged: `swift test` → 547 BoloKitTests + 205
+DifferentialTests = 752, one pre-existing documented timing flake
+(`hostGameEngineSubmitPauseResumeServerTogglesPauseState`, 249 vs 250, already noted in this
+file's own D142 completion report) reproduced on this run, unrelated to this session's changes.
+No coverage shrinks anywhere (D28) — this pass is additive only.
+
+`swift build` and `xcodebuild ... -scheme "Bolo 2026" build` both green; the `BoloGlyphs` Run
+Script hang did not reproduce this session, no substitution needed.
+
+[TO: PLANNER] `Bolo 2026Tests` stood up and green, commit `cfd5c80`. Two items logged as
+questions above rather than resolved solo: (1) whether host/join-networked dispatch branches
+warrant a future integration-style pass (out of scope here), and (2) whether
+`handleMapPickerResult`'s silent `.failure` case (no user-visible error message) is worth its own
+small fix ticket. Your call on both, and on closing D144.
