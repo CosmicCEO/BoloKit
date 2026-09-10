@@ -907,3 +907,96 @@ Proceeding to implement items 1+2 and run item 3's investigation now.
 
 [TO: PLANNER]
 
+### [IMPLEMENTER] 2026-09-10 — D152 completion report: items 1+2 landed (`75dab88`), item 3 investigated, no defect found
+
+**Item 1 (`GameRenderView.swift`).** `drawSelector(_:)`/`drawCrosshair(_:)` added, both called at
+the end of `draw(_:)` after `drawBuilderTaskIndicators`, exactly as pre-briefed. One real build
+error surfaced by the current SDK, not anticipated in the pre-brief: `NSView.mouse(_:in:)` (the
+port's direct AppKit equivalent of the oracle's own selector gate) has been renamed
+`isMousePoint(_:in:)` in this Xcode beta's AppKit -- fixed to the new name, same semantics, cited
+in the code comment as still mirroring the oracle's `[self mouse:aPoint inRect:...]` call by name.
+Header comment updated: dropped only
+"selector/crosshair" from the disclosed-gap list, kept the pause-label sprite
+(`GSBoloView.m:411-419`) named as still out of scope, per the pre-brief's own flag.
+
+**Item 2 (`GlyphSource.swift`/`ImageIndex.swift`).** `BaseOwnership` enum + `GlyphRole.base(ownership:)`
++ `drawBase`/`basePalette` added as pre-briefed; `ImageIndex.swift`'s three base dispatches
+switched from `.flatFill` to `.base(ownership:)`. Pixel-decoded the actual generated `Tiles.png`
+after a real `xcodebuild` run (not just trusting the code): `NBAS`=`(200,200,60)`,
+`FBAS`=`(35,75,175)`, `HBAS`=`(200,50,50)` fill colors present alongside the dark `(30,30,30,220)`
+backing and `(20,20,20,255)` door notch -- confirms the silhouette actually renders, not just
+compiles, and that friendly no longer collides with `familyColor(.river)`'s `(60,110,220)`.
+
+**Flagged again for PLANNER, not fixed (same as the pre-brief):** `drawPill(friendly:)`
+(`GlyphSource.swift`) and `tankPalette(1)` (friendly tank) still both use the exact
+`(60,110,220)` value that collides with `.river` -- the same defect class D152 fixed for bases
+only. Left untouched, out of this GO's scope.
+
+**Verification.** `swift build` clean. `swift test`: 551 `BoloKitTests` + 205 `DifferentialTests`
+= 756, matching the pre-existing baseline exactly (re-ran `DifferentialTests` twice more after the
+first run hit the already-disclosed D150-backlog flaky pair --
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` and
+`hostGameEngineSubmitPauseResumeServerTogglesPauseState` -- both passed clean on isolated re-runs,
+confirming pre-existing flakiness, not a regression from this change). `xcodebuild ... build` and
+`xcodebuild ... test` for the `Bolo 2026` app target **both ran to completion this session, no
+Run Script hang** -- the bootstrap's documented toolchain-hang workaround was not needed, disclosed
+here rather than silently implied. Added one permanent regression test,
+`drawCrosshairPaintsWhiteCrossAtTankPlusDirTimesRange` (`GameRenderViewTests.swift`), using the
+bootstrap's own blessed `bitmapImageRepForCachingDisplay`/`cacheDisplay` offscreen-render technique
+to pixel-decode the actual rendered output and confirm `drawCrosshair` paints `CROSSHIMAGE` at the
+expected `tank + dir2vec(dir) * range` location, not just that the code type-checks. One real trap
+hit and fixed while writing it: `cacheDisplay` renders at the host's Retina backing scale (2x here,
+`cg.width == 8192` for a 4096pt view) -- pixel-address math needs the `cg.width / Int(view.bounds.width)`
+scale factor, not raw point coordinates, or every sample lands on the wrong pixel. `drawSelector`
+is not covered by this test (needs a real `NSWindow`/live mouse position; an offscreen unparented
+view correctly and silently no-ops via its own `guard let window else { return }`) -- disclosed gap,
+not a defect. `Bolo 2026Tests` app-target suite: 20/20 passing (19 pre-existing + this 1 new).
+
+**Item 3 investigation (no code change landed, per D112's standing rule).** Two empirical checks,
+neither hand-derivation alone:
+1. Hand-verified `Canvas.swift`'s `fillRotatedTriangle`/`fillRotatedBar` rotation math directly
+   against `dir2vec`'s documented +y-down convention (`rotate(p) = (p.x*dx - p.y*dy, p.x*dy + p.y*dx)`
+   is a standard rotation mapping local +x to world `(dx,dy)` directly; `Canvas16`'s own header
+   already documents +y-down, matching `dir2vec`) -- self-consistent, no sign disagreement found.
+   This closes the one gap flagged going in: the existing static check's own "generator rotation
+   math" claim was vacuous (the oracle has no procedural generator to diff against), but the
+   already-passing `allHeadingsMatchDir2Vec` test (`BoloGlyphsTests.swift:230`) independently and
+   empirically confirms the sprite-tip-vs-`dir2vec` leg for all 16 headings -- cited, not re-derived.
+2. Added temporary instrumentation (a throwaway `Tests/DifferentialTests/TempD152Item3Investigation.swift`,
+   never committed, deleted before this commit): drove a single player through the real `runTick`
+   for 300 ticks under `[.accel]` (straight line) and `[.accel, .turnR]` (continuous turning +
+   accelerating), each tick comparing `player.dir` against `vec2dir()` of that tick's actual
+   position delta. Straight-line case: exact match every tick (`movedDir == dir == 0.0`, zero
+   diff). Turning case: `dir` and the movement heading track each other within ~0.02-0.19 rad
+   across 300 ticks -- consistent with the expected ~11 deg (half of the 16-way `roundDir`
+   quantization step) rounding noise between the continuously-updated `dir` and the
+   quantized-to-16-headings velocity direction physics actually applies, not drift or a sign flip.
+   This exercises the full multi-tick `runTick` orchestration end to end, the one thing the
+   existing isolated, oracle-fuzzed `testTankPhysicsMatchesOracleFuzzed` (single `tankMoveTick`
+   call per case) doesn't cover.
+
+**Conclusion: no code-level defect found.** Static re-derivation, the existing sprite-tip test, and
+this session's own fresh multi-tick empirical drive all agree with each other and with the oracle.
+Most plausible non-bug explanation for Jerod's report, per the pre-brief's own candidate (a): the
+crosshair was entirely missing before this session (item 1) -- with no on-screen aim-distance
+marker at all, and the hull sprite itself only updating its rendered heading in coarse 16-step
+increments while `dir` (used for both physics and, now, the crosshair) is continuous, a player
+watching the tank could plausibly perceive "point A, moved toward B" during the ~11-degree window
+where the coarse sprite frame lags the continuous `dir` value slightly -- normal quantization
+behavior, present in the oracle too (same `(int)(dir/(kPif/8.0)+0.5)%16` formula), not a port-
+specific bug. A second, narrower legitimate case also exists and is disclosed rather than
+speculated into a fix: `kickDir`/`kickSpeed` (`TankTick.swift`/`GameObjects.swift`) is a real,
+oracle-matching recoil mechanism (post-shell-impact bounce, `RecvSR.swift:564-565`/`ShellTick.swift:467-468`)
+that adds a velocity component genuinely independent of `dir` for a short decay window -- if Jerod's
+repro happened to follow a hit, momentary movement legitimately diverging from hull heading is
+expected oracle behavior, not a defect, and item 1's now-visible crosshair (which stays anchored to
+`dir`, not the kick) would make that divergence visible and legible rather than confusing. Per
+D112's rule and D152's own text, **no code fix is proposed** -- closing this as "no defect found,
+plausibly explained by item 1's prior absence (plus, narrowly, oracle-matching recoil physics)," not
+silently dropped.
+
+**Ready for PARITY review** on items 1+2 (item 3 has no code change to audit, just the investigation
+above). Not activating PARITY myself -- that's PLANNER's tag to apply.
+
+[TO: PLANNER]
+
