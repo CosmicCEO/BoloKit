@@ -3432,3 +3432,103 @@ only this dispatch's own 5 files.
 split out per the pre-brief, ready for their own coding GOs once you've ruled on message-text/
 presentation approach. [TO: PARITY] skipped per D148's process — pure UX-layer work, no reference
 counterpart to hand-trace.
+
+### [IMPLEMENTER] 2026-09-10 — D148(C) pre-brief + completion report: tank barrel legibility fixed; own-mine visibility flagged, not built
+
+**Scope:** D148 item (C) only. No research subagents used (cost-conscious instruction) — read
+`Sources/BoloGlyphsCore/GlyphSource.swift`/`Canvas.swift`, `Sources/BoloKit/Tiles.swift`/
+`Images.swift`, `Bolo 2026/Bolo 2026/GameRenderView.swift`, and `Reference/c/client.c`/`bmap.c`/
+`bolo.h`/`bmap.h` directly.
+
+**Part 1 — tank sprite legibility (built):** `GlyphSource.swift:123-144`'s `drawTank` now draws a
+short dark (20,20,20) barrel past the hull triangle's tip, via a new `Canvas16.fillRotatedBar`
+(`Canvas.swift`) using the exact same `(dx, dy)` rotation convention as the existing
+`fillRotatedTriangle` (D70) — rotation can't drift from `dir2vec`'s reference frame since it's the
+same rotate closure shape. Length/width (5.0/0.8) were tuned down from an initial 8.0/1.0 after
+`tankHeadingZeroPointsEast` failed (`offX` landed exactly on the `-0.5` boundary, not `< -0.5`) —
+the barrel's added mass toward the tip was pulling the whole-sprite centroid too far off the
+hull-only baseline the existing tests assert against. Re-ran and confirmed both the boundary test
+and the full heading sweep/cosine-similarity test pass at the tuned size — no test expectations
+were weakened, only the new glyph's own geometry was adjusted to fit inside the existing contract.
+
+**Part 2 — own-mine visibility — investigated, NOT built as originally framed, flagging the
+finding to PLANNER as instructed:**
+
+Traced the C reference directly (`Reference/c/client.c:1350-1820`, `6170-6260`, `4462-4490`;
+`Reference/c/bmap.h:22`, `client.h:30`, `server.h:57`). Findings:
+
+1. **There is no per-mine owner byte anywhere** — terrain-byte mine state (`LMINEMASK`/
+   `kMinedXTerrain`) is unowned, exactly as this port already models it. `srplacemine->player` is
+   used only transiently, at the moment of placement, to decide an *immediate* reveal — it is
+   never stored.
+2. **Mine visibility is gated by a `hiddenmines` server option, which this port does not
+   implement at all** (confirmed zero references anywhere in this codebase). When
+   `hiddenmines == false` (`client.c` checks `!client.hiddenmines` throughout `gettile()`'s
+   mined-terrain branches, `client.c:6189` etc.), every mined tile always renders as its mined
+   tile — visible to every player, unconditionally, no ownership check anywhere. This is the
+   *simple*, common case.
+3. **Only when `hiddenmines == true`** does the original hide mines by default and reveal them
+   two ways: (a) immediately to the placer and their allies (`client.c:1815`,
+   `testalliance(client.player, srplacemine->player)` — this is the one place ownership matters,
+   and even then it's ally-inclusive, not owner-exclusive), or (b) permanently, per-observing-
+   client, once any tank gets within 2.0 tiles (`testhiddenmine`, `client.c:4462`) — a proximity-
+   based fog-of-war-style reveal, not an ownership check.
+4. **This project's D65 already put fog-of-war/per-player visibility out of v1 scope** ("treat
+   every tile as fully visible" — cited directly in `GameRenderView.swift`'s own header comment
+   and reused in this wave's D148(A) sound-wiring pre-brief). There is no per-player visibility
+   model of any kind to hang an ownership-gated reveal on, and building one (a `hiddenmines`
+   server option + per-observer revealed-tile state + proximity reveal) is a materially larger,
+   fog-of-war-adjacent feature, not "flip a tile's render."
+
+**Conclusion:** the playtest gap ("I can't see my own mines") is real, but the *fix* consistent
+with both the C reference's actual default behavior and this project's own already-standing D65
+scope decision is simpler than "own-mine visibility": **mines currently render as their unmined
+base tile for *everyone*, which matches neither of the reference's two modes** — it's a plain
+rendering bug (the reference's `hiddenmines == false` default already shows mines to all players
+unconditionally). Fixed exactly that, nothing more: `GameRenderView.swift`'s `drawTerrain` now
+draws the existing `MINE00IMAGE` glyph (already generated, `GlyphSource.swift`'s `.mine` case;
+previously wired to nothing) on top of the base tile whenever `isMinedTile(tileGrid, x, y) != 0`
+— `isMinedTile` already existed in `Tiles.swift` (D-unnumbered utility, unused until now) and
+needed no changes. **No new `GameState`/ownership tracking added — not tagging `[TO: PARITY]`**,
+per D148's own instruction that PARITY is reserved only if mine-ownership state was needed; it
+wasn't.
+
+Flagging explicitly for PLANNER: a real `hiddenmines`-style feature (hide mines by default,
+proximity-based per-player reveal, immediate reveal to placer/allies) is a separate, larger
+feature this pass did not build — logging it as a possible future item, not silently deciding
+it's out of scope forever.
+
+**Files touched:** `Sources/BoloGlyphsCore/Canvas.swift` (new `fillRotatedBar`),
+`Sources/BoloGlyphsCore/GlyphSource.swift` (`drawTank` barrel), `Bolo 2026/Bolo 2026/
+GameRenderView.swift` (mine-overlay draw in `drawTerrain` — this edit landed inside the
+concurrent D148(B) HUD session's own commit `58c4ac7` since both sessions were editing that file
+in the same shared working tree; confirmed via `git log` that the mine-overlay lines are present
+in that commit, not lost). Tank glyph change committed separately: `9db6e74`.
+
+**Test counts:** SwiftPM `swift test` — BoloKitTests 551/551 (grown from the 547 baseline by
+prior concurrent sessions' work this wave, not this dispatch), DifferentialTests 205/205 clean
+(one run reproduced the pre-existing documented `hostGameEngineBroadcastsExactlyAtTheTimeLimit
+BoundaryTickThenNeverAgain`-family timing flake noted earlier in this file, unrelated to this
+session's changes — re-ran filtered and it passed). No coverage shrink (D28) — no test file
+touched by this dispatch; existing `tankHeadingZeroPointsEast`/heading-sweep/cosine-similarity
+tests in `Tests/BoloKitTests/BoloGlyphsTests.swift` re-verified passing against the new barrel
+geometry, not weakened. App target: `xcodebuild -scheme "Bolo 2026" build` succeeded
+(BUILD SUCCEEDED); did not additionally run `Bolo 2026Tests` this pass since no new app-target
+test file was added and D148(B)'s concurrent session already re-verified that suite against the
+shared `GameRenderView.swift` changes.
+
+**Note on shared working tree:** mid-session, uncommitted edits to `Sources/BoloGlyphsCore/
+GlyphSource.swift` briefly appeared reverted to their pre-edit state (concurrent sessions share
+this same working directory, not isolated worktrees) before reappearing — re-verified file
+contents directly after every edit for the rest of the session rather than trusting the edit
+tool's success return alone. No data was actually lost, but flagging this as a real risk of the
+current concurrent-session model for whichever PLANNER session weighs whether worktree isolation
+is worth adding for future batched dispatches.
+
+[TO: PLANNER] D148(C) both halves addressed: tank barrel legibility built and tested (commit
+`9db6e74`), own-mine visibility investigated and re-scoped — built the C reference's actual
+default (`hiddenmines == false`) behavior (mines visible to all, via the existing unused
+`MINE00IMAGE`/`isMinedTile`) rather than inventing new per-owner `GameState` tracking that the
+reference itself doesn't support that way. A real `hiddenmines` fog-of-war-style feature is a
+separate, larger future item if wanted — not built here, not silently declared out of scope
+either. Not declaring D148(C) closed — your call.
