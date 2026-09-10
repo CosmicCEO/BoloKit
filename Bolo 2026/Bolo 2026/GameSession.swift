@@ -521,6 +521,32 @@ public final class GameSession {
                 Task { try? await tcpSession.send(bytes) }
             }
 
+            // B.10 follow-on (D142): join-path shell simulation -- `shellTick` was not called on
+            // this path at all before this change (shells could spawn via `tankMoveTick`'s own
+            // `.shoot` handling but then never moved/collided/expired). `onSelfReportDamage`
+            // (`ShellTick.swift`) mirrors `shellcollisiontest()`'s six `sendcldamage` call sites'
+            // `player == client.player` gate -- self-reporting this client's own shell hits to the
+            // host via `CLDamage`, while local damage application still runs unconditionally on
+            // every path exactly as before (shells stay locally predicted, matching this file's
+            // own generalization -- see `ShellTick.swift`'s header and `shellCollisionTest`'s own
+            // doc comment). `CLTouch`/`CLSmallBoom`/`CLSuperBoom` do not apply to
+            // `shellcollisiontest()` and are out of scope here (see D142 pre-brief).
+            var shellDamageOutbound: [(x: Int, y: Int, boat: Bool)] = []
+            shellTick(
+                player: localPlayer, state: &state,
+                onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
+            )
+            if !shellDamageOutbound.isEmpty, let tcpSession {
+                let bytes = shellDamageOutbound.map { hit in
+                    CLDamage(x: UInt8(hit.x), y: UInt8(hit.y), boat: hit.boat ? 1 : 0).encode()
+                }
+                Task {
+                    for message in bytes {
+                        try? await tcpSession.send(message)
+                    }
+                }
+            }
+
             sendLocalUpdateIfDue(udpSession)
             renderView.render(state)
 

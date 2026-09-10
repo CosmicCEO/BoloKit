@@ -439,3 +439,90 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(!called)
     #expect(state.local.deaths == 3)
 }
+
+// MARK: - shellCollisionTest: onSelfReportDamage (D142, B.10 follow-on join-path hook)
+
+/// Guarded case: `player == state.localPlayer` and a real hit occurs (armed pill) — the callback
+/// fires exactly once with the hit coordinates and the shell's own `boat` flag. Mirrors
+/// `shellcollisiontest()`'s `sendcldamage` gate at the pill call site (client.c:5142).
+@Test func shellCollisionTestSelfReportFiresOnLocalPlayersPillHit() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5)]
+    let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
+    var reports: [(Int, Int, Bool)] = []
+    let consumed = shellCollisionTest(
+        shell: shell, player: 0, state: &state,
+        onSelfReportDamage: { x, y, boat in reports.append((x, y, boat)) }
+    )
+    #expect(consumed)
+    #expect(reports.count == 1)
+    #expect(reports.first?.0 == 50)
+    #expect(reports.first?.1 == 50)
+    #expect(reports.first?.2 == true)
+}
+
+/// Unguarded case: same hit, but `player != state.localPlayer` — the callback must never fire,
+/// matching C's `if (player == client.player)` gate excluding every other player's own shell list.
+@Test func shellCollisionTestSelfReportDoesNotFireForNonLocalPlayersPillHit() {
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()], localPlayer: 0)
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5)]
+    let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 1, boat: false, pill: false)
+    var reports: [(Int, Int, Bool)] = []
+    let consumed = shellCollisionTest(
+        shell: shell, player: 1, state: &state,
+        onSelfReportDamage: { x, y, boat in reports.append((x, y, boat)) }
+    )
+    #expect(consumed)
+    #expect(reports.isEmpty)
+}
+
+/// No-hit case: the shell belongs to the local player, but the terrain underneath is not
+/// damageable (sea) — the callback must not fire even though the "owner" gate would otherwise
+/// pass, matching `shellcollisiontest()`'s own `ret = 0` branches, which never reach `sendcldamage`.
+@Test func shellCollisionTestSelfReportDoesNotFireOnANoHit() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .sea
+    let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: true, pill: false)
+    var reports: [(Int, Int, Bool)] = []
+    let consumed = shellCollisionTest(
+        shell: shell, player: 0, state: &state,
+        onSelfReportDamage: { x, y, boat in reports.append((x, y, boat)) }
+    )
+    #expect(!consumed)
+    #expect(reports.isEmpty)
+}
+
+/// Guarded case at a second, structurally distinct branch (non-boat terrain hit on a wall) —
+/// confirms the hook is wired at more than just the pill call site, matching the pre-brief's
+/// six-site port of `shellcollisiontest()`'s six `sendcldamage` calls.
+@Test func shellCollisionTestSelfReportFiresOnLocalPlayersTerrainHit() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.terrain[50, 50] = .wall
+    let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 0, boat: false, pill: false)
+    var reports: [(Int, Int, Bool)] = []
+    let consumed = shellCollisionTest(
+        shell: shell, player: 0, state: &state,
+        onSelfReportDamage: { x, y, boat in reports.append((x, y, boat)) }
+    )
+    #expect(consumed)
+    #expect(reports.count == 1)
+    #expect(reports.first?.0 == 50)
+    #expect(reports.first?.1 == 50)
+    #expect(reports.first?.2 == false)
+}
+
+/// `shellTick` threads `onSelfReportDamage` straight through to `shellCollisionTest` for every
+/// shell it tests this tick — confirms the driver-level wiring (not just the leaf function) works
+/// end to end, matching how the join `.tick` handler (`GameSession.swift`) actually calls it.
+@Test func shellTickThreadsSelfReportDamageThroughToCollisionTest() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5)]
+    let shell = Shell(point: Vec2f(x: 50, y: 50), dir: 0, range: 0.01, owner: 0, boat: false, pill: false)
+    state.players[0].shells = [shell]
+    var reports: [(Int, Int, Bool)] = []
+    shellTick(player: 0, state: &state, onSelfReportDamage: { x, y, boat in reports.append((x, y, boat)) })
+    #expect(reports.count == 1)
+    #expect(reports.first?.0 == 50)
+    #expect(reports.first?.1 == 50)
+    #expect(reports.first?.2 == false)
+}

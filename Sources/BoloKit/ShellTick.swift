@@ -247,19 +247,43 @@ public func touchTile(
 /// shell is consumed (collided or otherwise spent). Ported from
 /// `shellcollisiontest()` (client.c:5126) — see the file header for the
 /// network-authority-gate generalization applied throughout.
+///
+/// **`onSelfReportDamage` (D142, B.10 follow-on, join path only):** additive
+/// hook mirroring C's `if (player == client.player) sendcldamage(p.x, p.y,
+/// shell->boat);` gate, present at all six of `shellcollisiontest()`'s
+/// `sendcldamage` call sites (client.c:5142/5170/5197/5256/5275/5338) and
+/// ported here at the matching six `applyDamage(...)` call sites below.
+/// Defaults `nil` — every pre-existing caller (`RunTick.swift`'s host tick,
+/// `PillTick.swift:220`'s pill-return-fire call) omits it and is therefore
+/// behaviorally unchanged; local damage application (`applyDamage`/
+/// `killSquareBuilder`) always still runs on every path exactly as before,
+/// matching this port's own header (shells stay locally predicted
+/// identically everywhere) — this hook only ADDS a self-report, it never
+/// replaces or defers the local mutation the way `BuilderTick.swift`'s
+/// `joinArrive` override does for builder tasks. `sendcltouch`/
+/// `sendclsmallboom`/`sendclsuperboom` do not apply here — verified against
+/// `client.c`, none of the three are called anywhere inside
+/// `shellcollisiontest()` itself (they live in `shelllogic()`'s separate
+/// range-expiry/tank-death loops, out of scope for this hook).
 public func shellCollisionTest(
     shell: Shell,
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
 ) -> Bool {
     let x = Int(shell.point.x)
     let y = Int(shell.point.y)
     let p = Pointi(x: Int32(x), y: Int32(y))
 
+    func reportDamage(_ boat: Bool) {
+        if player == state.localPlayer { onSelfReportDamage?(x, y, boat) }
+    }
+
     if let pillIndex = findPill(x: x, y: y, pills: state.pills) {
         guard state.pills[pillIndex].armour > 0 else { return false }
+        reportDamage(shell.boat)
         applyDamage(at: p, boat: shell.boat, state: &state, onMineExplosion: onMineExplosion)
         killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         return true
@@ -275,6 +299,7 @@ public func shellCollisionTest(
 
         if shell.boat {
             if hostileAndResourced {
+                reportDamage(true)
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
@@ -283,6 +308,7 @@ public func shellCollisionTest(
             }
             return true
         } else if hostileAndResourced {
+            reportDamage(false)
             applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
@@ -303,6 +329,7 @@ public func shellCollisionTest(
             let waterY = isWaterLikeTerrain(state.terrain[x, y - 1] ?? .wall) != 0
                 && isWaterLikeTerrain(state.terrain[x, y + 1] ?? .wall) != 0
             if waterX || waterY {
+                reportDamage(true)
                 applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
@@ -315,6 +342,7 @@ public func shellCollisionTest(
             // damagedWall/boat/every mined variant except minedSea) damages
             // on a boat-shell hit. Verified exhaustive against the 30-case
             // Terrain enum: 4 handled above + this default's 26 = 30.
+            reportDamage(true)
             applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
@@ -322,6 +350,7 @@ public func shellCollisionTest(
     } else {
         switch terrain {
         case .wall, .forest, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3, .boat, .minedForest:
+            reportDamage(false)
             applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
@@ -390,7 +419,8 @@ public func shellTick(
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
 ) {
     guard state.players[player].connected else { return }
 
@@ -405,7 +435,7 @@ public func shellTick(
         let shell = state.players[player].shells[i]
         if shellCollisionTest(
             shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion,
-            onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill, onSelfReportDamage: onSelfReportDamage
         ) {
             state.players[player].shells.remove(at: i)
         } else {
