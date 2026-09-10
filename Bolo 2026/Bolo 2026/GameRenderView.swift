@@ -15,8 +15,9 @@
 //  v1 draw-order scope (subset of GSBoloView.m's drawSprites, lines 286-439): terrain, the
 //  local player's tank/builder/shells/explosions, and global (unattributed) explosions. Out
 //  of scope, not a fidelity gap: other-player tank/name/builder sprites (D73 -- v1 is
-//  single-process, there are never any other connected players) and the selector/crosshair/
-//  pause-label HUD sprites (Milestone C's concern).
+//  single-process, there are never any other connected players) and the pause-label HUD
+//  sprite (GSBoloView.m:411-419, Milestone C's concern). D152: the selector/crosshair are no
+//  longer out of scope -- see drawSelector(_:)/drawCrosshair(_:) below.
 //
 //  Wave 7.3 (D88 §2) reopens this already-PARITY-passed file to add keyboard capture --
 //  `acceptsFirstResponder`/`keyDown`/`keyUp`/`flagsChanged` directly on this view, mirroring
@@ -141,6 +142,42 @@ public final class GameRenderView: NSView {
         drawTerrain(ctx, dirtyRect: dirtyRect)
         drawSprites(ctx)
         drawBuilderTaskIndicators(ctx)
+        drawSelector(ctx)
+        drawCrosshair(ctx)
+    }
+
+    /// **D152 item 1:** mirrors `GSBoloView.m:394-403`'s "draw selector" block. The oracle polls
+    /// `[NSEvent mouseLocation]` fresh inside its own `drawSprites`, converting screen -> window
+    /// -> view coordinates and gating with `[self mouse:aPoint inRect:[self visibleRect]]` --
+    /// same approach here, no `NSTrackingArea`/mouse-moved machinery needed since `render(_:)`
+    /// already forces a redraw every tick (file header), so this always reflects a fresh poll.
+    /// The oracle's own quantization line adds a `FWIDTH - ...` flip term because its view is
+    /// *not* flipped; this view already is (`isFlipped == true`, D66/file header, the same
+    /// convention `drawSprite`/`drawTerrain` use), so the flip term is dropped rather than
+    /// transcribed literally -- porting it here would double-flip.
+    private func drawSelector(_ ctx: CGContext) {
+        guard let window else { return }
+        let screenPoint = NSEvent.mouseLocation
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let viewPoint = convert(windowPoint, from: nil)
+        guard isMousePoint(viewPoint, in: visibleRect) else { return }
+        let size = CGFloat(tileSize)
+        let tileX = floor(viewPoint.x / size) + 0.5
+        let tileY = floor(viewPoint.y / size) + 0.5
+        drawSprite(SELETRIMAGE, at: Vec2f(x: Float(tileX), y: Float(tileY)), ctx)
+    }
+
+    /// **D152 item 1:** mirrors `GSBoloView.m:406-409`'s "draw crosshair" block exactly --
+    /// `client.players[client.player].dir` is the same field the hull sprite itself is drawn
+    /// with (`GSBoloView.m:337`), so this is a variable-*distance* marker along the hull's own
+    /// heading (`state.local.range`, adjusted by the INCRE/DECRE aim keys -- `TankLocalTick.swift`
+    /// lines 856-860), not a second independent aim direction.
+    private func drawCrosshair(_ ctx: CGContext) {
+        guard state.players.indices.contains(state.localPlayer) else { return }
+        let player = state.players[state.localPlayer]
+        guard !player.dead else { return }
+        let point = player.tank + dir2vec(player.dir) * state.local.range
+        drawSprite(CROSSHIMAGE, at: point, ctx)
     }
 
     /// **D137 UX indicator (Jerod's ruling):** a disclosed, deliberate departure from strict UI

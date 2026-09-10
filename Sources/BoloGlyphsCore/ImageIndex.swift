@@ -32,9 +32,9 @@ public func tileGlyphRole(for index: Int32, connectivity: [Int32: ConnectiveGlyp
     case SWAM00IMAGE: return .flatFill(r: 110, g: 100, b: 50)
     case RUBB00IMAGE: return .flatFill(r: 120, g: 115, b: 110)
     case DAMG00IMAGE: return .flatFill(r: 150, g: 110, b: 70)
-    case NBAS00IMAGE: return .flatFill(r: 200, g: 200, b: 60)
-    case FBAS00IMAGE: return .flatFill(r: 60, g: 110, b: 220)
-    case HBAS00IMAGE: return .flatFill(r: 200, g: 50, b: 50)
+    case NBAS00IMAGE: return .base(ownership: .neutral)
+    case FBAS00IMAGE: return .base(ownership: .friendly)
+    case HBAS00IMAGE: return .base(ownership: .hostile)
     case MINE00IMAGE: return .mine
     case FPIL00IMAGE...FPIL15IMAGE:
         return .pill(armor: Int(index - FPIL00IMAGE), friendly: true)

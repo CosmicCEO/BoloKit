@@ -17,6 +17,17 @@ public enum GlyphRole: Sendable {
     case builder(frame: Int)
     case crosshair
     case selectReticle
+    /// **D152 item 2:** replaces the three flat-color base tiles with a house/fort silhouette
+    /// so ownership reads at a glance instead of only via color.
+    case base(ownership: BaseOwnership)
+}
+
+/// **D152 item 2:** who currently controls a refuelling base -- `NBAS00IMAGE`/`FBAS00IMAGE`/
+/// `HBAS00IMAGE`'s three cases (`ImageIndex.swift`), same partition `mapimage()` already uses.
+public enum BaseOwnership: Sendable {
+    case neutral
+    case friendly
+    case hostile
 }
 
 public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
@@ -52,6 +63,8 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
             c.set(0, i, 255, 255, 0)
             c.set(15, i, 255, 255, 0)
         }
+    case .base(let ownership):
+        drawBase(&c, ownership: ownership)
     }
     return c
 }
@@ -110,6 +123,35 @@ private func drawPill(_ c: inout Canvas16, armor: Int, friendly: Bool) {
     let fillHeight = ((level + 1) * 12 + 8) / 16
     c.fillRect(2, 2, 14, 14, 50, 50, 50, 200)
     c.fillRect(3, 13 - fillHeight, 13, 13, r, g, b)
+}
+
+/// **D152 item 2:** friendly shifted off `(60,110,220)` -- byte-identical to `familyColor(.river)`
+/// above, the collision D152 orders fixed. Neutral/hostile match `ImageIndex.swift`'s prior
+/// `.flatFill` values exactly (no reason to change those two).
+private func basePalette(_ ownership: BaseOwnership) -> (UInt8, UInt8, UInt8) {
+    switch ownership {
+    case .neutral: return (200, 200, 60)
+    case .friendly: return (35, 75, 175)
+    case .hostile: return (200, 50, 50)
+    }
+}
+
+/// **D152 item 2:** a house/fort silhouette -- dark backing square, a triangular roof widening
+/// row-by-row, a rectangular wall body below it, and a dark door notch -- replacing the prior
+/// undecorated flat-color fill so base ownership reads as a shape, not color alone.
+private func drawBase(_ c: inout Canvas16, ownership: BaseOwnership) {
+    let (r, g, b) = basePalette(ownership)
+    // Dark backing, same alpha-fillRect pattern drawPill already uses.
+    c.fillRect(1, 1, 15, 15, 30, 30, 30, 220)
+    // Triangular roof: widens by one column per side per row, rows 3-7.
+    for row in 3...7 {
+        let half = row - 3
+        c.fillRect(8 - half, row, 8 + half + 1, row + 1, r, g, b)
+    }
+    // Wall body, rows 8-13.
+    c.fillRect(3, 8, 13, 14, r, g, b)
+    // Door notch: a dark rectangle centered in the wall's bottom edge.
+    c.fillRect(7, 10, 9, 14, 20, 20, 20)
 }
 
 private func tankPalette(_ ownership: Int) -> (UInt8, UInt8, UInt8) {

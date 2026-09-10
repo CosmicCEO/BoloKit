@@ -14,6 +14,7 @@
 //  the real `BoloKit` APIs (not synthetic geometry alone) and confirms the extracted guard
 //  (`GameRenderView.isDegenerateBuilderIndicatorLine`) would skip the resulting draw call.
 
+import AppKit
 import CoreGraphics
 import Testing
 import BoloKit
@@ -80,5 +81,63 @@ struct GameRenderViewTests {
         let from = CGPoint(x: 100.2, y: 100.1)
         let to = CGPoint(x: 100.0, y: 100.0)
         #expect(GameRenderView.isDegenerateBuilderIndicatorLine(from: from, to: to))
+    }
+
+    // MARK: - D152 item 1: crosshair (offscreen render, no live window/mouse -- bootstrap's
+    // blessed `cacheDisplay`/`bitmapImageRepForCachingDisplay` substitution for GUI verification)
+
+    /// Confirms `drawCrosshair` actually paints `CROSSHIMAGE` (a white cross, `GlyphSource.swift`'s
+    /// `.crosshair` case) at `player.tank + dir2vec(player.dir) * state.local.range`, not just that
+    /// the code compiles. `drawSelector` is not exercised here -- it needs a real `NSWindow`/mouse
+    /// position (`guard let window else { return }`), which an offscreen-rendered, unparented view
+    /// correctly and silently skips; that's expected, not a gap in this test.
+    @Test @MainActor func drawCrosshairPaintsWhiteCrossAtTankPlusDirTimesRange() throws {
+        let tiles = try #require(loadSheetImage(named: "Tiles"))
+        let sprites = try #require(loadSheetImage(named: "Sprites"))
+        let view = GameRenderView(tilesImage: tiles, spritesImage: sprites)
+
+        var state = GameState()
+        var player = PlayerState()
+        player.used = true
+        player.connected = true
+        player.dead = false
+        player.tank = Vec2f(x: 20, y: 20)
+        player.dir = 0
+        state.players = [player]
+        state.localPlayer = 0
+        state.local.range = 3.0
+        view.render(state)
+
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let cg = try #require(rep.cgImage)
+        let provider = try #require(cg.dataProvider)
+        let data = try #require(provider.data)
+        let ptr = try #require(CFDataGetBytePtr(data))
+        let bytesPerRow = cg.bytesPerRow
+        // `bitmapImageRepForCachingDisplay`/`cacheDisplay` render at the caching screen's
+        // backing scale (2x on this Retina host) -- the produced bitmap's pixel grid is scale
+        // times the view's own point-space coordinates, not 1:1.
+        let scale = cg.width / Int(view.bounds.width)
+
+        func isWhite(_ x: Int, _ y: Int) -> Bool {
+            let i = y * bytesPerRow + x * 4
+            return ptr[i] > 200 && ptr[i + 1] > 200 && ptr[i + 2] > 200 && ptr[i + 3] > 200
+        }
+
+        // dir2vec(0) == (1, 0) -- expected crosshair center at tile (23, 20), point-space pixel
+        // (368, 320), scaled into the bitmap's own device-pixel grid.
+        let expectedX = 23 * 16 * scale
+        let expectedY = 20 * 16 * scale
+        var foundWhite = false
+        for dy in -8 * scale...8 * scale {
+            for dx in -8 * scale...8 * scale {
+                if isWhite(expectedX + dx, expectedY + dy) { foundWhite = true }
+            }
+        }
+        #expect(foundWhite, "no white crosshair pixel found near the expected tank+dir2vec(dir)*range location")
+
+        // Negative control: far from the expected location, in open unpainted terrain, no white.
+        #expect(!isWhite(expectedX + 200 * scale, expectedY + 200 * scale))
     }
 }
