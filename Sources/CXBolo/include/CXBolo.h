@@ -75,6 +75,7 @@ struct ShellAdvanceResult shelladvance_oracle(Vec2f point, float dir, float rang
 Vec2f builderlaunch_oracle(Vec2f target, Vec2f tank);
 Vec2f buildermove_oracle(Vec2f diff, float speed);
 Vec2f parachutemove_oracle(Vec2f diff);
+int getbuildertask_oracle(int command, int tile);
 
 // Permanent verbatim extracts of forestvis()'s interpolation arithmetic
 // and pilllogic()'s shell-firing lead-targeting math for oracle testing

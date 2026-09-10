@@ -426,6 +426,16 @@ private func placeMineWork(at point: Pointi, state: inout GameState, onMineExplo
 /// order (`builderTask = .doNothing`) and leaves everything else
 /// untouched. Ported from the `kBuilderReady` case (client.c:4543-4787).
 private func readyTick(player: Int, state: inout GameState) {
+    // D137: resolve any pending mouse-issued builder command (C:
+    // client.c:4544-4545 — `getbuildertaskforcommand` resolution, cleared
+    // immediately regardless of outcome) before reading `builderTask`.
+    if let command = state.players[player].pendingBuilderCommand {
+        let target = state.players[player].pendingBuilderTarget
+        state.players[player].builderTask = resolveBuilderTask(command: command, target: target, state: state)
+        state.players[player].builderTarget = target
+        state.players[player].pendingBuilderCommand = nil
+    }
+
     let task = state.players[player].builderTask
     guard task != .doNothing else { return }
 

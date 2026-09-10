@@ -115,3 +115,22 @@ func inputFlagsChangeSimpleBindingsSetOnDownClearOnUp(keyCode: UInt16, flag: Inp
     #expect(partial.keyCode(for: .shoot) == 6)
     #expect(partial.keyCode(for: .turnLeft) == KeyBindings.default.keyCode(for: .turnLeft))
 }
+
+// MARK: - D137: builder-tool selection (digit keys 1-5, not rebindable)
+
+@Test func builderToolMapsKeyCodes18Through21And23ToTheFiveTools() {
+    #expect(builderTool(forKeyCode: 18) == .tree)
+    #expect(builderTool(forKeyCode: 19) == .road)
+    #expect(builderTool(forKeyCode: 20) == .wall)
+    #expect(builderTool(forKeyCode: 21) == .pill)
+    #expect(builderTool(forKeyCode: 23) == .mine)
+}
+
+@Test func builderToolKeyCode22IsUnbound() {
+    // The reference's own hardcoded chain skips keyCode 22 ("6") — not a transcription gap.
+    #expect(builderTool(forKeyCode: 22) == nil)
+}
+
+@Test func builderToolUnrelatedKeyCodeIsUnbound() {
+    #expect(builderTool(forKeyCode: 13) == nil)  // W (accelerate)
+}

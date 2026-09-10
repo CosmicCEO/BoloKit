@@ -78,6 +78,16 @@ public final class GameRenderView: NSView {
     /// Set by `GameSession` -- fires once per LMINE key-down edge (not key-up, not `isARepeat`),
     /// mirroring `keyevent()`'s one-shot immediate mine plant (D88 §3).
     public var onLayMineKeyDown: (() -> Void)?
+    /// **D137:** set by `GameSession` -- fires once per left-click on the map, carrying the
+    /// currently-selected builder tool and the clicked tile. Mirrors `buildercommand()`
+    /// (`client.c:6533-6538`): unlimited range, no distance check performed here or in
+    /// `BoloKit.queueBuilderCommand`.
+    public var onBuilderCommand: ((BuilderCommandKind, BoloKit.Pointi) -> Void)?
+    /// **D137:** the builder tool digit keys 1-5 (`builderTool(forKeyCode:)`) select, not
+    /// rebindable -- matches `GSXBoloController.m`'s own hardcoded chain (see
+    /// `InputKeymap.swift`'s doc comment on `builderTool(forKeyCode:)`). Defaults to `.tree`,
+    /// matching the reference's own `builderToolInteger` default of 0.
+    public private(set) var selectedBuilderTool: BuilderCommandKind = .tree
 
     /// D128 backlog C.1 -- the live, rebindable keymap. Defaults to whatever was last persisted
     /// (`PreferencesView`'s rebind UI writes through `KeyBindingsStore`); `GameSession` re-pushes
@@ -121,6 +131,43 @@ public final class GameRenderView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         drawTerrain(ctx, dirtyRect: dirtyRect)
         drawSprites(ctx)
+        drawBuilderTaskIndicators(ctx)
+    }
+
+    /// **D137 UX indicator (Jerod's ruling):** a disclosed, deliberate departure from strict UI
+    /// parity -- the reference has no such indicator at all (client.c/GSBoloView.m grep-
+    /// confirmed, D137 pre-brief). Simplest acceptable form per the ruling: a straight line from
+    /// the builder's current live position to its target tile, redrawn every frame while a task
+    /// is in flight (`builderStatus != .ready` and `!= .parachute` -- parachuting has its own
+    /// descent target with no "task," see `parachuteTick`). Purely render-layer: reads
+    /// `PlayerState.builder`/`.builderTarget`, no new simulation state (`BuilderTick.swift`
+    /// already tracks both). Drawn for every connected player, not just the local one -- another
+    /// player's builder en route is exactly as useful to see as your own.
+    private func drawBuilderTaskIndicators(_ ctx: CGContext) {
+        let tile = CGFloat(tileSize)
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.systemYellow.withAlphaComponent(0.7).cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.setLineDash(phase: 0, lengths: [4, 3])
+        for i in state.players.indices where state.players[i].connected {
+            let player = state.players[i]
+            switch player.builderStatus {
+            case .goto, .work, .wait, .return:
+                let from = i == state.localPlayer
+                    ? player.builder
+                    : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? player.builder)
+                let to = CGPoint(
+                    x: (CGFloat(player.builderTarget.x) + 0.5) * tile,
+                    y: (CGFloat(player.builderTarget.y) + 0.5) * tile
+                )
+                ctx.move(to: CGPoint(x: CGFloat(from.x) * tile, y: CGFloat(from.y) * tile))
+                ctx.addLine(to: to)
+                ctx.strokePath()
+            case .ready, .parachute:
+                break
+            }
+        }
+        ctx.restoreGState()
     }
 
     // MARK: - Keyboard input (D88 §2)
@@ -143,8 +190,20 @@ public final class GameRenderView: NSView {
         }
     }
 
+    /// **D137:** click-to-build. Converts the click to a tile coordinate using this view's own
+    /// +y-down coordinate space (`isFlipped == true`, file header) -- same convention
+    /// `drawTerrain`/`drawSprites` already use, no separate transform needed. Clamped to the
+    /// 256x256 map bounds (a click on the view outside them shouldn't happen given
+    /// `intrinsicContentSize`, but out-of-bounds is guarded rather than trusted). Unlimited
+    /// range, matching `buildercommand()` (client.c:6533-6538) exactly -- no distance check here.
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        let point = convert(event.locationInWindow, from: nil)
+        let tx = Int(point.x) / tileSize
+        let ty = Int(point.y) / tileSize
+        if tx >= 0, tx < 256, ty >= 0, ty < 256 {
+            onBuilderCommand?(selectedBuilderTool, BoloKit.Pointi(x: Int32(tx), y: Int32(ty)))
+        }
         super.mouseDown(with: event)
     }
 
@@ -164,6 +223,14 @@ public final class GameRenderView: NSView {
         // `isARepeat` guard mirrors `GSBoloView.m:477-482` exactly -- without it, holding a key
         // re-fires at the OS text-key-repeat rate on top of the flag already being set.
         guard !event.isARepeat else { return }
+        // D137: builder-tool digit keys 1-5, checked first -- matches `keyEvent:forKey:`'s own
+        // structure (dictionary lookup, then a separate hardcoded `else if` chain for these).
+        // Not rebindable (see `selectedBuilderTool`'s doc comment), so this never goes through
+        // `bindings`/`applyKeyChange` at all.
+        if let tool = builderTool(forKeyCode: event.keyCode) {
+            selectedBuilderTool = tool
+            return
+        }
         applyKeyChange(keyCode: event.keyCode, isDown: true)
     }
 

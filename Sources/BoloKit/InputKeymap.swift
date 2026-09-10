@@ -199,3 +199,31 @@ public func nonMaskAction(forKeyCode keyCode: UInt16, bindings: KeyBindings) -> 
     guard let action = bindings.resolve(keyCode: keyCode), !action.isMaskAction else { return nil }
     return action
 }
+
+// MARK: - D137 — builder-tool selection (digit keys 1-5)
+//
+// Picking back up C.1's explicitly-deferred item (see this file's header note at the time: "not
+// in `GSKeyConfigDict` — not remappable even upstream ... recommend treating as separate future
+// scope"). Ported from the hardcoded `keyCode ==`  chain in `keyEvent:forKey:`
+// (`GSXBoloController.m:1718-1727`):
+//   keyCode 18 ("1") -> setBuilderToolInteger:0 (tree)
+//   keyCode 19 ("2") -> setBuilderToolInteger:1 (road)
+//   keyCode 20 ("3") -> setBuilderToolInteger:2 (wall)
+//   keyCode 21 ("4") -> setBuilderToolInteger:3 (pill)
+//   keyCode 23 ("5") -> setBuilderToolInteger:4 (mine)
+// **Not** rebindable, same as the reference (no `GSKeyConfigDict` entry exists for these — they
+// were never wired through the remap UI upstream either), so this is a fixed function, not a
+// `KeyBindings`/`InputAction` addition. **keyCode 22 ("6") is deliberately absent** — the
+// reference's own chain skips it too (grep-confirmed at the cited lines; macOS virtual keycode 22
+// is "6", sitting between "4" (21) and "5" (23) in keycode-number order, not key-row order); not a
+// transcription gap.
+public func builderTool(forKeyCode keyCode: UInt16) -> BuilderCommandKind? {
+    switch keyCode {
+    case 18: return .tree
+    case 19: return .road
+    case 20: return .wall
+    case 21: return .pill
+    case 23: return .mine
+    default: return nil
+    }
+}

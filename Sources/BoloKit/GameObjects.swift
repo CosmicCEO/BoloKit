@@ -216,6 +216,14 @@ public struct PlayerState: Sendable {
     public var builderTrees: Int
     /// Index into `GameState.pills`, or `noPill` (0xff) if none reserved.
     public var builderPill: UInt8
+    /// D137: the analog of C's `client.nextbuildercommand`/
+    /// `nextbuildertarget` (client.c) — a raw builder-tool click queued
+    /// via `queueBuilderCommand`, resolved against terrain into
+    /// `builderTask`/`builderTarget` the next time `builderTick` sees
+    /// `.ready` (see `BuilderCommand.swift`, `BuilderTick.swift`'s
+    /// `readyTick`). `nil` == C's `BUILDERNILL` sentinel.
+    public var pendingBuilderCommand: BuilderCommandKind?
+    public var pendingBuilderTarget: Pointi
     // Status
     public var dead: Bool
     public var boat: Bool
@@ -258,6 +266,8 @@ public struct PlayerState: Sendable {
         builderMines: Int = 0,
         builderTrees: Int = 0,
         builderPill: UInt8 = noPill,
+        pendingBuilderCommand: BuilderCommandKind? = nil,
+        pendingBuilderTarget: Pointi = Pointi(x: 0, y: 0),
         dead: Bool = true,
         boat: Bool = false,
         connected: Bool = false,
@@ -286,6 +296,8 @@ public struct PlayerState: Sendable {
         self.builderMines = builderMines
         self.builderTrees = builderTrees
         self.builderPill = builderPill
+        self.pendingBuilderCommand = pendingBuilderCommand
+        self.pendingBuilderTarget = pendingBuilderTarget
         self.dead = dead
         self.boat = boat
         self.connected = connected

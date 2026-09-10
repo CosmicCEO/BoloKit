@@ -121,6 +121,12 @@ public final class GameSession {
             guard let self else { return }
             layMineOnKeyDown(state: &self.state)
         }
+        // D137: single-process path -- no other real players to inform, mutate `state` directly,
+        // same reasoning as `sendMessage`'s single-process branch.
+        view.onBuilderCommand = { [weak self] command, target in
+            guard let self else { return }
+            queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
+        }
     }
 
     /// B.7 (D108): the host path -- renders live off `hostEngine`'s own running state instead of
@@ -140,6 +146,14 @@ public final class GameSession {
         }
         view.onLayMineKeyDown = {
             hostEngine.submitLocalLayMineKeyDown()
+        }
+        // D137: host path -- routed through `HostGameEngine`'s merged event stream, same
+        // reasoning as `onLayMineKeyDown` above. Other connected players learn the host's
+        // builder's new position/status through the existing periodic state broadcast (the same
+        // mechanism that already keeps `remoteBuilderSmoothers` fed) -- no new broadcast message
+        // needed for multiplayer visibility (D137 pre-brief finding).
+        view.onBuilderCommand = { command, target in
+            hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
         hostEngine.onTickRendered = { [weak view] renderedState in
             view?.render(renderedState)
@@ -198,6 +212,11 @@ public final class GameSession {
             let message = CLDropMine(x: UInt8(x), y: UInt8(y))
             Task { try? await tcpSession.send(message.encode()) }
         }
+        // D137: `onBuilderCommand` deliberately left unset on the join path -- there is no
+        // outbound `CL*` builder-command message in the wire protocol yet, the identical B.10
+        // gap already disclosed above for shoot/lay-mine ("space/shift ... left functionally
+        // dead for the same reason"). Flagged for PLANNER as part of D137's own completion
+        // report, not silently narrowed.
     }
 
     /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no

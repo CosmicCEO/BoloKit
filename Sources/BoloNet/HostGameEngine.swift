@@ -66,6 +66,12 @@ enum HostEngineEvent {
     case localInputChanged(set: InputFlags, clear: InputFlags)
     /// Same reasoning as `localInputChanged` above, for `layMineOnKeyDown`'s separate call.
     case localLayMineKeyDown
+    /// **D137:** the host's own local builder-mouse-click command, submitted from
+    /// `GameRenderView.onBuilderCommand` via `submitLocalBuilderCommand` -- same reasoning as
+    /// `localLayMineKeyDown` above: `queueBuilderCommand` takes `state: inout GameState`, so a
+    /// UI mouse-click handler on the app's main thread must route through the merged stream
+    /// rather than mutating `state` directly.
+    case localBuilderCommand(command: BuilderCommandKind, target: Pointi)
     /// **C.0 (D119):** host-only kick/ban, same reasoning as `localInputChanged` above --
     /// `hostKickPlayer`/`hostBanPlayer` (`HostSession.swift:323,345`) take `state: inout GameState`,
     /// so a UI button must route through the merged stream rather than calling either directly.
@@ -223,6 +229,12 @@ public final class HostGameEngine: @unchecked Sendable {
         continuation?.yield(.localLayMineKeyDown)
     }
 
+    /// **D137:** same reasoning as `submitLocalLayMineKeyDown` above, for a builder-tool mouse
+    /// click on the host's own local player.
+    public func submitLocalBuilderCommand(command: BuilderCommandKind, target: Pointi) {
+        continuation?.yield(.localBuilderCommand(command: command, target: target))
+    }
+
     /// **C.0 (D119):** host-only kick, routed through the merged stream -- see
     /// `HostEngineEvent.kickPlayer`'s own doc comment for why this can't call `hostKickPlayer`
     /// directly.
@@ -352,6 +364,9 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .localLayMineKeyDown:
             layMineOnKeyDown(state: &state)
+
+        case .localBuilderCommand(let command, let target):
+            queueBuilderCommand(command: command, target: target, player: state.localPlayer, state: &state)
 
         case .kickPlayer(let player):
             await hostKickPlayer(player: player, state: &state, table: table)
