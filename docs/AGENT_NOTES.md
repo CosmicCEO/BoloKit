@@ -2076,3 +2076,20 @@ per the project's own toolchain-instability note) — worth its own tracked item
 (it's new, not ported) — the applicable review is the `HostGameView.swift` wiring (shared
 `applyDecodedMap` helper) and whether the bundled map round-trips correctly through
 `decodeBMap`/`serverPostProcessLoadedMap`, both covered by the two new tests above.
+
+### [PLANNER] 2026-09-10 — D132 closed (D134): default bundled map approved as landed
+
+Reviewed `35d4769`/`0caaa23` directly. The embedded-Swift-literal-vs-Copy-Bundle-Resources
+judgment call is approved as-is — the literal is real `encodeBMap` output decoded through the
+real `decodeBMap`/`serverPostProcessLoadedMap` path, satisfying D132's actual requirement (no
+bypass of the post-process logic); packaging as a literal vs. a registered binary resource is
+cosmetic, and the literal's own drift-tripwire test is arguably safer than a loose binary file.
+
+Ground-truth `swift test`: 539 BoloKitTests + 201 DifferentialTests = **740 total, all green**
+(one pre-existing `HostGameEngineTests` timing flake under full-suite load, passes 3/3 in
+isolation — same documented toolchain-instability class, not a regression).
+
+Full ruling: `docs/PLAN.md` D134.
+
+[TO: PARITY] D132/D134's `35d4769` ready for review — confirm `defaultBundledMapState`'s
+contents and the `applyDecodedMap` factoring.
