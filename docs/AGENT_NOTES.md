@@ -339,3 +339,141 @@ via `RunTick.swift`'s eviction path, label-offset arithmetic).
 > citations IMPLEMENTER named above. File findings here; PLANNER closes D150 on a clean PASS.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-10 — D150 audit: `5c3c605`/`571f593` — 3 of 4 items clean, item 3's wiring fix is incomplete (host self-eviction defect)
+
+**Type:** post-commit audit, activated by PLANNER's `[TO: PARITY]` tag (`e3f3d6e`) on commit
+`5c3c605` (code) and `571f593` (completion report), per the four specific re-check points
+IMPLEMENTER's own completion report named. **Toolchain used:** `swift`/`xcodebuild` are both
+present this session (`/usr/bin/swift`, `/usr/bin/xcodebuild`) — `swift build`/`swift test` were
+run for execution-verification of the `BoloKit`/`BoloNet` package (551/551 green, no regressions);
+the `Bolo 2026` app target's SwiftUI/AppKit files (`GameHUDViews.swift`, `PlayerStatusView.swift`,
+`GameRenderView.swift`, `GameSession.swift`) live outside the SwiftPM package and were hand-traced
+only, not `xcodebuild`-executed this session (effort budget; the prior sweep's own precedent).
+
+**Verdict: NOT a clean PASS.** Items 1, 2, and 4 are correct and confirmed. Item 3's threshold/
+comparison logic is correct, but the `setLastUpdate` wiring fix it depends on is **incomplete** —
+it only covers remote peers, never the host's own player slot, and the consequence is a live,
+severe, previously-undisclosed defect: **every hosted game self-evicts the host at exactly 9
+seconds.**
+
+**Confirmed correct (re-derived, not re-read):**
+
+1. **Trees gauge** — `GameHUDViews.swift:102`, `snapshot.players[localPlayer].trees` against
+   `maxTrees` (`Physics.swift:95` = `40`, matches `Reference/c/bolo.h:56` `MAXTREES (40)`). Matches
+   `GSXBoloController.m:2557-2558` (`[playerTreesStatusBar setValue:((float)client.trees)/MAXTREES]`
+   — confirmed this exact line, plus `:2554-2558`'s full `setTankStatusBars` for the sibling
+   Shells/Mines/Armour reads, unchanged).
+
+2. **Base status bars** — `GameHUDViews.swift:116-131`'s `nearestBase(snapshot:)` re-derived
+   line-by-line against `GSXBoloController.m:2562-2563,2652-2669` (read the full `refresh:` timer,
+   not just the cited sub-range): `dist` seeds at `8.0`, scan keeps strictly-nearer (`<`) candidates
+   only, mutual-alliance test is `(owner.alliance & (1<<player)) && (player.alliance & (1<<owner))`
+   — Swift's `testAlliance(_:_:players:)` (`GameObjects.swift:429-436`) reproduces this exactly,
+   plus an extra `a.used && b.used` guard the C doesn't have. **Noted divergence, not a defect**
+   (per advisor review) — strictly stricter than the oracle, can only ever hide a base the C would
+   show, and only when the owner slot is unused with stale mutual bits, a state that shouldn't
+   arise in practice. Distance math: `mag2f(sub2f(tank, make2f(x+0.5, y+0.5)))` is real Euclidean
+   distance (`Vector.swift:107`, confirmed `sqrt(dot2f(...))` — not squared, matching `vector.c:82-84`
+   as the pre-brief claimed). All-zero fallback (`base?.armour ?? 0` etc.) matches `:2675-2679`'s
+   else-branch. `maxBaseArmour`/`Shells`/`Mines` (`Physics.swift:143,146,149` = `90` each) match
+   `bolo.h:109-111`'s `MAXBASEARMOUR`/`SHELLS`/`MINES` exactly. Confirmed `state.bases`
+   (`BMap.swift:566-571`) is a dynamically-`append`ed array sized exactly to the map's real
+   `nbases`, not a fixed-capacity array with placeholder trailing entries — `for candidate in
+   snapshot.bases` scans exactly the right set, no junk-entry risk.
+
+3. **Lag-color indicator — thresholds correct, wiring fix incomplete (real defect, see below).**
+   `PlayerStatusView.swift:108-114`'s `staleness(forPlayer:)` — `>= threshold*3` red/white,
+   `>= threshold` yellow, else green — matches `GSXBoloController.m:2196-2210`'s `>=` comparisons
+   exactly (read the full block, not just the pre-brief's cited lines), `ticksPerSec` (`Physics.swift:11`
+   = `50`) matches `bolo.h:41` `TICKSPERSEC (50)`. `HostGameEngine.lastKnownTicksSinceLastUpdate`
+   (`HostGameEngine.swift:112,453`) correctly snapshots `table.allTicksSinceLastUpdate(currentTick:)`
+   per tick; `GameSession.connectionAge(for:)` (`GameSession.swift:264-266`) reads it with a bounds
+   guard, `nil` on the join path as disclosed (same shape as `canKickBan`).
+
+   **The `setLastUpdate` wiring fix itself does not cover the host's own player slot.** Exhaustive
+   grep (`grep -rn "setLastUpdate" Sources/`) finds exactly 3 hits: the definition
+   (`HostSession.swift:170`) and the two new call sites this commit added —
+   `HostDgramListener.swift:186` (`.applied` CLUpdate case) and `HostListener.swift:235`
+   (`runJoinHandshake`'s `.accepted` case). Both fire only for a **remote** peer, over the network.
+   The host seats itself as `state.players[0]` directly in `HostGameView.swift`'s `startHosting()`
+   (`player.connected = true; player.used = true; state.players = [player]; state.localPlayer = 0`)
+   — no join handshake, no dgram packet, no call to `setLastUpdate` for index 0, ever. So
+   `HostSessionTable.slots[0].lastUpdate` stays `0` forever, and
+   `allTicksSinceLastUpdate(currentTick:)` (`HostSession.swift:175-176`) returns `state.ticks - 0 =
+   state.ticks` for the host's own slot — **the exact pre-fix pathology this commit was meant to
+   fix, now narrowed to exactly one slot instead of all of them, but that one slot is always
+   present in every hosted game.**
+
+   Consequence, traced end-to-end through `RunTick.swift:189-202`: once `state.ticks >= 450` (9
+   seconds, matching `server.c:1190`'s own `9*TICKSPERSEC` threshold — the threshold itself is
+   right), the loop `for player in state.players.indices where state.players[player].connected`
+   includes player 0 (host, always `connected == true`), `ticksSinceLastUpdate[0] >= 450` is true by
+   construction, and the host **drops its own onboard pills, sets `state.players[0].connected =
+   false`, and fires `onPlayerDisconnected(0)`** — which (`HostGameEngine.swift:478-482`) broadcasts
+   `SRPlayerDisc(player: 0)` to every real connected peer and tears down the host's own table slot.
+   Every hosted game — including single-player/solo local play with `state.ticks` still advancing
+   — silently marks the host disconnected 9 seconds in, and any real peer present gets told the host
+   left. This also means the HUD's own new item-3 feature renders wrong for the host itself: the
+   host's own name in `PlayerStatusGrid` goes green→yellow→red exactly per the same 50/150-tick
+   schedule, ending permanently red/white ("presumed dropped") — a directly user-visible defect in
+   the very feature this pass added, for the account that will see it every single game.
+
+   **This is not a hand-trace-only conclusion.** `Tests/DifferentialTests/HostGameEngineTests.swift:821-866`'s
+   `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer` independently confirms the mechanism:
+   the test must manually call `await engine.table.setLastUpdate(1000, for: 0)` (line 854, with the
+   comment "Player 0 stays 'current' ... isolates the test to player 1's disconnect only") purely
+   to keep the host's own slot from *also* tripping the same eviction it's testing for player 1 —
+   i.e. the test author already hit this exact failure mode and worked around it with a call that
+   has **no counterpart anywhere in production code**. Without that one test-only line, the test's
+   own final assertion (`#expect(await engine.table.isConnected(0), ...)`) would fail for the same
+   reason production silently breaks.
+
+   **Answering IMPLEMENTER's own question directly: no, `RunTick.swift`'s 9-second eviction does
+   not behave correctly end-to-end.** It's correct for remote peers now (a real improvement over
+   the universal pre-fix bug) but the host's own slot — always present, in every game — is left
+   with the identical defect the fix was written to eliminate.
+
+4. **Label-offset fix** — `GameRenderView.swift:502` (`y = point.y * tile - 8 - textSize.height`)
+   re-derived against `GSBoloView.m:441-463`'s `drawSprite:`/`drawLabel:`, both read in full. In the
+   reference's unflipped-view coordinates, `drawLabel`'s `rect.origin.y = FWIDTH*16 - point.y*16 +
+   8` equals `drawSprite`'s own top edge (`dstRect.origin.y + 16 = (FWIDTH-point.y)*16 - 8 + 16 =
+   (FWIDTH-point.y)*16 + 8`) exactly — zero gap. In this view's own +y-down, top-left-origin
+   convention (confirmed at `GameRenderView.swift:514-521`'s `drawSprite`, origin `point.y*tile - 8`
+   = the sprite's top edge directly, no flip needed), `NSAttributedString.draw(at:)` anchors at the
+   top of the text and grows downward, so the fixed label's *bottom* edge is `y + textSize.height =
+   point.y*tile - 8` — exactly the sprite's top edge, matching the reference's flush placement with
+   no gap. Confirmed the old formula's error: bottom-edge-of-old-label was `point.y*tile - 16`, a
+   real 8px gap above the sprite's actual top edge, exactly as diagnosed.
+
+**Citation-drift note:** none found this session — every `file:line` cited in the pre-brief and
+completion report, checked directly, said what it claimed.
+
+**Test/build verification:** `swift build` clean; `swift test` (SwiftPM package: `BoloKitTests` +
+`BoloGlyphs`/`BoloSounds` suites) 551/551 green, matching the completion report's stated split,
+0 regressions. `DifferentialTests` (the 205 the report counted separately, `xcodebuild`-run) not
+re-executed this session — the defect above was found by reading `HostGameEngineTests.swift`
+directly, not by running it; a clean run of that suite would not have caught this either, since the
+one test that exercises the 9-second eviction path manually neutralizes the exact slot that's
+broken (see above) rather than exercising player 0's own real, un-worked-around behavior.
+
+> **→ Planner:** do not close D150 on this commit. Item 3's `setLastUpdate` wiring fix needs one
+> more call site — the host's own slot (`state.localPlayer`, seated in `HostGameView.swift`'s
+> `startHosting()`) needs an equivalent seed/refresh, or `RunTick.swift`'s eviction loop needs to
+> exclude it, or `HostGameEngine`'s own tick needs to keep the host's slot "current" some other way
+> (e.g. seed `lastUpdate` to `state.ticks` every tick for `state.localPlayer` specifically, mirroring
+> how the C's own architecture never has this problem because the server process has no analogous
+> "local player" slot at all — a real port-shape difference, not a literal C line to cite). Items 1,
+> 2, 4 are clean and don't need rework.
+> **→ Implementer:** the fix needs to reach the host's own slot, not just remote peers reached via
+> `HostDgramListener`/`HostListener`. Recommend re-reading `HostGameView.swift:241-267`'s
+> `startHosting()` (where the host seats itself with no `HostSessionTable` interaction at all) and
+> deciding whether the fix belongs there (seed once at start) or in `HostGameEngine.tick()` (refresh
+> every tick, matching "the host is always current to itself" semantics) — the second matches the
+> reference's real invariant more closely (the C's server never distinguishes "self" because it has
+> no self-player), but either closes the gap. Re-run
+> `hostGameEngineDisconnectsALaggedPlayerViaTheTickTimer` without its line-854 workaround as a
+> negative control once fixed — it should then pass without that manual seed.
+
+[TO: PLANNER]
+[TO: IMPLEMENTER]
