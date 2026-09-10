@@ -3345,3 +3345,90 @@ not touched here).
 [TO: PLANNER] D148(A) implemented, tested, committed (`ec6bc51`). Not declaring D148(A) closed —
 your call. Flagging the shared-working-tree flakiness note above for awareness, not as a defect in
 this dispatch's own work.
+
+### [IMPLEMENTER] 2026-09-10 — D148(B) completion report: build-tool strip + status grid + gauges
+
+**Built, matching the pre-brief exactly (see this file's own D148(B) pre-brief entry above for
+the full zone-by-zone reasoning and the two split-outs):**
+
+1. **`GameRenderView.swift`:** added `public func selectBuilderTool(_:)`, a one-line setter for
+   the existing `private(set) var selectedBuilderTool` that mirrors `keyDown`'s own digit-key
+   assignment — no second source of truth, deliberately does not reclaim first responder itself
+   (see item 3 below for why that's the caller's job).
+
+2. **`PlayerStatusView.swift`:** split into `PlayerStatusGrid` (the `List` + row/classification
+   logic, no sheet chrome — now `internal`, not `private`, since `GameView.swift` embeds it
+   directly) and `PlayerStatusView` (thin wrapper: `PlayerStatusGrid` + the `NavigationStack`/
+   `.toolbar`/`onDone` it always had). Zero duplicated classification logic; `OwnershipStatus`
+   widened from `private` to internal for the same reason.
+
+3. **New `GameHUDViews.swift`:** `BuilderToolStrip` (vertical 5-button strip, `.bordered` +
+   `.tint` highlighting the current `selectedBuilderTool`, polls at 0.1s — faster than the
+   0.5s cadence elsewhere, disclosed judgment call: this strip's whole purpose is visible
+   feedback for an already-instant digit-key shortcut, so a slower poll would visibly lag a key
+   press) and `ResourceGaugesPanel` (three `ProgressView` gauges: shells/armour from
+   `GameState.local` per `Physics.swift`'s `maxShells`/`maxArmour`, mines from
+   `state.players[localPlayer].mines` per D105/D106's move off the singleton — **advisor-flagged
+   and fixed**: guarded `players.indices.contains(localPlayer)` before that subscript, since this
+   panel polls from first frame including `#Preview`'s demo state, same crash *shape* as D146 if
+   left unguarded, though not the same bug). Extracted `GameHUDMath.gaugeFraction(value:max:)` as
+   a pure, clamped (0...1) static func per D144/D145/D146's "pull pure logic out of view code"
+   precedent.
+
+4. **`GameView.swift`:** wired both into `.safeAreaInset(edge: .leading/.trailing)` on the
+   existing `ScrollView`, alongside a new `reclaimMapFocus()` private method
+   (`session.renderView.window?.makeFirstResponder(session.renderView)`) called from the tool
+   strip's button action. **Advisor-flagged real risk, addressed:** `GameRenderView` is the first
+   responder for all driving/firing keys and its own `viewDidMoveToWindow` doc comment already
+   documents the exact failure mode a HUD button click could trigger (a click elsewhere in the
+   window with nothing re-claiming first responder leaves every key press silently dead) — every
+   HUD control that doesn't go through `GameRenderView.mouseDown` (which already reclaims focus)
+   must reclaim it explicitly. Could not verify live via a real driven keypress-after-click
+   (no scripted mouse/keyboard driving available in this session's tooling, same standing
+   limitation D146's report disclosed) — flagging this as unverified-live rather than claiming a
+   real interactive confirmation; the reclaim call itself is present and correct by inspection,
+   same shape as the existing `mouseDown` precedent it mirrors.
+
+**Confined diff exactly as planned:** `GameRenderView.swift`, `GameView.swift`,
+`PlayerStatusView.swift`, `GameHUDViews.swift` (new), `Bolo 2026Tests/GameHUDViewsTests.swift`
+(new). Did not touch `GameSession.swift` at all — Session A's sound-wiring dispatch owns it,
+zero overlap needed since `selectedBuilderTool`'s read/write both go through the already-public
+`GameRenderView` instance `GameSession.renderView` exposes.
+
+**Split out, not built — reconfirmed from the pre-brief, PLANNER's ruling still needed:**
+- Event-log bar: `Sources/BoloNet/ChatMessage.swift`'s `MessageTarget` deliberately has no
+  system/capture-event case (`MSGGAME` explicitly excluded, per that file's own header); no
+  capture callback (`RecvSR.swift`/`RecvCL.swift`'s `*CaptureBase`/`*CapturePill` broadcasts)
+  produces any message anywhere today. Needs new `BoloNet`/`GameSession` event-to-message
+  plumbing — a session-layer decision, not pure render work.
+- Win/loss: `RunTick.swift`'s `onTimeLimitWarning`/`onBaseControlWarning` are both fully computed
+  (mirroring `server.c:1102-1176` exactly) but `GameSession.swift` never supplies non-default
+  closures for either — confirmed zero UI surfacing exists, not a guess. Needs a product decision
+  on presentation (banner? forced menu return? which player is the "winner"?) before any wiring.
+
+**Test counts:**
+- App target (`xcodebuild -only-testing:"Bolo 2026Tests" test`): **13 → 19** (6 new
+  `GameHUDViewsTests`: full/zero/mid/over-max/negative/zero-max `gaugeFraction` cases). Real run,
+  `TEST SUCCEEDED`, all 19 green — not just this session's own 6.
+- SwiftPM (`swift test`): unchanged by this dispatch — reran twice to confirm; **756 total** (551
+  BoloKitTests + 205 DifferentialTests) is the current baseline, up from 752 due to Session A's
+  concurrent sound-wiring work (its own commit, not mine) — confirmed via `git log` that my diff
+  touches zero `Sources/BoloKit`/`Sources/BoloNet` files. No coverage shrinks anywhere (D28).
+
+**Judgment calls, all flagged above rather than silently decided:** (1) tool strip's faster 0.1s
+poll cadence vs. the 0.5s used elsewhere; (2) the `players[localPlayer]` guard on the mines gauge
+(advisor-caught, fixed, not left as a latent D146-shaped bug); (3) first-responder reclaim
+correctness verified by inspection/mirroring existing precedent, not by a live scripted
+interaction (a standing tooling limitation, not new to this dispatch).
+
+**Not touched:** the unrelated working-tree changes present at session start/during
+(`CLAUDE.md`, `docs/PLANNER.md` deletion, `docs/IMPLEMENTER.md`, Director-owned `docs/`
+artifacts, `.claude/`, `Resources/`, `Sources/BoloGlyphsCore/Canvas.swift`/`GlyphSource.swift`
+from the concurrent D148(C) dispatch) — confirmed via `git status --short` before staging, staged
+only this dispatch's own 5 files.
+
+[TO: PLANNER] D148(B) items 1-3 (build-tool strip, status grid, gauges) built and tested, commit
+`58c4ac7`. Not declaring closed — your call. Items 4-5 (event-log bar, win/loss surfacing) remain
+split out per the pre-brief, ready for their own coding GOs once you've ruled on message-text/
+presentation approach. [TO: PARITY] skipped per D148's process — pure UX-layer work, no reference
+counterpart to hand-trace.
