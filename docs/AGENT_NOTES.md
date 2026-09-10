@@ -1016,3 +1016,57 @@ method and conclusion for soundness instead of repeating the 300-tick drive.
 
 [TO: PARITY]
 
+
+### [PARITY] 2026-09-10 — D152 scoped audit: items 1+2 PASS, item 3 write-up holds up
+
+**Type:** post-commit audit, scoped tightly per PLANNER's activation to `75dab88` only. No Swift
+toolchain run this session (`swift test` skipped as out of scope per PLANNER's tight-budget
+framing) — this is a hand-trace against `Reference/c/`, not an execution-verified pass; the
+IMPLEMENTER's own green build/test run remains the authority that the code executes.
+
+**Item 1 — selector/crosshair (`Bolo 2026/Bolo 2026/GameRenderView.swift:158-181` vs.
+`Reference/c/Mac OS X/GSBoloView.m:394-409`).** Confirmed by direct read of both:
+- Mouse gating matches: oracle's `[self mouse:aPoint inRect:[self visibleRect]]`
+  (`GSBoloView.m:401`) ↔ `isMousePoint(viewPoint, in: visibleRect)` (`:163`), same semantics
+  under the SDK's renamed API, as IMPLEMENTER's report disclosed.
+- Quantization: oracle's y-term includes a `FWIDTH - ((aPoint.y + 0.5)/16.0)` flip specific to
+  its *unflipped* view, vs. the port's direct `floor(viewPoint.y/16.0)+0.5` under `isFlipped ==
+  true`. Confirmed the flip-drop is correct in principle (AppKit's `convert(_:from:)` already
+  respects a view's own `isFlipped` flag, so `viewPoint.y` is already top-down). **Minor,
+  non-blocking citation-adjacent note:** the oracle adds a `+0.5` pixel offset inside the y
+  division that has no analog on the x term or anywhere in the port's version; at 16px tiles this
+  only matters within ~0.03 tile-widths of an exact tile boundary — negligible for a cosmetic
+  highlight, not a functional defect, but flagging since it's a literal asymmetry the port didn't
+  carry over and wasn't called out in the pre-brief or completion report.
+- Crosshair: oracle `add2f(client.players[client.player].tank, mul2f(dir2vec(...dir), client.range))`
+  (`:408`) ↔ port's `player.tank + dir2vec(player.dir) * state.local.range` (`:179`) — same field
+  (`dir`, not a second aim heading), same operation, matches exactly. `!dead` guard present both
+  sides.
+
+**Item 2 — base ownership (`Sources/BoloGlyphsCore/GlyphSource.swift`/`ImageIndex.swift` vs.
+`Reference/c/images.c:600-738`).** Confirmed all three oracle owner cases present with no case
+dropped: `kNeutralBaseTile → NBAS00IMAGE` / `kFriendlyBaseTile → FBAS00IMAGE` /
+`kHostileBaseTile → HBAS00IMAGE` (`images.c:633,681,737`) map 1:1 to `ImageIndex.swift`'s
+`NBAS00IMAGE → .base(.neutral)` / `FBAS00IMAGE → .base(.friendly)` / `HBAS00IMAGE → .base(.hostile)`
+dispatch — exhaustive, no fourth owner state exists in the oracle to miss. `basePalette`
+(`GlyphSource.swift:131-137`) gives `(200,200,60)`/`(35,75,175)`/`(200,50,50)` exactly matching
+the completion report's decoded-`Tiles.png` claim; friendly's shift off `familyColor(.river)`'s
+`(60,110,220)` confirmed correct and non-colliding. The disclosed-but-unfixed `drawPill(friendly:)`/
+`tankPalette(1)` collision at the same `(60,110,220)` value is confirmed still present and correctly
+scoped out of D152 (not a regression, not silently missed).
+
+**Item 3 write-up review (no re-drive performed, per PLANNER's instruction).** Reasoning holds up:
+correctly identifies the prior "exhaustive static check"'s generator-rotation leg was vacuous
+(no oracle procedural generator to diff against), correctly substitutes the existing
+`allHeadingsMatchDir2Vec` test as the real empirical closure for the sprite-tip leg rather than
+re-deriving it, and the 300-tick multi-tick drive is the one dimension (`runTick` orchestration
+end-to-end) the existing fuzzed single-call test doesn't cover — a legitimate gap-fill, not
+padding. The reported ~11° residual in the turning case is consistent with the documented 16-way
+`roundDir` quantization step and is called out as such rather than hand-waved. No gap found in
+what was checked.
+
+**Verdict: PASS.** No fixes required. The one asymmetry noted above (oracle's stray `+0.5` on the
+y term) is logged for completeness, not as a blocking finding — negligible effect, cosmetic
+feature, does not warrant a fix cycle.
+
+[TO: PLANNER]
