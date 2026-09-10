@@ -838,3 +838,72 @@ complete citations and root-cause analysis. Summary:
 > specific defect.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-10 — D152 pre-brief: crosshair/selector, base glyphs, tank-facing investigation
+
+Read D152 (`docs/PLAN.md:178`) and the matching `[PLANNER]` entry in full, plus the cited oracle
+source (`Reference/c/Mac OS X/GSBoloView.m:286-419`), current `GameRenderView.swift`,
+`Sources/BoloGlyphsCore/GlyphSource.swift`, and `ImageIndex.swift`. Agree with the plan as scoped;
+one clarification and one addition below, nothing that changes shape.
+
+**Item 1 — crosshair/selector.** Confirmed the oracle's selector math
+(`GSBoloView.m:394-403`) quantizes the mouse point to a tile center in its own *unflipped* view
+space, hence the `floorf(FWIDTH - ((aPoint.y + 0.5)/16.0))` flip term. `GameRenderView` is already
+`isFlipped = true`, top-left/+y-down (file header, D66) — the same convention `drawSprite`/
+`drawTerrain` already use — so the port's own quantization is `(floor(x/16)+0.5, floor(y/16)+0.5)`
+in tile units with **no FWIDTH flip term**, not a literal transcription of the oracle line. Will
+poll `NSEvent.mouseLocation` → `window.convertPoint(fromScreen:)` → `convert(_:from: nil)`, gate
+with `mouse(_:in: visibleRect)`, quantize, draw `SELETRIMAGE` via the existing `drawSprite` helper
+(no new tracking area, matching `render(_:)`'s existing per-tick `needsDisplay = true`). Crosshair:
+guard `!player.dead` for `state.localPlayer`, draw `SELETRIMAGE`... `CROSSHIMAGE` at
+`player.tank + dir2vec(player.dir) * state.local.range` (`state.local.range` confirmed present,
+`GameObjects.swift:350`, driven by `TankLocalTick.swift:856-860`'s INCRE/DECRE handling — this is
+a variable-*distance* marker along the hull's own `dir`, not a second heading; oracle's crosshair
+call site (`GSBoloView.m:408`) reads `client.players[client.player].dir` too, same field the hull
+sprite uses). Both calls added at the end of `draw(_:)`, after `drawBuilderTaskIndicators`. Header
+comment (lines 15-19): dropping only "selector/crosshair" from the disclosed-gap list — the
+pause-label sprite (`GSBoloView.m:411-419`) stays out of scope, still undrawn, left named.
+
+**Item 2 — base glyphs.** Plan as written in D152/PLAN.md matches what I read in
+`GlyphSource.swift`/`ImageIndex.swift` exactly: new `BaseOwnership` enum + `GlyphRole.base(ownership:)`
+case replacing the three `.flatFill` base dispatches in `ImageIndex.swift:35-37`, a `drawBase`
+function (dark backing via the alpha-`fillRect` pattern `drawPill` already uses at
+`GlyphSource.swift:111`, triangular roof widening row-by-row, wall body, door notch), friendly
+color shifted `(60,110,220)` → `(35,75,175)` off `.river`'s `(60,110,220)` (`familyColor`,
+`GlyphSource.swift:62`). Confirmed no exhaustive external `switch` over `GlyphRole` — grepped every
+`.swift` file outside `Sources/BoloGlyphsCore/`; the only external matches are unrelated enums
+(`BuilderCommandKind`, `InputAction`, `GameHUDViews`'s own `.pill` case). Confirmed no name
+collision for `BaseOwnership` (only hit is a test function name, `BMapTests.swift:268`, not a type).
+`BoloGlyphsTests.swift`'s coverage tests (`tileRangeFullyCoveredNoOverlap`, `spriteIndexPartition`)
+dispatch through `tileGlyphRole`/`spriteGlyphRole` generically and assert counts/coverage, not
+specific colors or exact `GlyphRole` cases — non-breaking, confirmed by direct read, not just
+trusting D152's own claim.
+
+**Flagged, not part of this GO's scope, reporting for PLANNER's awareness:** `drawPill(friendly:)`
+(`GlyphSource.swift:108`) and `tankPalette(1)` (friendly tank, `:118`) both also use the exact same
+`(60,110,220)` byte value that collides with `.river` — the same defect class D152 orders fixed for
+bases only. Leaving both untouched; D152's text scopes the fix to bases specifically. Not fixing
+speculatively.
+
+**Item 3 — investigation plan.** D152's own text already flags a real gap in the prior "exhaustive
+static check": that check could not have exercised `Sources/BoloGlyphsCore/Canvas.swift`'s
+`fillRotatedTriangle`/`fillRotatedBar` against anything, since the oracle has no procedural sprite
+generator to compare against (it ships Cheshire's bitmap art) — that leg was vacuous, not actually
+checked, and it's exactly where a render-vs-physics sign disagreement would hide invisibly to a
+per-glyph-in-isolation test. Plan: (a) hand-verify `Canvas16`'s rotation math against `dir2vec`'s
+own documented +y-down convention directly (not re-trust the claim); (b) add temporary,
+not-committed instrumentation — a `runTick`-driving test logging `dir` vs. `vec2dir` of the
+per-tick position delta over a multi-tick drive (straight, and turning+accelerating), the one thing
+the existing isolated `testTankPhysicsMatchesOracleFuzzed` (single-`tankMoveTick`-call, fuzzed vs.
+C oracle) doesn't cover — the full multi-tick `runTick` orchestration and sequencing; (c) note the
+existing `allHeadingsMatchDir2Vec` test (`BoloGlyphsTests.swift:230`) already empirically covers
+the dir→sprite-tip leg and is passing, so it doesn't need re-deriving from scratch, just citing.
+No GUI drive attempted — this is the toolchain-hang-aware headless substitution the bootstrap
+already blesses (Step 4), disclosed here rather than silently substituted. Report to follow with
+findings; no code fix planned for item 3 regardless of outcome without a further PLANNER ruling,
+per D112's standing rule.
+
+Proceeding to implement items 1+2 and run item 3's investigation now.
+
+[TO: PLANNER]
+
