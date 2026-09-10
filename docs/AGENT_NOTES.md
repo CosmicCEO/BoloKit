@@ -2395,3 +2395,110 @@ D140 (app-target test coverage): planning only this round, full plan text in `do
 coding GO yet — sequenced after B.10 follow-on and the PARITY backlog clear.
 
 Full ruling: `docs/PLAN.md` D139/D140.
+
+### [PARITY] 2026-09-10 — D139 audit: D131-D138 self-review backlog, all four items PASS
+
+Type: post-commit audit (four items dispatched together by D139). Standing limitation: no Swift
+toolchain in this environment for items requiring build/run beyond `swift test`; `swift test` was
+actually run (not assumed) where cited below. All C citations opened and read directly, not
+trusted from the completion reports.
+
+**1. D131/D133 — host map-load wiring (`3bae6ab`, now folded into `applyDecodedMap` at
+`Bolo 2026/Bolo 2026/HostGameView.swift:183-215`).** Read the current call site directly (tree has
+since been refactored by D132 into a shared `applyDecodedMap` used by both the file-import and
+bundled-map paths — confirmed both call it, no bypass: `HostGameView.swift:158` and `:180`).
+Order confirmed exactly as claimed: `decodeBMap` succeeds (`:191`) → `serverPostProcessLoadedMap(&decoded)`
+(`:203`) → starts-empty guard (`:209`) → `mapState = decoded` (`:214`). `serverPostProcessLoadedMap`
+itself (`Sources/BoloKit/BMap.swift:689-714`) does force pill/base owner to `playerNeutral`,
+rescale pill speed, clear start tiles to sea, and normalize mined-site terrain — matches the
+`BMap.swift` doc-comment's corrected claim. The `BMap.swift:618-624`-area doc-comment correction
+is accurate: `HostGameView.swift`'s `handleMapPickerResult` (now `applyDecodedMap`) is indeed the
+real host-side decode call site. **PASS.**
+
+**2. D132/D134 — bundled default map (`35d4769`/`0caaa23`).** Independently re-derived the
+embedded byte literal rather than trusting the passing test: extracted the `[UInt8]` array from
+`Bolo 2026/Bolo 2026/DefaultMap.swift` with a standalone script (6525 bytes) and diffed it
+byte-for-byte against `BMapDecodeTests.swift`'s own `expected` array in
+`defaultBundledMapEncodesToTheEmbeddedAppBundleBytes()` (also 6525 bytes) — **identical**, confirmed
+programmatically, not by eyeballing. Ran `swift test --filter BMapDecodeTests` directly (not
+assumed from the report): all 10 tests pass, including
+`defaultBundledMapEncodesToTheEmbeddedAppBundleBytes` and
+`defaultBundledMapSurvivesDecodeAndServerPostProcess`, the latter of which independently confirms
+the decode→post-process round trip (4 starts, 2 pills, 2 bases, NEUTRAL ownership, start tiles →
+sea). Confirmed `applyDecodedMap` (see item 1) is the single shared path for both the bundled map
+(`HostGameView.swift:158`, `.onAppear`) and user-imported files (`:180`) — no bypass. **PASS.**
+
+**3. D135/D136 — Alabama-silhouette landmass (`c0f18e1`).** Read `isAlabamaSilhouette`
+(`Sources/BoloKit/BMap.swift:752-761`) directly and hand-checked all 8 site coordinates against
+its three regions (`mainBody`: x∈[30,226], y∈[30,226]; `southeastNotch` excluded: x∈[222,226],
+y∈[205,226]; `panhandle`: x∈[100,156], y∈[226,245]). All 8 sites — starts (40,40)/(216,40)/
+(40,216)/(216,216), pills (128,60)/(128,196), bases (60,128)/(196,128) — fall inside `mainBody`
+(all x,y within [30,226]); none has x≥222, so none is touched by the SE notch (max site x is 216,
+6 short of the notch's x≥222 threshold) — the notch does not carve out any site, confirming the
+claim. Connectivity: the SE notch removes only a corner rectangle from a convex rectangle, which
+cannot disconnect it (notch touches only the boundary corner); the panhandle (y∈[226,245]) shares
+row y=226 with the main body's own y-max, and their x-ranges overlap (100-156 both), so the
+panhandle is contiguous with the main body, not a separate island. No disconnection found. **PASS.**
+
+**4. D137/D138 — builder mouse control (`1613112`), highest-value target: line-by-line
+re-derivation of `resolveBuilderTask` against `client.c:6539-6698` (`getbuildertaskforcommand()`).**
+Read the full C function (`client.c:6539-6698`) and the full Swift function
+(`Sources/BoloKit/BuilderCommand.swift:49-104`) in one pass each, then compared case-by-case:
+  - `.tree`: C `forest/minedForest → GetTree`, default → doNothing. Swift matches exactly.
+  - `.road`: C `forest/minedForest → GetTree`; `river/swamp*/crater/rubble*/grass* → BuildRoad`;
+    `minedSwamp*/minedCrater/minedRubble*/minedGrass* → doNothing` (+ dropped message); default
+    doNothing. Swift matches — mined variants correctly fall to the `default: doNothing` case
+    (message drop is explicitly disclosed in the file header, and is inert since
+    `kBuilderDoNothing` is the same regardless).
+  - `.wall`: C `forest/minedForest → GetTree`; `swamp*/crater/road/rubble*/grass*/damagedWall* →
+    BuildWall`; `river → BuildBoat`; mined variants → doNothing; default doNothing. Swift matches
+    exactly, including the river→buildBoat special case.
+  - `.pill`: C resolves friendly/hostile pill tiles (a `seentiles`-synthesized value) → RepairPill;
+    swamp*/crater/road/rubble*/grass* → BuildPill; forest/minedForest → GetTree; mined variants →
+    doNothing. Swift's ground-truth substitution (per D65, no fog model) checks `findPill(x:y:pills:)`
+    *before* the terrain switch and returns `.repairPill` on a hit, gated correctly to only the
+    `.pill` command (`if command == .pill, findPill(...) != nil`) — verified this guard doesn't
+    leak into other command cases. Terrain switch below it matches C's remaining branches exactly.
+  - `.mine`: C `swamp*/crater/road/forest/rubble*/grass* → PlaceMine` (note: `forest` here, not
+    `minedForest`, and there is no separate GetTree branch at all in this command's switch — mine
+    command has no tree-harvesting side effect); mined variants → doNothing; default doNothing.
+    Swift's `.mine` case matches this subtlety exactly: `.forest` (not `.minedForest`) is listed
+    directly under `placeMine`, with no `getTree` branch present for this command — this is a real
+    subtlety (mine command's switch structurally differs from the other four) and it was ported
+    correctly, not by copy-paste of a common template.
+
+  All 5 `BuilderCommandKind` cases spot-checked (asked for ≥3; did all 5 given the C function's
+  short total length). No terrain-case drift found anywhere.
+
+  **(a) Unlimited range / no distance check:** read `queueBuilderCommand`
+  (`Sources/BoloKit/BuilderCommand.swift:120-127`) directly — its only guards are
+  `builderStatus != .parachute`, `pendingBuilderCommand == nil`, and `!dead`. No distance/range
+  computation exists anywhere in the function. Cross-checked against C's `buildercommand()`
+  (`client.c:6533-6538`, read directly): identical three-guard structure
+  (`builderstatus != kBuilderParachute && nextbuildercommand == BUILDERNILL && !dead`), no range
+  check in the oracle either. Confirmed accurate.
+
+  **(b) Ground-truth-vs-`seentiles` substitution:** grepped `Sources/BoloKit/` for
+  `seentiles`/`SeenTiles`/`fogOfWar`/`FogOfWar` — the only hits are doc-comments explaining the
+  substitution (`BuilderCommand.swift`, `BuilderTick.swift`, `BMap.swift`), never live state.
+  `resolveBuilderTask` resolves purely against `state.terrain[x, y]` and `findPill(...)`, exactly
+  as claimed, consistent with D65's existing no-fog-of-war precedent.
+
+  **(c)/full check:** done above for all 5 cases, not just 3.
+
+  **Citation note:** the file header cites `client.c:6533-6698` for the combined
+  `buildercommand()`/`getbuildertaskforcommand()` pair, and separately `client.c:6539-6698` for
+  `getbuildertaskforcommand()` alone at the function doc-comment — both ranges check out exactly
+  against the actual source (`buildercommand()` spans 6533-6538, `getbuildertaskforcommand()`
+  spans 6539-6698 with its closing brace and `default: assert(0);` falling right at the tail of
+  that range). No citation drift.
+
+  **PASS.**
+
+**Overall: 4/4 PASS.** No real defects found across the D131-D138 backlog. This does not cover
+the join-path builder-command wiring gap already disclosed in the D137 completion report (item 4
+above, "Join path left unwired") — that is a known, already-tracked gap (same bucket as
+shoot/lay-mine on the join path pending B.10), not a new finding, and is PLANNER/IMPLEMENTER's own
+B.10 follow-on to close, not a PARITY finding.
+
+[TO: PLANNER] D131-D138 backlog clears audit clean, 4/4 PASS, no fixes needed.
