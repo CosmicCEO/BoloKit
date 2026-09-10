@@ -2257,3 +2257,101 @@ a disclosed departure from strict UI parity, simulation behavior unchanged.
 Check at pre-brief whether builder commands need `BoloNet` wiring for multiplayer visibility.
 
 Full ruling: `docs/PLAN.md` D137.
+
+### [IMPLEMENTER] 2026-09-10 — D137: builder mouse control + UX range indicator, completion report
+
+**Type:** pre-brief + implementation, combined (read the cited C source directly before coding;
+no separate pre-brief-only sitting was needed given how narrowly the GO scoped the work).
+
+**1. `BoloKit`: pure builder-command function (`Sources/BoloKit/BuilderCommand.swift`, new file).**
+Read `client.c:6533-6698` directly (confirmed line numbers match the GO text). Ported
+`buildercommand()`/`getbuildertaskforcommand()` as `queueBuilderCommand`/`resolveBuilderTask`.
+
+- **Ground truth, not fog-of-war:** C resolves against `client.seentiles[at.y][at.x]`; this port
+  has no `seentiles`/`fog` model (D65), so `resolveBuilderTask` resolves against `state.terrain`
+  directly, with `findPill` checked first for the `BUILDERPILL` case (C's `seentiles` folds "pill
+  present" into a synthetic tile value that overrides terrain — `findPill` is the ground-truth
+  equivalent, same substitution `BuilderTick.swift`'s existing `repairPill` already made).
+- **Unlimited range, exactly as ruled:** no distance check anywhere in `queueBuilderCommand` or
+  `resolveBuilderTask` — confirmed C has none either (`buildercommand()`, client.c:6533-6538).
+- **Judgment call, disclosed:** C's queue slot (`client.nextbuildercommand`/`nextbuildertarget`,
+  reset only in `kBuilderReady`, client.c:4544-4545) holds exactly one pending click while the
+  builder is busy (goto/work/wait/return), applied automatically once it returns to ready.
+  `BuilderTick.swift`'s existing `readyTick` reads `builderTask`/`builderTarget` as an
+  already-resolved one-shot order and other states (`returnTick`, `arriveAtTarget`) actively read
+  `builderTask` mid-flight — overwriting it from a new click while busy would corrupt an
+  in-progress task. Added a genuine one-slot queue instead: two new `PlayerState` fields,
+  `pendingBuilderCommand: BuilderCommandKind?`/`pendingBuilderTarget: Pointi` (nil ==
+  `BUILDERNILL`), gated identically to C (`builderStatus != .parachute && pendingBuilderCommand ==
+  nil && !dead`), resolved and cleared at the top of `readyTick` — matching C's own
+  resolve-then-clear-regardless-of-outcome order exactly, not a simplification.
+- **Dropped side effect, disclosed:** the mine-tile-rejection branches' `client.printmessage(...)`
+  UI calls are not reproduced — no message-channel plumbing exists at this call site and the
+  return value (`kBuilderDoNothing`) is unaffected either way.
+- **Differential-tested**, not a rubber stamp: added `getbuildertask_oracle` to
+  `Sources/CXBolo/builderops.c` — a verbatim transcription of `getbuildertaskforcommand()`'s
+  switch body with `client.seentiles[at.y][at.x]` replaced by an explicit `tile` int parameter and
+  the `printmessage` calls dropped (no return-value effect). `BuilderCommandDifferentialTests.swift`
+  fuzzes every terrain variant this port models × every one of the 5 builder-tool commands against
+  it (all pass), plus targeted unit tests for the pill-priority-over-terrain branch, the
+  pending-slot queue/gate behavior, and `readyTick` actually consuming a queued command.
+
+**2. `InputKeymap.swift`: builder-tool selection, digit keys 1-5.** Read C.1's completion report
+(this file, "Deliberately excluded" note) before extending — confirmed it explicitly recommended
+treating this as separate scope, not a keymap gap, because these keys aren't in `GSKeyConfigDict`
+(not remappable even upstream). Consistent with that: added `builderTool(forKeyCode:)` as a fixed,
+non-rebindable function, NOT an `InputAction`/`KeyBindings` addition. Read
+`GSXBoloController.m:1718-1727` directly: keyCode 18/19/20/21/23 → tool 0-4 (tree/road/wall/
+pill/mine); **keyCode 22 ("6") is genuinely absent from the reference's own chain** — confirmed by
+reading the cited lines directly, not a transcription gap (macOS virtual keycode 22 sits between
+21 and 23 in keycode-number order, not key-row order). New unit tests in `InputKeymapTests.swift`
+cover all 5 mapped codes, the absent 22, and an unrelated code.
+
+**3. `GameRenderView.swift`: real `mouseDown` handling.** Reused the view's existing +y-down
+coordinate convention (`isFlipped == true`, already established by `drawTerrain`/`drawSprites` —
+no second transform invented): `convert(event.locationInWindow, from: nil)` divided by `tileSize`,
+clamped to `0..<256`. Added `selectedBuilderTool` (defaults `.tree`, matching C's own
+`builderToolInteger` default of 0) and `onBuilderCommand` closure. Digit-key handling added at the
+top of `keyDown`, checked before `applyKeyChange` — matches `keyEvent:forKey:`'s own structure
+(dictionary lookup, then a separate hardcoded chain), never touches `bindings`.
+
+**4. `BoloNet` wiring — investigated, needed a small addition, not a big one.** `GameSession` has
+three paths (single-process/host/join, all landed since D137's own citations were written).
+Single-process mutates `state` directly. Host path needed routing through `HostGameEngine`'s
+merged event stream (new `.localBuilderCommand` case + `submitLocalBuilderCommand`, same shape as
+the existing `.localLayMineKeyDown`) — a UI-thread mouse click can't mutate the engine's `state`
+directly, same reasoning already established for every other host-local action. **No new broadcast
+message was needed for multiplayer visibility**: `builderTask`/`builderTarget`/`builderStatus`/
+`builder` all live on `PlayerState`, and `builderTick` already runs for every connected player
+every tick — once a command resolves, the builder's live position/status already rides whatever
+periodic full-state sync already exists for other players (the same mechanism `remoteBuilderSmoothers`
+already consumes). **Join path left unwired** — `onBuilderCommand` is simply never set there. This
+is not a new gap: `GameSession.swift`'s own B.8 header already discloses that shoot/lay-mine are
+"functionally dead" on the join path pending B.10's real outbound `CL*`-message protocol; a
+builder-command message doesn't exist in the wire protocol either, so it falls in the identical,
+already-tracked bucket rather than a newly-invented one. Flagging this explicitly since the GO text
+asked to flag if this made the task bigger than expected — it didn't end up bigger, but it did
+touch a third file (`HostGameEngine.swift`) beyond the three named in the GO.
+
+**5. UX indicator.** Render-layer only, in `GameRenderView.draw(_:)`: a dashed yellow line from
+each connected player's live builder position (smoothed for remote players, matching the existing
+`remoteBuilderSmoothers` treatment) to `builderTarget`, drawn whenever `builderStatus` is
+`.goto`/`.work`/`.wait`/`.return` (not `.ready` — no active task; not `.parachute` — no task
+target, a separate descent point). No new simulation state — reads fields `BuilderTick.swift`
+already tracks, exactly as ruled.
+
+**Verified:**
+- `swift build` clean.
+- `swift test`: **740 → 747** (539 BoloKitTests → 542, +3 unit tests; 201 DifferentialTests → 205,
+  +4 differential/oracle tests). No coverage shrink (D28).
+- `xcodebuild -project "Bolo 2026.xcodeproj" -scheme "Bolo 2026" -destination "platform=macOS"
+  build`: **BUILD SUCCEEDED**.
+- **Not visually verified** — same disclosed limitation as D135/D136: this project's Xcode MCP
+  tooling can't screenshot a native macOS target. Click-to-build, tool selection, and the range
+  indicator are covered by the unit/differential tests above and by two clean builds, but the
+  actual on-screen appearance of the dashed indicator line and a live mouse-click-to-build flow are
+  not screenshot-confirmed.
+
+**Commit:** `1613112` — "1.1: builder mouse control + UX range indicator (D137)".
+
+[TO: PLANNER]
