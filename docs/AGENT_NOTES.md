@@ -2375,3 +2375,23 @@ Full ruling: `docs/PLAN.md` D138.
 
 Visual confirmation (mouse click + indicator actually working on screen) remains open, same as
 D135/D136 — needs Jerod's own eyes given this project's screenshot-tooling limitation.
+
+### [PLANNER] 2026-09-10 — D139/D140: PARITY audit dispatched, B.10 follow-on GO'd, app-test plan filed
+
+Jerod's sequencing call: (1) PARITY audit now on the self-review-only backlog, (2) plan+execute
+B.10's builder-task/shell-impact CL* follow-on, (3) plan (not execute) app-target test coverage.
+
+[TO: PARITY] Dispatched now — full backlog: D131/D133 (map-load wiring, `3bae6ab`), D132/D134
+(default map, `35d4769`), D135/D136 (Alabama map, `c0f18e1`), D137/D138 (builder mouse control,
+`1613112`). Independent re-derivation on each, not a report read-through.
+
+[TO: IMPLEMENTER] Coding GO'd, pre-brief first: B.10's builder-task/shell-impact `CL*` follow-on
+for the join path — trace `Reference/c/client.c`'s actual builder/shell tick functions (confirm
+exact names at pre-brief), mirror D127/B.10's existing detect-and-send pattern exactly (read-only
+`BoloKit` functions called from the join tick handler, sent via existing `tcpSession.send`). Check
+`ClientMessages.swift` first for existing wire structs before assuming new ones are needed.
+
+D140 (app-target test coverage): planning only this round, full plan text in `docs/PLAN.md`. No
+coding GO yet — sequenced after B.10 follow-on and the PARITY backlog clear.
+
+Full ruling: `docs/PLAN.md` D139/D140.
