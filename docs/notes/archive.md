@@ -1087,3 +1087,79 @@ PASS**; **C.1** (key-remap, real risk), **C.2** (alliance panel, disclosed fog-o
 **C.4** (messages panel, needs a new `GameState` field) not yet started. Full uncompressed entries
 (every pre-brief, completion report, PARITY audit, and PLANNER ruling in this span, D109 through
 Milestone C's full close) preserved in git history per D28.
+
+## Archived 2026-09-10 — D125 through D149: path-to-v1.0, v1.0.0 ship, and the full 1.1 backlog's first wave
+
+**Path to v1.0 (D124-D128):** D125 wired the next tier of BoloSounds effects. A 5-phase
+ship plan was written and approved (`~/.claude/plans/partitioned-conjuring-flask.md`); Jerod
+directed skipping Phase 1 (further `NWListener` EINVAL investigation — ruled out beta-OS and
+ad-hoc-signing theories earlier, deliberately not reopened without an explicit ask) and Phase 3
+(a live two-instance playtest, never completed) and going straight to signing/hygiene then ship.
+Real code signing landed (`DEVELOPMENT_TEAM = L527M49YJ9`); full notarization deferred to 1.1
+(no paid Apple Developer Program enrollment). **v1.0.0 shipped** (D128): tag pushed, GitHub
+release published, non-prerelease, 694 tests, honest release notes covering every known gap.
+
+**D129 — function-coverage audit.** PLANNER fanned out 3 parallel audit operatives across
+`client.c`/`server.c`/support files to build a complete function-inventory table
+(`docs/PARITY_FUNCTION_COVERAGE.md`) — a new completeness check distinct from PARITY's usual
+behavioral audits. `client.c` came back clean. `server.c` surfaced 3 real gaps: the entire
+host-admin command surface (pause/resume/allow-join/lock/unban) missing entirely, `sendsrflood`
+missing its broadcast callback, and `serverloadmap`'s NEUTRAL-owner/mine-clear divergence from
+`clientloadmap`. Filed as new 1.1 backlog.
+
+**1.1 backlog, first wave (D130-D149):**
+- **D130:** Ruled on two `[TO: PLANNER]` handoffs from work that had landed unreviewed
+  (`lockserver`/`unlockserver` = N/A confirmed correct; C.4 messages panel PARITY-reviewed clean).
+  Ground-truth test count reconciled at 738.
+- **D131/D133:** Investigated the `sendsrflood`/`serverloadmap` backlog items — both were already
+  closed by D129's own commits before the GO was written (stale bookkeeping, adopted a
+  cross-check-git-log-before-reissuing-a-GO process fix). Real adjacent gap found instead and
+  fixed: `HostGameView.swift`'s real map-load call site was skipping `serverPostProcessLoadedMap`
+  entirely — every user-imported map silently skipped NEUTRAL-owner-forcing/pill-rescale/
+  start-clear/mine-normalize. Fixed with one call + a doc-comment correction.
+- **D132/D134:** Shipped a small bundled default map so hosting works without a file import —
+  `defaultBundledMapState()`, real `encodeBMap` bytes embedded as a Swift literal, routed through
+  the same decode/post-process path a real import takes. 740 tests.
+- **D135/D136:** Jerod's own playtest found the default map unplayable (isolated 1-tile grass
+  islands, no connecting land). Rebuilt as a connected Alabama-silhouette landmass (rectangular
+  body + SE notch + panhandle) with a road grid and 3 rivers, per Jerod's own follow-up asks
+  mid-flight. All 8 site coordinates confirmed on land.
+- **D137/D138:** Built real mouse-driven builder control — 0% implemented before this (not
+  partial): click-to-target (unlimited range, matching the C reference's own actual rule — it has
+  no range concept at all), digit-key-1-5 tool selection, and a new disclosed UX-parity departure
+  (a dashed target-line indicator the original never had, added anyway by Jerod's own choice).
+- **D139/D142/D143:** B.10's long-deferred builder-task/shell-impact `CL*` follow-on for the join
+  path, fully closed — join clients' builder commands and their own shells' hits now report to
+  the host via `CL*` messages, mirroring the C reference's real `player == owner` self-report
+  gate (host/single-process's unified-authority simulation stays untouched).
+- **D144/D145:** Stood up `Bolo 2026Tests`, the app target's first-ever automated test coverage
+  (10→13 tests across the batch) — real finding: SwiftUI `@State` doesn't reliably persist
+  outside the live environment, so tests target extracted pure functions instead.
+- **D146/D147:** Fixed a real crash Jerod hit live — tree-harvesting in place produced a
+  zero-length line in D137's new indicator, crashing under Metal's debug draw-call validation.
+  Fixed with an epsilon-based degenerate-segment guard, verified via a test reconstructing the
+  exact crash geometry through real game logic.
+- **D148/D149:** Jerod's own hands-on playtest (sharpened by his own screenshot of the original's
+  real HUD) surfaced 7 UX gaps: invisible mines, undiscoverable build controls, no always-visible
+  HUD, ambiguous tank sprite, and 3 unwired sounds. Jerod also flagged real cost concern (2.4B
+  tokens, ~$800) with this session's per-item research/pre-brief/code/report/review/PARITY
+  pattern — adopted a leaner batch model (no more research subagents once root cause is known,
+  fewer/larger IMPLEMENTER dispatches, PARITY skipped for pure UX work, batched PLANNER rulings).
+  All 7 fixed or correctly re-scoped in 3 grouped dispatches: sound wiring (tankshot/tree),
+  an always-visible HUD (build-tool strip, resource gauges, status grid — event-log bar and
+  win/loss surfacing correctly split out as separate future items, not force-fit), and tank
+  sprite legibility + mine visibility (investigation found the C reference has no per-mine
+  ownership at all, so "own-mines" was the wrong frame — fixed correctly as all-mines-visible).
+
+**141 (PARITY audit of D131-D138 self-review backlog):** 4/4 PASS, no defects, independently
+re-derived rather than report-read-through (byte-diffed the embedded map literal programmatically,
+hand-checked all 8 Alabama-map site coordinates, line-by-line compared all 5 `resolveBuilderTask`
+cases against `client.c`).
+
+**Ground truth at close of this span:** 756 SwiftPM tests (551 BoloKitTests + 205
+DifferentialTests) + 19 `Bolo 2026Tests` app-target tests, all green. New backlog filed, not yet
+GO'd: event-log/capture-message plumbing, win/loss UI presentation, `hiddenmines`-style
+fog-of-war, B.10's remaining Milestone-D-adjacent items, Milestone D itself (zoom/scroll polish,
+`Reference/c` submodule removal, full notarization), further network-bug investigation, and the
+real two-instance playtest. Full uncompressed text (every pre-brief, completion report, and
+ruling, D125 through D149) preserved in git history per D28.

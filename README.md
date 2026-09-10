@@ -15,25 +15,31 @@ terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox ph
 chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire codec, tick
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
-are all complete and PARITY-verified against the C reference. 694 differential + unit tests
-passing (one pre-existing, documented flaky timing test excluded from that count's stability
-claim -- see `docs/PLAN.md`). **`Bolo 2026` v1.0 is playable, host-and-join multiplayer**: a
-window opens, renders a real map from generated assets, and drives a tank via the actual physics
-engine, keyboard-controlled and tick-driven, over a real live network session -- the host accepts
-real connections and joining clients see the world, move their own tank, and interact with pills/
-bases/mines via relayed broadcasts. **Milestone B** (Host/Join UI wired to the networking layer)
-is fully closed, including **B.10**'s join-side outbound protocol. **Milestone C** (full HUD, key
-remap, alliance/chat, sound, preferences) is partially done -- HUD status panel + kick/ban (C.0),
-procedural sound synthesis (C.3, 24 effects generated, 5 wired to gameplay events), and the
-preferences shell (C.5) are closed; key remap (C.1), the alliance panel (C.2), and the messages
-panel (C.4) are deferred to a 1.1 release. **Milestone D** (zoom/scroll polish, full notarization)
-is also deferred to 1.1 -- v1.0 ships with real Apple Development code signing but not notarized
-(no paid Developer Program enrollment yet), so a fresh download needs a one-time right-click →
-Open to bypass Gatekeeper's warning. A known, unresolved environment issue on some machines causes
-`Network.framework`'s listener creation to fail; the app falls back automatically to local-only
-play in that case, with an on-screen notice -- root cause not found despite investigation (ruled
-out: beta-OS-specific, ad-hoc signing). See `docs/PLAN.md` for the full wave-by-wave status and
-decisions log.
+are all complete and PARITY-verified against the C reference. **`v1.0.0` shipped** (real,
+non-prerelease GitHub release), and active work has since moved to a 1.1 release cycle. 756
+SwiftPM tests (BoloKitTests + DifferentialTests) plus 19 app-target tests (`Bolo 2026Tests`,
+added in the 1.1 cycle) are passing (one pre-existing, documented flaky timing test excluded from
+that count's stability claim -- see `docs/PLAN.md`). **`Bolo 2026` is playable, host-and-join
+multiplayer**: a window opens with an always-visible HUD (build-tool selector, resource gauges,
+player/pill/base status), renders a real bundled default map (or an imported one) from generated
+assets, and drives a tank via the actual physics engine, keyboard- and mouse-controlled
+(click-to-command the builder, matching the original's own unlimited-range design) and
+tick-driven, over a real live network session. **Milestone B** (Host/Join UI wired to the
+networking layer) is fully closed, including B.10's full join-side outbound protocol (movement,
+tile-entry, builder-task, and shell-impact reporting). **Milestone C** is partially done -- HUD
+status panel + kick/ban (C.0), key remap (C.1), the alliance panel (C.2), messages panel (C.4),
+procedural sound synthesis (C.3, 24 effects generated, several wired to gameplay events including
+cannon fire and tree harvest), and the preferences shell (C.5) are closed. **Milestone D**
+(zoom/scroll polish, full notarization) remains deferred -- the app ships with real Apple
+Development code signing but not notarized (no paid Developer Program enrollment yet), so a fresh
+download needs a one-time right-click → Open to bypass Gatekeeper's warning. A known, unresolved
+environment issue on some machines causes `Network.framework`'s listener creation to fail; the
+app falls back automatically to local-only play in that case, with an on-screen notice -- root
+cause not found despite investigation (ruled out: beta-OS-specific, ad-hoc signing), deliberately
+not under active investigation to avoid further escalation-of-commitment cost. Filed but not yet
+scheduled: an always-visible event/capture-message log bar, win/loss UI presentation (the
+simulation already computes the underlying condition), and a `hiddenmines`-style fog-of-war mode.
+See `docs/PLAN.md` for the full wave-by-wave status and decisions log.
 
 ## Approach
 
