@@ -560,8 +560,29 @@ private func readyTick(player: Int, state: inout GameState) {
 /// branch), then transitions to `.wait` unconditionally — matching C
 /// exactly: `kBuilderWork` always follows, whether the work succeeded, was
 /// blocked by `tankTest`/`tankOnABoatTest`, or hit a mine.
-private func arriveAtTarget(player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) {
+///
+/// **B.10 follow-on (D139):** `joinArrive`, when non-nil, replaces the mutation-applying
+/// branches below with a read-only detect-and-send call (`detectJoinBuilderArrival`) — the join
+/// path's own uncollapsed shape, matching C's real round trip (`kBuilderGoto` → sendcl* →
+/// `kBuilderWork` → `recvsrbuilderack` → `kBuilderWait`), unlike host/single-process's collapsed
+/// inline-mutation shortcut below. `nil` (every existing call site) preserves this function's
+/// prior behavior exactly — zero change for host/single-process (D28).
+private func arriveAtTarget(
+    player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
+
+    if let joinArrive {
+        let outbound = joinArrive(player, state)
+        if outbound != nil {
+            state.players[player].builderStatus = .work
+        } else {
+            state.players[player].builderStatus = .wait
+            state.players[player].builderWait = 0
+        }
+        return outbound
+    }
 
     switch state.players[player].builderTask {
     case .getTree:
@@ -613,6 +634,7 @@ private func arriveAtTarget(player: Int, state: inout GameState, onMineExplosion
 
     state.players[player].builderStatus = .wait
     state.players[player].builderWait = 0
+    return nil
 }
 
 // MARK: - gotoTick
@@ -623,14 +645,20 @@ private func arriveAtTarget(player: Int, state: inout GameState, onMineExplosion
 /// otherwise), advances one tick's distance through `builderCollision`,
 /// and gives up to `.return` if collision reduced that to near-nothing.
 /// Ported from the `kBuilderGoto` case (client.c:4880-4923).
-private func gotoTick(player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) {
+///
+/// `joinArrive` threads straight through to `arriveAtTarget` — see that function's own header
+/// for the B.10 join-path split; `nil` (every existing call site) is unchanged.
+@discardableResult
+private func gotoTick(
+    player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
     let center = Vec2f(x: Float(target.x) + 0.5, y: Float(target.y) + 0.5)
     var diff = center - state.players[player].builder
 
     if mag2f(diff) < 0.00001 {
-        arriveAtTarget(player: player, state: &state, onMineExplosion: onMineExplosion)
-        return
+        return arriveAtTarget(player: player, state: &state, onMineExplosion: onMineExplosion, joinArrive: joinArrive)
     }
 
     let builder = state.players[player].builder
@@ -652,7 +680,7 @@ private func gotoTick(player: Int, state: inout GameState, onMineExplosion: (Poi
 
     guard mag2f(diff) > speed / ticksPerSec else {
         state.players[player].builder = center
-        return
+        return nil
     }
 
     diff = diff * (speed / (ticksPerSec * mag2f(diff)))
@@ -667,6 +695,7 @@ private func gotoTick(player: Int, state: inout GameState, onMineExplosion: (Poi
             builder + moved * (speed / (ticksPerSec * mag2f(moved))), radius: builderRadius, isSolid: collision
         )
     }
+    return nil
 }
 
 // MARK: - returnTick
@@ -780,25 +809,36 @@ private func parachuteTick(player: Int, state: inout GameState) {
 /// per tick — matching `builderlogic(player)`'s call convention in
 /// `runclient` (client.c:470). See the file header for the collapsed
 /// network round trip and the `getbuildertaskforcommand` scope cut.
+///
+/// **B.10 follow-on (D139):** `joinArrive`, when non-nil, gives the join path the *uncollapsed*
+/// round trip — see `arriveAtTarget`'s own header. `nil` (every pre-existing call site: `RunTick.
+/// swift`'s host/single-process path) is unchanged, including the `.work` case staying genuinely
+/// unreachable there. On the join path, `.work` becomes real: `recvSrBuilderAck` (already wired
+/// into the join client's TCP receive loop) drives `.work` → `.wait`, matching `recvsrbuilderack`
+/// (client.c:2572-2629)'s own outer `switch (builderstatus) { case kBuilderWork: ... }` gate —
+/// this function's own `.work` case intentionally stays a no-op `break` either way, since the
+/// transition happens over in `RecvSR.swift`, not here.
+@discardableResult
 public func builderTick(
     player: Int,
     state: inout GameState,
-    onMineExplosion: (Pointi) -> Void = { _ in }
-) {
-    guard state.players[player].connected else { return }
+    onMineExplosion: (Pointi) -> Void = { _ in },
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+) -> JoinOutboundBuilderCL? {
+    guard state.players[player].connected else { return nil }
 
     switch state.players[player].builderStatus {
     case .ready:
         readyTick(player: player, state: &state)
 
     case .goto:
-        gotoTick(player: player, state: &state, onMineExplosion: onMineExplosion)
+        return gotoTick(player: player, state: &state, onMineExplosion: onMineExplosion, joinArrive: joinArrive)
 
     case .work:
-        // Unreachable in this port: gotoTick's arrival branch collapses
-        // straight through to .wait via arriveAtTarget (see file header).
-        // Kept for switch exhaustiveness / structural fidelity with C's
-        // `case kBuilderWork: break;`.
+        // Unreachable in the host/single-process path (`joinArrive == nil`): gotoTick's arrival
+        // branch collapses straight through to .wait via arriveAtTarget (see file header). Real,
+        // but a no-op here, on the join path (`joinArrive != nil`): `recvSrBuilderAck` is what
+        // drives `.work` → `.wait` there, not this function — see this function's own header.
         break
 
     case .wait:
@@ -817,5 +857,77 @@ public func builderTick(
 
     case .parachute:
         parachuteTick(player: player, state: &state)
+    }
+    return nil
+}
+
+// MARK: - Join client outbound CL* detection (B.10 follow-on, D139) — READ-ONLY SECTION
+//
+// Mirrors `TankLocalTick.swift`'s own "Join client outbound CL* detection" section (B.10, D127)
+// exactly in spirit: a read-only analogue of C's real, uncollapsed builder round trip
+// (`kBuilderGoto`'s arrival switch, client.c:4805-4877), for the join client's own local builder
+// only. Never mutates `state` — `arriveAtTarget`'s `joinArrive` caller (above) is what applies the
+// `.work`/`.wait` status transition based on this function's return value.
+
+/// The small handful of outbound `CL*` message shapes reachable from the builder's arrival at its
+/// target square, per `kBuilderGoto`'s arrival switch. Deliberately not the `CL*` wire structs
+/// themselves (`BoloKit` doesn't depend on `BoloNet`) — the caller (`GameSession`, which imports
+/// both) converts each case to its matching `CLGrabTrees`/`CLBuildRoad`/`CLBuildWall`/
+/// `CLBuildBoat`/`CLBuildPill`/`CLRepairPill`/`CLPlaceMine` and sends it.
+public enum JoinOutboundBuilderCL: Equatable, Sendable {
+    case grabTrees(x: Int, y: Int)
+    case buildRoad(x: Int, y: Int, trees: Int)
+    case buildWall(x: Int, y: Int, trees: Int)
+    case buildBoat(x: Int, y: Int, trees: Int)
+    case buildPill(x: Int, y: Int, trees: Int, pill: Int)
+    case repairPill(x: Int, y: Int, trees: Int)
+    case placeMine(x: Int, y: Int)
+}
+
+/// Read-only analogue of `arriveAtTarget`'s mutation-applying switch, for the join client's own
+/// builder arriving at `state.players[player].builderTarget`. Returns the message `kBuilderGoto`'s
+/// arrival switch (client.c:4805-4877) would have sent for the player's current `builderTask`, or
+/// `nil` if the reference's own guard (`tankonaboattest`/`tanktest`) would have blocked it (in
+/// which case C skips straight to `kBuilderWait` with nothing sent — `arriveAtTarget`'s caller
+/// reproduces that by transitioning to `.wait` whenever this returns `nil`).
+///
+/// `.getTree`/`.placeMine` have no such guard in C (`sendclgrabtrees`/`sendclplacemine` are
+/// unconditional in the arrival switch) — matching `arriveAtTarget`'s own unconditional
+/// `.getTree`/`.placeMine` branches, which never check `tankTest`/`tankOnABoatTest` either.
+public func detectJoinBuilderArrival(player: Int, state: GameState) -> JoinOutboundBuilderCL? {
+    let target = state.players[player].builderTarget
+    let x = Int(target.x)
+    let y = Int(target.y)
+    let trees = state.players[player].builderTrees
+
+    switch state.players[player].builderTask {
+    case .getTree:
+        return .grabTrees(x: x, y: y)
+
+    case .buildRoad:
+        guard !tankOnABoatTest(x: x, y: y, state: state) else { return nil }
+        return .buildRoad(x: x, y: y, trees: trees)
+
+    case .buildWall:
+        guard !tankTest(x: x, y: y, state: state) else { return nil }
+        return .buildWall(x: x, y: y, trees: trees)
+
+    case .buildBoat:
+        guard !tankTest(x: x, y: y, state: state) else { return nil }
+        return .buildBoat(x: x, y: y, trees: trees)
+
+    case .buildPill:
+        guard !tankTest(x: x, y: y, state: state) else { return nil }
+        return .buildPill(x: x, y: y, trees: trees, pill: Int(state.players[player].builderPill))
+
+    case .repairPill:
+        guard !tankTest(x: x, y: y, state: state) else { return nil }
+        return .repairPill(x: x, y: y, trees: trees)
+
+    case .placeMine:
+        return .placeMine(x: x, y: y)
+
+    case .doNothing:
+        return nil
     }
 }

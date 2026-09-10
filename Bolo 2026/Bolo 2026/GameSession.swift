@@ -166,17 +166,25 @@ public final class GameSession {
     /// **B.8 (D113/D114/D116):** the join path -- `tcpSession`/`udpSession` are already-live,
     /// already-past-the-handshake connections (`TCPSession.join`) handed in by the caller.
     ///
-    /// Runs ONLY `tankMoveTick` for the local player's own tank each tick -- turning/
-    /// acceleration/position/wall-and-terrain collision, matching what the host already trusts a
-    /// client to self-report (D114: the host never validates a client's position at all, so
-    /// there's nothing to defer to a round trip for). Deliberately NOT `tankLocalTick`/
-    /// `shellTick`/`builderTick` -- touching a pill, building, mining, and shooting all need a
-    /// real outbound CL*-message protocol this port doesn't have yet (D116, split to new B.10);
-    /// calling those functions here would mutate this client's own *local* copy of shared state
-    /// (pills/bases/mines) the host never learns about, an immediate, silent desync. `space`/
-    /// `shift` (shoot/lay-mine) are left functionally dead for the same reason -- `inputFlags`
-    /// still records them harmlessly (`onInputFlagsChange` below doesn't special-case any bit),
-    /// nothing yet reads those two.
+    /// Runs `tankMoveTick` for the local player's own tank each tick -- turning/acceleration/
+    /// position/wall-and-terrain collision, matching what the host already trusts a client to
+    /// self-report (D114: the host never validates a client's position at all, so there's nothing
+    /// to defer to a round trip for). Deliberately NOT `tankLocalTick`/`shellTick` -- touching a
+    /// pill/mining directly, and shooting, still need a real outbound CL*-message protocol this
+    /// port doesn't have for those two (D116; `shellTick`'s own gap is B.10's follow-on shell-
+    /// impact item, D139, deliberately not closed this pass -- see `docs/AGENT_NOTES.md`'s D139
+    /// pre-brief for why it reverses a documented port-wide design choice and needs its own GO);
+    /// calling those two here would mutate this client's own *local* copy of shared state (pills/
+    /// bases/mines) the host never learns about, an immediate, silent desync. `space` (shoot) is
+    /// left functionally dead for the same reason -- `inputFlags` still records it harmlessly
+    /// (`onInputFlagsChange` below doesn't special-case any bit), nothing yet reads it.
+    ///
+    /// **`builderTick` IS now run here (B.10 follow-on, D139)**, with a `joinArrive` override
+    /// (`detectJoinBuilderArrival`) that replaces the mutation-applying arrival branch with a
+    /// detect-and-send call -- see the `.tick` handler below and `BuilderTick.swift`'s own header
+    /// on `arriveAtTarget`/`builderTick` for the uncollapsed-round-trip shape this reintroduces
+    /// for the join path specifically. `shift` (lay-mine) has its own separate, already-existing
+    /// read-only path (`onLayMineKeyDown` below, B.10/D127) and isn't affected by this change.
     ///
     /// **Known, disclosed, narrow gap even within `tankMoveTick`'s own scope:** it calls
     /// `superboom()`/`smallboom()` (`TankLocalTick.swift`) when the local player's own death
@@ -212,11 +220,17 @@ public final class GameSession {
             let message = CLDropMine(x: UInt8(x), y: UInt8(y))
             Task { try? await tcpSession.send(message.encode()) }
         }
-        // D137: `onBuilderCommand` deliberately left unset on the join path -- there is no
-        // outbound `CL*` builder-command message in the wire protocol yet, the identical B.10
-        // gap already disclosed above for shoot/lay-mine ("space/shift ... left functionally
-        // dead for the same reason"). Flagged for PLANNER as part of D137's own completion
-        // report, not silently narrowed.
+        // B.10 follow-on (D139): mirrors the host path's `submitLocalBuilderCommand` ->
+        // `queueBuilderCommand` call (`HostGameEngine.swift:234`/`:368-369`) directly against this
+        // client's own `state` -- purely local queuing (`queueBuilderCommand` only sets
+        // `pendingBuilderCommand`/`pendingBuilderTarget`, no shared-state mutation), resolved the
+        // same way on both paths the next time `builderTick`'s `.ready` case runs. The actual
+        // shared-world effect still waits for the host's own `SRBuilderAck`/build broadcast, via
+        // `detectJoinBuilderArrival`'s detect-and-send call in the `.tick` handler below.
+        view.onBuilderCommand = { [weak self] command, target in
+            guard let self else { return }
+            queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
+        }
     }
 
     /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no
@@ -474,6 +488,37 @@ public final class GameSession {
                         try? await tcpSession.send(message)
                     }
                 }
+            }
+
+            // B.10 follow-on (D139): join-path builder tick, the uncollapsed round trip --
+            // `joinArrive` (`detectJoinBuilderArrival`, BuilderTick.swift) replaces the mutation
+            // host/single-process applies on arrival with a detect-and-send call; the actual
+            // effect waits for the host's own `SRBuilderAck` (`.tcpMessage` case below, already
+            // wired to `recvSrBuilderAck` via `TCPSession.dispatch`), matching C's own real
+            // `kBuilderGoto` -> sendcl* -> `kBuilderWork` -> `recvsrbuilderack` round trip.
+            let builderOutbound = builderTick(
+                player: localPlayer, state: &state,
+                joinArrive: { player, state in detectJoinBuilderArrival(player: player, state: state) }
+            )
+            if let builderOutbound, let tcpSession {
+                let bytes: [UInt8]
+                switch builderOutbound {
+                case .grabTrees(let x, let y):
+                    bytes = CLGrabTrees(x: UInt8(x), y: UInt8(y)).encode()
+                case .buildRoad(let x, let y, let trees):
+                    bytes = CLBuildRoad(x: UInt8(x), y: UInt8(y), trees: UInt8(trees)).encode()
+                case .buildWall(let x, let y, let trees):
+                    bytes = CLBuildWall(x: UInt8(x), y: UInt8(y), trees: UInt8(trees)).encode()
+                case .buildBoat(let x, let y, let trees):
+                    bytes = CLBuildBoat(x: UInt8(x), y: UInt8(y), trees: UInt8(trees)).encode()
+                case .buildPill(let x, let y, let trees, let pill):
+                    bytes = CLBuildPill(x: UInt8(x), y: UInt8(y), trees: UInt8(trees), pill: UInt8(pill)).encode()
+                case .repairPill(let x, let y, let trees):
+                    bytes = CLRepairPill(x: UInt8(x), y: UInt8(y), trees: UInt8(trees)).encode()
+                case .placeMine(let x, let y):
+                    bytes = CLPlaceMine(x: UInt8(x), y: UInt8(y), mines: 0).encode()
+                }
+                Task { try? await tcpSession.send(bytes) }
             }
 
             sendLocalUpdateIfDue(udpSession)
