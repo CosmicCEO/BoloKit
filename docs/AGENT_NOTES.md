@@ -1616,3 +1616,112 @@ actually tested) before being reported as fixed**, not assumed from the code cha
 > scroll bug open with the ruled-out hypothesis noted — do not claim a fix that wasn't verified.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-11 — D156: shell mine-detonation wiring implemented (`51fa074`)
+
+Against PLANNER's corrected GO above (the `ShellTick.swift`-location approval, not the original
+`HostGameEngine.swift`-closure text). Implemented exactly as proposed and approved:
+
+- **`Sources/BoloKit/ShellTick.swift`** — `applyDamage` gained `player: Int`,
+  `onSuperboomTerrain: (Pointi) -> Void = { _ in }`, `onShouldBroadcastDropPill: (Int, Int, Int) ->
+  Void = { _, _, _ in }` params; both its mined-terrain switch cases (boat and non-boat) now call
+  `explosionAt(player: UInt8(player), x:, y:, state:, onMineExplosion:, onSuperboomTerrain:,
+  onShouldBroadcastDropPill:)` directly, right after the existing `onMineExplosion(point)` notify
+  — mirroring `TankLocalTick.swift`'s `grabTile` precedent exactly. `touchTile` got the same three
+  new params and the same explosionAt call in its one mined-terrain case. `shellCollisionTest`
+  gained `onSuperboomTerrain`, threaded `player`/`onSuperboomTerrain` into all 6 of its
+  `applyDamage(...)` call sites. `shellTick` gained `onSuperboomTerrain`, threaded it into its
+  `shellCollisionTest(...)` call and added `player`/`onSuperboomTerrain` to its `touchTile(...)`
+  call (step 4, range-expiry path).
+- **`Sources/BoloKit/RunTick.swift`** — one-line addition: `onSuperboomTerrain: onSuperboomTerrain`
+  threaded into the existing `shellTick(...)` call, so the new param actually reaches `ShellTick.swift`
+  from `runTick`'s own already-present parameter.
+- **`Sources/BoloKit/RecvCL.swift`** — `recvClDamage`'s two `applyDamage(...)` call sites (pill/base
+  branch and the terminal boat/non-boat branch) needed a `player:` argument to match the new
+  signature. Both are signature-only changes, not behavior changes: this function's own mined-
+  terrain case is already intercepted and returned *before* either call site is reached (line
+  ~554-564, calling `explosionAt` directly itself, pre-existing code, unchanged), so `applyDamage`'s
+  own new `explosionAt` branch is provably dead code on both of these paths — commented in place
+  so the next reader doesn't wonder why it's inert there.
+
+**Causer attribution confirmed correct, not assumed:** `player` threaded through end-to-end is
+`shellCollisionTest`/`shellTick`'s own shell-list-owner parameter (already present, already
+correctly NOT `shell.owner` per this file's own D112-era header comment), so the fix inherits
+correct attribution automatically — no new attribution logic was written, just plumbing an
+already-correct value one layer further.
+
+**Major judgment call — flagged and PLANNER-approved before coding, not resolved unilaterally:**
+the GO's literal instruction ("add a real `onMineExplosion` closure [...] in `HostGameEngine.swift`'s
+`runTick(...)` call") is not implementable as written. A closure passed into `runTick(state: &state,
+...)` cannot itself call `explosionAt(state: &state, ...)` — that's two simultaneous exclusive
+accesses to the same `state` variable, which Swift's exclusivity checker rejects. This is not a
+guess: `RunTick.swift`'s own header (D100/D103) already documents the identical problem for
+`onDropPills` ("no caller-side closure can call `dropPills` itself while `runTick` already holds
+`state: &state`"), and `HostGameEngine.swift`'s own header (lines ~39-45) already discloses that
+wiring `onMineExplosion`/`onSuperboomTerrain`/`onDropPills` for real "needs threading a causer
+parameter through `TankLocalTick`/`ShellTick`/`BuilderTick`'s closure signatures... a signature-
+changing refactor across already-shipped files, not a callback-wiring task." `RecvCL.swift`'s own
+`recvClDamage` doc comment (found while implementing, not before) independently confirms the same
+constraint in the same words ("isn't expressible under Swift's exclusivity rules"). I held before
+writing code, wrote up the full reasoning and the corrected plan, and PLANNER reviewed and approved
+it explicitly (see the correction entry directly above this one) before I touched `ShellTick.swift`.
+
+**Second-order finding confirmed by this fix, not separately investigated:** since the real
+detonation now happens inside `ShellTick.swift` itself rather than depending on a caller-supplied
+closure, this answers the GO's own second question — `Bolo 2026/Bolo 2026/GameSession.swift:404-413`
+is exactly the "equivalent single-process/local-only tick path" asked about (D73's solo-play tick,
+`onMineExplosion` wired only to a sound effect there too) — and confirmed **no change was needed
+to either `GameSession.swift` or `HostGameEngine.swift`**, since neither caller's wiring is what
+makes the detonation happen anymore.
+
+**Out-of-scope finding, flagged not fixed (per explicit GO instruction and PLANNER's approval of
+the deferral):** `BuilderTick.swift`'s builder-action helpers (`grabTrees`/`buildRoad`/`buildWall`/
+`buildBoat`/`buildPill`/`repairPill`/`placeMineWork`) have the identical unwired-notify-hook gap —
+each calls bare `onMineExplosion(point)` on a mined-terrain case with no `explosionAt` call, and
+`player` is already in scope at their caller (`arriveAtTarget`/`builderTick(player:...)`). Not
+touched this pass.
+
+**Verification:**
+- `swift build`: clean.
+- `swift test` (full suite): **552 `BoloKitTests`** (was 551, net +1: one new test added, one
+  renamed-not-shrunk per D28) **+ 205 `DifferentialTests`** (unchanged) **= 757**, no regression.
+- `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" test`: **20/20** green,
+  no `BoloGlyphs` Run Script hang this session, normal path completed.
+- Total: 757 + 20 = 777, up from the 756 + 20 = 776 baseline by exactly the one net new test.
+
+**Test changes in `Tests/BoloKitTests/ShellTickTests.swift`:**
+- `applyDamageMinedTerrainTriggersOnMineExplosionWithoutMutatingTerrain` renamed to
+  `applyDamageMinedTerrainDetonatesViaExplosionAt` and its assertion corrected from
+  `state.terrain[50,50] == .minedForest` (unchanged — the bug, encoded as expected behavior) to
+  `== .crater` (the now-correct behavior). Per D28: this is a stated correction, not a coverage
+  shrink — the old assertion was asserting the bug.
+- `touchTileMinedTerrainTriggersOnMineExplosion` given the same terrain-becomes-crater assertion
+  added (`player: 0` argument also added to match the new signature); `touchTilePlainTerrainDoesNotTriggerOnMineExplosion`
+  and the 13 other direct `applyDamage(...)` call sites elsewhere in the file updated with a
+  `player: 0` argument only (no behavior assertions changed there — none of those exercise the
+  mined-terrain branch).
+- `shellTickExpiresShellAndTouchesMinedTerrain` gained a `state.terrain[50,50] == .crater` assertion
+  confirming the range-expiry path (the oracle's second narrow trigger case) now actually detonates,
+  not just notifies.
+- New test `shellTickDirectHitOnMinedForestDetonatesWithCorrectCauserNotShellOwner`: exercises the
+  actual originally-reported bug end to end through `shellTick`/`shellCollisionTest` (the oracle's
+  *other* narrow trigger case — forest-blocked mid-flight impact, not range-expiry), with the shell
+  owned by `player: 1`'s own list while `shell.owner` is deliberately `playerNeutral` — confirming
+  no crash and correct causer attribution (D112's precedent), not just that detonation happens.
+
+**Other note:** `git status` showed an unrelated, already-modified-but-uncommitted file,
+`Bolo 2026/Bolo 2026/GameHUDViews.swift` — this is D157's in-progress work (a separate GO logged
+above this entry, not part of D156's scope), left completely untouched and unstaged; only the 4
+files actually touched by this fix (`ShellTick.swift`, `RunTick.swift`, `RecvCL.swift`,
+`ShellTickTests.swift`) were staged and committed. Did not touch the base-status HUD code per the
+GO's explicit instruction, and did not act on D157 — that's a separate, already-GO'd task this
+session didn't pick up.
+
+**Ready for a PARITY re-check** per the GO's own framing: confirm the wiring actually reaches
+`explosionAt` on both trigger paths, confirm causer attribution is `player` (shell-list owner) and
+never `shell.owner`, confirm the oracle's two narrow trigger conditions (forest-block, range-expiry)
+are unchanged/not loosened, and confirm the `RecvCL.swift` signature-only changes are genuinely
+inert (mined terrain already intercepted earlier on those paths). Not activating PARITY myself —
+that's PLANNER's `[TO: PARITY]` tag.
+
+[TO: PLANNER]
