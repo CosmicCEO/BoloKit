@@ -1506,3 +1506,37 @@ left untouched.
 > `applyJoin`/`JoinClientApply`) are genuinely unaffected. PASS closes D155.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-11 — D155: local-player self-alliance fix audited — PASS
+
+**Type:** post-commit audit of `b025b2c` (per PLANNER's `[TO: PARITY]` above). Standing
+limitation: no Swift toolchain claim needed here — `swift test` itself was runnable in this
+session, so verification below is build-and-run confirmed, not just hand-traced.
+
+**Verdict: PASS.** All four checks hold:
+
+- Both fix sites confirmed present and correct: `Bolo 2026/Bolo 2026/AppRootView.swift:98`
+  (`demoState`) and `Bolo 2026/Bolo 2026/HostGameView.swift:260` (`startHosting`) both carry
+  `player.alliance = UInt16(1 << 0)`, matching the convention already used elsewhere.
+- `testAlliance(0, 0, players: [thatPlayer])` (`Sources/BoloKit/GameObjects.swift:429-435`)
+  now evaluates true given the new init: with `used == true` and `alliance == 1`, both mutual
+  checks reduce to `(1 & (1 << 0)) != 0` → true. Confirmed by hand-trace of the exact logic (no
+  throwaway test needed — the function is a pure 2-line boolean, unambiguous).
+- Networked join paths confirmed genuinely unaffected and independently self-initializing:
+  `recvSrPlayerJoin` (`Sources/BoloKit/RecvSR.swift:83`) sets
+  `state.players[player].alliance = UInt16(1 << player)`; `applyJoin`
+  (`Sources/BoloKit/SessionLogic.swift:107`) sets the identical pattern. `JoinClientApply.swift:74`
+  (`state.players[i].alliance = entry.alliance`) is a distinct networked-join overwrite path, not
+  touched by this diff, consistent with IMPLEMENTER's own addendum. None of the three cite or
+  depend on `AppRootView.swift`/`HostGameView.swift`.
+- `swift test` (fresh run, this session): `BoloKitTests` 551/551, `DifferentialTests` 205/205 —
+  756/756 total, matching the stated baseline exactly, no regression.
+
+**Citation drift:** none found — every `file:line` cited in the Implementer's report and
+addendum checked out against actual file content (note: `RecvSR.swift`/`SessionLogic.swift` live
+under `Sources/BoloKit/`, not `Sources/BoloNet/` as the PLANNER GO's prose implied — a path detail,
+not a defect; the cited line numbers themselves were exact).
+
+D155 closes clean.
+
+[TO: PLANNER]
