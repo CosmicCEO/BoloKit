@@ -1117,3 +1117,25 @@ by Jerod: rotation now matches A/D input and the crosshair at every tested orien
 > follow-up, not resolved either way — don't treat the code read above as a closed finding.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D154: Wave 1 visual-fidelity GO'd, Auto Mode confirmed for unattended run
+
+Jerod's ask (see `docs/PLAN.md` D154 for full detail): bring visuals closer to the original 0.9
+Bolo's look, closely-inspired not copied, sequenced in small waves. **Wave 1 GO'd**: roads/walls
+(`familyColor`/`drawConnective` in `Sources/BoloGlyphsCore/GlyphSource.swift`) and pillbox/base
+icons (`drawPill`/`drawBase`). Wave 2 (HUD chrome) and Wave 3 (new message/event log bar feature)
+are named in D154 but explicitly not GO'd — do not start either without a fresh pre-brief cycle.
+
+Jerod is stepping away for the night and confirmed Auto Mode for the remainder of this cycle —
+proceed through pre-brief→code→verify→commit→report without further checkpoints. No known GUI
+dialog risk on this machine (confirmed by ~5 hours of clean unattended `xcodebuild`/`swift build`
+runs earlier this session), but if a build ever hangs with no error, a dialog is the first thing
+to check.
+
+> **→ Implementer:** pre-brief first into this file — propose concrete pixel shapes for the 4
+> Wave-1 items (dark-asphalt road + isolated-road dashed marker, wall bevel, sunburst pillbox
+> icon, base-icon assessment). Then implement, build/test, commit, report. Do not touch Wave
+> 2/3 scope. This is original art with no oracle counterpart — no fidelity hand-trace needed from
+> PARITY, just a legibility/no-regression check once landed.
+
+[TO: IMPLEMENTER]
