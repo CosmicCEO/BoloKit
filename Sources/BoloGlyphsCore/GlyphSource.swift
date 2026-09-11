@@ -75,7 +75,8 @@ private func familyColor(_ family: TileFamily) -> (UInt8, UInt8, UInt8) {
     case .river: return (60, 110, 220)
     case .forest: return (30, 100, 40)
     case .crater: return (70, 60, 55)
-    case .road: return (150, 120, 80)
+    // D154 Wave 1: dark asphalt tone, shifted off the prior flat tan/dirt look.
+    case .road: return (52, 52, 58)
     case .boat: return (40, 160, 170)
     case .sea: return (20, 70, 160)
     }
@@ -115,14 +116,80 @@ private func drawConnective(_ c: inout Canvas16, family: TileFamily, ortho: UInt
     if ne { c.fillRect(12, 0, 16, 4, r, g, b) }
     if sw { c.fillRect(0, 12, 4, 16, r, g, b) }
     if se { c.fillRect(12, 12, 16, 16, r, g, b) }
+
+    // D154 Wave 1: wall bevel -- a lighter edge on the north/west side of the wall's own
+    // filled shape, darker on south/east, for a blockier textured read closer to the
+    // reference's brick-look walls. Only ever recolors already-opaque pixels (never writes
+    // alpha), so it cannot turn a connectivity-driven transparent corner opaque.
+    if family == .wall {
+        applyWallBevel(&c)
+    }
+
+    // D154 Wave 1: an isolated road tile (no road neighbor at all, ortho == 0 && diag == 0)
+    // gets a dashed lone-segment marker, inspired by the reference's dashed-line marker for
+    // single unconnected road cells, so it reads differently from a connected road segment.
+    if family == .road && ortho == 0 && diag == 0 {
+        drawIsolatedRoadMarker(&c)
+    }
 }
 
+/// D154 Wave 1: recolors every already-opaque pixel of the wall's own shape based on its
+/// immediate neighbors' opacity -- north/west-open pixels lighten, south/east-open pixels
+/// darken, interior pixels keep the flat base color. Neighbor-relative, not fixed-coordinate,
+/// so it adapts to whatever `ortho`/`diag` shape was actually filled above.
+private func applyWallBevel(_ c: inout Canvas16) {
+    let highlight: (UInt8, UInt8, UInt8) = (190, 190, 195)
+    let shadow: (UInt8, UInt8, UInt8) = (85, 85, 90)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    for y in 0..<Canvas16.size {
+        for x in 0..<Canvas16.size {
+            guard isOpaque(x, y) else { continue }
+            let northOpen = !isOpaque(x, y - 1)
+            let westOpen = !isOpaque(x - 1, y)
+            let southOpen = !isOpaque(x, y + 1)
+            let eastOpen = !isOpaque(x + 1, y)
+            if northOpen || westOpen {
+                c.set(x, y, highlight.0, highlight.1, highlight.2, 255)
+            } else if southOpen || eastOpen {
+                c.set(x, y, shadow.0, shadow.1, shadow.2, 255)
+            }
+        }
+    }
+}
+
+/// D154 Wave 1: dashed "+" inside the isolated road tile's own painted 8x8 center square
+/// (`fillRect(4,4,12,12,...)` above) -- a lone-segment marker, not a copy of any reference
+/// image's exact dash geometry.
+private func drawIsolatedRoadMarker(_ c: inout Canvas16) {
+    let (r, g, b): (UInt8, UInt8, UInt8) = (215, 210, 200)
+    c.fillRect(4, 7, 7, 9, r, g, b)
+    c.fillRect(9, 7, 12, 9, r, g, b)
+    c.fillRect(7, 4, 9, 7, r, g, b)
+    c.fillRect(7, 9, 9, 12, r, g, b)
+}
+
+/// D154 Wave 1: redesigned from a flat armor-level fill bar into a sunburst/spoked icon,
+/// inspired by (not copied from) the reference's spoked pillbox icon. Armor level modulates
+/// spoke length (2.5px at armor 0 .. 6.5px at armor 15) rather than a bar height; owner color
+/// is unchanged from the prior design (friendly/hostile), including its already-disclosed,
+/// out-of-scope collision with `tankPalette(1)` (D152) -- not touched by this wave.
 private func drawPill(_ c: inout Canvas16, armor: Int, friendly: Bool) {
     let (r, g, b): (UInt8, UInt8, UInt8) = friendly ? (60, 110, 220) : (200, 50, 50)
     let level = min(max(armor, 0), 15)
-    let fillHeight = ((level + 1) * 12 + 8) / 16
-    c.fillRect(2, 2, 14, 14, 50, 50, 50, 200)
-    c.fillRect(3, 13 - fillHeight, 13, 13, r, g, b)
+    // Dark inset backing, distinct from `.mine`'s full-cell fill + small solid dot.
+    c.fillRect(2, 2, 14, 14, 45, 45, 50, 220)
+    let length = 2.5 + (Double(level) / 15.0) * 4.0
+    let dirs: [(Double, Double)] = [
+        (1, 0), (0.70711, 0.70711), (0, 1), (-0.70711, 0.70711),
+        (-1, 0), (-0.70711, -0.70711), (0, -1), (0.70711, -0.70711),
+    ]
+    for (dx, dy) in dirs {
+        c.fillRotatedBar(dx: dx, dy: dy, length: length, halfWidth: 0.7, r, g, b)
+    }
+    c.fillCircle(cx: 8, cy: 8, radius: 1.8, r, g, b)
 }
 
 /// **D152 item 2:** friendly shifted off `(60,110,220)` -- byte-identical to `familyColor(.river)`
