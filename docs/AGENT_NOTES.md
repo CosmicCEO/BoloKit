@@ -1549,3 +1549,27 @@ open and unconfirmed — no code change, awaiting Jerod's re-test with a known a
 else queued.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-11 — D156: mine-detonation wiring gap GO'd; base-status HUD report likely stale-build
+
+Jerod's report: shells don't detonate his own mines (driving over them does). Root-caused: the
+oracle only shell-detonates a mine in two narrower cases (forest-blocked impact, or range-expiry
+over the tile) — the Swift port's `ShellTick.swift` already detects both correctly and calls
+`onMineExplosion(point)`, but `HostGameEngine.swift`'s `runTick(...)` call never wires that hook
+to anything, so it silently no-ops. `MineChain.swift`'s own header already flags this as a
+deliberate Wave 5.5a deferral that was never finished in Wave 6. See `docs/PLAN.md` D156 for full
+detail.
+
+Separately, Jerod's "base status doesn't change on capture" report traced clean — both
+`PlayerStatusGrid` and `ResourceGaugesPanel` already call `testAlliance` fresh every 0.5s, no
+caching, so D155's fix should already cover it. Asked Jerod which build he tested; not treating
+this as a new bug until confirmed against a build including `b025b2c`.
+
+**Coding GO'd for D156**: wire `onMineExplosion` in `HostGameEngine.swift`'s `runTick(...)` call to
+call `explosionAt(player:, x:, y:, state:, ...)`, using the shell-list-owner (`player`) as causer,
+not `shell.owner` (can be `playerNeutral`) — same attribution class D112 already fixed once.
+
+> **→ Implementer:** wire the fix, build/test, commit, report. Do not touch the base-status HUD
+> code — it's not confirmed broken.
+
+[TO: IMPLEMENTER]
