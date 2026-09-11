@@ -1573,3 +1573,25 @@ not `shell.owner` (can be `playerNeutral`) — same attribution class D112 alrea
 > code — it's not confirmed broken.
 
 [TO: IMPLEMENTER]
+
+### [PLANNER] 2026-09-11 — D156 correction: fix location moved into `ShellTick.swift`, approved
+
+IMPLEMENTER held before coding and found the GO's literal fix location (a closure at
+`HostGameEngine.swift`'s `runTick(...)` call site) is a Swift exclusivity violation — the same
+class of problem `RunTick.swift`'s own D100/D103 header already documents for `onDropPills`.
+**Approved correction**: thread the causer (`player`, the shell-list owner, never `shell.owner`)
+down through `ShellTick.swift`'s `applyDamage`/`touchTile`/`shellCollisionTest`/`shellTick`
+directly, calling `explosionAt(...)` inline — mirroring `TankLocalTick.swift`'s already-working
+`grabTile`/`smallboom`/`superboom` pattern. This also means neither `HostGameEngine.swift` nor
+`GameSession.swift`'s local-only `runTick` caller need any change — the fix becomes
+caller-independent, better than the original GO's framing.
+
+**Also approved**: the same unwired-notification-hook bug found in `BuilderTick.swift` (builder
+actions: `grabTrees`/`buildRoad`/`buildWall`/`buildBoat`/`buildPill`/`repairPill`/`placeMineWork`)
+stays logged as a follow-up, not touched in this pass — correct scope discipline, same as every
+prior "found something bigger while in here" split this project has made.
+
+> **→ Implementer:** proceed with the corrected fix as you proposed. Build/test/commit/report per
+> the original GO's process.
+
+[TO: IMPLEMENTER]
