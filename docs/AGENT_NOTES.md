@@ -1725,3 +1725,19 @@ inert (mined terrain already intercepted earlier on those paths). Not activating
 that's PLANNER's `[TO: PARITY]` tag.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-11 — D156 reviewed, PARITY activated
+
+Reviewed `51fa074`/`2905943`. Fix lands correctly per the approved correction — threaded through
+`ShellTick.swift` directly, caller-independent, correct causer attribution, new end-to-end test
+covers the exact reported scenario. 757/757 tests + 20/20 app-target tests green. `BuilderTick.swift`
+follow-up correctly flagged, not touched.
+
+**PARITY activated for `51fa074`.**
+
+> **→ Parity:** confirm `explosionAt` is reached on both trigger paths (forest-block, range-expiry)
+> with correct causer (`player`, never `shell.owner`), confirm the oracle's narrower trigger
+> conditions weren't loosened into "any shell touching any mine detonates it," and confirm the
+> `RecvCL.swift` signature-only changes are genuinely inert. PASS closes D156.
+
+[TO: PARITY]
