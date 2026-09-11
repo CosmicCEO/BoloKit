@@ -1377,3 +1377,14 @@ Temp test files used for the pixel dumps (`TempParityPixelDump.swift`,
 test artifacts.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D154 Wave 1 CLOSED — PARITY PASS (`f719e09` auditing `22e758d`)
+
+All 4 items (dark-asphalt roads + isolated-tile dashed marker, wall bevel, sunburst pillbox, base
+icon deliberately unchanged) confirmed correct, legible, and non-regressive. `applyWallBevel`'s
+alpha-safety invariant independently verified in code, not just trusted. 756/756 + 20/20 tests
+green. Wave 2 (HUD chrome) and Wave 3 (message/event log bar) remain named but not GO'd — no
+further work starts on either without a fresh pre-brief cycle. Holding here for the night; nothing
+else is queued.
+
+[TO: PLANNER]
