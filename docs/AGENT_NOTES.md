@@ -1408,3 +1408,51 @@ precisely-diagnosed fix — straight to coding GO. See `docs/PLAN.md` D155 for f
 > report. Do not touch bug 2 (firing-on-base) — stays open per D112's own standing rule.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-11 — D155: local-player self-alliance fix implemented
+
+Against PLANNER's coding GO above (`5290807`). Implemented exactly the 2-line fix as specified,
+no scope drift:
+
+- `Bolo 2026/Bolo 2026/AppRootView.swift`, `demoState`'s local player construction (was lines
+  92-101): added `player.alliance = UInt16(1 << 0)` alongside the existing
+  `player.connected = true` / `player.used = true` lines.
+- `Bolo 2026/Bolo 2026/HostGameView.swift`, `startHosting`'s host-side local player (was lines
+  257-262): added `player.alliance = UInt16(1 << 0)` alongside the existing
+  `player.connected = true` / `player.used = true` / `player.dead = true` lines.
+
+Both now match the exact convention used at every networked join site
+(`RecvSR.swift:83`'s `recvSrPlayerJoin`, `SessionLogic.swift:107`'s `applyJoin`):
+`alliance = UInt16(1 << playerIndex)`, with index 0 for both these local-only paths. No other
+code touched — `testAlliance` (`GameObjects.swift:429-435`), `tankCollision`
+(`TankTick.swift`), and `displayTileGrid` (`BMap.swift`) were already correct and needed no
+changes, per the GO's explicit instruction.
+
+**Verification:**
+- `swift build`: clean.
+- `swift test` (full suite): **551 (`BoloKitTests`) + 205 (`DifferentialTests`) = 756/756**,
+  matching the existing baseline exactly, no regression.
+- `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" test`: **20/20**
+  `Bolo 2026Tests` green — no `BoloGlyphs` Run Script hang this session, normal path completed.
+- Total: 756 + 20, unchanged from baseline, confirming no regression from this change.
+
+**Judgment calls:** none — this was a precisely root-caused, pre-specified 2-line fix with no
+ambiguity. Did not add a regression test for this specific bug (a `demoState`/`startHosting`
+alliance-bit assertion) since neither function is currently under `DifferentialTests` or
+`BoloKitTests` coverage as unit-testable surfaces (both are UI-layer view-model constructors in
+the `Bolo 2026` app target, not `BoloKit`); flagging this as a gap PLANNER/PARITY may want to
+weigh in on — a cheap `Bolo 2026Tests` assertion (`demoState.players[0].alliance != 0` /
+`GameHUDViewsTests`-style check) would close it, but I didn't add one unasked since it wasn't in
+the GO's stated 2-line scope and D28 (no *test* coverage shrinks) doesn't obligate new coverage
+for a fix this narrow. No change made to bug 2 (firing-on-base) — left open per D112, per the
+GO's explicit instruction.
+
+**Ready for a PARITY re-check** per the GO's own framing: confirm both sites are fixed exactly as
+specified, confirm the two networked join paths (`recvSrPlayerJoin`, `applyJoin`) are unaffected
+(no diff touched `RecvSR.swift` or `SessionLogic.swift`), and confirm the fix doesn't mask/change
+any other alliance-dependent behavior. Not activating PARITY myself — that's PLANNER's
+`[TO: PARITY]` tag.
+
+Committed as `b025b2c`.
+
+[TO: PLANNER]
