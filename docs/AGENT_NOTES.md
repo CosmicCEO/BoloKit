@@ -1388,3 +1388,23 @@ further work starts on either without a fresh pre-brief cycle. Holding here for 
 else is queued.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-11 — D155: local-player self-alliance fix GO'd
+
+Jerod's morning bug report, root-caused via 2 Explore passes: `PlayerState.alliance` defaults to
+`0`, and the two local/non-networked player-construction sites (`AppRootView.swift`'s
+`demoState`, `HostGameView.swift`'s `startHosting`) never set it — every networked join path does.
+Result: the local player is never allied with themselves, so their own captured base reads as
+hostile to both the collision-solidity check and the render color pick (both already correct,
+just fed bad input). Second reported bug (can't fire on a base) traced clean on both port and
+oracle — identical fire gate, no base check on either side — Jerod unsure if he had ammo at the
+time; staying open, unconfirmed, no code change.
+
+**Coding GO'd**: add `player.alliance = 1 << 0` to both local-player construction sites, matching
+every other player-init call site's convention. No pre-brief ceremony needed for a 2-line,
+precisely-diagnosed fix — straight to coding GO. See `docs/PLAN.md` D155 for full detail.
+
+> **→ Implementer:** implement the 2-line fix in both files named above, build/test, commit,
+> report. Do not touch bug 2 (firing-on-base) — stays open per D112's own standing rule.
+
+[TO: IMPLEMENTER]
