@@ -257,6 +257,7 @@ struct HostGameView: View {
         player.connected = true
         player.used = true
         player.dead = true
+        player.alliance = UInt16(1 << 0)
         state.local.respawnCounter = respawnTicks - 1  // spawn() fires on the very first tick
         state.players = [player]
         state.localPlayer = 0

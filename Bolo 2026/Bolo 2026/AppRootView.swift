@@ -95,6 +95,7 @@ struct AppRootView: View {
         player.dead = false
         player.connected = true
         player.used = true
+        player.alliance = UInt16(1 << 0)
 
         return GameState(
             terrain: terrain, starts: [Start(x: 130, y: 130, dir: 0)],
