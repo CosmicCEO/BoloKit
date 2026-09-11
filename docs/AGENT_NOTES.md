@@ -1595,3 +1595,24 @@ prior "found something bigger while in here" split this project has made.
 > the original GO's process.
 
 [TO: IMPLEMENTER]
+
+### [PLANNER] 2026-09-11 — D157: build-tool selector fixes GO'd, scroll-key fix hypothesis-driven
+
+Two more morning reports, root-caused via 2 Explore passes — full detail in `docs/PLAN.md` D157.
+Build-tool selector: confirmed missing `.background()` on both `BuilderToolStrip` and
+`ResourceGaugesPanel` (`GameHUDViews.swift`), and confirmed `.buttonStyle(.bordered)` +
+`.tint(...)` never visually shows selection on macOS despite the underlying state being correct.
+Scroll keys: keymap/wiring/logic all confirmed correct and symmetric — ruled out as the cause.
+Leading hypothesis: `BuilderToolStrip`'s focusable `.bordered` buttons intercept arrow keys for
+macOS's own focus-navigation before `GameRenderView.keyDown` sees them.
+
+**Coding GO'd**: (1) add a background to both HUD panels; (2) replace tint-dependent selection
+with an explicit visual indicator; (3) change the build-tool buttons to `.buttonStyle(.plain)`/
+`.focusable(false)` to test the scroll-key hypothesis — **must be live-verified (all 4 arrow keys,
+actually tested) before being reported as fixed**, not assumed from the code change alone.
+
+> **→ Implementer:** implement all 3, build, then actually run the app and test scroll keys live.
+> If item 3 doesn't resolve the scroll bug, say so plainly and close items 1+2 while leaving the
+> scroll bug open with the ruled-out hypothesis noted — do not claim a fix that wasn't verified.
+
+[TO: IMPLEMENTER]
