@@ -104,11 +104,22 @@ private func heatPill(_ index: Int, state: inout GameState, decrementArmour: Boo
 /// Applies shell damage at `point`: heats an armed pill directly hit, damages
 /// a resourced base and heats every allied pill within 8 squares of it, or
 /// steps terrain through its damage-progression ladder — detonating it via
-/// `onMineExplosion` if it's a mined variant. Ported from the local-effect-
+/// `explosionAt` if it's a mined variant. Ported from the local-effect-
 /// free `recvcldamage()` (server.c:2804): in the original this runs on the
 /// SERVER after `shellcollisiontest`'s `sendcldamage` network round trip;
 /// BoloKit has no client/server split, so `shellCollisionTest` calls this
 /// directly and synchronously.
+///
+/// **D156 fix:** the mined-terrain case used to call only `onMineExplosion`
+/// (a pure notify hook with no effect — nothing ever wired it to anything
+/// real). Now it also calls `explosionAt(player:, ...)` directly, mirroring
+/// `TankLocalTick.swift`'s already-working `grabTile`/`smallboom`/
+/// `superboom` pattern, so a shell grazing a mined tile actually detonates
+/// it. `player` here is `shellCollisionTest`'s own shell-list-owner
+/// parameter, deliberately NOT `shell.owner` — `shell.owner` can be
+/// `playerNeutral` for an unowned pillbox's return fire (same attribution
+/// hazard already fixed once for the tank-hit path, D112; see
+/// `shellTick`'s own doc comment below for that precedent).
 ///
 /// **Deviation, memory-safety-driven, not a "fix":** C's base-hit pill-
 /// heating loop clamps with `server.pills[pill].speed`, where `pill` is the
@@ -134,8 +145,11 @@ private func heatPill(_ index: Int, state: inout GameState, decrementArmour: Boo
 public func applyDamage(
     at point: Pointi,
     boat: Bool,
+    player: Int,
     state: inout GameState,
-    onMineExplosion: (Pointi) -> Void = { _ in }
+    onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let x = Int(point.x)
     let y = Int(point.y)
@@ -200,6 +214,11 @@ public func applyDamage(
         case .damagedWall3: state.terrain[x, y] = .damagedWall2
         case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
             onMineExplosion(point)
+            explosionAt(
+                player: UInt8(player), x: x, y: y, state: &state,
+                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
         default:
             break
         }
@@ -214,6 +233,11 @@ public func applyDamage(
         case .damagedWall3: state.terrain[x, y] = .damagedWall2
         case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
             onMineExplosion(point)
+            explosionAt(
+                player: UInt8(player), x: x, y: y, state: &state,
+                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
         default:
             break
         }
@@ -225,10 +249,17 @@ public func applyDamage(
 /// Detonates a mined tile a shell expired over (range reached zero without
 /// hitting anything solid first). Ported from the local-effect-free
 /// `recvcltouch()` (server.c:2236).
+///
+/// **D156 fix:** now calls `explosionAt(player:, ...)` directly (`player`
+/// being `shellTick`'s own shell-list-owner parameter, never `shell.owner`
+/// — see `applyDamage`'s doc comment above for why), same as the fix there.
 public func touchTile(
     at point: Pointi,
+    player: Int,
     state: inout GameState,
-    onMineExplosion: (Pointi) -> Void = { _ in }
+    onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let x = Int(point.x)
     let y = Int(point.y)
@@ -236,6 +267,11 @@ public func touchTile(
     switch terrain {
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         onMineExplosion(point)
+        explosionAt(
+            player: UInt8(player), x: x, y: y, state: &state,
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        )
     default:
         break
     }
@@ -270,6 +306,7 @@ public func shellCollisionTest(
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
 ) -> Bool {
@@ -284,7 +321,10 @@ public func shellCollisionTest(
     if let pillIndex = findPill(x: x, y: y, pills: state.pills) {
         guard state.pills[pillIndex].armour > 0 else { return false }
         reportDamage(shell.boat)
-        applyDamage(at: p, boat: shell.boat, state: &state, onMineExplosion: onMineExplosion)
+        applyDamage(
+            at: p, boat: shell.boat, player: player, state: &state, onMineExplosion: onMineExplosion,
+            onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        )
         killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
         return true
     }
@@ -300,7 +340,10 @@ public func shellCollisionTest(
         if shell.boat {
             if hostileAndResourced {
                 reportDamage(true)
-                applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
+                applyDamage(
+                    at: p, boat: true, player: player, state: &state, onMineExplosion: onMineExplosion,
+                    onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
                 state.players[player].explosions.append(Explosion(point: shell.point))
@@ -309,7 +352,10 @@ public func shellCollisionTest(
             return true
         } else if hostileAndResourced {
             reportDamage(false)
-            applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
+            applyDamage(
+                at: p, boat: false, player: player, state: &state, onMineExplosion: onMineExplosion,
+                onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         } else {
@@ -330,7 +376,10 @@ public func shellCollisionTest(
                 && isWaterLikeTerrain(state.terrain[x, y + 1] ?? .wall) != 0
             if waterX || waterY {
                 reportDamage(true)
-                applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
+                applyDamage(
+                    at: p, boat: true, player: player, state: &state, onMineExplosion: onMineExplosion,
+                    onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             } else {
                 state.players[player].explosions.append(Explosion(point: shell.point))
@@ -343,7 +392,10 @@ public func shellCollisionTest(
             // on a boat-shell hit. Verified exhaustive against the 30-case
             // Terrain enum: 4 handled above + this default's 26 = 30.
             reportDamage(true)
-            applyDamage(at: p, boat: true, state: &state, onMineExplosion: onMineExplosion)
+            applyDamage(
+                    at: p, boat: true, player: player, state: &state, onMineExplosion: onMineExplosion,
+                    onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         }
@@ -351,7 +403,10 @@ public func shellCollisionTest(
         switch terrain {
         case .wall, .forest, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3, .boat, .minedForest:
             reportDamage(false)
-            applyDamage(at: p, boat: false, state: &state, onMineExplosion: onMineExplosion)
+            applyDamage(
+                at: p, boat: false, player: player, state: &state, onMineExplosion: onMineExplosion,
+                onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             return true
         default:
@@ -419,6 +474,7 @@ public func shellTick(
     player: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
 ) {
@@ -435,6 +491,7 @@ public func shellTick(
         let shell = state.players[player].shells[i]
         if shellCollisionTest(
             shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion,
+            onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill, onSelfReportDamage: onSelfReportDamage
         ) {
             state.players[player].shells.remove(at: i)
@@ -489,8 +546,9 @@ public func shellTick(
             state.players[player].explosions.append(Explosion(point: shell.point))
             killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             touchTile(
-                at: Pointi(x: Int32(shell.point.x), y: Int32(shell.point.y)),
-                state: &state, onMineExplosion: onMineExplosion
+                at: Pointi(x: Int32(shell.point.x), y: Int32(shell.point.y)), player: player,
+                state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
             state.players[player].shells.remove(at: k)
         } else {

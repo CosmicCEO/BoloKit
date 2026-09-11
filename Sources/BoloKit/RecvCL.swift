@@ -539,7 +539,10 @@ public func recvClDamage(
     let point = Pointi(x: Int32(x), y: Int32(y))
 
     if findPill(x: x, y: y, pills: state.pills) != nil || findBase(x: x, y: y, bases: state.bases) != nil {
-        applyDamage(at: point, boat: boat, state: &state, onMineExplosion: onMineExplosion)
+        applyDamage(
+            at: point, boat: boat, player: player, state: &state, onMineExplosion: onMineExplosion,
+            onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        )
         // `sendsrdamage()` reads `server.terrain[y][x]` itself
         // (server.c:3190), same exclusivity-driven reason as
         // `onShouldBroadcastBuild` -- the pill/base branch doesn't mutate
@@ -582,7 +585,14 @@ public func recvClDamage(
         }
     }
 
-    applyDamage(at: point, boat: boat, state: &state, onMineExplosion: onMineExplosion)
+    // Mined terrain is already intercepted and returned above (line ~554-564) before reaching
+    // here, so `applyDamage`'s own D156 `explosionAt` call in its mined-terrain case is dead code
+    // on this path, not double-fired -- `player`/`onSuperboomTerrain`/`onShouldBroadcastDropPill`
+    // are passed through only to satisfy the shared signature.
+    applyDamage(
+        at: point, boat: boat, player: player, state: &state, onMineExplosion: onMineExplosion,
+        onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    )
     if firesDamageBroadcast {
         onShouldBroadcastDamage(player, x, y, UInt8((state.terrain[x, y] ?? .sea).rawValue))
     }

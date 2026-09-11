@@ -286,6 +286,7 @@ public func runTick(
     for player in state.players.indices {
         shellTick(
             player: player, state: &state, onMineExplosion: onMineExplosion,
+            onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }

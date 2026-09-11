@@ -30,7 +30,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func applyDamagePillDirectHitHeatsAndDecrementsArmour() {
     var state = makeState(players: [connectedPlayer()])
     state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 5, coolCounter: 9)]
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.pills[0].armour == 9)
     #expect(state.pills[0].speed == 20)
     #expect(state.pills[0].counter == 5)  // untouched: not heatPill's field
@@ -40,7 +40,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func applyDamagePillDirectHitClampsSpeedToMinTicksPerShot() {
     var state = makeState(players: [connectedPlayer()])
     state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 10, counter: 5)]
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     // 10/2 = 5, clamped up to minTicksPerShot (6).
     #expect(state.pills[0].speed == UInt8(minTicksPerShot))
 }
@@ -48,7 +48,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func applyDamageDeadPillIsUntouched() {
     var state = makeState(players: [connectedPlayer()])
     state.pills = [Pill(x: 50, y: 50, armour: 0, owner: playerNeutral, speed: 40, counter: 5)]
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.pills[0].armour == 0)
     #expect(state.pills[0].speed == 40)
     #expect(state.pills[0].counter == 5)
@@ -62,7 +62,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [owner, ally])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 0, shells: 10, mines: 10)]
     state.pills = [Pill(x: 52, y: 50, armour: 10, owner: 1, speed: 40, counter: 5, coolCounter: 9)]  // 2 squares away, allied
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.bases[0].armour == 45)
     #expect(state.bases[0].counter == 0)
     // Base-splash heating does NOT decrement armour, only speed/coolCounter.
@@ -78,7 +78,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     var state = makeState(players: [owner, hostile])
     state.bases = [Base(x: 50, y: 50, armour: 50, owner: 0, shells: 10, mines: 10)]
     state.pills = [Pill(x: 52, y: 50, armour: 10, owner: 1, speed: 40, counter: 5)]  // not allied
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.pills[0].speed == 40)
     #expect(state.pills[0].counter == 5)
 }
@@ -86,34 +86,34 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func applyDamageUnderResourcedBaseIsUntouched() {
     var state = makeState(players: [connectedPlayer()])
     state.bases = [Base(x: 50, y: 50, armour: UInt8(minBaseArmour - 1), owner: 0, shells: 10, mines: 10)]
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.bases[0].armour == UInt8(minBaseArmour - 1))
 }
 
 @Test func applyDamageTerrainProgressionNonBoat() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .wall
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state)
     #expect(state.terrain[50, 50] == .damagedWall3)
 
     state.terrain[51, 50] = .forest
-    applyDamage(at: Pointi(x: 51, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 51, y: 50), boat: false, player: 0, state: &state)
     #expect(state.terrain[51, 50] == .grass3)
 
     // Non-boat shells do not step plain grass at all (not in the damage set).
     state.terrain[52, 50] = .grass1
-    applyDamage(at: Pointi(x: 52, y: 50), boat: false, state: &state)
+    applyDamage(at: Pointi(x: 52, y: 50), boat: false, player: 0, state: &state)
     #expect(state.terrain[52, 50] == .grass1)
 }
 
 @Test func applyDamageTerrainProgressionBoat() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .grass1
-    applyDamage(at: Pointi(x: 50, y: 50), boat: true, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: true, player: 0, state: &state)
     #expect(state.terrain[50, 50] == .grass0)
 
     state.terrain[51, 50] = .damagedWall0
-    applyDamage(at: Pointi(x: 51, y: 50), boat: true, state: &state)
+    applyDamage(at: Pointi(x: 51, y: 50), boat: true, player: 0, state: &state)
     #expect(state.terrain[51, 50] == .rubble3)
 }
 
@@ -122,7 +122,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     state.terrain[50, 50] = .road
     state.terrain[49, 50] = .river
     state.terrain[51, 50] = .river
-    applyDamage(at: Pointi(x: 50, y: 50), boat: true, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: true, player: 0, state: &state)
     #expect(state.terrain[50, 50] == .river)
 }
 
@@ -133,34 +133,42 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     state.terrain[51, 50] = .grass0
     state.terrain[50, 49] = .grass0
     state.terrain[50, 51] = .grass0
-    applyDamage(at: Pointi(x: 50, y: 50), boat: true, state: &state)
+    applyDamage(at: Pointi(x: 50, y: 50), boat: true, player: 0, state: &state)
     #expect(state.terrain[50, 50] == .road)
 }
 
-@Test func applyDamageMinedTerrainTriggersOnMineExplosionWithoutMutatingTerrain() {
+/// D156: `applyDamage`'s mined-terrain case now calls `explosionAt` directly (not just the
+/// `onMineExplosion` notify hook), so the tile actually detonates: converts to `.crater` and
+/// applies splash damage — mirroring `TankLocalTick.swift`'s already-working `grabTile`. Renamed
+/// from `...WithoutMutatingTerrain` (D28: a stated correction, not a coverage shrink), since that
+/// name encoded the pre-fix bug as expected behavior.
+@Test func applyDamageMinedTerrainDetonatesViaExplosionAt() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .minedForest
     var exploded: Pointi?
-    applyDamage(at: Pointi(x: 50, y: 50), boat: false, state: &state, onMineExplosion: { exploded = $0 })
+    applyDamage(at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state, onMineExplosion: { exploded = $0 })
     #expect(exploded == Pointi(x: 50, y: 50))
-    #expect(state.terrain[50, 50] == .minedForest)
+    #expect(state.terrain[50, 50] == .crater)
 }
 
 // MARK: - touchTile
 
+/// D156: same fix as `applyDamage` above — `touchTile`'s mined-terrain case now calls
+/// `explosionAt` directly, so terrain actually converts to `.crater`, not just notifying.
 @Test func touchTileMinedTerrainTriggersOnMineExplosion() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .minedGrass
     var exploded: Pointi?
-    touchTile(at: Pointi(x: 50, y: 50), state: &state, onMineExplosion: { exploded = $0 })
+    touchTile(at: Pointi(x: 50, y: 50), player: 0, state: &state, onMineExplosion: { exploded = $0 })
     #expect(exploded == Pointi(x: 50, y: 50))
+    #expect(state.terrain[50, 50] == .crater)
 }
 
 @Test func touchTilePlainTerrainDoesNotTriggerOnMineExplosion() {
     var state = makeState(players: [connectedPlayer()])
     state.terrain[50, 50] = .grass0
     var exploded: Pointi?
-    touchTile(at: Pointi(x: 50, y: 50), state: &state, onMineExplosion: { exploded = $0 })
+    touchTile(at: Pointi(x: 50, y: 50), player: 0, state: &state, onMineExplosion: { exploded = $0 })
     #expect(exploded == nil)
 }
 
@@ -297,6 +305,28 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(state.players[0].shells.isEmpty)
     #expect(state.players[0].explosions.count == 1)
     #expect(exploded == Pointi(x: 50, y: 50))
+    // D156: `touchTile` now calls `explosionAt` directly, so the mined tile actually detonates
+    // (converts to crater), not just notifies.
+    #expect(state.terrain[50, 50] == .crater)
+}
+
+/// D156: the actually-reported bug, end to end — a shell hits a forest-blocked mined tile mid-
+/// flight (the oracle's other narrow trigger case, `explosionAt`'s forest-block path, not just
+/// range-expiry) via `shellCollisionTest`/`shellTick`, and the mine now really detonates: terrain
+/// converts to crater and the tile is consumed. Confirms correct causer attribution too: the shell
+/// belongs to `player: 1`'s own list (the shell-list owner threaded through as `explosionAt`'s
+/// `player`), while `shell.owner` is deliberately set to `playerNeutral` — mirroring D112's
+/// precedent that `shell.owner` can legitimately be neutral (an unowned pillbox's return fire) and
+/// must never be used as an array index/causer. No crash, no misattribution.
+@Test func shellTickDirectHitOnMinedForestDetonatesWithCorrectCauserNotShellOwner() {
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()])
+    state.terrain[50, 50] = .minedForest
+    state.players[1].shells = [
+        Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: playerNeutral, boat: false, pill: false)
+    ]
+    shellTick(player: 1, state: &state)
+    #expect(state.players[1].shells.isEmpty)
+    #expect(state.terrain[50, 50] == .crater)
 }
 
 // MARK: - shellTick: tank hits
