@@ -419,7 +419,7 @@ public final class GameRenderView: NSView {
                     continue
                 }
                 if let cell = tilesImage.cropping(to: sheetSrcRect(forIndex: index)) {
-                    ctx.draw(cell, in: dst)
+                    blit(cell, in: dst, ctx)
                 }
                 // D148(C): mines were pure terrain state with no glyph ever drawn over the
                 // base tile (`mapimage()` intentionally returns the *unmined* image for every
@@ -431,7 +431,7 @@ public final class GameRenderView: NSView {
                 // modeled mode) is every mine visible to every player, not owner-only).
                 if isMinedTile(tileGrid, Int32(x), Int32(y)) != 0,
                    let mineCell = tilesImage.cropping(to: sheetSrcRect(forIndex: MINE00IMAGE)) {
-                    ctx.draw(mineCell, in: dst)
+                    blit(mineCell, in: dst, ctx)
                 }
             }
         }
@@ -560,7 +560,26 @@ public final class GameRenderView: NSView {
         let originX: CGFloat = (CGFloat(point.x) * size - 8).rounded(.down)
         let originY: CGFloat = (CGFloat(point.y) * size - 8).rounded(.down)
         let dst = CGRect(x: originX, y: originY, width: size, height: size)
-        ctx.draw(cell, in: dst)
+        blit(cell, in: dst, ctx)
+    }
+
+    /// `CGContext.draw(_:in:)` draws a `CGImage`'s row 0 at the *high-Y* edge of the destination
+    /// rect regardless of the view's own `isFlipped` state -- Core Graphics image drawing doesn't
+    /// consult that AppKit-level flag, only NSView's own higher-level drawing paths do. In this
+    /// view (`isFlipped == true`, low-Y = visual top), that leaves every blitted cell's content
+    /// vertically mirrored on screen: row 0 (visually meant to be the top of the glyph) lands at
+    /// the rect's bottom instead. Rotationally-symmetric art (flat terrain fills, the tip-on-
+    /// centerline tank headings) hid this; the tank's off-centerline headings and turning
+    /// direction (a vertical mirror reverses a rotating sequence's apparent spin) exposed it.
+    /// Compensated here, once, for every caller -- flips the content back around the dst rect's
+    /// own vertical center, leaving `dst`'s on-screen position untouched.
+    private func blit(_ image: CGImage, in dst: CGRect, _ ctx: CGContext) {
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: dst.midY)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.translateBy(x: 0, y: -dst.midY)
+        ctx.draw(image, in: dst)
+        ctx.restoreGState()
     }
 }
 

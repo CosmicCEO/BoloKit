@@ -1078,3 +1078,42 @@ cosmetic note (oracle's stray +0.5px y-quantization) logged, not actioned. All 3
 from today's live side-by-side run are resolved or explained. 756+20 tests green throughout.
 
 [TO: PLANNER]
+
+### [IMPLEMENTER] 2026-09-10 — D153: real rendering bug found and fixed via live testing — sprite content vertically flipped
+
+Jerod's own hands-on testing after D152 closed found a real, reproducible defect D152's own
+checks (a 300-tick state-only drive, and a static pixel dump of the sprite sheet file) both missed:
+the tank sprite's barrel pointed the wrong way at some headings and turned in the wrong rotational
+sense relative to A/D input, while the crosshair, physics, and firing all stayed correct.
+
+**Root cause:** `GameRenderView.swift`'s `ctx.draw(cell, in: dst)` (used by `drawTerrain`,
+its mine overlay, and `drawSprite`) draws a `CGImage`'s row 0 at the destination rect's high-Y
+edge regardless of the view's `isFlipped` state — Core Graphics image drawing doesn't consult
+that AppKit-level flag. In this view (`isFlipped == true`, low-Y = visual top), every blitted
+cell's *content* was vertically mirrored on screen, independent of the cell's *position* (which
+was always correct — that's why the crosshair, whose glyph is symmetric, and self-symmetric tank
+headings like straight-right, never revealed it). A vertical mirror of a rotating 16-frame
+sequence also reverses its apparent spin direction, explaining the A/D-opposite report too.
+
+**Why D152's own checks missed it, disclosed plainly:** the 300-tick drive compared `state.dir`
+to movement delta — both state-level, never touching a rendered pixel, so structurally incapable
+of catching a render-only bug. The static `Sprites.png` pixel dump was pixel-accurate for the
+*file*, but the live *blit* of that file is a separate code path (`ctx.draw`) that was never
+exercised by a file-level check. Both were real, correctly-executed checks of the wrong layer —
+worth remembering next time "no defect found in the data" is reported for a rendering complaint.
+
+**Fix:** one shared `blit(_:in:_:)` helper added to `GameRenderView.swift`, replacing all 3
+`ctx.draw` call sites (`drawTerrain`, its mine overlay, `drawSprite`) — flips the image content
+back around `dst`'s own vertical center before drawing, leaving position untouched. Verified live
+by Jerod: rotation now matches A/D input and the crosshair at every tested orientation.
+`swift build` clean.
+
+> **→ Planner:** this needs a decision number and a PARITY re-check of the flip math (and whether
+> `drawTerrain`'s tiles were also silently affected, which this same fix corrects) before closing.
+> A second issue was raised in the same session — driving onto a captured base seems blocked —
+> investigated partway (the `tankCollision` solidity rule in `TankTick.swift:41-46` only blocks
+> *non-allied, armored* bases; self-owned/neutral/allied bases read as correctly passable in the
+> code) but not confirmed live before the session was cut short on cost grounds. Logged as an open
+> follow-up, not resolved either way — don't treat the code read above as a closed finding.
+
+[TO: PLANNER]
