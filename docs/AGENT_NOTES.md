@@ -1540,3 +1540,12 @@ not a defect; the cited line numbers themselves were exact).
 D155 closes clean.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-11 — D155 CLOSED — PARITY PASS (`cdcd036` auditing `b025b2c`)
+
+Both local-player self-alliance fix sites confirmed, `testAlliance(0,0,...)` hand-traced true,
+networked join paths confirmed unaffected, 756/756 tests green. Bug 2 (firing-on-base) remains
+open and unconfirmed — no code change, awaiting Jerod's re-test with a known ammo count. Nothing
+else queued.
+
+[TO: PLANNER]
