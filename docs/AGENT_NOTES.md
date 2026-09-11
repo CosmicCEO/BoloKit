@@ -1310,3 +1310,70 @@ fidelity hand-trace (no oracle counterpart for original art).
 > already-filled shape (IMPLEMENTER's own stated invariant — verify it holds, don't just trust it).
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-10 — D154 Wave 1: legibility/no-regression audit of `22e758d`
+
+**Type:** post-commit audit, activated by PLANNER's `[TO: PARITY]` tag above. **Scope, per
+PLANNER's own framing:** legibility + no-regression check only — this is original art with no
+`Reference/c/` counterpart, so no fidelity hand-trace was performed or attempted.
+
+**Verdict: PASS.**
+
+**What was independently execution-verified (not taken on IMPLEMENTER's report):**
+- `swift build`: clean.
+- `swift test` (full suite, this session, fresh run): 551 (`BoloKitTests`) + 205
+  (`DifferentialTests`) = **756/756 green**, no failures, no flake reproduced this run.
+- `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" test`: **20/20**
+  `Bolo 2026Tests` green — the "+20" half of the 756+20 baseline, independently re-run, not
+  assumed from the completion report.
+- Read `Sources/BoloGlyphsCore/GlyphSource.swift` in full (all 253 lines) directly against the
+  pre-brief/completion-report claims — every cited behavior (`familyColor(.road)` at line 79,
+  `applyWallBevel` at lines 140-161, `drawIsolatedRoadMarker` at lines 166-172, `drawPill` at
+  lines 179-193) matches what's actually in the file.
+- **`applyWallBevel` alpha invariant (the specific ask):** `GlyphSource.swift:149`, every write is
+  gated by `guard isOpaque(x, y) else { continue }` at the top of the loop body, and the only
+  mutation is `c.set(x, y, ...)` (`Canvas.swift:14`, default `a: UInt8 = 255`). It is
+  structurally impossible for this pass to write a pixel whose alpha started at 0 — confirmed by
+  reading the code, not just trusting the doc comment. One nuance worth flagging for future
+  sessions: `set` always writes alpha 255, so the invariant "never touches alpha" holds only
+  because every wall `fillRect` call above already uses full alpha — `applyWallBevel` itself
+  would silently promote a partially-transparent wall pixel to fully opaque if one ever existed.
+  No such pixel exists today (verified: every `.wall` fill in `drawConnective` uses default alpha
+  255), so this is a note for whoever touches wall alpha later, not a current finding.
+- Wrote a throwaway pixel-dump test (two iterations, deleted before this commit, same technique
+  IMPLEMENTER used) and rendered directly rather than trusting descriptions:
+  - Isolated road (`ortho:0, diag:0`) vs. connected road (`ortho:0b1111, diag:0b1111`): isolated
+    shows a legible bright dashed "+" on the dark-asphalt 8x8 center square; connected shows solid
+    asphalt, no dash.
+  - **Closed a gap the completion report's own comparison didn't cover:** checked the *nearest*
+    non-isolated case, `ortho:0, diag:1` (a diagonal-only road tile, the case most likely to be
+    confused with a true isolated tile) — renders the 8x8 center plus one filled NW corner block,
+    with **no marker**. Confirms the marker's gate (`family == .road && ortho == 0 && diag == 0`,
+    `GlyphSource.swift:131`) is genuinely isolation-only, not merely triggered by the 8x8-square
+    shape.
+  - Wall bevel on a partial shape (`ortho:0b0011, diag:0`, an L-shaped fill, not a full square):
+    RGB-probed every pixel and confirmed highlight `(190,190,195)` and shadow `(85,85,90)` follow
+    the *actual filled boundary* of the L — not fixed canvas rows/columns — matching the
+    neighbor-relative claim. Also RGB-probed the fully-connected wall: corners `(0,0)`/`(8,0)` =
+    highlight, `(15,15)`/`(8,15)` = shadow, interior `(8,8)` = flat `(140,140,140)`, all alpha 255.
+  - Pillbox: hostile armor=15 renders a full 8-spoke sunburst; friendly armor=0 renders a small
+    diamond-ish blob (spokes near minimum length) — both visually distinct from each other, from
+    `.mine` (full 16x16 dark fill + small solid center dot, no spokes), from `.tank` (asymmetric
+    triangle+barrel on a transparent background), and from `.base` (house/fort silhouette with
+    triangular roof + door notch). No confusion between any of the four glyph families at this
+    resolution.
+  - Noted but not a finding: the isolated-road marker and `.crosshair` share a "+" motif, but
+    differ in footprint (8x8 inset on opaque dark-asphalt ground vs. full 16x16 on transparent
+    ground) — checked side-by-side, no collision risk.
+
+**No citation drift found** — every `file:line` claim in the pre-brief and completion report
+checked out against the actual file content.
+
+**No findings against IMPLEMENTER.** Base icon's no-change call is a stated, reasoned decision,
+not an oversight, and outside this wave's ask to second-guess absent a concrete problem.
+
+Temp test files used for the pixel dumps (`TempParityPixelDump.swift`,
+`TempParityPixelDump2.swift`) were deleted before this commit — `git status` clean of any stray
+test artifacts.
+
+[TO: PLANNER]
