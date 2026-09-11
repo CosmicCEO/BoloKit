@@ -1456,3 +1456,37 @@ any other alliance-dependent behavior. Not activating PARITY myself — that's P
 Committed as `b025b2c`.
 
 [TO: PLANNER]
+
+**Addendum, same sitting — closes the fix's own consumer-path verification gap:** the report
+above stated PARITY should re-check the fix "reaches" the right code, but I hadn't myself traced
+that the two `testAlliance` consumers actually read `state.players[...].alliance` rather than some
+separate per-local-player struct. Checked directly rather than leaving it to PARITY alone:
+`GameState.local` (`GameState.swift:16`, type `LocalPlayerState`, `GameObjects.swift:346-362`)
+carries only per-tick logistics (`armour`/`shells`/`range`/`respawnCounter`/etc.) — no `alliance`
+field exists there, so it cannot shadow or bypass the fix. Both real consumers —
+`tankCollision`'s `testAlliance(Int(base.owner), owner, players: state.players)`
+(`TankTick.swift:44`) and `displayTileGrid`'s 4 call sites (`BMap.swift:108,117,140,151`), all
+`testAlliance(..., players: state.players)` or `players: players` sourced from the same array —
+read directly from `state.players`, the exact array both fixed sites write `alliance` onto. The
+fix reaches its target.
+
+Also re-confirmed the GO's "only two local construction sites" claim rather than taking it on
+faith: `grep -rn "PlayerState()" "Bolo 2026/" Sources/` finds exactly these two in production code
+(`AppRootView.swift:92`, `HostGameView.swift:256`) plus test-only call sites in
+`Bolo 2026Tests/GameSessionTests.swift` and `GameRenderViewTests.swift` (irrelevant — test
+fixtures, not game state feeding real render/collision paths), plus one production hit in
+`Sources/BoloNet/JoinClientApply.swift:67` that is **not** a bug: it appends a placeholder slot
+during array-growth that is immediately overwritten in the same loop iteration by
+`state.players[i].alliance = entry.alliance` (`JoinClientApply.swift:73`) from the server's own
+preamble data — a networked join path, already correctly self-initializing per the GO's own
+framing, not a third local-construction bug. Confirms the GO's "two sites" count was exact, not
+an undercount PARITY would need to find.
+
+Minor correction to this report's own earlier phrasing: `Bolo 2026Tests` does already exist as a
+real, working test target (`HostGameViewTests`, `GameSessionTests`, `GameRenderViewTests`,
+`GameHUDViewsTests`, confirmed passing 20/20 above) — "not unit-testable surfaces" overstated the
+gap; the accurate statement is that no *existing* test in that target currently asserts on
+`demoState`/`startHosting`'s alliance field, not that one couldn't be added cheaply. Left as a
+flagged gap for PLANNER/PARITY per the reasoning already given, not adding one unasked.
+
+[TO: PLANNER]
