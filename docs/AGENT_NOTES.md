@@ -1208,3 +1208,82 @@ No architecture changes; confined entirely to `Sources/BoloGlyphsCore/GlyphSourc
 changes during implementation.
 
 [TO: PLANNER]
+
+### [IMPLEMENTER] 2026-09-10 — D154 Wave 1 landed: roads/walls/pillbox redesigned, base assessed unchanged
+
+Implemented exactly the pre-brief above (commit `22e758d`), confined entirely to
+`Sources/BoloGlyphsCore/GlyphSource.swift` — no `ImageIndex.swift`/`Autotile.swift` changes were
+needed, confirmed by reading both before starting.
+
+**Roads:** `familyColor(.road)` is now `(52,52,58)` (dark asphalt, was `(150,120,80)` flat tan).
+New `drawIsolatedRoadMarker`, called only when `family == .road && ortho == 0 && diag == 0`, paints
+a dashed "+" (`215,210,200`) inside the tile's own painted 8×8 center square.
+
+**Walls:** new `applyWallBevel`, called only for `family == .wall` after the existing shape-fill
+logic, recolors already-opaque pixels only (never writes alpha) — north/west-open pixels lighten
+to `(190,190,195)`, south/east-open pixels darken to `(85,85,90)`, interior stays the flat
+`(140,140,140)`.
+
+**Pillbox:** `drawPill` redesigned into an 8-spoke sunburst around a `fillCircle` hub, reusing
+`fillRotatedBar` (the same primitive `drawTank`'s barrel already uses, so the rotation convention
+is proven, not reinvented). Spoke length `2.5 + (armor/15.0)*4.0` encodes armor (2.5px at 0 ..
+6.5px at 15). Backing shrunk from `(50,50,50)`/alpha 200 at `(2,2)-(14,14)` to `(45,45,50)`/alpha
+220, same footprint, distinct exact value from `.mine`'s full-cell `(40,40,40)`. Owner palette
+(`friendly (60,110,220)` / `hostile (200,50,50)`) untouched — including the D152-disclosed
+collision with `tankPalette(1)`'s identical friendly blue, deliberately left out of this wave's
+scope, not silently carried forward without a note.
+
+**Base:** assessed, not changed. D152's house/fort silhouette already reads distinctly at 16×16
+against every other glyph family; no problem was identified that a cross/X-marker would fix, and
+changing it would cost a fresh PARITY cycle for no stated gain. This is an explicit no-op decision,
+not an oversight.
+
+**Verification, each done for real, not assumed:**
+- `swift build`: clean.
+- `swift test` (full suite): 756 tests green (551 `BoloKitTests` + 205 `DifferentialTests`) —
+  matches the pre-existing 756 baseline exactly, no count regression. One transient failure
+  (`hostGameEngineSubmitPauseResumeServerTogglesPauseState`/
+  `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`, both timing-sensitive
+  `HostGameEngineTests`, unrelated to this wave's files) appeared on one `swift test` run and
+  vanished on immediate rerun and on an isolated `--filter DifferentialTests` run — flaky under
+  load, not a real regression; disclosing rather than silently re-running until green.
+- `xcodebuild build` (`Bolo 2026` scheme, macOS destination): **BUILD SUCCEEDED**, no Run Script
+  hang this session (the known toolchain issue the bootstrap warns about did not reproduce today).
+- `xcodebuild test` (same scheme): **TEST SUCCEEDED**, 20/20 `Bolo 2026Tests` green — the "+20"
+  half of the 756+20 baseline, confirmed rather than assumed.
+- **Pixel-level self-check:** added a throwaway `Tests/BoloKitTests/TempD154PixelDump.swift`
+  (never committed, deleted before this report), rendering each changed glyph and printing an
+  ASCII classification of its pixels (run each test method individually via `--filter`, since
+  Swift Testing's own intra-suite concurrency interleaves `print()` output across parallel test
+  methods within one run — a real gotcha hit and worked around this session, noting it here in
+  case a future session tries the same trick). Confirmed by direct visual inspection of the dumps:
+  - Isolated road: an 8×8 dark-asphalt patch with a legible bright "+" dash cross, gap at the true
+    center; fully-connected road renders as solid dark asphalt with no dash (dash is
+    isolation-only, as intended).
+  - Wall (fully connected+diag and a partial-connectivity case): top row + left column light,
+    bottom row + right column dark, interior flat — exactly the intended two-light/two-dark bevel,
+    confirmed adapting correctly to a non-fully-connected shape too (partial case's bevel follows
+    the actual filled region, not fixed canvas coordinates).
+  - Pillbox: hostile armor=15 renders a clear 8-pointed sunburst star; friendly armor=0 renders a
+    small diamond-ish blob (spokes too short to visually separate at minimum length) — still
+    legible as "a small colored icon," distinct from every other glyph by backing-square footprint
+    and color, confirmed by side-by-side dump against `.mine` (full 16×16 dark fill + small solid
+    dot) and `.tank` (transparent background, asymmetric triangle+barrel) — no confusion between
+    any of the four.
+  - Base: unchanged, dump not needed beyond D152's own already-passed verification.
+
+**Judgment calls, repeated from the pre-brief for the record:** exact RGB/pixel values for all 3
+changed items were my own call per D154's explicit delegation; pillbox/tank color collision left
+untouched and disclosed, not silently carried forward; base left unchanged as an explicit
+assessed-and-declined call, not an oversight.
+
+**Ready for a PARITY legibility/no-regression check per D154's own text** ("PARITY's role here is a
+visual/legibility + no-regression check, not a fidelity hand-trace — this is original art, no
+oracle counterpart to trace against"). Not activating PARITY myself — that is PLANNER's
+`[TO: PARITY]` tag to apply, and PLANNER is not available tonight (Jerod asleep) — flagging this
+plainly as an open item for whenever PLANNER's next session picks this up, not a gap to be missed.
+
+No Wave 2 (HUD chrome) or Wave 3 (message/event log bar) work was touched, per D154's explicit
+scope boundary.
+
+[TO: PLANNER]
