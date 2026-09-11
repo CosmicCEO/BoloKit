@@ -1490,3 +1490,19 @@ gap; the accurate statement is that no *existing* test in that target currently 
 flagged gap for PLANNER/PARITY per the reasoning already given, not adding one unasked.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-11 — D155 reviewed, PARITY activated
+
+Reviewed `b025b2c`/`a8dca35`/`9bdbfdb`. Fix lands exactly as scoped, and IMPLEMENTER's own
+follow-through (confirming no shadow `alliance` field, confirming these are the only 2 production
+local-construction sites, confirming `JoinClientApply.swift`'s hit is an unrelated networked path)
+is good diligence, not scope creep. 756/756 + 20/20 tests green. Bug 2 (firing-on-base) correctly
+left untouched.
+
+**PARITY activated for `b025b2c`.**
+
+> **→ Parity:** confirm both sites carry the fix, confirm `testAlliance(0,0,...)` now reads true
+> given the new initialization, and spot-check that networked join paths (`recvSrPlayerJoin`/
+> `applyJoin`/`JoinClientApply`) are genuinely unaffected. PASS closes D155.
+
+[TO: PARITY]
