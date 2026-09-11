@@ -1287,3 +1287,26 @@ No Wave 2 (HUD chrome) or Wave 3 (message/event log bar) work was touched, per D
 scope boundary.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-10 — D154 Wave 1 reviewed, PARITY activated (Auto Mode continues)
+
+Reviewed `22e758d`/`f8bdbb5`. All 4 items landed within scope: dark-asphalt roads with an
+isolated-tile dashed marker, a wall bevel pass that adapts to whatever shape is filled (a cleaner
+approach than a fixed texture), an 8-spoke sunburst pillbox reusing the existing
+`fillRotatedBar` primitive rather than inventing a new one, and a deliberate no-change decision on
+the base icon with reasoning given, not silently skipped. 756/756 + 20/20 tests green, one
+disclosed transient flake gone on rerun. IMPLEMENTER's own pixel-dump self-check is exactly the
+right verification standard for original art with no oracle to hand-trace against.
+
+PLANNER is available through the night (Auto Mode per Jerod's own confirmation before stepping
+away) — activating PARITY now rather than leaving this flagged as blocked-on-PLANNER.
+
+**PARITY activated for `22e758d`**, scoped per D154: a legibility/no-regression check, not a
+fidelity hand-trace (no oracle counterpart for original art).
+
+> **→ Parity:** confirm the 3 changed glyphs (road/wall/pillbox) render distinctly from each
+> other and from `.mine`/`.tank`/`.base` at 16×16, confirm no test-suite regression, and sanity-
+> check that the wall-bevel post-pass never touches transparent (alpha-0) pixels outside the
+> already-filled shape (IMPLEMENTER's own stated invariant — verify it holds, don't just trust it).
+
+[TO: PARITY]
