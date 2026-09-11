@@ -1139,3 +1139,72 @@ to check.
 > PARITY, just a legibility/no-regression check once landed.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-10 — D154 pre-brief: Wave 1 visual-fidelity pixel design
+
+Read `Sources/BoloGlyphsCore/GlyphSource.swift`, `Autotile.swift`, `Canvas.swift` directly (not a
+summary) before proposing shapes. Confirmed scope is self-contained: `ImageIndex.swift` needs no
+changes for any of the 4 items (road/wall dispatch through the existing `.connective` case; pill/
+base dispatch signatures unchanged). Confirmed test-surface constraints that bound the design:
+- `BoloGlyphsTests.swift`'s `nonDiagonalFamilyFullyConnectedIsSolid`/
+  `wallCornerFillStillUsesItsOwnDiagBitsNotInference`/`roadCornerFillStillUsesItsOwnDiagBitsNotInference`
+  assert exact alpha=255/0 patterns for specific `ortho`/`diag` inputs — any wall/road change must
+  only ever recolor already-opaque pixels, never touch alpha, or these break.
+- `pngRoundTripPillBackingPixel` builds its own standalone `Canvas16`/`fillRect(...,50,50,50,200)`
+  rather than calling `drawPill` — it's testing the PNG codec's partial-alpha path generically, not
+  asserting `drawPill`'s actual current constants, so it does not constrain the pillbox redesign.
+
+**1. Roads.** `familyColor(.road)` changes from `(150,120,80)` (flat tan) to `(52,52,58)` (dark
+asphalt gray, cool-toned, no brown). **Isolated-road marker:** a new `drawIsolatedRoadMarker`
+helper, called from `drawConnective` only when `family == .road && ortho == 0 && diag == 0`, draws
+a dashed "+" inside the tile's existing 8×8 center square (the only area an isolated road tile
+paints, `fillRect(4,4,12,12,...)`): four 3×2px dash blocks — `(4,7)-(7,9)`, `(9,7)-(12,9)` (horizontal
+arm, gap at the true center column) and `(7,4)-(9,7)`, `(7,9)-(9,12)` (vertical arm, same gap) — in
+light warm-gray `(215,210,200)` for contrast against the dark asphalt fill. Inspired by the
+reference's dashed lone-segment marker, not copied (no dash-length/spacing measurement taken from
+any reference image, just a legible motif at this resolution).
+
+**2. Walls.** New `applyWallBevel` helper, called from `drawConnective` only when `family == .wall`,
+run *after* the existing shape-fill logic. Pass over every already-opaque pixel (alpha≠0, unchanged
+by this pass — recolors RGB only): if its north or west neighbor is not opaque, recolor to a
+highlight `(190,190,195)`; else if its south or east neighbor is not opaque, recolor to a shadow
+`(85,85,90)`; else leave the base `(140,140,140)`. This is neighbor-relative (checked against the
+tile's own actual filled shape, not fixed canvas coordinates), so it can never turn a
+connectivity-driven transparent corner opaque — verified by construction (no alpha writes) rather
+than just by intent, and confirmed against the two corner-tracking tests below in section "Verify."
+
+**3. Pillbox.** `drawPill` redesigned into a sunburst: dark inset backing square `(45,45,50)` alpha
+220 at `(2,2)-(14,14)` (kept, but shifted 5 points darker/more-blue off the old `(50,50,50)` so it
+reads distinctly from `.mine`'s full-cell `(40,40,40)` + small solid dot — different footprint,
+different exact gray), then 8 spokes radiating from `(8,8)` via the existing `fillRotatedBar`
+primitive (already used by `drawTank`'s barrel, so the rotation convention is proven, not
+reinvented) at the 8 unit directions `(±1,0)`,`(0,±1)`,`(±0.70711,±0.70711)`, each
+`halfWidth: 0.7`, plus a `fillCircle(cx:8,cy:8,radius:1.8,...)` hub. **Armor encoding:** spoke
+`length = 2.5 + (armor/15.0)*4.0` (clamped `armor` to `0...15` as the existing code already did) —
+2.5px at armor 0 up to 6.5px at armor 15, redundant with the hub's fixed size so a destroyed-looking
+low-armor pill still reads as "a pillbox" even with short spokes. **Owner color:** unchanged from
+the existing palette, `friendly = (60,110,220)`, `hostile = (200,50,50)` — not touching D152's
+already-disclosed, already-scoped-out collision with `tankPalette(1)`'s identical friendly blue;
+that's a separate open item, not part of this wave's ask.
+
+**4. Base.** Assessed, not changed. D152's house/fort silhouette (dark backing, triangular roof,
+wall body, dark door notch) already gives base tiles a real silhouette distinct from every other
+glyph family (tank's triangle+barrel, pill's now-sunburst, mine's dot-on-square) and already
+PARITY-passed (`9646b05`). A cross/X-marker would not obviously read *better* at 16×16 and would
+cost a fresh PARITY cycle to re-verify for no clearly stated problem — leaving it alone per D154's
+own text ("your call — if the current shape already works, say so... rather than change it without
+reason").
+
+**Judgment calls flagged:** (a) exact RGB/pixel values for all 3 changed items are my own choice,
+per D154's explicit delegation ("exact shape is IMPLEMENTER's own pre-brief call, same as every
+prior glyph in this pipeline") — flagging the specific numbers here rather than just the shapes, so
+PLANNER/PARITY can object to a specific value before it's built if something looks wrong on
+review. (b) Pillbox owner-color collision with tank left untouched deliberately — flagged above,
+not silently carried forward. (c) Base left unchanged — a "no action" call, stated explicitly per
+the bootstrap's own rule against silently deciding a no-op.
+
+No architecture changes; confined entirely to `Sources/BoloGlyphsCore/GlyphSource.swift`. No
+`ImageIndex.swift`/`Autotile.swift` edits anticipated (confirmed above) — will note here if that
+changes during implementation.
+
+[TO: PLANNER]
