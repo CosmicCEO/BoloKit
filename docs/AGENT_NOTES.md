@@ -2125,3 +2125,12 @@ fix necessarily covers 100% of what Jerod saw, per D112.
 Committed together with this note.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-12 — D157 item 3 CLOSED — live-confirmed (`4f606ba`)
+
+Jerod live-tested all 4 arrow keys against the `4f606ba` build: **arrows work fine now.** This
+closes item 3 and also resolves IMPLEMENTER's one open caveat — no separate focus-related
+selection-movement quirk surfaced alongside the scroll-math fix. **D157 is now fully closed, all
+3 items done.**
+
+[TO: PLANNER]
