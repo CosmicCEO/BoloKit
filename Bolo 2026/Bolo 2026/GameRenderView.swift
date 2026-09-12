@@ -354,12 +354,30 @@ public final class GameRenderView: NSView {
     /// after the scroll -- deliberately not ported: it's a cosmetic nicety with no gameplay
     /// effect, and `CGWarpMouseCursorPosition`-equivalent AppKit code would add real complexity
     /// for a nice-to-have (disclosed remaining gap, not an oversight).
+    /// **D157 item 3 fix:** `scrollToVisible(_:)`'s "minimum move to reveal this rect" semantics
+    /// measure against the *unobscured* region (`bounds` minus `contentInsets`), and this
+    /// scroll view's insets are asymmetric by construction -- `GameView`'s HUD panels
+    /// (`safeAreaInset`s for the top bar, leading `BuilderToolStrip`, trailing
+    /// `ResourceGaugesPanel`/`PlayerStatusGrid`) push SwiftUI's `ScrollView` to set
+    /// `contentInsets` of top:48/left:56/right:228/bottom:0 (confirmed live via
+    /// `GameViewFocusRoutingTests`). Requesting a full-`bounds`-sized rect offset by a fixed 64pt
+    /// nudge, as this used to do, is a request AppKit only partially (or never) has to honor to
+    /// satisfy "reveal the rect" against that inset region -- explains the exact asymmetry Jerod
+    /// hit live (up fully worked, right/down partially moved, left no-opped: each clipped by
+    /// whatever inset sits on the *far* side of the requested move). Setting the clip view's
+    /// origin directly, rather than asking it to reveal a rect, has no such inset-dependent
+    /// heuristic -- it is exactly what the already-correct `seed` step in
+    /// `GameViewFocusRoutingTests` does, and that step always landed on the exact requested
+    /// point in every test run.
     private func scroll(dx: CGFloat, dy: CGFloat) {
         guard let scrollView = enclosingScrollView else { return }
-        var rect = scrollView.contentView.bounds
-        rect.origin.x += dx
-        rect.origin.y += dy
-        scrollView.contentView.scrollToVisible(rect)
+        let clipView = scrollView.contentView
+        var origin = clipView.bounds.origin
+        origin.x += dx
+        origin.y += dy
+        let constrained = clipView.constrainBoundsRect(NSRect(origin: origin, size: clipView.bounds.size))
+        clipView.scroll(to: constrained.origin)
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     /// Ported from `tankCenter:` (`GSXBoloController.m:1529-1552`) -- centers the visible rect on

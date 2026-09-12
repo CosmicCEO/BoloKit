@@ -2027,3 +2027,101 @@ no `.focusable(false)` applied, unlike `BuilderToolStrip` which already got that
 should confirm via its own read/live-test, not take this as settled.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-12 — D157 item 3: pre-brief + fix, real root cause found (not focus theft)
+
+**Environment note first, not the reason anything stayed unresolved:** attempted real live
+testing via `osascript`/System Events (send synthetic arrow keys, screenshot) and `screencapture`.
+Both are genuinely blocked in this sandbox — `osascript is not allowed assistive access (-1719)`
+and `screencapture` returned "could not create image from display" (no Accessibility, no Screen
+Recording). Per the standing rule from this same D157 thread's `tccutil` incident, did not attempt
+to self-fix either permission — stopped and pivoted to an in-process test instead, which turned
+out to be the right tool anyway (see below), not a fallback.
+
+**Pre-brief (formed before any code edit, per bootstrap):** `PlayerStatusGrid`'s missing
+`.focusable(false)` (the pointer Planner flagged) was a real thing to check, but static reading
+alone couldn't confirm or rule it out — decided to host the *real* `GameView` SwiftUI hierarchy
+(not a bare `GameRenderView`) in an actual `NSWindow` inside a new XCTest-hosted Swift Testing file
+(`Bolo 2026Tests/GameViewFocusRoutingTests.swift`), and drive it with real `NSEvent`s via
+`NSWindow.sendEvent` — same-process AppKit API calls, not synthetic injection into another
+process, so no Accessibility/Screen Recording permission needed at all. Plan: seed the map's
+scroll position away from any edge, force `GameRenderView` to hold first responder (a background
+test process's window never truly goes key, so the deferred `viewDidMoveToWindow` claim needed an
+explicit assist — a test-harness-only wrinkle, not part of the bug), send all 4 arrow keys, watch
+`scrollView.contentView.bounds.origin` and `window.firstResponder` after each.
+
+**What that test found, first run:** `firstResponder` stayed `GameRenderView` for the *entire*
+run — no focus theft by `BuilderToolStrip`, `PlayerStatusGrid`, or the top-bar buttons at all.
+But the scroll deltas were themselves asymmetric and wrong: Up moved the full 64pt as requested;
+Down only moved 16pt; Left moved 0pt (`scrollToVisible` returned `false`); Right only moved 8pt.
+This exactly reproduces Jerod's live report's *shape* (one direction clean, others partial/dead)
+without any HUD control ever holding focus — disproving the focus-theft hypothesis (both the
+already-landed `BuilderToolStrip` fix and the flagged-but-unconfirmed `PlayerStatusGrid`
+candidate) as the mechanism, even though the live symptom looked focus-shaped.
+
+**Root cause, confirmed by adding one line of temporary instrumentation to `scroll(dx:dy:)`**
+(printed `scrollView.contentInsets`/`documentVisibleRect`, removed before this commit — confirmed
+via `git diff --stat` showing a clean diff on `GameRenderView.swift` with no stray prints):
+`contentInsets = (top: 48, left: 56, bottom: 0, right: 228)` — asymmetric by construction, from
+`GameView`'s `safeAreaInset` HUD panels (top bar, leading `BuilderToolStrip`, trailing
+`ResourceGaugesPanel`/`PlayerStatusGrid`; nothing on the bottom edge). The old `scroll(dx:dy:)`
+asked `NSClipView.scrollToVisible(_:)` to reveal a full-`bounds`-sized rect offset by the fixed
+64pt nudge. That method's "minimum move to reveal this rect" semantics are measured against the
+*unobscured* region (`bounds` minus `contentInsets`), not raw `bounds` — so the actual distance
+moved came out clipped by whichever inset sat on the *far* side of each direction: Down landed at
+requested-minus-top-inset (`2000 → 1952`, not `2000 → 2064`), Right at requested-minus-left-inset
+(`2064 → 2008`, not `2064`), Left returned `false` and moved nothing. Up happened to land exactly
+on the requested value purely because nothing sits below the window's own bottom edge to clip
+against (`bottom: 0`). Independently confirmed this is specific to the SwiftUI-`ScrollView`-backed
+case, not `scrollToVisible` itself: a hand-built, insets-free `NSScrollView` in a throwaway
+headless script (`xcrun -sdk macosx swift`, not committed) moved a full, symmetric 64pt in all 4
+directions away from document edges — ruling out my own first read of this (that `scrollToVisible`
+called on the clip view is fundamentally the wrong receiver) once the inset arithmetic lined up
+exactly with the observed shortfalls.
+
+**Fix:** `GameRenderView.scroll(dx:dy:)` now sets the clip view's origin directly
+(`NSClipView.scroll(to:)` + `constrainBoundsRect`) instead of asking `scrollToVisible` to reveal a
+rect — no inset-dependent reveal heuristic in the loop at all, so the asymmetry has no path to
+recur. `Bolo 2026/Bolo 2026/GameRenderView.swift`'s `scroll(dx:dy:)`, doc comment explains the root
+cause inline for the next reader.
+
+**Test coverage:** `GameViewFocusRoutingTests.swift`'s
+`arrowKeysScrollTheMapBySymmetric64PointsInEachDirection()` now asserts real values (was
+diagnostic-only, printed but asserted nothing, during investigation) — seeds to `(2000, 2000)`,
+sends Up/Down/Left/Right in that order, asserts each lands exactly 64pt in the correct axis
+(Down/Right round-trip back to the seed). Hosts the real `GameView`, not a reduced repro, so any
+future HUD layout change that reintroduces an asymmetric-inset scroll bug should be caught here.
+
+**Verification:**
+- `xcodebuild -scheme "Bolo 2026" build`: clean.
+- `xcodebuild -scheme "Bolo 2026" test`: **21/21** green (20 pre-existing + the 1 new test),
+  including the new regression test.
+- `swift test` (full suite): **552 (`BoloKitTests`) + 205 (`DifferentialTests`) = 757/757** on
+  first try except one pre-existing flake (`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`,
+  already documented in this file's history as timing-sensitive under full-suite contention) —
+  re-ran in isolation, passed clean. Not a regression from this change; nothing I touched is in
+  that test's path.
+
+**What this does NOT fully close, stated plainly rather than papered over:** Jerod's exact live
+phrasing was that Right arrow "indexes some grid/list" — that wording implies a visible selection
+moving somewhere, which a pure scroll-math bug doesn't produce on its own. This session's test
+proves the scroll-math bug is real, reproducible, and now fixed with a mechanism that has no room
+for the asymmetry to recur — but it does not (and structurally can't, given the test harness's
+window never truly goes key) rule out a *second*, genuinely focus-related quirk contributing to
+that specific phrase. Recommend one more live check from Jerod after this lands: if all 4 arrows
+now scroll the map symmetrically with no HUD indexing behavior, item 3 is fully closed; if some
+"indexing" sensation persists even with correct scrolling, that's a distinct, still-open thing to
+route back to IMPLEMENTER rather than assume this commit already covers it.
+
+**Judgment calls flagged:** (1) treating the permission wall as a pivot signal rather than a
+blocker — the in-process `NSWindow`/`sendEvent` test needed no Accessibility/Screen Recording at
+all, and turned out to be strictly more decisive than the external automation this session
+couldn't get anyway; (2) force-claiming first responder in the test rather than trying to make the
+test harness's window truly key, since the two are separable concerns (see the "not yet closed"
+note above) and forcing it is what let the test isolate the actual scroll-math bug cleanly; (3)
+reporting the residual "indexes some grid" phrasing as unaccounted-for rather than assuming this
+fix necessarily covers 100% of what Jerod saw, per D112.
+
+Committed together with this note.
+
+[TO: PLANNER]
