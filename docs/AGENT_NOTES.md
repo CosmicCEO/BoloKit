@@ -2000,3 +2000,30 @@ once his machine is fully back and permissions are re-granted after last night's
 further work queued until that comes back.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-12 — Environment update + D157 item 3 live-test result: still broken, asymmetric
+
+**Environment note (not a code change):** Jerod updated Xcode to 27.0 RC, now installed at
+`/Volumes/Mingus/Xcode/Xcode.app` (external volume). A same-day permission incident (see the
+`tccutil reset All` note above) initially broke `xcodebuild`'s ability to create its DerivedData
+folder on that volume; Jerod resolved this himself by re-granting access. A clean `xcodebuild
+build` of the `Bolo 2026` scheme under the new toolchain succeeded with no new errors/warnings,
+confirming the toolchain bump itself is not a regression source. App was launched and run
+successfully.
+
+**D157 item 3 live-test result (Jerod, this session):** all 4 arrow keys tested. **Up arrow works
+as expected. Right arrow indexes some grid/list instead of its game action. Left and Down arrows
+no-op entirely.** This is a new, asymmetric symptom — not a clean confirmation that `09da47d`'s
+fix (which only touched `BuilderToolStrip`, already PARITY-passed) resolved the original bug, and
+not a match for a simple "same bug elsewhere" story either, since it's inconsistent per-key rather
+than uniform.
+
+Per D112 (no guessing blind), no fix is being landed off this report alone. Routing to IMPLEMENTER
+to investigate the actual key-routing path itself and write its own pre-brief before touching code
+— pointer, not a prescription: `PlayerStatusGrid` (`GameView.swift`'s trailing `safeAreaInset`,
+around the `ResourceGaugesPanel`/`Divider`/`PlayerStatusGrid` stack) is a plain SwiftUI `List` with
+no `.focusable(false)` applied, unlike `BuilderToolStrip` which already got that treatment in
+`09da47d` — a plausible area to check given "indexes some grid" in the report, but IMPLEMENTER
+should confirm via its own read/live-test, not take this as settled.
+
+[TO: IMPLEMENTER]
