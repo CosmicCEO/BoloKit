@@ -1991,3 +1991,12 @@ regression from the 757 baseline.
 D157 items 1+2 close clean.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-12 — D157 items 1+2 CLOSED — PARITY PASS (`9b2b8c0` auditing `09da47d`)
+
+HUD backgrounds and explicit selection indicator confirmed correct, 757/757 tests green. **Item 3
+(scroll-key fix) remains open, unverified** — awaiting Jerod's own live test of all 4 arrow keys
+once his machine is fully back and permissions are re-granted after last night's incident. No
+further work queued until that comes back.
+
+[TO: PLANNER]
