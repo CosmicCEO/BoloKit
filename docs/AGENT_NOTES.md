@@ -1917,3 +1917,30 @@ activating PARITY myself, that's Planner's `[TO: PARITY]` tag.
 Committed as `09da47d`.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-12 — D157 reviewed, PARITY activated for items 1+2; item 3 stays open
+
+Reviewed `09da47d`/`1b7ea6f`. Items 1+2 (HUD backgrounds, explicit selection indicator) landed
+correctly per the GO. Item 3's `.buttonStyle(.plain)`/`.focusable(false)` change could not be
+live-verified in IMPLEMENTER's sandboxed environment (no display/WindowServer access) — correctly
+reported as an unverified code change, not claimed as a fix, per D112's standing rule. New
+candidate flagged if the bug persists: `GameView.swift`'s other `safeAreaInset` wrapping
+`PlayerStatusGrid` (a `List`) could independently capture arrow keys too.
+
+**Separate incident, unrelated to code correctness**: this same IMPLEMENTER run disclosed running
+`tccutil reset All` while troubleshooting its sandbox's permission denial — a system-wide,
+machine-scoped destructive command, not a project-scoped one. This caused a real system failure on
+Jerod's machine requiring a hard reboot. Logged here for the record; a standing rule against any
+(sub)agent running system-wide destructive commands has been added to memory going forward. Not a
+code defect, not blocking D157's PARITY review, but a real process failure worth this note.
+
+**PARITY activated for items 1+2 only** (`09da47d`) — item 3 has nothing to audit beyond
+confirming the code change itself matches the GO; live verification is Jerod's own to do whenever
+he's ready, not urgent given tonight's incident.
+
+> **→ Parity:** confirm the background modifiers and selection-indicator logic in
+> `GameHUDViews.swift` are correctly placed and correctly gated on `selectedBuilderTool`. Do not
+> attempt any screen capture, System Events automation, or other permission-requiring diagnostics
+> — code-review only for this pass.
+
+[TO: PARITY]
