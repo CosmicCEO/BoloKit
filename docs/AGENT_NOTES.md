@@ -1944,3 +1944,50 @@ he's ready, not urgent given tonight's incident.
 > — code-review only for this pass.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-12 — D157 items 1+2 (`09da47d`): PASS
+
+**Type:** post-commit audit. **Toolchain note:** `swift`/`xcodebuild` both present on this host
+(`which swift xcodebuild`); this pass was verification-by-`swift test` for regressions, plus a
+direct hand-read of `GameHUDViews.swift` for the two scoped items — no screen capture,
+`osascript`, or other automation/permission-requiring commands were run, per Planner's explicit
+instruction and the standing incident from this same D157 thread.
+
+**Verdict: PASS on both items 1+2.**
+
+- **Item 1 (background placement), confirmed by direct read:**
+  `Bolo 2026/Bolo 2026/GameHUDViews.swift:38-64` — `BuilderToolStrip.body`'s `VStack` (holding the
+  `ForEach` of tool buttons) has `.padding(6)` then `.background(Color(nsColor:
+  .windowBackgroundColor))` chained directly onto the same `VStack`, inside the
+  `TimelineView` closure that returns it — i.e. the modifier backs the actual content container,
+  not an empty wrapper or a sibling. Same shape at `:97-122` for `ResourceGaugesPanel.body`:
+  `.padding(8)` then `.background(...)` on the content `VStack` holding all seven `gauge(...)`
+  rows. Both opaque per the inline rationale comment (`:61-63`, `:121`) — correctly opaque, not
+  `.regularMaterial`, matching the original "text over map" bug report.
+- **Item 2 (selection indicator), confirmed by direct read:**
+  `GameHUDViews.swift:39-58` — `let selected = session.renderView.selectedBuilderTool == tool` is
+  computed inside the `ForEach(BuilderCommandKind.allCases, ...)` loop, once per iteration, so it's
+  gated per-button rather than a single shared value. It correctly drives both the fill
+  (`RoundedRectangle.fill(selected ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.15))`)
+  and the stroke overlay (`.stroke(selected ? Color.accentColor : Color.secondary, lineWidth:
+  selected ? 2 : 1)`) — no inversion, no stale capture. Traced `selectedBuilderTool` itself to
+  `Bolo 2026/Bolo 2026/GameRenderView.swift:91` (`public private(set) var selectedBuilderTool:
+  BuilderCommandKind = .tree`) and its single mutation site at `:99`/`:299`
+  (`selectBuilderTool(_:)`) — one source of truth, matches the doc comment's claim
+  (`GameHUDViews.swift:20-23`). `BuilderCommandKind` is `Int, Hashable` (`Sources/BoloKit/
+  BuilderCommand.swift:37`), so `==` and `ForEach(..., id: \.self)` are both well-founded.
+- **Not reviewed, per Planner's explicit scope:** item 3 (`.buttonStyle(.plain)`/`.focusable(false)`
+  scroll-key hypothesis) — left untouched, still open pending Jerod's live test.
+
+**Citation drift:** none — IMPLEMENTER's `09da47d` commit message and completion report both
+describe this diff accurately; no phantom claims found.
+
+**Test run (fresh, this session):** `swift test` (BoloKitTests): 552/552. `swift test --filter
+DifferentialTests`: 205/205, including
+`hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` passing clean this run
+(the previously-logged full-suite-contention flake did not reproduce here). Total 757/757 — no
+regression from the 757 baseline.
+
+D157 items 1+2 close clean.
+
+[TO: PLANNER]
