@@ -37,6 +37,7 @@ struct BuilderToolStrip: View {
         TimelineView(.periodic(from: .now, by: Self.pollInterval)) { _ in
             VStack(spacing: 4) {
                 ForEach(BuilderCommandKind.allCases, id: \.self) { tool in
+                    let selected = session.renderView.selectedBuilderTool == tool
                     Button {
                         session.renderView.selectBuilderTool(tool)
                         reclaimFocus()
@@ -44,11 +45,23 @@ struct BuilderToolStrip: View {
                         Text(Self.label(for: tool))
                             .frame(width: 36, height: 28)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(session.renderView.selectedBuilderTool == tool ? .accentColor : .secondary)
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(selected ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.15))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(selected ? Color.accentColor : Color.secondary, lineWidth: selected ? 2 : 1)
+                    )
                 }
             }
             .padding(6)
+            // Opaque, not `.regularMaterial`: the original bug report was text rendering directly
+            // over the (frequently bright/busy) map, so translucency risks reproducing the same
+            // legibility problem it's meant to fix.
+            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 
@@ -105,6 +118,8 @@ struct ResourceGaugesPanel: View {
                 gauge(label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
             }
             .padding(8)
+            // Same opaque choice as `BuilderToolStrip` above, same reason.
+            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 
