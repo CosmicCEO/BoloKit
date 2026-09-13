@@ -2828,3 +2828,49 @@ No architecture changes outside `GameRenderView`/`GameView`'s top bar are propos
 tick loop and `render(_:)` contract (D82) are untouched; this is exactly the file `GO` text expected.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — D160: Milestone D.0 pre-brief reviewed, coding GO'd
+
+Pre-brief (`d94a547`) reviewed against D81/D157/D82 and this project's scope-discipline rules.
+Exceptional rigor here — the GO text's own framing on item 4 ("confirm D157's fix still holds") was
+too optimistic, and IMPLEMENTER caught that directly with an empirical probe rather than confirming
+the GO's assumption: the fixed-64 `scroll(dx:dy:)` genuinely breaks once zoom lands and needs a real
+code change (`÷ scrollView.magnification`), not just a verification. Correcting the GO's own framing
+here, not treating it as a deviation on IMPLEMENTER's part — the pre-brief did exactly what it was
+supposed to do by not taking the GO's premise at face value (same discipline this project has
+required since D112).
+
+**Ruling on all four flagged items — assigning D160:**
+
+1. **`NSScrollView.magnification` approved as the mechanism**, with the disclosed SwiftUI-fights-it
+   risk and fallback (revert to the reference's manual frame/bounds trick) both accepted as stated.
+   Live-verify this first once code exists, per IMPLEMENTER's own plan — if SwiftUI does reset
+   `magnification` across relayout the same way it fought `contentInsets` in D157, switch to the
+   fallback rather than layering a second defensive re-assertion workaround on top (this project's
+   preference, established at D157's own resolution, for fixing the actual mechanism over patching
+   around a fighting framework).
+2. **`T = 20,000` approved as a coding-time placeholder, not a shipped number.** Refine with a real
+   benchmark (same measurement discipline D81 itself used) before this closes — do not let the
+   placeholder quietly become the final value without at least one real data point between the
+   measured 4,400 (v1 fixed size) and 32,400 (D81's crossover).
+3. **Native pinch/scroll-wheel zoom left enabled — approved.** Zero extra code, matches modern
+   macOS UX expectations, and doesn't conflict with the reference's toolbar-only UI being ported
+   faithfully alongside it (this is additive, not a replacement) — same "closely-inspired, not
+   copied" latitude this project has extended to original UI/UX choices before (D67, D154).
+4. **No keyboard shortcut for Zoom In/Out — approved, matches the oracle exactly** (`GSXBoloController.m`
+   itself has none in this repo's C-source scope). Not adding one now; if Jerod wants a shortcut
+   later, that's a disclosed departure to raise then, not a gap to fill preemptively.
+
+**Coding GO issued.** IMPLEMENTER proceeds per its own §6 plan: `GameView` top-bar Zoom In/Out
+buttons, `GameRenderView.scroll(dx:dy:)`'s required `÷ magnification` fix, the new pure/testable
+minimum-magnification-floor function, `centerViewport(on:)` left unchanged (confirmed already
+correct). Live-verify the SwiftUI-magnification-ownership risk (item 1) early in the coding session
+before building anything on top of it. Extend the 21/21 `xcodebuild` UI-hosting suite with the
+magnification-aware scroll-symmetry variant and new zoom-button/floor-behavior tests, per
+IMPLEMENTER's own plan — no shrink of the 757/757 `swift test` baseline expected or acceptable
+(D28). PARITY's eventual scope: fidelity check against `GSXBoloController.m` for the 5 zoom levels/
+bounds/scroll-compensation/recenter behavior (§5's oracle-comparable list), legibility/no-regression
+only for the tile-count cap and mechanism choice (§5's new-engineering list) — this is the correct
+split, no change needed.
+
+[TO: IMPLEMENTER]
