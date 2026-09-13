@@ -2874,3 +2874,113 @@ only for the tile-count cap and mechanism choice (§5's new-engineering list) �
 split, no change needed.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-13 — Milestone D.0 landed (`9489037`)
+
+Implemented per D160's coding GO, following the pre-brief's §6 plan. Worked in a git worktree
+(`.worktrees/d0-zoom-scroll`, submodule initialized fresh there) per this session's environment
+notes, then fast-forward merged back onto `main` and removed the worktree.
+
+#### What was built
+
+- **`GameRenderView`**: 5 discrete zoom levels (`0.5, 0.75, 1.0, 1.5, 2.0`, default index 2 = 1.0x)
+  ported from `GSXBoloController.m`'s `kZoomLevels`/`zoomIn:`/`zoomOut:` (`:136-144`, `:1483-1515`),
+  using `NSScrollView.magnification`. `zoomIn()`/`zoomOut()` reproduce the reference's exact
+  fractional-viewport-offset recenter (`+0.25×`/`-0.5×` visRect size) via direct clip-view-origin
+  math (the same idiom `scroll(dx:dy:)` already used, D157) rather than
+  `setMagnification(_:centeredAt:)` — a disclosed API choice, not dictated by D160, made to avoid
+  taking on trust in a second untested API's centering semantics.
+- **`scroll(dx:dy:)` required fix landed**: both deltas now divide by `scrollView.magnification`,
+  exactly the compensation D160 item 1 required and the pre-brief's probe predicted.
+  `centerViewport(on:)` left unchanged, confirmed still correct.
+- **Dynamic minimum-magnification floor**: new pure/static `minimumMagnification(viewportWidth:
+  viewportHeight:tileBudget:)`, directly `swift test`-able, matching the `isDegenerateBuilderIndicatorLine`
+  (D146) precedent. `T` refined this session — see below.
+- **`GameView`**: "Zoom In"/"Zoom Out" buttons added to the existing top-bar `HStack` (no
+  `NSToolbar` anywhere in this project).
+
+#### D160 item 1 — SwiftUI-magnification-ownership, live-verified before building anything on it
+
+Confirmed via a temporary hosted-`GameView` diagnostic (not committed): `NSScrollView.magnification`
+survives both a real window resize and a SwiftUI layout-only pass unchanged. Unlike D157's
+`contentInsets` casualty, SwiftUI does **not** fight this property. `NSScrollView.magnification`
+stands as the mechanism, no fallback to the reference's manual frame/bounds trick needed.
+
+#### D160 item 2 — `T` refined with a real benchmark, revised down to 9,000, not up
+
+First attempt used an **offscreen** `bitmapImageRepForCachingDisplay`/`cacheDisplay` benchmark —
+discarded after finding it reports draw times ~15-20x slower than D81's own live on-screen figures
+(confirmed via the advisor: `cacheDisplay` renders CPU-side at the bitmap rep's backing scale and is
+not a valid stand-in for live compositing cost). Replaced with a **live** `NSWindow` +
+`renderView.displayIfNeeded()` timing ladder hosting the real `GameView` hierarchy, sized across
+window widths to reach D81's own two anchor points (4,400 tiles fine / 32,400 tiles Canvas-crossover)
+plus intermediate points. At ~4,000 tiles this reconciled closely with D81's own cited 6.7-7.3ms
+(measured 7.8ms median here), confirming apples-to-apples methodology. Median draw time crosses this
+project's 60Hz display-refresh frame budget (16.67ms — distinct from D82/D83's separate 20ms
+*simulation-tick* budget, since `draw(_:)` runs on AppKit's display cycle, not the tick loop)
+somewhere between ~7,900 tiles (15.3ms) and ~11,900 tiles (23.0ms). **Set `T = 9,000`** — a real,
+disclosed **downward** revision from the pre-brief's `T = 20,000` placeholder, not a re-confirmation
+of it. (D81's own 32,400-tile Canvas-crossover number remains correct on its own terms — it answers
+"where does Canvas start winning," not "where does AppKit alone start missing a frame budget,"
+which is the different question this cap actually guards against.) Consequence disclosed: an
+ordinary 900×700 window's own 0.5x view already sits at ~9,844 tiles, over this budget — the floor
+is not a rare edge case reserved for huge windows, it engages at everyday sizes with this `T`.
+
+#### A real design bug caught mid-session by the test suite itself
+
+An early draft of `applyEffectiveMagnification()` unconditionally snapped `scrollView.magnification`
+back to `zoomLevels[zoomIndex]` on every call — including from a `viewWillDraw()` hook added as a
+belt-and-suspenders fallback to the frame-change-notification observer. Since `viewWillDraw()` runs
+every frame `render(_:)`'s `needsDisplay = true` schedules (i.e. continuously), this would have
+silently fought native pinch-to-zoom/scroll-wheel-zoom gestures — exactly the feature D160 item 3
+approved leaving enabled. `GameRenderViewZoomTests.magnificationSurvivesWindowResizeAndAPureLayoutPass`
+caught this immediately (a manually-set 2.0x kept reverting to 1.0x). Fixed by switching the floor's
+actual enforcement to `NSScrollView.minMagnification`/`maxMagnification` — AppKit's own native,
+continuous clamp, which never fights a value already inside range — and having
+`applyEffectiveMagnification()` only intervene (raising both magnification and `zoomIndex` together)
+when the *current* magnification has fallen below a *newly recomputed* floor, the one case
+`minMagnification` alone can't retroactively cover.
+
+#### Testing
+
+`xcodebuild` UI-hosting suite extended **21 → 31**, all passing (final full run: "Test run with 31
+tests in 6 suites passed after 8.603 seconds"). New `GameRenderViewZoomTests.swift` covers: the
+magnification-ownership regression (kept permanently, same discipline as D70/D81's other
+empirically-verified claims); a magnification-aware variant of the existing arrow-key symmetric-scroll
+test at both 2.0x and 0.5x; edge-clamping at both zoom extremes (idempotence-based, not a
+re-derivation of `constrainBoundsRect`'s own insets-aware clamp formula — found live to not simply be
+`documentSize - visibleSize`); Zoom In/Out button bounds guards and the recenter formula; the dynamic
+floor's pure formula and its live resize behavior. Several of my own first-draft tests had real bugs
+(wrong arrow-direction-to-edge assumptions, a window size that put a "control" case inside the
+floor's own engagement zone, floating-point tolerance) — all found and fixed via iteration, not
+silently worked around; see the file's own doc comments for the specifics. `swift test`
+(BoloKit-only) baseline reconfirmed **757/757** (205 + 552 across two suites), unaffected, no shrink
+(D28).
+
+**Environment note:** each hosted-`GameView` test leaves its `GameSession`'s tick timer running (no
+window close/`session.stop()` call, since `onDisappear` doesn't fire for a manually-inserted
+`NSHostingView` outside a SwiftUI `Scene`) — a pre-existing pattern from `GameViewFocusRoutingTests`,
+now multiplied by 10 more such tests. This caused a real practical annoyance this session (the test
+host process lingers at high CPU for several minutes after results print, though results themselves
+land in ~8s) but is not a correctness bug and wasn't introduced by this wave — flagging for PLANNER
+in case a shared test-harness cleanup helper is worth a future backlog item.
+
+**Live GUI verification substitution:** the Xcode MCP `RunProject` tool only had the main checkout's
+project open (not this session's worktree copy), and switching Xcode's open workspace mid-session on
+a shared checkout risked disrupting other concurrent work — skipped rather than forced. Substituted
+the live, real-`NSWindow`/real-`NSEvent` `xcodebuild` UI-hosting suite above, which already exercises
+actual AppKit scroll/magnification/clamp behavior, not a synthetic approximation.
+
+#### Oracle-comparable vs. new-engineering split (for PARITY)
+
+**Oracle-comparable:** the 5 discrete zoom levels + default index (`GSXBoloController.m:136-144`);
+Zoom In/Out bounds guards; the `÷ magnification` scroll-distance compensation; the recenter
+fractional-offset formula. **New engineering, no reference counterpart:** the dynamic
+minimum-magnification floor and its `T = 9,000` value (legibility/no-regression check only, not a
+fidelity hunt); the `NSScrollView.magnification` mechanism choice itself; native
+pinch/scroll-wheel-zoom gesture support (a free side effect of `allowsMagnification = true`, D160
+item 3).
+
+Ready for audit.
+
+[TO: PLANNER]
