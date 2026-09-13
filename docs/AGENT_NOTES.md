@@ -2421,3 +2421,170 @@ logic (ownership `Circle`, staleness tinting, Kick/Ban) are truly untouched as c
 hand-trace expected or required.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-13 — D154 Wave 2 (`e9ae864`+`0ddd728`) audited
+
+**Type:** post-commit audit, activated by PLANNER's `[TO: PARITY]` tag. Scope as PLANNER set it:
+legibility + no-regression check, **not** a fidelity hand-trace — there is no C oracle for original
+HUD chrome art (same posture as D154 Wave 1).
+
+**Tooling, checked this session rather than assumed:** `swift` 6.4 (swiftlang-6.4.0.34.1) and
+`xcodebuild` are both present on this host, so this audit is **execution-verified, not hand-traced**
+— I ran both test targets and rendered the shipped code. The standing "no Swift toolchain"
+limitation in my bootstrap does not apply here (D80's own correction).
+
+**VERDICT: PASS — with 9 non-blocking notes, 0 blocking findings.** All three things PLANNER named
+hold up under independent re-derivation. Nothing here blocks closing Wave 2.
+
+---
+
+#### 1. Opaque-fill non-negotiable — HOLDS (verified four ways, not by trusting the throwaway script)
+
+- **Code:** `GameHUDViews.swift:29-60`. The only fill is `RoundedRectangle(...).fill(Color(nsColor:
+  .windowBackgroundColor))` at `:36`. The two overlays (`:38-49`, `:50-59`) are `strokeBorder`
+  only — 1pt borders, no fill — so neither can affect the panel's base opacity.
+- **Exhaustive grep:** `windowBackgroundColor` occurs exactly twice in the whole tree
+  (`GameHUDViews.swift:23` comment, `:36` code). The old per-panel `.background(...)` lines really
+  are gone; all three panels route through the one modifier. No `.regularMaterial`/`.ultraThin`
+  anywhere in the three files — the only hit is the word inside the comment at `:25`. The three
+  `.opacity` uses are the two bevel strokes, the pre-existing D157 selection indicator (`:156`) and
+  the pre-existing staleness tint (`PlayerStatusView.swift:162`), all composited *over* the opaque
+  fill, none of them part of it. `NSColor.windowBackgroundColor.alphaComponent == 1.0`.
+- **My own off-screen render, not IMPLEMENTER's:** I extracted `GameHUDViews.swift:18-101`
+  **verbatim via `sed`** (not retyped, so the bytes under test are the committed bytes) into a
+  throwaway harness and rendered the chrome over a saturated 6-colour checkerboard "busy map" with
+  SwiftUI `ImageRenderer` at 2x, in both appearances: **0 pixels with alpha != 255 across the whole
+  image**; fill measured (255,255,255) light and (30,30,30)/(48,48,48) dark; the checkerboard is
+  never visible inside panel bounds.
+- **Shipped code, live-rendered — the strongest check, and it closes my mock's fidelity gap:**
+  `ImageRenderer` cannot render `List` or `ProgressView` (both AppKit-backed — it substitutes a
+  yellow/red "unsupported view" placeholder, which is what the red inside my early pixel samples
+  actually was, *not* backdrop bleed). So I rendered `GameView.swift:152`'s own `#Preview` — the
+  real `GameView`, real `List`, real gauges — via Xcode's preview renderer in **both** appearances,
+  **zero build errors**. All three panels are fully opaque over the map and **no text renders over
+  terrain in either appearance.** The corner-notch worry (could plain-`List` rows paint into the
+  rounded corners?) is answered: they do not.
+
+#### 2. `GameHUDMath`/`gaugeFraction` and `PlayerStatusGrid` row logic — genuinely untouched
+
+- I extracted `enum GameHUDMath` from both `e9ae864^` and `e9ae864` and diffed them: **byte-identical**
+  (still `guard max > 0 else { return 0 }` + `min(1, max(0, ...))`, still returns `Float`). Corroborated
+  structurally: the last diff hunk in `GameHUDViews.swift` ends at ~line 293, `enum GameHUDMath`
+  begins at `:299` — outside every hunk.
+- `git diff -U0` hunk ranges for `PlayerStatusView.swift` fall **entirely within lines 78-114**, i.e.
+  inside `list(snapshot:)` only. Everything PLANNER asked about sits below the last hunk and is
+  unmodified: `status(forPlayer:)` `:116`, `staleness(forPlayer:)` `:128`, `LagTint` `:136`,
+  `playerRow` `:152-170` (ownership `Circle` `:158`, staleness tinting `:160-162`, name/status text
+  `:159`/`:164`, Kick/Ban `:165-168`), `ownershipStatus` `:172`, `ownershipRow` `:180-189`.
+- `git show --name-only e9ae864` → three source files, **zero** test files.
+
+#### 3. The `nonisolated` fix — no behavioural effect, and the stated reason is real
+
+- `PillSunburstShape.path(in:)` (`GameHUDViews.swift:74-101`) reads only its `rect` parameter and
+  local constants plus `cos`/`sin`. The struct has **no stored properties**, so there is no `self`
+  state and nothing actor-isolated to touch either way.
+- I verified the *need* rather than taking it on faith: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
+  is genuinely set on the app target (`project.pbxproj:485`, `:528`). IMPLEMENTER's explanation is
+  accurate, not invented.
+- Executed it off the main actor: called from a `Task.detached`, `path(in:)` returns bounds
+  `(0,0,32,32)` for a 32x32 rect with `isEmpty == false`, and `path(in: .zero)` returns a degenerate
+  zero-rect path **without trapping**. Off-main-actor execution is safe; the annotation is purely a
+  concession to the isolation checker.
+
+#### 4. Chrome scoped to the embedded HUD only — CONFIRMED (one boundary question for PLANNER)
+
+- Exhaustive grep: `.hudPanelChrome()` has **exactly three** call sites — `GameHUDViews.swift:165`
+  (`BuilderToolStrip`), `:245` (`ResourceGaugesPanel`), `GameView.swift:125` (embedded
+  `PlayerStatusGrid`). `PlayerStatusView` (`PlayerStatusView.swift:192-208`) has **none**. D158
+  ruling #2 upheld exactly as written.
+- **Boundary question, not a finding against IMPLEMENTER:** `.scrollContentBackground(.hidden)`
+  (`PlayerStatusView.swift:113`) sits inside the *shared* `PlayerStatusGrid.list()`, so it does also
+  apply to the sheet presentation. Cosmetic-only there (a sheet has an opaque window behind it, no
+  map), and it *is* disclosed in the code comment at `:110-112` — but it wasn't raised in the
+  completion report as a scope question. PLANNER may want to say whether that's inside ruling #2's
+  intent; I'm not treating it as a defect.
+
+#### 5. Tests — run by me, both targets, and I re-derived the one `swift test` cannot cover
+
+- `swift test`: **DifferentialTests 205/205** (14 suites) + **BoloKitTests 552/552** (11 suites) =
+  **757/757**, exit 0, zero failures. Independent static cross-check: `grep -rho "@Test"
+  Tests/BoloKitTests | wc -l` = **552**, matching the runtime count exactly.
+- **D28 satisfied on stronger grounds than a matching number:** the commit touches zero test files,
+  so the count *cannot* have shrunk arithmetically, independent of any claimed baseline; the executed
+  757/757 then confirms no regression.
+- **`swift test` does not build the app target — so the 21/21 claim needed its own run.**
+  `arrowKeysScrollTheMapBySymmetric64PointsInEachDirection()` lives in `Bolo 2026Tests`, which SwiftPM
+  never compiles. I ran `xcodebuild -scheme "Bolo 2026" -only-testing:"Bolo 2026Tests" -destination
+  'platform=macOS' test` myself: **21/21 in 5 suites, `** TEST SUCCEEDED **`**, with that D157
+  regression test passing. This was worth doing rather than trusting: the commit edits
+  `GameView.swift:112-128`'s `safeAreaInset`s *and* changes `BuilderToolStrip`'s measured content size
+  (`Text` → `VStack{icon; Text}`), and D157 item 3's root cause was precisely those panels'
+  asymmetric `contentInsets`. Green.
+
+#### 6. Non-blocking notes (adversarial pass — none of these block closure)
+
+1. **Numeric readout bypasses the clamp the helper exists for.** `"\(value)/\(max)"`
+   (`GameHUDViews.swift:285`) is unclamped while the bar beside it goes through `gaugeFraction`'s
+   0...1 clamp. By `GameHUDMath`'s *own* doc comment (`:301-304`), `value > max` is "a real, transient
+   possibility (`TankLocalTick.swift`'s refuel logic)" — so mid-refuel a row can read "45/40" beside a
+   already-full bar. Cosmetic and transient; flagged because the code itself documents the state as real.
+2. **`max == 0` is closed, not a latent risk.** `maxShells`/`maxMines`/`maxArmour`/`maxTrees` = 40 and
+   `maxBase*` = 90, all `public let` constants (`Sources/BoloKit/Physics.swift:86-95`, `:143-149`), so
+   an "n/0" readout cannot arise. `gaugeFraction`'s existing tests already cover `value == max`, 0,
+   `> max`, negative, and `max == 0` (`GameHUDViewsTests.swift:16-36`). No action needed — recording it
+   because PLANNER asked about the 0/max edge cases specifically.
+3. **Visual-vocabulary collision — the highest-value visual note.** `burst.fill` (Shells / Base Shells)
+   renders as an 8-point star **nearly identical to `PillSunburstShape`** (Pill tool + Pillboxes
+   header). Clearly visible in both shipped-preview renders. The commit's own goal was "one visual
+   vocabulary for the object, not two" — but Wave 1's pillbox glyph language is now also approximately
+   the *shells* glyph, separated only by hue. That's the same tint-only-differentiation failure mode
+   D157 item 2 was opened to fix. Worth Jerod's eye on his live look.
+4. **Same object, two colours across adjacent panels.** `leaf.fill` is green as the Tree tool
+   (`tint(for:)` `:192`) but brown in the Trees gauge (`:238`); `xmark.seal.fill` is red as the Mine
+   tool (`:195`) but purple in the Mines/Base Mines gauges (`:236`, `:241`). Also the base cluster
+   reuses the player cluster's three icons and colours verbatim, so now that icons carry the visual
+   weight the only differentiator between "Armor" and "Base Armor" is the text prefix.
+5. **`iconName(for: .pill)` returns `""` as a sentinel** (`:188`), safe only because the call site
+   guards `if tool == .pill` (`:136`). Drop that guard and `Image(systemName: "")` renders nothing,
+   silently. An optional return would make the case unrepresentable. Relatedly, `Color.blue` is
+   hardcoded at `PlayerStatusView.swift:93` while the tool icon uses `BuilderToolStrip.tint(for: .pill)`
+   — same module, so the header could just call `tint(for:)`; as written, changing the tool tint
+   silently desynchronises the section header.
+6. **Light-appearance bevel is one-sided.** The `Color.white.opacity(0.4)` top-leading highlight (`:42`)
+   composites onto a fill measured at (255,255,255) in Aqua, making it mathematically a **no-op** in
+   light mode; only the `Color.black.opacity(0.45)` bottom-trailing stroke (`:53`) yields an edge. Dark
+   mode gets both. Visible in the renders. (Citing the render for the light-mode fill value — my direct
+   `NSColor` probe printed 1,1,1 for *both* appearances because `NSApp` is nil in a bare script, so that
+   probe is only good for the `alphaComponent == 1.0` claim.)
+7. **New cosmetic map-bleed at the panel seam.** `GameView.swift:116-126` stacks two separately-chromed
+   panels with a `Divider()` inside a `VStack(spacing: 0)` that has no background of its own. Now that
+   each panel has `cornerRadius: 8`, the map shows through a hairline band plus four corner notches at
+   the seam — **visible in both shipped-preview renders**. Previously the two flat rectangular
+   backgrounds sat flush and the column read as one continuous panel. No text over map, so the
+   non-negotiable is not breached, but it reads as two floating cards and is arguably *further* from the
+   reference's single continuous status panel. One outer `.hudPanelChrome()` on the `VStack` (dropping
+   the two inner ones) would restore the continuous read.
+8. **Structural fragility worth PLANNER's awareness.** The embedded grid's opacity is now a **cross-file
+   pairing**: `.scrollContentBackground(.hidden)` (`PlayerStatusView.swift:113`) removes the `List`'s own
+   opaque background, and *only* `.hudPanelChrome()` at `GameView.swift:125` restores it. Remove or
+   reorder that call-site modifier and the status grid goes transparent over the map — reintroducing the
+   exact D157 bug. Nothing guards the pairing, and unlike the other two panels it isn't self-contained.
+9. **No new tests.** D28 is satisfied (no shrink), but `PillSunburstShape.path(in:)` shipped with zero
+   coverage despite being a pure, trivially-testable geometry function — in a project where Wave 1's
+   centroid test caught an oversized tank barrel (D149). A spoke-count/bounds-within-rect test would
+   match Wave 1's own discipline. Recommendation, not a finding.
+
+**Decision checklist:** D18 — no `Float`/`Double` creep into simulation; `PillSunburstShape`'s `CGFloat`
+use is view geometry only, and `Double(GameHUDMath.gaugeFraction(...))` (`:290`) is pre-existing and
+required by `ProgressView`'s API, with `gaugeFraction` still returning `Float`. D24/D25/D26/D27/D33 — not
+applicable: no C-layer, build-flag, per-tick, or transport/session code is touched by this commit.
+
+**Recommendation: PASS, Wave 2 closable.** Notes 3 and 7 are the two worth Jerod's eye on a live look;
+none of the nine block closure, and none require a fix before PLANNER rules.
+
+**Environment note:** no worktree was needed — the isolation guard did not block this session, and I made
+no source edits (findings only, per role). I opened the Xcode project to use the preview renderer and
+**closed it again**; it was not open beforehand, so the machine is as I found it. No destructive or
+system-scoped command was run at any point.
+
+[TO: PLANNER]
