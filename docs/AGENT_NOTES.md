@@ -2154,3 +2154,130 @@ Wave 3 (message/event log bar — genuinely new feature, no existing model) rema
 until Wave 2 closes.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-13 — D154 Wave 2 pre-brief (HUD chrome restyle)
+
+**Scope correction, flagged not silently fixed:** the GO text (and D154's PLAN.md row) describe
+`PlayerStatusGrid`/`ResourceGaugesPanel`/builder-tool sidebar as "all in `GameHUDViews.swift`."
+`ResourceGaugesPanel` and `BuilderToolStrip` do live there, but `PlayerStatusGrid` actually lives
+in `PlayerStatusView.swift` (split out under D148(B) so the sheet-based `PlayerStatusView` and the
+always-visible HUD embed the same `List` content, per that file's own header). This wave touches
+both files. Not raising this as a blocker — the GO's *intent* (these three named views) is
+unambiguous — just correcting the file attribution so PARITY isn't confused later.
+
+**Reference material reviewed:** `Reference/c/Images/StatusBackground.png` (the reference's right-
+side HUD frame: a beveled gray metal panel divided into three boxed sections — each pairing a
+small icon column with a status column — plus a bottom strip of small icon+count clusters, no
+plain-text labels anywhere), `PlayerInfo.png` (bust silhouette), the five builder-tool radio icons
+(`RoadRadio`/`WallRadio`/`TreeRadio`/`MineRadio`/`PillRadio.png` — each a distinct textured/colored
+square icon per tool, not a shared flat button style), `PillStatFriendly`/`BaseStatFriendly.png`
+(small circular ring+dot ownership indicators — already the visual language our `Circle().fill(...)`
+ownership dots in `PlayerStatusGrid` independently converged on), and `ZoomIn.png` (a simple line-art
+tool icon, confirming icons-not-text is the reference's HUD idiom throughout, not just the builder
+strip). Per D67/README posture and this project's own restatement in D154/Wave 1: looked at these
+only to characterize the *idiom* (icon-per-slot, beveled frame, boxed sections, compact info
+density) — no pixel data, palette-matching, or bitmap reproduction from any of them. All replacement
+art below is original: SF Symbols (system-provided, not reference assets) plus procedural
+SwiftUI shape/gradient drawing, same category of asset as every prior D154/D148 HUD element.
+
+**Current state (both files read in full this session):** `BuilderToolStrip` renders plain `Text`
+tool-name labels in a flat, single-opacity rounded-rect button, no icon. `ResourceGaugesPanel`
+renders each resource as a `Text` caption + bare `ProgressView` bar, no icon, no numeric readout,
+flat single-color background. `PlayerStatusGrid` is a plain macOS `List` with 3 `Section`s
+(Players/Pillboxes/Bases), default system List chrome, plain colored `Circle` ownership dots already
+in place. All three currently sit on a flat `Color(nsColor: .windowBackgroundColor)` (or, for the
+List, the system default) with no shared frame/border language between them, no bevel, no icons —
+functionally complete (this is D148(B)/D150/D157's territory, already PARITY-passed) but visually
+flat next to the reference's "fuller" idiom Jerod is pointing at.
+
+**Proposed concrete changes:**
+
+1. **Shared chrome primitive.** Add one new small view, `HUDPanelChrome` (a `ViewModifier` or
+   thin wrapper), applied to all three HUD surfaces in place of today's bare
+   `Color(nsColor: .windowBackgroundColor)` background: same opaque fill (non-negotiable — the
+   D148(B) legibility bug this port already fixed was text-over-map, so opacity stays), plus a
+   1px two-tone beveled border (a lighter stroke on the top/leading edge, darker on
+   bottom/trailing, via two overlaid `RoundedRectangle.strokeBorder` gradients) evoking the
+   reference's beveled-metal panel frame without copying its exact gray value or texture. Applied
+   to `BuilderToolStrip`, `ResourceGaugesPanel`, and (new) a background modifier on
+   `PlayerStatusGrid`'s embedded-HUD usage specifically — not its sheet usage in
+   `PlayerStatusView`, to avoid fighting `NavigationStack`'s own chrome there (open question,
+   flagged below).
+
+2. **`BuilderToolStrip`:** replace each `Text(Self.label(for: tool))` button label with an SF
+   Symbol icon + keep the text as a fallback/accessibility label, not deleted (`.leaf.fill` for
+   tree, `.road.lanes` for road — falls back to `.line.3.horizontal` on OS versions without it,
+   checked against this project's deployment target before finalizing — for wall, `.square.grid.3x3.fill`
+   ; for mine, `.xmark.seal.fill`; for pill, a small custom procedural sunburst `Shape`
+   deliberately echoing Wave 1's already-approved 8-spoke pillbox glyph language rather than
+   inventing a second visual vocabulary for the same object). Each icon tinted per-tool (not just
+   the existing selected/unselected accent swap) so the strip reads as 5 distinct tools at a
+   glance the way the reference's 5 distinct radio-button bitmaps do, rather than 5 identical
+   shapes differing only by caption.
+
+3. **`ResourceGaugesPanel`:** pair each `ProgressView` row with a small SF Symbol icon
+   (`.burst.fill` shells, `.xmark.seal.fill` mines — matching the strip's mine icon since it's the
+   same resource, `.shield.fill` armor, `.leaf.fill` trees — matching the strip's tree icon,
+   `.shield.fill`/`.burst.fill`/`.xmark.seal.fill` again for the base cluster) and add a compact
+   numeric `"\(value)/\(max)"` trailing label next to each bar — the reference's bottom strip pairs
+   every icon with a live count, and today's port shows the bar only, with the actual number
+   nowhere on screen. This is a real information gain, not just decoration, and touches
+   `GameHUDMath` not at all (pure display addition, `gaugeFraction` untouched, existing test
+   coverage stays valid as-is).
+
+4. **`PlayerStatusGrid`:** add `.scrollContentBackground(.hidden)` (available at this project's
+   deployment target — confirming exact minimum during coding, not assumed) so the `List`'s own
+   background can be replaced by the shared chrome fill instead of two different backgrounds
+   fighting each other; add a small leading icon per section header echoing the reference's
+   three-box layout (`person.fill` for Players, matching Wave 1's sunburst-pill language for
+   Pillboxes, a simple base-shape glyph for Bases — reusing, not reinventing, D152's existing base
+   silhouette language). Row content itself (ownership `Circle`, staleness tinting, Kick/Ban
+   buttons, name/status text) is untouched — this wave is chrome/iconography, not a rebuild of
+   D119/D150(3)'s already-correct classification logic, and `GameHUDViewsTests.swift` only exercises
+   `GameHUDMath` (confirmed by reading it this session), so none of this needs new test scaffolding
+   beyond what's already there.
+
+**Judgment calls flagged, not silently decided:**
+
+- **Icon choice is SF Symbols, not fully custom-drawn shapes**, except the pill sunburst (reusing
+  Wave 1's already-approved glyph language) and the base marker (reusing D152's). Using system
+  iconography for the rest is faster and guaranteed license-clean, but is a step below the fully
+  bespoke, hand-rolled look `BoloGlyphsCore`'s tile/sprite pipeline has for in-game art. Flagging
+  this rather than assuming it's fine — PLANNER may want full custom `Shape`s for a closer match to
+  the reference's fully bespoke look, at real extra implementation cost for something that's UI
+  chrome rather than gameplay-visible sprite work.
+- **`HUDPanelChrome` applies only to the embedded-HUD `PlayerStatusGrid`, not the sheet-based
+  `PlayerStatusView`** (open question): the sheet already gets `NavigationStack` chrome (title bar,
+  Done button) that the always-visible HUD version never had. Applying the new beveled frame there
+  too could look redundant/cluttered against the sheet's own window chrome, or could look
+  inconsistent if skipped. Defaulting to *skip it in the sheet, apply it only to the trailing
+  `safeAreaInset` embedding in `GameView.swift`* unless PLANNER prefers uniform treatment
+  everywhere `PlayerStatusGrid` appears.
+- **Numeric gauge readouts (`"\(value)/\(max)"`) are new information, not purely cosmetic** — a
+  small scope addition beyond "restyle" in the letter of the GO, though squarely inside its spirit
+  (the reference's HUD always paired icon+number, unlike today's bars-only display). Flagging
+  rather than assuming it's in-scope by default.
+- **Builder-tool icon tint-per-tool** changes today's uniform "all buttons look the same shape,
+  differ only by selection state" pattern to "5 visually distinct tools." This is intentional and
+  matches the reference, but is a bigger visual delta than a pure color/border restyle — flagging
+  in case PLANNER wants a lighter touch for Wave 2 and to save per-tool distinctiveness for a later
+  pass.
+
+**Risks:**
+
+- `.scrollContentBackground(.hidden)` and `List` section-header icon insertion on macOS can behave
+  differently across the last couple of OS versions this project might target — will verify the
+  actual behavior on this machine's toolchain during coding rather than assume it renders as
+  expected from the API docs alone.
+- Bevel/gradient border must stay legible against a bright map background at every corner/edge —
+  same opaque-fill non-negotiable as D148(B)/D157, verified visually (or via the pixel-decode/
+  off-screen-render substitution this bootstrap already documents) before claiming this closes,
+  not assumed from code reading alone.
+- No PARITY oracle exists for any of this (same as Wave 1) — PARITY's pass here is legibility/
+  no-regression, not a fidelity hand-trace; flagging so no one expects a C-source citation trail for
+  the chrome pass itself.
+
+**Not yet touched:** no Swift written this session, per the pre-brief-first rule. Test baseline at
+last count: 757/757 (`swift test`), unchanged since D157's close — will re-confirm at coding time.
+
+[TO: PLANNER]
