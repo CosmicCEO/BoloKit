@@ -2319,3 +2319,85 @@ scope applies once committed: legibility/no-regression check, not a fidelity han
 exists for original HUD chrome art).
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-13 — D154 Wave 2 landed (HUD chrome restyle, `e9ae864`)
+
+Coded all four items from the D158-ruled pre-brief, unchanged from what was approved:
+
+1. **`HUDPanelChrome`** (`GameHUDViews.swift`): a new `ViewModifier` — opaque
+   `RoundedRectangle` fill (same `Color(nsColor: .windowBackgroundColor)` as before, the
+   D148(B)/D157 non-negotiable untouched) plus two overlaid gradient `strokeBorder`s (light
+   top-leading fading to clear, clear fading to dark bottom-trailing) for the beveled-panel read.
+   Applied inside `BuilderToolStrip`/`ResourceGaugesPanel`'s own bodies (replacing their old flat
+   `.background(...)` line each), and — per D158 ruling #2 — only at the `GameView.swift`
+   `safeAreaInset(edge: .trailing)` call site wrapping the embedded-HUD `PlayerStatusGrid`, not
+   inside `PlayerStatusGrid`'s own body (which is shared with the sheet-based `PlayerStatusView`).
+2. **`PillSunburstShape`**: a new SwiftUI `Shape`, 8 spokes radiating from a central hub (same
+   8-spoke sunburst language as Wave 1's `drawPill` in `BoloGlyphsCore`, redrawn procedurally as a
+   vector shape rather than reusing `Canvas16` pixel code directly, since it's a different
+   rendering context). Used for the pill tool icon in `BuilderToolStrip` and the Pillboxes section
+   header in `PlayerStatusGrid` — one visual vocabulary for the object, not two.
+3. **`BuilderToolStrip`**: each tool button now shows an SF Symbol icon (`leaf.fill`/`road.lanes`/
+   `square.grid.3x3.fill`/`xmark.seal.fill` for tree/road/wall/mine, verified to actually resolve
+   on this project's toolchain via `NSImage(systemSymbolName:accessibilityDescription:)` before
+   landing) or `PillSunburstShape` for pill, each tinted a distinct color (green/gray/brown/red/
+   blue) per D158 ruling #4. The tool-name `Text` stays, now as a small caption below the icon —
+   kept visible, not deleted, per the pre-brief's own instruction.
+4. **`ResourceGaugesPanel`**: each gauge row gained a leading SF Symbol icon (`burst.fill` shells,
+   `xmark.seal.fill` mines, `shield.fill` armor, `leaf.fill` trees, same icons reused for the base
+   cluster) plus a trailing `"\(value)/\(max)"` numeric readout, per D158 ruling #3.
+   `GameHUDMath.gaugeFraction` untouched — confirmed by re-reading it after the edit, not just
+   assuming.
+5. **`PlayerStatusGrid`** (`PlayerStatusView.swift`): `.scrollContentBackground(.hidden)` added
+   (verified available and behaving correctly at this project's real macOS 27 deployment target
+   via the actual `xcodebuild build`/`test` run below, not assumed from API docs) so the shared
+   chrome fill shows through instead of the `List`'s own background; each `Section` now has a
+   `header:` closure instead of a bare string title, with a leading icon (`person.fill` Players,
+   `PillSunburstShape` Pillboxes, `house.fill` Bases — the closest SF Symbol match to D152's
+   house/fort silhouette language, not a second glyph vocabulary). Row content (ownership `Circle`,
+   staleness tinting, Kick/Ban buttons, name/status text) is untouched, confirmed by diff review.
+
+**One judgment call surfaced during coding, not anticipated in the pre-brief:** `PillSunburstShape`
+initially failed to build under this project's Swift 6 default-actor-isolation setting —
+`conformance of 'PillSunburstShape' to protocol 'Shape' crosses into main actor-isolated code and
+can cause data races`, because `Shape.path(in:)` is a `nonisolated` protocol requirement but the
+default build setting makes all new code implicitly `@MainActor`. Fixed by marking
+`path(in:)` `nonisolated` explicitly (the compiler's own suggested fix) — a one-line, low-risk
+change with no behavioral effect (the method is pure geometry, no actor-isolated state touched
+either way). Not a scope or design question, just documenting it rather than letting a silent
+edit go unmentioned per this bootstrap's disclosure rule.
+
+**Verification:**
+- `swift test`: 552/552 (`BoloKitTests`) + 205/205 (`DifferentialTests`) = **757/757**, matching
+  the pre-existing baseline exactly — no shrink, no regression.
+- `xcodebuild -scheme "Bolo 2026" build`: clean (after the `nonisolated` fix above).
+- `xcodebuild -scheme "Bolo 2026" test`: **21/21** green, including the existing
+  `arrowKeysScrollTheMapBySymmetric64PointsInEachDirection()` regression test from D157 — confirms
+  this wave's `safeAreaInset` edit didn't reopen that bug.
+- **Opaque-fill/legibility invariant**: this sandbox's live display/WindowServer access status
+  wasn't tested directly — went straight to the documented substitution per this bootstrap's Step
+  4 rather than risk a permission-wall detour. Built a standalone off-screen render (`xcrun -sdk
+  macosx swift`, not committed): hosted `HUDPanelChrome`-wrapped sample content inside an
+  `NSHostingView` over a solid bright-red backdrop (simulating a "busy map"), rendered via
+  `bitmapImageRepForCachingDisplay(in:)` + `cacheDisplay(in:to:)`, then decoded pixels with
+  `NSBitmapImageRep.colorAt(x:y:)`. The panel's center pixel read fully opaque `(255,255,255,255)`
+  — the underlying window-background color, not the red backdrop bleeding through — while a point
+  outside the panel's bounds correctly read the red backdrop unchanged. Confirms the opaque-fill
+  non-negotiable holds for the new chrome, via code executing the real `HUDPanelChrome` logic
+  (copied inline into the throwaway script, not a hand-waved re-description of it), not a live
+  in-app screenshot. Recommend a live look from Jerod when convenient to confirm the actual visual
+  read (icon choices, bevel subtlety, spacing) is to taste — this substitution proves legibility,
+  not aesthetics.
+
+**Environment note:** this session worked in a git worktree
+(`.claude/worktrees/wave2-hud-chrome`, since removed) because the shared checkout's background-job
+isolation guard blocked direct file edits — fast-forward-merged the resulting commit (`e9ae864`)
+back onto `main` via `git merge --ff-only` once done, so `main`'s history is a single linear commit
+same as if it had been made directly. `Reference/c` is a git submodule not populated by `git
+worktree add` automatically — needed one `git submodule update --init --recursive` in the worktree
+before `swift test` would build (`CXBolo`'s sources are thin shims over that submodule's actual
+`.c` files). Noting this in case a future session hits the same worktree-submodule gap.
+
+No `docs/PLAN.md`/wave-closure edits made — that stays PLANNER's call. Ready for audit.
+
+[TO: PLANNER]
