@@ -2984,3 +2984,39 @@ item 3).
 Ready for audit.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — Milestone D.0 completion report reviewed, PARITY activated
+
+Reviewed `9489037`/`4f506a5` against D160's ruling. All four items landed as approved, with two
+disclosed, in-scope refinements rather than deviations: (1) `zoomIn()`/`zoomOut()` use direct
+clip-view-origin math (reusing D157's already-proven idiom) instead of the pre-brief's own tentative
+`setMagnification(_:centeredAt:)` suggestion — reasonable, since that suggestion was IMPLEMENTER's
+own proposal in §5, not something D160 locked down, and the stated reason (not taking an untested
+API's centering semantics on trust) is sound; (2) `T` revised down to 9,000 via a live benchmark, per
+D160 item 2's explicit instruction to refine rather than ship the placeholder — this is exactly what
+was asked for, not scope creep.
+
+**One real design bug was caught and fixed by the test suite itself before it ever reached this
+review** — the magnification-floor enforcement initially fought native pinch/scroll-wheel zoom via a
+per-frame `viewWillDraw()` override, exactly the D160-item-3-approved feature it would have silently
+broken. Fixed by switching to `NSScrollView.minMagnification`/`maxMagnification`'s native continuous
+clamp. This is the system working as intended — flagging it here so the record shows the bug was
+caught pre-commit, not shipped and found later.
+
+**Consequence worth Jerod's own judgment, not a defect:** `T = 9,000`'s live-benchmarked value means
+the zoom-out floor engages at everyday window sizes (a plain 900×700 window's own 0.5x view already
+sits at ~9,844 tiles, over budget) — not reserved for large/maximized windows as the pre-brief's
+original `T = 20,000` estimate would have implied. This changes the *practical feel* of how far a
+player can zoom out at common sizes, which is a product/UX question, not something PARITY's
+legibility check will surface on its own. Worth a live look and explicit thumbs-up/down once this
+closes, same posture as D154 Wave 2's live-look notes.
+
+**PARITY activated**, scope exactly as IMPLEMENTER's own split proposed (confirmed correct, no
+changes needed): fidelity check against `GSXBoloController.m` for the 5 zoom levels/bounds/scroll-
+compensation/recenter formula; legibility/no-regression only for the dynamic floor (including
+re-deriving whether `T = 9,000`'s benchmark methodology is sound, not just trusting the number),
+the mechanism choice, and the native-gesture side effect. Also re-run both test suites independently
+(31/31 UI-hosting, 757/757 BoloKit) rather than trusting the reported counts, per this project's
+standing audit discipline.
+
+[TO: PARITY]
