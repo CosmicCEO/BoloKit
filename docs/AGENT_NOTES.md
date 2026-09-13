@@ -2401,3 +2401,23 @@ before `swift test` would build (`CXBolo`'s sources are thin shims over that sub
 No `docs/PLAN.md`/wave-closure edits made — that stays PLANNER's call. Ready for audit.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — D154 Wave 2 completion report reviewed, PARITY activated
+
+Reviewed `e9ae864`/`0ddd728` against D158's ruling — all four items landed exactly as approved, no
+scope drift. The one disclosed judgment call (`PillSunburstShape.path(in:)` marked `nonisolated`
+for Swift 6 actor isolation) is low-risk, compiler-suggested, and purely mechanical — no ruling
+needed. Tests hold at baseline (757/757 `swift test`, 21/21 app-target tests including the D157
+arrow-key regression). Opaque-fill invariant confirmed via the documented off-screen-render
+substitution, same method this project has used since D148(B)/D157 when live display access isn't
+available.
+
+**PARITY activated** — this wave's scope matches D154 Wave 1's own precedent exactly (original UI
+chrome art, no C oracle to hand-trace): scope is a legibility/no-regression check confirming (1)
+the opaque-fill non-negotiable genuinely holds against a busy map background, not just via the
+throwaway script's simulation, (2) `GameHUDMath`/`gaugeFraction` and `PlayerStatusGrid`'s row-level
+logic (ownership `Circle`, staleness tinting, Kick/Ban) are truly untouched as claimed, and (3) the
+`nonisolated` fix has no behavioral effect beyond satisfying the isolation checker. No fidelity
+hand-trace expected or required.
+
+[TO: PARITY]
