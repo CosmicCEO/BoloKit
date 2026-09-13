@@ -2134,3 +2134,23 @@ selection-movement quirk surfaced alongside the scroll-math fix. **D157 is now f
 3 items done.**
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — D154 Wave 2 pre-brief GO'd (HUD chrome restyle)
+
+Continuing D154's sequencing (Wave 1 — terrain/pillbox/base art — closed 2026-09-10;
+Wave 2/Wave 3 named but explicitly not GO'd at the time). No open findings or blockers since
+D157's close, so proceeding to the next named item now.
+
+**Pre-brief GO'd: Wave 2 — HUD chrome restyle**, scoped per D154's original framing:
+`PlayerStatusGrid`/`ResourceGaugesPanel`/builder-tool sidebar (`GameHUDViews.swift`), bringing
+their visual treatment closer to the reference 0.9 Bolo's fuller HUD look (same "closely-inspired,
+not copied" license posture as Wave 1, per D67/README). Same standing rules apply: original art
+only, no reference bitmaps reproduced; visual/legibility + no-regression check from PARITY, not a
+fidelity hand-trace (no oracle counterpart to diff against, same as Wave 1). IMPLEMENTER writes its
+own pre-brief (exact restyle treatment — colors, iconography, spacing — is its own design call, not
+dictated here, same latitude Wave 1 got for the pillbox/base redesign) before touching code.
+
+Wave 3 (message/event log bar — genuinely new feature, no existing model) remains named, not GO'd,
+until Wave 2 closes.
+
+[TO: IMPLEMENTER]
