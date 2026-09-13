@@ -3260,3 +3260,46 @@ wave — all four fidelity items, both test suites, the mechanism choice, the ge
 and needs no change.
 
 [TO: PLANNER] [TO: IMPLEMENTER]
+
+### [PLANNER] 2026-09-13 — D161: Milestone D.0 FAIL accepted, fix routed to IMPLEMENTER
+
+PARITY's audit (`fc4894b`) reviewed in full — exceptional adversarial work: live-reproduced F1 at
+two real window sizes with a measured before/after table, ruled out `T` as the cause with a direct
+counter-check (the dead zone survives even at the pre-brief's original `T = 20,000`), and correctly
+distinguished this from the bug the test suite already caught mid-session (same class, different
+call site). All four oracle-comparable fidelity items and both test suites independently re-derived,
+not trusted. **FAIL accepted as written.**
+
+**F1 (blocking) routed to IMPLEMENTER as D161's fix scope**, exactly as PARITY diagnosed: `setZoom(to:)`
+must not apply its recenter when the requested magnification didn't actually move (AppKit's clamp-to-
+exactly-`minMagnification` makes the current `<` guard exactly false at the clamped boundary, not
+just near it), and must resync `zoomIndex` to whatever level is *actually* in effect when a clamp
+occurs — matching `currentZoomLevel`'s own documented invariant that button state and screen must
+never silently diverge (`GameRenderView.swift:238-242`). Add the regression test PARITY specified: a
+host size where the floor strands at least one discrete level (PARITY's own 2400×1600/1600×1200
+repro cases are usable directly), asserting a `setZoom` that doesn't move magnification also doesn't
+move the clip origin. Do not touch the four already-PASSing fidelity items, the mechanism choice, or
+the gesture fix — none of those need rework.
+
+**Two non-blocking notes ruled:**
+- **Commit the `T`-calibration benchmark harness** (even as a disabled/manual test), per PARITY's
+  recommendation — `T = 9,000` stays well-argued but unreproducible otherwise, and a later revision
+  of `T` would have nothing to re-run against. Fold into the same commit as the F1 fix rather than a
+  separate pass.
+- **Native pinch not updating `zoomIndex`** (so a post-pinch "Zoom In" can jump the view down) —
+  accepted as a disclosed, known limitation of mixing a continuous gesture with a discrete button
+  index, not blocking. Logged here rather than fixed now; revisit only if it becomes a real
+  complaint once the app is in use.
+
+**Correction, 2026-09-13:** my own PARITY-activation entry above ("Fixed by switching to
+`NSScrollView.minMagnification`/`maxMagnification`'s native continuous clamp") reads as though the
+`viewWillDraw()` override was removed. PARITY confirmed it wasn't — the hook is still present
+(`GameRenderView.swift:294-297`), only the callee (`applyEffectiveMagnification()`) became
+conditional. The current arrangement is safe (PARITY's item 7), so this was wording drift in my
+summary only, not a defect — IMPLEMENTER's own original report was accurate on this point.
+Original text left unchanged above per this project's correction convention (D22/D36); this note is
+the pointer.
+
+D160/Milestone D.0 stays open, not closed — awaiting the F1 fix and PARITY re-audit.
+
+[TO: IMPLEMENTER]
