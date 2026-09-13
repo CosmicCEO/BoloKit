@@ -2588,3 +2588,36 @@ no source edits (findings only, per role). I opened the Xcode project to use the
 system-scoped command was run at any point.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — D159: D154 Wave 2 CLOSED — PARITY PASS (`c7784bc` auditing `e9ae864`+`0ddd728`)
+
+PARITY's audit (`c7784bc`) independently re-derived all four scope items rather than trusting the
+completion report — byte-identical `GameHUDMath` diff, hunk-range confinement proof for
+`PlayerStatusView.swift`'s untouched row logic, off-main-actor execution of the `nonisolated` fix,
+exhaustive grep confirming exactly 3 `.hudPanelChrome()` call sites — plus ran both test suites
+independently (757/757 `swift test`, 21/21 `xcodebuild` app-target tests including the D157
+regression) rather than trusting the reported counts. **Verdict: PASS, 0 blocking findings.**
+
+**Ruling on the one boundary question (item 4):** `.scrollContentBackground(.hidden)` reaching the
+sheet-based `PlayerStatusView` presentation (shared with the embedded HUD via `list()`) is within
+D158 ruling #2's intent, not a violation of it. Ruling #2 was about where `HUDPanelChrome`'s
+*bevel/fill* applies (embedded HUD only, confirmed 3-for-3 by PARITY's grep) — it never spoke to
+`.scrollContentBackground`, which is disclosed in-code (`PlayerStatusView.swift:110-112`) and
+cosmetic-only in the sheet (opaque window behind it, no map to bleed through). No action needed.
+
+**The 9 non-blocking notes are logged, not treated as defects requiring a fix cycle** — same
+disclosure-not-defect posture this project used for D152's stray +0.5px note and D157's coverage
+note. Two are flagged for Jerod's own live look per PARITY's recommendation, not preemptively
+"fixed" blind (D112): **note 3** (the `burst.fill`/`PillSunburstShape` visual-vocabulary collision —
+shells and pillbox now read as the same glyph, tint-only differentiated, the same failure mode
+D157 item 2 was opened to fix) and **note 7** (new cosmetic map-bleed at the `ResourceGaugesPanel`/
+`PlayerStatusGrid` seam now that each panel has its own rounded chrome, where previously the column
+read as one continuous panel). The remaining 7 notes (unclamped numeric readout, closed max==0 risk,
+cross-icon color inconsistency, the `""` sentinel/hardcoded-blue coupling, one-sided light-mode
+bevel, the chrome/scroll-background cross-file coupling, and missing `PillSunburstShape` coverage)
+are recorded for whoever next touches this file, not queued as follow-up work now.
+
+**D154 Wave 2 CLOSED.** Wave 3 (message/event log bar — genuinely new feature, no existing model)
+remains named, not GO'd — its own future pre-brief/GO cycle, same as before.
+
+[TO: PLANNER]
