@@ -115,6 +115,187 @@ public final class GameRenderView: NSView {
         fatalError("init(coder:) not supported")
     }
 
+    // MARK: - Zoom (Milestone D.0, D160)
+
+    /// Ported verbatim from `kZoomLevels`/`DEFAULT_ZOOM` (`GSXBoloController.m:136-144`) --
+    /// 5 discrete magnification steps, default index 2 (1.0x). D18: float literals copied
+    /// exactly from the reference, not re-derived (all 5 are exact in binary floating point
+    /// anyway, but the discipline is "copy," not "trust that it's exact").
+    static let zoomLevels: [CGFloat] = [0.5, 0.75, 1.0, 1.5, 2.0]
+    private static let defaultZoomIndex = 2
+
+    private var zoomIndex = GameRenderView.defaultZoomIndex
+
+    /// **D160 item 2:** the tile-count budget behind the dynamic minimum-magnification
+    /// floor below (`minimumMagnification`). Refined this coding session from the D.0
+    /// pre-brief's disclosed `T = 20,000` placeholder via a real live on-screen
+    /// `displayIfNeeded()` benchmark hosting the actual `GameView` hierarchy in an `NSWindow`
+    /// -- NOT the offscreen `bitmapImageRepForCachingDisplay`/`cacheDisplay` path this
+    /// session tried first and discarded (measured ~15-20x slower and not representative of
+    /// live on-screen compositing cost; see this wave's completion report in
+    /// `AGENT_NOTES.md` for both data sets). The live benchmark's median draw time crosses
+    /// this project's own 60Hz display-refresh frame budget (16.67ms -- distinct from
+    /// D82/D83's separate 20ms *simulation-tick* budget, since `draw(_:)` runs on AppKit's
+    /// own display-refresh cycle, not the tick loop) between ~7,900 and ~11,900 tiles.
+    /// `T = 9,000` sits just past that measured crossing with a small safety margin --
+    /// a real, disclosed, meaningful *downward* revision from the placeholder, not a
+    /// re-confirmation of the guess. (For reference: the placeholder's basis, D81's
+    /// AppKit-vs-Canvas crossover at 32,400 tiles, remains correct on its own terms --
+    /// it answers a different question, "where does Canvas start winning," not "where does
+    /// AppKit alone start missing a frame budget," which is what this cap actually guards.)
+    static let tileCountBudget = 9_000
+
+    private var scrollViewFrameObserverInstalled = false
+
+    /// **D160 item 1:** the dynamic minimum-magnification floor, a function of the live
+    /// viewport size, with no reference counterpart (`GSBoloView.m` never bounds render
+    /// cost by window size at all -- see this file's own Wave 7.2 header, D81). Pure,
+    /// static, directly `swift test`-able, matching this file's own
+    /// `isDegenerateBuilderIndicatorLine` precedent (D146) of extracting geometry logic out
+    /// of the view rather than only exercising it through the `xcodebuild`-hosted `NSView`
+    /// path. `viewportWidth`/`viewportHeight` are screen-point dimensions (i.e. an
+    /// `NSView.frame.size`, NOT a magnification-scaled `.bounds.size`) -- the floor is a cap
+    /// on physical on-screen draw cost, which doesn't change just because magnification did.
+    static func minimumMagnification(viewportWidth: CGFloat, viewportHeight: CGFloat, tileBudget: Int) -> CGFloat {
+        guard viewportWidth > 0, viewportHeight > 0, tileBudget > 0 else { return 0.5 }
+        let raw = ((viewportWidth * viewportHeight) / (256 * CGFloat(tileBudget))).squareRoot()
+        return min(max(raw, 0.5), 2.0)
+    }
+
+    /// **D160 item 1, live-verified before any of this was built:** a hosted-`GameView`
+    /// diagnostic run this session (temporary, not committed) confirmed
+    /// `NSScrollView.magnification` survives both a real window resize and a SwiftUI
+    /// layout-only pass unchanged -- unlike D157's `contentInsets` casualty, SwiftUI does
+    /// NOT fight this property across relayout on this codebase's own `GameView` hierarchy.
+    /// `NSScrollView.magnification` stands as the mechanism per D160's ruling; no fallback
+    /// to the reference's manual frame/bounds trick was needed.
+    private func configureZoom() {
+        guard let scrollView = enclosingScrollView else { return }
+        scrollView.allowsMagnification = true
+        if !scrollViewFrameObserverInstalled {
+            scrollViewFrameObserverInstalled = true
+            scrollView.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(scrollViewFrameDidChange),
+                name: NSView.frameDidChangeNotification, object: scrollView
+            )
+        }
+        applyEffectiveMagnification()
+    }
+
+    /// Registered on the enclosing `NSScrollView`'s own frame, not its `NSClipView`
+    /// (`contentView`) -- live-measured this session: `GameView`'s HUD `safeAreaInset`s
+    /// contribute a *fixed* `contentInsets` (top 48/left 56/right 228/bottom 0, same figures
+    /// D157 already measured) that doesn't itself change with window size, so the scroll
+    /// view's frame and its clip view's frame move together 1:1 on every resize this session
+    /// observed -- observing either would do, this one matches `applyEffectiveMagnification`'s
+    /// own read of `scrollView.frame` below.
+    @objc private func scrollViewFrameDidChange() {
+        applyEffectiveMagnification()
+    }
+
+    /// **Revised mid-session after a test caught a real bug in the first draft:** an earlier
+    /// version of this method unconditionally snapped `scrollView.magnification` to
+    /// `zoomLevels[zoomIndex]` on every call -- including from `viewWillDraw()`, i.e. every
+    /// single frame. That silently fought native pinch-to-zoom/scroll-wheel-zoom gestures
+    /// (D160 item 3, explicitly approved and left enabled): a user's live pinch sets
+    /// `scrollView.magnification` directly, and the very next `viewWillDraw()` call would
+    /// have stomped it straight back to whatever `zoomIndex` last pointed to.
+    /// `GameRenderViewZoomTests.magnificationSurvivesWindowResizeAndAPureLayoutPass` caught
+    /// this immediately (a manually-set 2.0 kept reverting to the default 1.0).
+    ///
+    /// Fixed by using `NSScrollView.minMagnification`/`maxMagnification` as the actual
+    /// enforcement mechanism -- AppKit itself clamps every set (gesture-driven or
+    /// programmatic) to that range continuously and natively, so a live pinch is bounded
+    /// during the gesture rather than corrected after the fact, and this method never needs
+    /// to touch `scrollView.magnification` at all when it's already >= the current floor.
+    /// It only intervenes -- raising both the actual magnification and `zoomIndex` together,
+    /// same "never let the button state and the screen silently diverge" reasoning as
+    /// before -- when the *current* magnification has fallen below a *newly recomputed*
+    /// floor (the one scenario `minMagnification`/`maxMagnification` alone can't already
+    /// cover, since AppKit doesn't retroactively re-clamp an existing value just because the
+    /// bound itself moved).
+    private func applyEffectiveMagnification() {
+        guard let scrollView = enclosingScrollView else { return }
+        let viewport = scrollView.frame.size
+        let floor = Self.minimumMagnification(
+            viewportWidth: viewport.width, viewportHeight: viewport.height, tileBudget: Self.tileCountBudget
+        )
+        scrollView.minMagnification = floor
+        scrollView.maxMagnification = Self.zoomLevels.last!
+        guard scrollView.magnification < floor else { return }
+        if let raisedIndex = Self.zoomLevels.firstIndex(where: { $0 >= floor }) {
+            zoomIndex = max(zoomIndex, raisedIndex)
+        }
+        scrollView.magnification = Self.zoomLevels[zoomIndex]
+    }
+
+    /// Ported from `zoomIn:`/`zoomOut:` (`GSXBoloController.m:1483-1515`) -- same fixed
+    /// fractional-viewport-offset recenter (`+0.25×` visRect size on zoom in, `-0.5×` on
+    /// zoom out), applied via direct clip-view-origin math rather than
+    /// `setMagnification(_:centeredAt:)` -- the same direct-origin idiom `scroll(dx:dy:)`
+    /// already uses and this project already trusts (D157), not a new invention, and it
+    /// avoids taking on trust in a second API's own centering semantics this session never
+    /// empirically probed. **Disclosed:** the reference's own fixed `0.25`/`-0.5` fractions
+    /// are only exactly center-preserving for a full 2× step; ported byte-for-byte anyway
+    /// since that's the reference's own actual (slightly-off-center for a 1.0→1.5 or
+    /// 1.0→0.75 step) behavior, not a bug this port should silently correct.
+    private func setZoom(to index: Int) {
+        guard Self.zoomLevels.indices.contains(index), let scrollView = enclosingScrollView else { return }
+        let clipView = scrollView.contentView
+        let visRect = clipView.bounds
+        let goingIn = index > zoomIndex
+        zoomIndex = index
+        // AppKit clamps this set to the live `[minMagnification, maxMagnification]` range
+        // already installed by a prior `applyEffectiveMagnification()` call -- e.g. zooming
+        // out to 0.5x on a viewport whose floor already sits above 0.5x lands at the floor,
+        // not at a value below it. The follow-up call below then only needs to recompute the
+        // floor for the *current* viewport and resync `zoomIndex` in the one case that set
+        // couldn't already handle (the floor itself changing since it was last installed).
+        scrollView.magnification = Self.zoomLevels[index]
+        applyEffectiveMagnification()
+        let fraction: CGFloat = goingIn ? 0.25 : -0.5
+        let newOrigin = NSPoint(
+            x: visRect.origin.x + fraction * visRect.size.width,
+            y: visRect.origin.y + fraction * visRect.size.height
+        )
+        let constrained = clipView.constrainBoundsRect(NSRect(origin: newOrigin, size: clipView.bounds.size))
+        clipView.scroll(to: constrained.origin)
+        scrollView.reflectScrolledClipView(clipView)
+    }
+
+    /// Wired to `GameView`'s top-bar "Zoom In" button (D160: no `NSToolbar` anywhere in this
+    /// project, so the existing HStack is the natural home, not the reference's toolbar
+    /// item). No-ops silently at `MAX_ZOOM` -- the reference's own bounds guard
+    /// (`if (zoomLevel < MAX_ZOOM)`), reproduced via `setZoom(to:)`'s `indices.contains` guard.
+    public func zoomIn() { setZoom(to: zoomIndex + 1) }
+    /// Wired to `GameView`'s top-bar "Zoom Out" button. No-ops silently at zoom index 0,
+    /// matching the reference's own `if (zoomLevel > 0)` guard.
+    public func zoomOut() { setZoom(to: zoomIndex - 1) }
+
+    /// The currently-selected discrete zoom level (`Self.zoomLevels[zoomIndex]`) -- exposed
+    /// read-only, same `public private(set)`-style pattern as `selectedBuilderTool` above,
+    /// for tests/future UI to inspect without exposing the mutable index itself.
+    public var currentZoomLevel: CGFloat { Self.zoomLevels[zoomIndex] }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Belt-and-suspenders alongside the `frameDidChangeNotification` observer above:
+    /// `AppKit`'s notification is tied to the classic `setFrame(_:)`/`setFrameSize(_:)`
+    /// setters, and this session couldn't independently confirm SwiftUI's own layout engine
+    /// always routes a HUD-driven resize through those exact setters rather than some other
+    /// (e.g. Auto Layout constraint) path that skips the notification. `viewWillDraw()` runs
+    /// before every draw pass regardless of *how* a resize happened, and `render(_:)` sets
+    /// `needsDisplay = true` every tick (file header) -- so within one tick of any resize,
+    /// this self-heals the floor even if the notification silently didn't fire.
+    /// `applyEffectiveMagnification()` itself is a cheap no-op once already at the target.
+    public override func viewWillDraw() {
+        super.viewWillDraw()
+        applyEffectiveMagnification()
+    }
+
     public override var isFlipped: Bool { true }
     public override var isOpaque: Bool { true }
 
@@ -255,6 +436,7 @@ public final class GameRenderView: NSView {
             guard let self else { return }
             self.window?.makeFirstResponder(self)
             self.centerOnLocalPlayerSpawn()
+            self.configureZoom()
         }
     }
 
@@ -369,12 +551,21 @@ public final class GameRenderView: NSView {
     /// heuristic -- it is exactly what the already-correct `seed` step in
     /// `GameViewFocusRoutingTests` does, and that step always landed on the exact requested
     /// point in every test run.
+    ///
+    /// **Milestone D.0 fix (D160 item 1's own item 4, empirically traced in the pre-brief):**
+    /// `clipView.bounds.origin` lives in the document's fixed logical space, so a fixed
+    /// `dx`/`dy` move produces a magnification-dependent on-screen distance once zoom exists
+    /// -- confirmed via a standalone probe before this fix was written (the pre-brief's §3).
+    /// Dividing by `scrollView.magnification` is exactly, coordinate-space-for-coordinate-
+    /// space, the same compensation the reference's own `64.0 / kZoomLevels[zoomLevel]`
+    /// performs (`GSXBoloController.m:1236-1306`), since its `visibleRect` lives in the
+    /// identical fixed-logical space `NSScrollView.magnification` reproduces natively.
     private func scroll(dx: CGFloat, dy: CGFloat) {
         guard let scrollView = enclosingScrollView else { return }
         let clipView = scrollView.contentView
         var origin = clipView.bounds.origin
-        origin.x += dx
-        origin.y += dy
+        origin.x += dx / scrollView.magnification
+        origin.y += dy / scrollView.magnification
         let constrained = clipView.constrainBoundsRect(NSRect(origin: origin, size: clipView.bounds.size))
         clipView.scroll(to: constrained.origin)
         scrollView.reflectScrolledClipView(clipView)

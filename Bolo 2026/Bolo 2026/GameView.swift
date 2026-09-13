@@ -100,6 +100,19 @@ struct GameView: View {
                 Button("Status") { showingStatus = true }
                 Button("Alliances") { showingAlliances = true }
                 Button("Messages") { showingMessages = true }
+                // Milestone D.0 (D160): zoom controls -- this project has no `NSToolbar`
+                // anywhere (unlike the reference's toolbar-button zoomIn:/zoomOut: items,
+                // `GSXBoloController.m:1483-1515`), so the existing top-bar `HStack` is the
+                // natural home. Bounds guards (no zoom below 0.5x/above 2.0x from a button
+                // press alone) live in `GameRenderView.setZoom(to:)` itself, not here.
+                Button("Zoom In") {
+                    session.renderView.zoomIn()
+                    reclaimMapFocus()
+                }
+                Button("Zoom Out") {
+                    session.renderView.zoomOut()
+                    reclaimMapFocus()
+                }
                 Button("Quit to Menu") {
                     Task { @MainActor in
                         await session.stop()
