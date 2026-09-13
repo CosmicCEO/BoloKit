@@ -2650,3 +2650,181 @@ reference's zoom/scroll behavior, not just legibility/no-regression — IMPLEMEN
 should identify what's oracle-comparable and what isn't before PARITY is activated.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-13 — Milestone D.0 pre-brief (zoom/scroll rendering)
+
+Docs-only session, no Swift written. Read `GameRenderView.swift` and `GameSession.swift` in full,
+`Reference/c/Mac OS X/GSXBoloController.m`'s zoom/scroll machinery in full, and grepped
+`GSBoloView.m` for zoom (zero hits — confirmed below). Ran one standalone off-repo `swiftc` probe
+(`/tmp/zoomprobe/probe.swift`, deleted after — not committed, not app code) to empirically resolve
+GO item 4 rather than reason about `NSClipView`/`NSScrollView.magnification` semantics from memory.
+
+#### 1. D81 AppKit-`NSView` choice — still holds, but the crossover is real and compounds with zoom
+
+D81 measured the crossover at ~32,000 tiles (3840×2160 @ scale 1.0, Canvas wins). Re-deriving that
+number confirms it's *exactly* "a near-4K viewport at zoom level 1.0": 3840/16 × 2160/16 = 240×135
+= 32,400 tiles. That reframes the risk precisely: it isn't that zoom by itself is expensive, it's
+that **zoom-out and window-resize compound multiplicatively** against the same tile-count ceiling.
+At v1's typical window (1280×800) zoomed out to the reference's own minimum (0.5×, `kZoomLevels[0]`
+below), visible tiles = (1280/0.5)/16 × (800/0.5)/16 = 160×100 = 16,000 — comfortably under the
+crossover. But `GameView.body` only sets `minWidth`/`minHeight` (`GameView.swift:91`), no max — a
+user maximizing to a 3840×2160 window *and* zooming out to 0.5× hits (3840/0.5)/16 × (2160/0.5)/16
+= 480×270 = **129,600 tiles**, ~4× past the measured crossover. **Recommendation: keep AppKit
+`NSView` (no hybrid, no Canvas), add a dynamic hard cap on the *minimum* magnification (i.e. the
+zoomed-out floor) as a function of the live viewport size** — not a fixed zoom-level cutoff, since
+the danger is the product of window size and zoom, not either alone. Concretely: for a chosen
+tile-count budget `T`, floor magnification `= sqrt(viewportWidth × viewportHeight / (256 × T))`,
+recomputed on window resize and clamped into the reference's own `[0.5, 2.0]` range as an outer
+bound. **Disclosed estimate, not a measurement:** I set `T` at a proposed 20,000 (~60% of the one
+crossover point D81 measured) for lack of any intermediate data point between 4,400 and 32,000 —
+flagging this as the number worth refining with a real benchmark during coding, not treating it as
+derived. This whole cap is new engineering with no reference counterpart (§5 below) — `GSBoloView.m`
+has zero zoom-tile-count logic of its own; the reference just always draws at whatever the toolbar's
+5 fixed levels allow, unbounded by window size, because it never needed a hybrid renderer at all.
+
+#### 2. Reference's own zoom/scroll idiom (`GSXBoloController.m`)
+
+- **Zero zoom logic in `GSBoloView.m` itself** (grepped, zero hits) — zoom lives entirely in the
+  controller; the view's `drawRect:` doesn't know or care about zoom level. That's a real, load-
+  bearing precedent for this port: `GameRenderView.draw(_:)`'s existing dirty-rect-bounded
+  `drawTerrain` loop (`GameRenderView.swift:421-456`) already handles an arbitrary dirty rect
+  generically — it needs no changes for zoom, only the new cap above needs to exist somewhere
+  upstream of it.
+- **5 discrete zoom levels**, `static const float kZoomLevels[] = {0.5, 0.75, 1.0, 1.5, 2.0}`
+  (`GSXBoloController.m:136-142`), `DEFAULT_ZOOM 2` (index → 1.0×), driven by two toolbar items
+  (`zoomIn:`/`zoomOut:`, `:1483-1515`), guarded by `MAX_ZOOM`/`0` bounds. No keyboard shortcut for
+  either found in this `.m` file (a `.xib` key-equivalent, if any, isn't in this repo's C-source
+  scope) — toolbar-button-only in the oracle.
+- **Mechanism:** `zoomIn:`/`zoomOut:` call `[boloView setFrameSize:size]` (scaled by zoom) then
+  **`[boloView setBoundsSize:NSMakeSize(4096, 4096)]`** (always fixed) — the classic pre-10.5 Cocoa
+  zoom trick: the view's own bounds-to-frame ratio becomes the zoom transform, so `drawRect:` code
+  stays in fixed 4096×4096 logical map units regardless of zoom. Recentering after a zoom step uses
+  `visibleRect` (which `-setBoundsSize:` puts in that same fixed logical space) plus a fractional-
+  viewport offset (`+0.25×`/`-0.5×` visRect size on in/out respectively), then `scrollPoint:`.
+- **Scroll compensation:** `scrollUp:`/`scrollDown:`/`scrollLeft:`/`scrollRight:` all move
+  `visibleRect.origin` by **`64.0 / kZoomLevels[zoomLevel]`** logical units (`:1236-1306`) — dividing
+  by zoom is deliberate: since `visibleRect` is in the fixed logical space, this keeps a *constant
+  64-screen-point* scroll distance at every zoom level. (The mouse-cursor-warp side effect in each of
+  those four methods is out of scope, same disclosed drop `GameRenderView.scroll(dx:dy:)`'s own
+  doc comment already made for the no-zoom case.)
+
+#### 3. GO item 4 — D157's `scroll(dx:dy:)` fix, empirically traced, not assumed
+
+This is the one claim GO item 4 explicitly ordered traced rather than assumed, so I built a
+standalone probe rather than reasoning about `NSClipView`/`NSScrollView.magnification` semantics
+from memory (`swiftc`, off-repo, deleted after — no app build needed, avoids the known `BoloGlyphs`
+hang entirely). Setup: a bare `NSScrollView` (400×300 frame) with a plain 4096×4096 `NSView` as
+`documentView`, `allowsMagnification = true`.
+
+**Measured, not assumed:**
+- `clipView.bounds.size` **scales inversely with `magnification`** and is in the *document's own
+  logical coordinate space* (same units as `docView.bounds`, fixed 4096×4096), not frame/screen-
+  point space: `(200, 150)` at `magnification = 2.0`, `(800, 600)` at `magnification = 0.5`, for the
+  same fixed 400×300 frame throughout.
+- A fixed `dx = dy = 64` move applied directly to `clipView.bounds.origin` (exactly what
+  `GameRenderView.scroll(dx:dy:)` does today) therefore produces a **magnification-dependent
+  on-screen distance**: 64 logical units at `magnification = 2.0` covers *more* screen space than at
+  `magnification = 1.0`, and *less* at `0.5`. **Confirmed: today's fixed-64 `scroll(dx:dy:)` does
+  NOT hold once zoom lands — it needs `dx / scrollView.magnification`, `dy / scrollView.magnification`**,
+  which is exactly, coordinate-space-for-coordinate-space, the same compensation the reference's
+  `64.0 / kZoomLevels[zoomLevel]` performs (its `visibleRect` is in the identical fixed-logical
+  space `NSScrollView.magnification` reproduces natively). This is a required code change, not a
+  "still holds" confirmation — logged as such rather than the GO text's more optimistic framing.
+- `centerViewport(on:)` (`GameRenderView.swift:405-417`) computes a target directly in `point ×
+  tileSize` document-space units and subtracts `contentView.bounds.size / 2` (also document-space,
+  and — per the first bullet — already magnification-aware automatically), then hands the result
+  straight to `clipView.scroll(to:)`. I reproduced this exact call shape in the probe (tile (50, 50)
+  at `magnification = 2.0`, visible size 200×150 → expected target `(700, 725)`) and the resulting
+  `clipView.bounds.origin` matched exactly. **`centerViewport(on:)`'s existing formula needs NO
+  change** — it's already correct under `NSScrollView.magnification`, confirmed empirically, not
+  just "should work."
+- **Not covered by this probe, still needs live verification in the coding phase:** clamping
+  behavior right at the map's edge post-zoom (`constrainBoundsRect`) — the probe never pushed a
+  scroll far enough to hit a boundary, so it exercises the coordinate space but not the clamp's
+  correctness at the extremes. Flagging honestly rather than extrapolating.
+
+#### 4. Mechanism choice: `NSScrollView.magnification`, not the reference's manual frame/bounds trick
+
+This is my own call per the GO text (item 2), made on a concrete constraint rather than "modernity":
+`§3`'s probe shows `NSScrollView.magnification`'s coordinate semantics are well-defined and — because
+they operate in the *same* fixed document-logical space the reference's own `setBoundsSize` trick
+produces — the reference's own compensation formulas (scroll ÷ zoom, tile-based centering) port over
+with no structural change, only the empirically-required divisor above. It also needs zero changes
+to `GameRenderView.draw(_:)`/`drawTerrain` (§2's `GSBoloView.m` zero-zoom-logic precedent holds
+either way). **Disclosed, unverified risk, flagged rather than assumed clean:** this `NSScrollView`
+is created and owned by SwiftUI's `ScrollView` (`GameView.swift:88`), not by this view — and D157's
+own root cause was exactly this: SwiftUI actively rewrites this same scroll view's `contentInsets`
+across layout passes in ways that surprised the original scroll fix. Setting `allowsMagnification`/
+`magnification` externally via `enclosingScrollView` could plausibly get fought or reset by SwiftUI
+on some future relayout the same way. **Cannot be verified by a standalone `swiftc` probe** (needs
+real SwiftUI view-update machinery) — this is the first thing to live-verify once code exists, with
+a mitigation precedent already established in this exact file if it turns out true: defensively
+re-assert magnification the same deferred-one-runloop-turn way `viewDidMoveToWindow()` already
+re-claims first responder and re-centers on spawn (`GameRenderView.swift:252-259`). If that
+verification comes back positive (SwiftUI does fight it), the reference's own frame/bounds trick
+becomes the safer choice instead, since it lives entirely inside a view this code owns outright —
+noting this explicitly as the fallback, not silently committing to one mechanism.
+
+#### 5. Oracle-comparable vs. new engineering (for PARITY, per GO item 5)
+
+**Oracle-comparable (fidelity check against `GSXBoloController.m`):**
+- The 5 discrete zoom levels as float literals (`0.5, 0.75, 1.0, 1.5, 2.0`, D18) and default index 2.
+- Zoom In/Out bounds guards (`MAX_ZOOM`/`0`, no zoom below 0.5× or above 2.0× from user action alone
+  — the new dynamic floor in §1 can raise the effective minimum further, never lower it below 0.5×).
+- The scroll-distance compensation (`dx/dy ÷ current zoom`, §3) — this is a direct fidelity port
+  once translated through the empirically-confirmed coordinate space, not a new invention.
+- Recentering behavior on a Zoom In/Out step (the reference's fractional-viewport-offset recenter) —
+  portable via `setMagnification(_:centeredAt:)`, PARITY can compare resulting behavior, not
+  necessarily byte-identical code structure given the mechanism swap in §4.
+
+**New engineering, no reference counterpart (legibility/no-regression check only):**
+- The dynamic minimum-magnification tile-count cap (§1) — `GSBoloView.m` has nothing analogous; it
+  never bounds cost by window size at all. PARITY should check this doesn't degrade legibility or
+  break zoom-out below whatever floor is live, not hunt for a fidelity gap against nothing.
+- The mechanism choice itself (`NSScrollView.magnification` vs. the reference's manual frame/bounds
+  trick, §4) — PARITY should compare resulting behavior/feel, not code-structure fidelity.
+- Native pinch-to-zoom/scroll-wheel-zoom gesture support, a free side effect of
+  `allowsMagnification = true` beyond the reference's toolbar-button-only UI. **Proposing this be
+  left enabled** (no extra code, matches modern macOS UX expectations) but disclosing it explicitly
+  as scope the GO text didn't name, for PLANNER to confirm or trim.
+
+#### 6. Concrete implementation plan
+
+- **UI control:** two buttons ("Zoom In"/"Zoom Out") added to `GameView`'s existing top-bar
+  `HStack` (`GameView.swift:94-111`, alongside Status/Alliances/Messages) — this project has no
+  `NSToolbar` anywhere in the SwiftUI shell, so that's the natural home, not a new toolbar. No
+  keyboard shortcut ported (§2: none found in the oracle's `.m` source); leaving pinch/scroll-wheel
+  zoom as the gestural alternative (§5).
+- **`GameRenderView` changes:** `scroll(dx:dy:)` divides both deltas by
+  `scrollView.magnification` (§3, required fix, not currently correct once zoom exists);
+  `centerViewport(on:)` unchanged (§3, confirmed already correct); new pure, static, directly
+  `swift test`-able function for the minimum-magnification floor computation (§1's formula),
+  matching this file's own `isDegenerateBuilderIndicatorLine` precedent (D146) of extracting pure
+  geometry logic out of the view for testability rather than only exercising it through the
+  `xcodebuild`-hosted NSView path.
+- **Test baseline:** the 757/757 `swift test` baseline is BoloKit-only and untouched by this wave
+  (no `Sources/BoloKit` changes proposed) — protected by construction, plus the new pure
+  minimum-magnification function adds to `BoloKitTests`-style coverage if placed alongside similar
+  pure `Bolo 2026Tests` helpers (need to confirm exact target placement against
+  `GameViewFocusRoutingTests`'s own precedent when coding). The existing 21/21 `xcodebuild`
+  UI-hosting suite gets extended, not just re-run: a magnification-aware variant of the existing
+  arrow-key symmetric-scroll test (same shape as `arrowKeysScrollTheMapBySymmetric64PointsInEachDirection`,
+  re-run at e.g. `magnification = 2.0` and `0.5` to confirm the ÷-magnification fix holds live, not
+  just in the standalone probe) plus new tests for the Zoom In/Out button actions and the dynamic
+  floor's live behavior on window resize.
+
+**Judgment calls flagged for PLANNER, not silently decided:**
+1. Mechanism choice (`NSScrollView.magnification` over the reference's manual trick) — §4, made on
+   the stated coordinate-space/ownership grounds, with the SwiftUI-fights-it risk explicitly
+   unverified pending live code.
+2. The `T = 20,000` tile-count budget (§1) is a placeholder estimate, not a measurement — proposing
+   to refine it with a real benchmark during coding rather than shipping the guess unquestioned.
+3. Leaving native pinch/scroll-wheel zoom enabled beyond the reference's button-only UI (§5) — a
+   disclosed scope addition, not dictated by the GO text.
+4. No keyboard shortcut for Zoom In/Out ported, matching the oracle's own toolbar-only UI as found —
+   flagging in case PLANNER wants one added as a disclosed departure in the *other* direction.
+
+No architecture changes outside `GameRenderView`/`GameView`'s top bar are proposed — `GameSession`'s
+tick loop and `render(_:)` contract (D82) are untouched; this is exactly the file `GO` text expected.
+
+[TO: PLANNER]
