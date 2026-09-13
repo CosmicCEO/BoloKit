@@ -3020,3 +3020,243 @@ the mechanism choice, and the native-gesture side effect. Also re-run both test 
 standing audit discipline.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-13 — Milestone D.0 (`9489037`+`4f506a5`) audited — **FAIL** (1 blocking finding)
+
+**Type:** post-commit audit. **Limitation note, corrected for this session:** the standing "no Swift
+toolchain, hand-trace only" caveat in `PARITY.md` did **not** apply here — this session had a full
+local toolchain and ran both suites plus three of its own live AppKit probes. The real limitations
+were: no interactive-gesture verification (no way to synthesize a real trackpad `NSEvent.magnify`),
+and IMPLEMENTER's `T`-calibration benchmark harness was not committed, so its numbers are not
+independently reproducible (see item 5c).
+
+**Verdict: FAIL.** All four *oracle-comparable* fidelity items (the 5 zoom levels, the bounds
+guards, the `÷ magnification` scroll compensation, and the recenter formula) are **correct against
+`GSXBoloController.m`** — I re-derived each one and they hold, including the subtle
+capture-visRect-before-the-geometry-change ordering. The failure is entirely in the *new
+engineering* half: the dynamic minimum-magnification floor interacts with `setZoom(to:)` to produce
+a **visible behavioral defect — Zoom In/Out presses that pan the map hundreds of points without
+changing zoom at all** — reproduced live at ordinary window sizes (F1).
+
+---
+
+#### Test execution — both suites re-run independently, reported counts CONFIRMED
+
+- `swift test` → **757/757**, exit 0, zero failures. Independently confirmed the split IMPLEMENTER
+  reported: "Test run with 205 tests in 14 suites passed" + "Test run with 552 tests in 11 suites
+  passed" = 757.
+- `xcodebuild test -scheme "Bolo 2026" -destination platform=macOS` → **"Test run with 31 tests in
+  6 suites passed after 8.781 seconds"**, `** TEST SUCCEEDED **`, no skips. Confirms the 21 → 31
+  extension; `grep -c "@Test" GameRenderViewZoomTests.swift` = **10** new tests, matching. D28
+  satisfied, no shrink.
+- D26 spot-check: `-ffp-contract=off` still present on `CXBolo` (`Package.swift:25`). ✓
+- D157 item-3 no-regression — **separately probed, since the existing suite predates these buttons.**
+  `GameViewFocusRoutingTests` surviving the green 31/31 run only proves the *existing* routing still
+  works, not that the *two new* top-bar buttons don't steal focus — and focus theft by top-bar
+  buttons was D157's own original (later disproven) hypothesis, so it deserved its own check. I ran
+  a throwaway probe against the real hosted `GameView`: the new "Zoom In"/"Zoom Out" buttons are
+  **not `NSButton`-backed at all** (SwiftUI renders them natively — a full walk of the `NSView` tree
+  found no `NSButton` with either title), so they are not in AppKit's key-view loop the way D157's
+  `.bordered` buttons were; `GameRenderView` was still `window.firstResponder` after the interaction;
+  and all four arrow keys still scrolled. **Bonus independent oracle confirmation of fidelity item 3
+  at the default zoom:** the measured moves were exactly left `-64`, right `+64`, down `+64`, up
+  `-64` document units at magnification 1.0 — i.e. exactly `64.0 / kZoomLevels[zoomLevel]` with
+  `zoomLevel = DEFAULT_ZOOM`, matching `GSXBoloController.m:1243/1261/1279/1297`. No regression.
+
+---
+
+#### FIDELITY CHECKS (oracle-comparable) — all four PASS
+
+**1. Zoom levels + default index — PASS.** `GSXBoloController.m:136-142` declares
+`kZoomLevels[] = {0.5, 0.75, 1.0, 1.5, 2.0}`; `:144` `#define DEFAULT_ZOOM 2`; `:145`
+`#define MAX_ZOOM (... - 1)` = 4; `:496` `zoomLevel = DEFAULT_ZOOM`. Swift
+`GameRenderView.swift:124` `static let zoomLevels: [CGFloat] = [0.5, 0.75, 1.0, 1.5, 2.0]` and
+`:125` `defaultZoomIndex = 2`, `:127` `zoomIndex` initialized from it. Exact match, index 2 → 1.0×.
+All five values are exactly representable in binary FP, so the `float`→`CGFloat` widening is
+lossless — D18 is not implicated (this is AppKit view geometry, not position/physics/trig, and the
+AppKit API is natively `CGFloat`).
+
+**2. Bounds guards — PASS.** Reference guards are `if (zoomLevel < MAX_ZOOM)` (`:1487`) and
+`if (zoomLevel > 0)` (`:1504`). Swift collapses both into one guard,
+`GameRenderView.swift:244` `guard Self.zoomLevels.indices.contains(index)`, reached via
+`zoomIn() { setZoom(to: zoomIndex + 1) }` (`:271`) and `zoomOut() { setZoom(to: zoomIndex - 1) }`
+(`:274`). At index 4, `5` is not in `0..<5` → silent no-op; at index 0, `-1` is not → silent no-op.
+Behaviorally identical to the two C guards. Live-verified in my own probe (4th consecutive
+`zoomOut()` moved nothing at all).
+
+**3. Scroll-distance compensation — PASS, and it is the correct fidelity equivalent.**
+`GameRenderView.swift:567-568` now reads `origin.x += dx / scrollView.magnification` /
+`origin.y += dy / scrollView.magnification`, with `origin = clipView.bounds.origin`. Callers pass
+±64 (`GameRenderView.swift:522-525`, y-signs flipped for `isFlipped = true`). The reference does
+`rect.origin.y += 64.0/kZoomLevels[zoomLevel]` on `[boloView visibleRect]` at `:1243`, `:1261`,
+`:1279`, `:1297` (all four directions). I confirmed the two coordinate spaces really are the same
+space: the reference sets `frame = 4096*zoom` while pinning `bounds = 4096×4096`
+(`:1491-1494`), so its `visibleRect` is in a fixed 4096-unit logical space — and my own live probe
+confirmed `NSScrollView.magnification` reproduces exactly that (`clipBounds` measured 1600×1200 at
+1.0× and 450×350 at 2.0× for a 900-pt-wide scroll view, i.e. document-logical units scaled by
+magnification). So `64 / magnification` logical units = 64 *screen* points in both, constant across
+zoom. Equivalent, not merely analogous.
+
+**4. Recenter formula — PASS, and the claim survives direct verification, including its ordering.**
+The claim was worth checking precisely because the C captures `visRect` in a non-obvious place.
+Reference `zoomIn:` (`:1483-1498`) ordering is: `zoomLevel++` (`:1488`) → **`visRect = [boloView
+visibleRect]` (`:1490`)** → `setFrameSize`/`setBoundsSize` (`:1492-1494`) → `scrollPoint:` with
+`visRect.origin + 0.25*visRect.size` (`:1495`). Because the frame/bounds resize happens *after* the
+capture, `visRect` is the **pre-zoom** rect. Swift matches this exactly:
+`GameRenderView.swift:246` `let visRect = clipView.bounds` is read **before**
+`:255` `scrollView.magnification = Self.zoomLevels[index]`, and `:257-262` then applies
+`fraction * visRect.size` with `fraction = goingIn ? 0.25 : -0.5` — matching `:1495`'s `+0.25` and
+`:1512`'s `-0.5`. Verified the mathematically-correct center-preserving offset is
+`oldSize * (1 - z_old/z_new) / 2`, which equals `+0.25` only for an exact 2× step and `-0.5` only
+for an exact ½× step; for the 1.0→1.5 and 1.5→1.0 steps the true values are `+0.167`/`-0.25`, so
+the reference genuinely is slightly off-centre on the non-2× steps. **IMPLEMENTER disclosed this
+precisely and correctly** and ported the reference's actual behavior rather than silently
+correcting it — the right call under D24. The `scrollPoint:` → `constrainBoundsRect` +
+`clipView.scroll(to:)` substitution is D157's already-approved idiom and clamps equivalently.
+
+---
+
+#### FINDING F1 (BLOCKING) — the floor makes Zoom In/Out pan the map with no zoom change
+
+`setZoom(to:)` applies its recenter **unconditionally**, after `applyEffectiveMagnification()`, with
+no check that the magnification actually moved. When `NSScrollView` clamps the requested level to
+`minMagnification`, the zoom silently doesn't happen but **the pan still does**.
+
+The reason the resync never rescues this is an exact-equality gap. `applyEffectiveMagnification()`
+(`:218-229`) sets `scrollView.minMagnification = floor`, then `:226`
+`guard scrollView.magnification < floor else { return }`. I probed AppKit directly with a
+standalone binary: setting `magnification = 0.5` while `minMagnification = 0.5229` lands on
+**exactly** `0.5229` — so `magnification < floor` is exactly `false`, the guard returns, and
+`zoomIndex` is never resynced. (The same probe confirmed IMPLEMENTER's other stated premise is
+right: raising `minMagnification` above a current value does **not** retroactively clamp it — so
+the conditional intervention genuinely is needed, it's just written with the wrong comparison.)
+
+**Live reproduction** (temporary probe test in a throwaway worktree, hosting the real `GameView`,
+since no committed test covers this path — removed after, nothing committed):
+
+At a **2400×1600** window (`scrollView.frame` 2400×1325, floor = 1.1748×, start 1.5×):
+
+| press | magnification | map panned | `currentZoomLevel` reports |
+|---|---|---|---|
+| Zoom Out 1 | 1.5 → 1.1748 | 914 pt | 1.0 |
+| Zoom Out 2 | 1.1748 → **1.1748 (no change)** | **943 pt** | 0.75 |
+| Zoom Out 3 | 1.1748 → **1.1748 (no change)** | **542 pt** | 0.5 |
+| Zoom Out 4 | no change | 0 pt (index guard) | 0.5 |
+| Zoom In 1 | 1.1748 → **1.1748 (no change)** | **583 pt** | 0.75 |
+| Zoom In 2 | 1.1748 → **1.1748 (no change)** | **583 pt** | 1.0 |
+| Zoom In 3 | 1.1748 → 1.5 | 583 pt | 1.5 |
+
+That is **four consecutive button presses that jump the viewport by 540–940 points with zero zoom
+change** — the map lurches sideways when the user asked to zoom. Also reproduced at **1600×1200**
+(floor 0.9129×): one phantom-pan press of ~756 pt. Not exotic sizes; this is any large window or a
+maximized window on a common display.
+
+Three consequences, in severity order:
+1. **The phantom pan** — visible, wrong, and the user's only recovery is arrow-key scrolling back.
+2. **`currentZoomLevel` (`:279`) misreports** — it returns `zoomLevels[zoomIndex]` regardless of the
+   clamp, so it can claim 0.75 while the screen is at 1.1748. This is a `public` accessor, and it is
+   the value any future zoom-percentage UI would display.
+3. It **directly contradicts the code's own design note** at `:238-242` ("never let the button state
+   and the screen silently diverge") — which is what makes this a defect rather than a judgment call.
+   Note this is *not* the same bug the test suite already caught mid-session; it's a second,
+   still-live instance of the same class.
+
+**Why the suite missed it — a real coverage gap, and a disclosed one.**
+`zoomOutStepsThroughAllFiveDiscreteLevelsThenNoOpsAtTheBottom`
+(`GameRenderViewZoomTests.swift:250-267`) was deliberately moved off the default 900×700 host to
+640×480, with the comment at `:251-255` explaining it does so specifically because "the dynamic
+floor... already sits at ~0.523x... a real, correct enforcement **this test isn't trying to
+exercise**." Dodging the floor was reasonable for a bounds-guard test, but **no other test picked
+that path up**, and it's the path that's broken. `windowResizeRaises...` (`:325-346`) covers only
+the `magnification < floor` strict-inequality branch, which is the branch that works. A regression
+test should assert that a `setZoom` whose magnification does not move also does not move the clip
+origin. Note also that 900×700 (floor 0.5229×) happens to be one of the few sizes where this
+produces no phantom pan at all — only the misreport — so the default host size was, by bad luck,
+the least revealing choice available.
+
+**Not caused by `T = 9,000`.** At the pre-brief's original `T = 20,000` the same 2400×1325 viewport
+still floors at 0.788×, still stranding two discrete levels. Changing `T` narrows the dead zone but
+does not remove it; the fix belongs in `setZoom(to:)`.
+
+---
+
+#### LEGIBILITY / NO-REGRESSION ITEMS
+
+**5a. The floor formula — correct.** `minimumMagnification` (`:159-163`) computes
+`sqrt(w*h / (256*T))`. Re-derived independently: visible tiles = `(w/mag/16) × (h/mag/16)` =
+`w*h/(256*mag²)`; setting that equal to `T` gives exactly that expression. ✓ Clamping to `[0.5, 2.0]`
+and the degenerate-input guard are sane. Live values match the formula to 5+ digits (measured floor
+0.9128709 at 1600×1200; 1.1748227 at 2400×1325).
+
+**5b. The floor is fed the *right* rectangle — I checked this and the concern does not hold.** I
+suspected `applyEffectiveMagnification()` (`:219`) was wrong to use `scrollView.frame.size` rather
+than the HUD-inset visible area (insets are live and non-trivial: I measured
+`NSEdgeInsets(top: 48, left: 56, bottom: 0, right: 228)`, the same figures D157 recorded), which
+would have made the floor ~1.25× too aggressive and made PLANNER's "engages at everyday sizes"
+escalation an artifact. **It does not:** my live probe measured `clipBounds` = the *full*
+1600×1200 at 1.0×, identical to `scrollView.frame.size`. `contentInsets` shifts the scrollable
+range but does not shrink the clip view's bounds — the map really does draw its full width
+*underneath* the translucent HUD panels (which is exactly why D157 had to give those panels a
+`.background()`). So `scrollView.frame.size` is the correct magnitude for a draw-cost cap, and
+PLANNER's 9,844-tiles-at-900×700 figure is real, not a measurement artifact.
+
+**5c. Benchmark methodology — sound in its reasoning, but NOT independently reproducible (note).**
+Discarding the offscreen `bitmapImageRepForCachingDisplay`/`cacheDisplay` ladder in favour of a live
+`NSWindow` + `displayIfNeeded()` ladder is the right call on the merits: `cacheDisplay` re-renders
+CPU-side at the rep's backing scale and skips the GPU compositing path entirely, so it measures a
+different thing. The sanity anchor is the strongest part of the argument — reconciling to 7.8 ms at
+~4,000 tiles against D81's independently-measured 6.7–7.3 ms is a genuine apples-to-apples check,
+not a self-consistency check. Choosing the 16.67 ms display-refresh budget over D82/D83's 20 ms
+*simulation-tick* budget is also correctly reasoned, since `draw(_:)` runs on AppKit's display
+cycle. **But the harness was not committed**, so I cannot verify whether its per-rung "tile count"
+labels were derived from window area or clip area, nor re-run it. `T = 9,000` is therefore
+*plausible and well-argued* but not re-derivable by a later auditor. Recommend the harness be
+committed (even as a disabled/manual test) if `T` is ever revisited. Non-blocking.
+
+**6. `NSScrollView.magnification` mechanism / "SwiftUI doesn't fight it" — verified, not trusted.**
+This claim is backed by a **committed, executing** test, not just a session diagnostic:
+`magnificationSurvivesWindowResizeAndAPureLayoutPass` (`GameRenderViewZoomTests.swift:68-84`)
+asserts magnification survives both a real `setContentSize` resize and a layout-only pass, and it
+passed in my own 31/31 run. Keeping it permanently is the right call (same discipline as D70/D81).
+Limitation: it sets magnification programmatically, so it proves SwiftUI doesn't *reset* the
+property across relayout — it does not prove a real trackpad gesture survives. The mechanism choice
+stands; D160 item 1's fallback is not needed.
+
+**7. Native pinch/scroll-wheel zoom (D160 item 3) — the reported fix is real and correct, with one
+caveat.** I confirmed the fix by reading the shipped code, not the description:
+`applyEffectiveMagnification()` (`:218-229`) now returns early whenever magnification is already
+≥ floor, so a live gesture value is left alone; AppKit's own `minMagnification`/`maxMagnification`
+bound the gesture *during* it rather than correcting it after. **It genuinely does not re-fight a
+user gesture.** Caveat (non-blocking, and arguably inherent to mixing a continuous gesture with a
+discrete index): a pinch never updates `zoomIndex`, so after pinching to e.g. 1.9× the next
+"Zoom In" press jumps the view *down* to 1.5×. Worth a disclosed line in `PLAN.md` if native
+gestures stay enabled.
+
+---
+
+#### CITATION DRIFT (not defects)
+
+- **PLANNER's activation entry** says the bug was "fought native pinch/scroll-wheel zoom via a
+  per-frame `viewWillDraw()` override... Fixed by switching to `minMagnification`/`maxMagnification`",
+  which reads as though the override was removed. **It was not** — `viewWillDraw()` is still present
+  and still calls `applyEffectiveMagnification()` every frame (`GameRenderView.swift:294-297`). What
+  changed is that the *callee* became conditional. The current arrangement is safe (see item 7), so
+  this is wording drift in PLANNER's summary only. IMPLEMENTER's own report is accurate on this
+  point — it correctly blames `applyEffectiveMagnification()`, not the hook.
+- All other `file:line` citations in IMPLEMENTER's report checked out exactly: `:136-144`
+  (`kZoomLevels`/`DEFAULT_ZOOM`/`MAX_ZOOM`), `:1483-1515` (`zoomIn:`/`zoomOut:`), `:1236-1306` (the
+  four scroll actions). No drift found.
+
+---
+
+#### Recommendation
+
+Not a wave-scale rework — F1 is a narrow fix in one function (`setZoom(to:)` should not apply its
+recenter when the magnification did not actually change, and should resync `zoomIndex` to the level
+actually in effect when AppKit clamps — the `<` at `:226` needs to handle the clamped-to-equal
+case). It needs a regression test on the floor-clamped path the current suite explicitly steps
+around, at a host size where the floor strands at least one discrete level. Everything else in this
+wave — all four fidelity items, both test suites, the mechanism choice, the gesture fix — is sound
+and needs no change.
+
+[TO: PLANNER] [TO: IMPLEMENTER]
