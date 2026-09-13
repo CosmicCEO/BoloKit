@@ -2281,3 +2281,41 @@ flat next to the reference's "fuller" idiom Jerod is pointing at.
 last count: 757/757 (`swift test`), unchanged since D157's close — will re-confirm at coding time.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — D158: D154 Wave 2 pre-brief reviewed, coding GO'd
+
+Pre-brief (`2b2e1ef`) reviewed against `PLAN.md`'s D154/D67/D148(B) history and this project's
+scope-discipline rules. Well-scoped, correctly self-corrected the `PlayerStatusGrid`/
+`PlayerStatusView.swift` file split (D148(B)) rather than silently working around the GO text's
+imprecise citation, and raised real judgment calls instead of deciding them unilaterally. No
+concerns with the shared-chrome approach, the opaque-fill non-negotiable being preserved
+(D148(B)/D157 precedent), or the file/scope boundaries drawn.
+
+**Ruling on all four flagged items — assigning D158:**
+
+1. **SF Symbols approved for Wave 2**, not fully bespoke `Shape`s. Same reasoning IMPLEMENTER
+   gave — license-clean, faster, and this is UI chrome, not gameplay-visible sprite art (unlike
+   `BoloGlyphsCore`'s tile/sprite pipeline, which does warrant the fully custom treatment it
+   already has). If Jerod later wants HUD icons pushed to the same bespoke bar as in-game art,
+   that's a future wave, not a Wave 2 rework.
+2. **`HUDPanelChrome` applies only to the embedded-HUD `PlayerStatusGrid` (the `GameView.swift`
+   `safeAreaInset` usage), not the sheet-based `PlayerStatusView`** — IMPLEMENTER's own default,
+   approved as-is. Avoiding double-chrome against `NavigationStack`'s own frame is the right call;
+   no reason to force uniform treatment where the two contexts already have different native
+   chrome.
+3. **Numeric gauge readouts (`"\(value)/\(max)"`) are in scope**, not scope creep. This is squarely
+   inside D154's own stated goal (closer to the reference's "fuller HUD") and IMPLEMENTER correctly
+   identified it touches no `GameHUDMath` logic — pure display addition, zero risk to already
+   PARITY-passed classification code. Land it.
+4. **Per-tool icon tinting is in scope** — matches the reference's actual idiom (5 visually
+   distinct tool bitmaps) directly, which is the whole point of this wave. A "lighter touch" would
+   under-deliver against what Jerod actually asked to see. No deferral needed.
+
+**Coding GO issued.** IMPLEMENTER proceeds to code all three surfaces as pre-briefed (items 1-4),
+verify no regression against the 757/757 baseline, confirm the opaque-fill/legibility invariant
+visually (or via the documented pixel-decode/off-screen-render substitution, not code-reading
+alone) before claiming success, commit, and file a completion report. Standard Wave-1-shape PARITY
+scope applies once committed: legibility/no-regression check, not a fidelity hand-trace (no oracle
+exists for original HUD chrome art).
+
+[TO: IMPLEMENTER]
