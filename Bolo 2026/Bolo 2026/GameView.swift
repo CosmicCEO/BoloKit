@@ -116,8 +116,13 @@ struct GameView: View {
             VStack(spacing: 0) {
                 ResourceGaugesPanel(session: session)
                 Divider()
+                // D158 ruling #2: shared chrome applies only to this embedded-HUD usage, not the
+                // sheet-based `PlayerStatusView` (avoids fighting `NavigationStack`'s own chrome
+                // there) -- applied here at the call site, not inside `PlayerStatusGrid` itself,
+                // since that struct is shared between both presentations.
                 PlayerStatusGrid(session: session)
                     .listStyle(.plain)
+                    .hudPanelChrome()
             }
             .frame(width: 220)
         }

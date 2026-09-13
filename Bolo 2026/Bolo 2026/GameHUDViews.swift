@@ -15,6 +15,91 @@
 import BoloKit
 import SwiftUI
 
+// MARK: - Shared HUD chrome (D154 Wave 2 / D158)
+
+/// Shared beveled-panel treatment for the three always-visible HUD surfaces (`BuilderToolStrip`,
+/// `ResourceGaugesPanel`, and -- applied at the call site in `GameView.swift`, not here --
+/// `PlayerStatusGrid`'s embedded-HUD usage only, per D158 ruling #2). Opaque fill is
+/// non-negotiable, unchanged from D148(B)/D157's flat `Color(nsColor: .windowBackgroundColor)`
+/// background: the original bug this port fixed was text rendering directly over the (frequently
+/// bright/busy) map, so translucency (`.regularMaterial` or similar) risks reproducing that
+/// legibility problem. The two overlaid `strokeBorder` gradients are the "beveled metal panel"
+/// read the reference's `StatusBackground.png` idiom has -- original procedural drawing, no
+/// pixel/palette data taken from that asset (D67/D154 posture).
+struct HUDPanelChrome: ViewModifier {
+    var cornerRadius: CGFloat = 8
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.4), Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.45)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+    }
+}
+
+extension View {
+    func hudPanelChrome(cornerRadius: CGFloat = 8) -> some View {
+        modifier(HUDPanelChrome(cornerRadius: cornerRadius))
+    }
+}
+
+/// D154 Wave 2: the pillbox tool's icon deliberately reuses Wave 1's already-approved 8-spoke
+/// sunburst glyph language (`Sources/BoloGlyphsCore/GlyphSource.swift`'s `drawPill`) rather than
+/// inventing a second visual vocabulary for the same object -- same 8 spokes radiating from a
+/// central hub, redrawn procedurally as a SwiftUI `Shape` (vector, not `Canvas16` pixel data)
+/// since this lives in a different rendering context (HUD chrome vs. in-game tile art).
+struct PillSunburstShape: Shape {
+    nonisolated func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let short = min(rect.width, rect.height)
+        let innerRadius = short * 0.16
+        let outerRadius = short * 0.5
+        let halfWidth = short * 0.07
+        for i in 0..<8 {
+            let angle = CGFloat(i) * (.pi / 4)
+            let dx = cos(angle)
+            let dy = sin(angle)
+            let perp = CGVector(dx: -dy, dy: dx)
+            let start = CGPoint(x: center.x + dx * innerRadius, y: center.y + dy * innerRadius)
+            let end = CGPoint(x: center.x + dx * outerRadius, y: center.y + dy * outerRadius)
+            path.move(to: CGPoint(x: start.x + perp.dx * halfWidth, y: start.y + perp.dy * halfWidth))
+            path.addLine(to: CGPoint(x: end.x + perp.dx * halfWidth, y: end.y + perp.dy * halfWidth))
+            path.addLine(to: CGPoint(x: end.x - perp.dx * halfWidth, y: end.y - perp.dy * halfWidth))
+            path.addLine(to: CGPoint(x: start.x - perp.dx * halfWidth, y: start.y - perp.dy * halfWidth))
+            path.closeSubpath()
+        }
+        path.addEllipse(in: CGRect(
+            x: center.x - innerRadius, y: center.y - innerRadius,
+            width: innerRadius * 2, height: innerRadius * 2
+        ))
+        return path
+    }
+}
+
 // MARK: - Build-tool strip
 
 /// A vertical strip of the 5 builder-tool choices (`BuilderCommandKind`), supplementing D137's
@@ -42,8 +127,27 @@ struct BuilderToolStrip: View {
                         session.renderView.selectBuilderTool(tool)
                         reclaimFocus()
                     } label: {
-                        Text(Self.label(for: tool))
-                            .frame(width: 36, height: 28)
+                        VStack(spacing: 2) {
+                            // D158 ruling #1: SF Symbols for Wave 2 (not fully bespoke `Shape`s),
+                            // except the pill icon, which reuses Wave 1's own sunburst glyph
+                            // language instead of a generic system symbol. D158 ruling #4:
+                            // per-tool tint so the 5 tools read as visually distinct at a glance,
+                            // not just by selection state.
+                            if tool == .pill {
+                                PillSunburstShape()
+                                    .fill(Self.tint(for: tool))
+                                    .frame(width: 15, height: 15)
+                            } else {
+                                Image(systemName: Self.iconName(for: tool))
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Self.tint(for: tool))
+                            }
+                            // Text kept as a visible fallback/accessibility label, not deleted --
+                            // D154's pre-brief specifically called out not removing it.
+                            Text(Self.label(for: tool))
+                                .font(.system(size: 8))
+                        }
+                        .frame(width: 36, height: 28)
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
@@ -58,10 +162,7 @@ struct BuilderToolStrip: View {
                 }
             }
             .padding(6)
-            // Opaque, not `.regularMaterial`: the original bug report was text rendering directly
-            // over the (frequently bright/busy) map, so translucency risks reproducing the same
-            // legibility problem it's meant to fix.
-            .background(Color(nsColor: .windowBackgroundColor))
+            .hudPanelChrome()
         }
     }
 
@@ -72,6 +173,29 @@ struct BuilderToolStrip: View {
         case .wall: return "Wall"
         case .pill: return "Pill"
         case .mine: return "Mine"
+        }
+    }
+
+    /// SF Symbol names, verified to resolve (`NSImage(systemSymbolName:accessibilityDescription:)`)
+    /// on this project's toolchain/deployment target (macOS 27) before landing. `.pill` isn't
+    /// listed here -- it uses `PillSunburstShape` instead, see the call site above.
+    static func iconName(for tool: BuilderCommandKind) -> String {
+        switch tool {
+        case .tree: return "leaf.fill"
+        case .road: return "road.lanes"
+        case .wall: return "square.grid.3x3.fill"
+        case .mine: return "xmark.seal.fill"
+        case .pill: return "" // unused -- PillSunburstShape instead
+        }
+    }
+
+    static func tint(for tool: BuilderCommandKind) -> Color {
+        switch tool {
+        case .tree: return .green
+        case .road: return .gray
+        case .wall: return .brown
+        case .mine: return .red
+        case .pill: return .blue
         }
     }
 }
@@ -109,17 +233,16 @@ struct ResourceGaugesPanel: View {
                 ? snapshot.players[localPlayer].trees : 0
             let base = Self.nearestBase(snapshot: snapshot)
             VStack(alignment: .leading, spacing: 8) {
-                gauge(label: "Shells", value: Int(snapshot.local.shells), max: maxShells, color: .orange)
-                gauge(label: "Mines", value: mines, max: maxMines, color: .purple)
-                gauge(label: "Armor", value: Int(snapshot.local.armour), max: maxArmour, color: .green)
-                gauge(label: "Trees", value: trees, max: maxTrees, color: .brown)
-                gauge(label: "Base Armor", value: Int(base?.armour ?? 0), max: maxBaseArmour, color: .green)
-                gauge(label: "Base Shells", value: Int(base?.shells ?? 0), max: maxBaseShells, color: .orange)
-                gauge(label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
+                gauge(icon: "burst.fill", label: "Shells", value: Int(snapshot.local.shells), max: maxShells, color: .orange)
+                gauge(icon: "xmark.seal.fill", label: "Mines", value: mines, max: maxMines, color: .purple)
+                gauge(icon: "shield.fill", label: "Armor", value: Int(snapshot.local.armour), max: maxArmour, color: .green)
+                gauge(icon: "leaf.fill", label: "Trees", value: trees, max: maxTrees, color: .brown)
+                gauge(icon: "shield.fill", label: "Base Armor", value: Int(base?.armour ?? 0), max: maxBaseArmour, color: .green)
+                gauge(icon: "burst.fill", label: "Base Shells", value: Int(base?.shells ?? 0), max: maxBaseShells, color: .orange)
+                gauge(icon: "xmark.seal.fill", label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
             }
             .padding(8)
-            // Same opaque choice as `BuilderToolStrip` above, same reason.
-            .background(Color(nsColor: .windowBackgroundColor))
+            .hudPanelChrome()
         }
     }
 
@@ -145,12 +268,28 @@ struct ResourceGaugesPanel: View {
         return best
     }
 
+    /// D158 ruling #3: pure display addition (icon + `"\(value)/\(max)"` trailing readout) --
+    /// `GameHUDMath.gaugeFraction` itself is untouched, so `GameHUDViewsTests.swift`'s existing
+    /// coverage of it stays valid as-is.
     @ViewBuilder
-    private func gauge(label: String, value: Int, max: Int, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            ProgressView(value: Double(GameHUDMath.gaugeFraction(value: value, max: max)))
-                .tint(color)
+    private func gauge(icon: String, label: String, value: Int, max: Int, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(color)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(label).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(value)/\(max)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                ProgressView(value: Double(GameHUDMath.gaugeFraction(value: value, max: max)))
+                    .tint(color)
+            }
         }
     }
 }

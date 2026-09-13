@@ -75,22 +75,42 @@ struct PlayerStatusGrid: View {
     private func list(snapshot: GameState) -> some View {
         let connectedPlayerIndices = snapshot.players.indices.filter { snapshot.players[$0].connected }
         return List {
-            Section("Players") {
+            Section {
                 ForEach(connectedPlayerIndices, id: \.self) { index in
                     playerRow(index, snapshot: snapshot)
                 }
+            } header: {
+                Label("Players", systemImage: "person.fill")
             }
-            Section("Pillboxes") {
+            Section {
                 ForEach(Array(snapshot.pills.enumerated()), id: \.offset) { offset, pill in
                     ownershipRow(name: "Pillbox \(offset)", owner: pill.owner, snapshot: snapshot)
                 }
+            } header: {
+                // D154 Wave 2: reuses the same `PillSunburstShape` glyph language as the
+                // builder-tool strip's pill icon, per D158's "no second visual vocabulary" call.
+                HStack(spacing: 4) {
+                    PillSunburstShape().fill(Color.blue).frame(width: 10, height: 10)
+                    Text("Pillboxes")
+                }
             }
-            Section("Bases") {
+            Section {
                 ForEach(Array(snapshot.bases.enumerated()), id: \.offset) { offset, base in
                     ownershipRow(name: "Base \(offset)", owner: base.owner, snapshot: snapshot)
                 }
+            } header: {
+                // Reuses D152's house/fort silhouette language via the closest-matching SF Symbol
+                // rather than inventing a second base glyph vocabulary (D158 ruling #1: SF
+                // Symbols approved for Wave 2 chrome).
+                Label("Bases", systemImage: "house.fill")
             }
         }
+        // D154 Wave 2: lets the shared `HUDPanelChrome` fill (applied at the embedded-HUD call
+        // site in `GameView.swift`, per D158 ruling #2) show through instead of the List's own
+        // default opaque background fighting it. Harmless in the sheet-based `PlayerStatusView`
+        // below, which has no competing background to fight -- just shows the window background,
+        // same as before.
+        .scrollContentBackground(.hidden)
     }
 
     private func status(forPlayer index: Int, snapshot: GameState) -> OwnershipStatus {
