@@ -2621,3 +2621,32 @@ are recorded for whoever next touches this file, not queued as follow-up work no
 remains named, not GO'd — its own future pre-brief/GO cycle, same as before.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-13 — Milestone D.0 pre-brief GO'd (zoom/scroll rendering)
+
+Jerod's direct call: proceed with Milestone D.0 next, ahead of D154 Wave 3. Milestone C closed
+2026-09-10, satisfying D93's gating condition, so D.0 is unblocked — D.1/D.2 already closed by
+D151, this is the milestone's only remaining item.
+
+**Pre-brief GO'd: Milestone D.0 — zoom/scroll rendering.** Scope per the Milestone D wave-table row
+and D81's own forward note: D81 measured AppKit `NSView` beating SwiftUI `Canvas` at v1's actual
+viewport sizes (1280×800, ~4,400 tiles) but found `Canvas` wins at near-full-map sizes (3840×2160,
+~32,000 tiles) — explicitly flagged there as "Milestone D's problem," not resolved. D.0's job is to
+add real zoom/scroll rendering on top of Wave 7.2's existing `GameRenderView` (`NSView`-based,
+externally-invalidated `setNeedsDisplay`, per D81), which today renders the whole map at a fixed
+scale with no zoom control at all. IMPLEMENTER's own pre-brief should: (1) confirm whether D81's
+AppKit choice still holds once zoom/variable-viewport-size is added, or whether the crossover point
+D81 measured means a hybrid/hard-cap approach is warranted (D81 suggested "a recommended future
+hard cap on rendered-tile-count" as one option, not dictated here); (2) survey the reference's own
+zoom/scroll UI (`GSXBoloController.m`/`GSBoloView.m`) for the idiom being ported, same as every
+prior UI wave; (3) flag interaction with the existing arrow-key scroll path (D157, `GameRenderView.
+scroll(dx:dy:)`, already fixed for the no-zoom case — zoom changes the coordinate math that fix
+relies on, worth confirming explicitly rather than assuming it still holds). No architecture
+changes outside `GameRenderView`/its `NSViewRepresentable` wrapper expected, but IMPLEMENTER's own
+pre-brief is the place to confirm or correct that assumption. Standard PARITY scope for this wave:
+this is genuine engineering with a real reference UI to compare against (unlike D154's original
+art), so PARITY's audit here can reasonably include some fidelity comparison against the
+reference's zoom/scroll behavior, not just legibility/no-regression — IMPLEMENTER's pre-brief
+should identify what's oracle-comparable and what isn't before PARITY is activated.
+
+[TO: IMPLEMENTER]
