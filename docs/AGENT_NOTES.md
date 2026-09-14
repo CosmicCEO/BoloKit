@@ -3895,3 +3895,45 @@ adds, does not replace:
 `GameRenderViewZoomTests.swift` notes not touched.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D163: D154 Wave 3 pre-brief reviewed, coding GO'd
+
+Reviewed `9ad3dd4` against D162's pre-brief GO and D45. D45 check is real work, not a restatement:
+C.4's `GameSession.messages`/`ChatMessage`/`MessagesView` sheet is a chat-only slice of C's one
+`printmessage` sink; the always-visible bar and every `MSGGAME` generator are still missing.
+Overlap **PARTIAL** accepted. Do not invent a second array.
+
+**Oracle layout correction accepted** (D41: preserve the invariant, not the mechanism). xbolo's
+sink is a floating `messagesPanel` (`GSXBoloController.h:23`), not a bottom strip. Wave 3 takes
+catalog + single-sink semantics from C and HUD placement from Jerod's 0.9 screenshot. D162's
+"comparable bottom event-log bar" wording was a placement error; corrected there with a pointer
+here.
+
+**Twelve judgment calls, all ruled:**
+
+1. **One sink (`GameSession.messages`).** C has one `NSTextView`. Forking a second array is the
+   thing this wave must not do.
+2. **C.4 sheet shows `MSGGAME` lines.** Approved. Oracle-faithful change of a shipped surface, not
+   a chrome restyle. `MessageTarget` stays 0...2 for the picker; `to == 3` is display-only.
+3. **Full C `printmessage` catalog.** Approved. A thinner slice would collapse this into a C.4
+   restyle.
+4. **Win/loss overlay stays out.** Approved. Terminal clock strings still go in the log.
+5. **RecvSR skip stays; builder-command optional callback only.** Approved. Formatters as a
+   BoloNet neighbor of `ChatMessage.swift` unless a dependency cycle forces the app target.
+6. **Snapshot pre-mutation owner at dispatch/host encode.** Approved. Do not reorder RecvSR.
+7. **No `recvSrPlayerJoin` name-write.** Approved. Not a Wave 6.2 policy reversal.
+8. **Bottom inset vs D157/D160.** Scoped `GameRenderView` fix only if scroll/zoom-floor tests
+   actually break. No drive-by of D162's four comment notes.
+9. **Display-only — override of IMPLEMENTER's tap-opens-sheet default.** Top-bar Messages remains
+   the sheet path. A new hit target beside the map is the D148/D157 first-responder class of
+   risk; a log does not need it. Revisit only if Jerod asks after seeing the bar.
+10. **No send field.** Approved.
+11. **Inspired tints, not copied `NSColor`s.** Approved (D67/D154).
+12. **Text-only, `HUDPanelChrome`, no reference art.** Approved.
+
+**Coding GO issued.** Proceed per the pre-brief's proposed plan with item 9 as the one override.
+Full-track: new model + HUD + oracle-comparable strings. D28: add tests, no shrink of 757 / 33.
+Format-and-append only on host encode sites — no change to `SR*` bytes. Three paths (join / host /
+single-process) all wired so solo/host play is not silent.
+
+[TO: IMPLEMENTER]
