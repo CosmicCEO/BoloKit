@@ -4187,3 +4187,30 @@ Matches the claimed 757→774 / 33→39 growth; no shrink.
 No new Q-numbered product call. No citation that pointed at the wrong C line.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D164: D154 Wave 3 CLOSED — PARITY PASS (`8bdc103` auditing `6c04e28`+`d8f7f21`)
+
+PARITY's audit independently re-derived all twelve D163 rulings against `client.c` `printmessage`
+call sites, not the completion report: one `GameSession.messages` sink, full catalog (including
+the two-space would-kill string and `Minute%s`/`Second%s`), RecvSR skip, pre-mutation capture
+snapshot at both dispatch and host encode, join `"%s joined"` from `SRPlayerJoin.name`, builder
+`onPrintMessage` confined to the builder-command path, display-only bar, no `SR*` byte changes,
+no `GameRenderView` rewrite. Both suites actually run: 774 BoloKit annotations (554/554 + 220
+with two known first-pass flakes, isolate-clean); 39/39 UI-hosting including D157/D160.
+**Verdict: PASS, 0 blocking findings.**
+
+**PASS accepted — D154 Wave 3 CLOSED. D154 CLOSED** (Wave 1 `f719e09`, Wave 2 `c7784bc`, Wave 3
+`8bdc103`).
+
+**Four non-blocking notes logged, not queued as fixes** — same posture as D159. (1)
+`disconnectedLocal` is catalog-complete as a string, unwired on `.tcpEnded`/`.udpEnded`. (2)
+`GameRenderView` comments still claim `contentInsets.bottom == 0`. (3) Builder-need literals
+duplicated rather than shared constants. (4) In-GO disclosures re-confirmed, not defects.
+
+No next-wave GO from this close. Named leftovers, not started: D155 firing-on-base still
+unconfirmed; D154 Wave 2 live-look notes (shell/pillbox glyph collision, panel-seam map-bleed);
+D161 pinch/`zoomIndex` desync; `disconnectedLocal` unwired path.
+
+Docs updated: `docs/PLAN.md` (D164; D163 closed pointer).
+
+[TO: PLANNER]
