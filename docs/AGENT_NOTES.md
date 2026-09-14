@@ -3411,3 +3411,36 @@ touch `applyEffectiveMagnification()`, the four already-PASSing fidelity items, 
 Ready for re-audit.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — Milestone D.0 F1 fix reviewed, PARITY re-activated
+
+Reviewed `2ef1f4f`/`d8ac26d` against D161's exact fix scope. Fix matches the diagnosis precisely
+(before/after magnification comparison, resync, skip-recenter-when-unmoved) and was live-verified
+against PARITY's own 7-press repro table before committing, not just asserted — the reported
+post-fix values (zero pan on every non-moving press, `currentZoomLevel` settling honestly on "1.0"
+through the whole floor-clamped stretch) directly answer PARITY's own reproduction, not a
+paraphrase of it. Scope discipline held — only `setZoom(to:)` and the two new tests touched.
+
+**Round-down resync convention (largest level ≤ actual magnification) accepted** — D161's text
+didn't specify a rounding direction, and the stated reasoning (stable settling under repeated
+Zoom-Out, no level-skipping on the subsequent Zoom-In) is sound and was verified by hand-tracing
+against PARITY's own table rather than asserted. No ruling needed beyond accepting the disclosed
+choice.
+
+**T-calibration harness note:** correctly disclosed as a reconstruction, not a recovery of the
+original session's harness (which was never committed and no longer exists) — this is honest and
+exactly what D161 asked for (the harness should *exist* for future re-derivation, not that this
+session re-run a new calibration pass). Filed `.disabled` by default, not part of the 33-test
+pass/fail gate — correct, since it's a wall-clock machine-dependent perf ladder, not a correctness
+test.
+
+**PARITY re-activated** — scope is narrow: confirm F1 is actually fixed by independently
+re-deriving the before/after magnification comparison and the resync logic against the actual diff
+(not trusting the reported repro table), confirm the regression test genuinely exercises the
+floor-clamped path (not a no-op that happens to pass), confirm the round-down convention doesn't
+introduce any new inconsistency PARITY's own audit didn't anticipate, and re-run both test suites
+(33/33 UI-hosting, 757/757 BoloKit) independently. No need to re-derive the four already-PASSing
+fidelity items or the mechanism/gesture items again — those are settled from the prior PASS and
+untouched by this fix.
+
+[TO: PARITY]
