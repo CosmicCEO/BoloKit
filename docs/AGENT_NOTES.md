@@ -3444,3 +3444,204 @@ fidelity items or the mechanism/gesture items again — those are settled from t
 untouched by this fix.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-14 — Milestone D.0 F1 fix (`2ef1f4f`+`d8ac26d`) audited — **PASS**
+
+**Type:** post-commit audit of the F1 *fix* only (not a re-audit of the four already-PASSing
+fidelity items, the `NSScrollView.magnification` mechanism, or the native-gesture fix). Audited
+commits: `2ef1f4f` (code), `d8ac26d` (IMPLEMENTER report), activated at `60d3a8c`. **Toolchain
+note:** this session CAN compile/run — Apple Swift 6.4 / Xcode 27.0 (27A266a), `swift`,
+`xcodebuild`, and `sourcekit-lsp` all present. Both suites were actually executed, not merely
+`@Test`-counted. Four fidelity items / mechanism / gesture were not re-derived, per PLANNER's
+activation scope.
+
+**Verdict: PASS.** F1 is fixed in the shipped `setZoom(to:)`. Independently re-derived from the
+diff (not from IMPLEMENTER's 7-press table): the recenter pan is skipped when AppKit's floor
+clamp leaves magnification unchanged, and `zoomIndex` resyncs to the largest discrete level
+`<=` the actual on-screen magnification. The committed regression test genuinely exercises that
+floor-clamped path at PARITY's own 2400×1600 repro size. Round-down resync does not introduce a
+new inconsistency this audit did not already anticipate. No blocking findings.
+
+---
+
+#### Independently confirmed
+
+**1. `setZoom(to:)` before/after comparison — the skip is real, and it is the exact-equality
+case D161 named.** Read the whole function (`GameRenderView.swift:257-293`), not just the new
+guard. Pre-fix (`2ef1f4f^`) assigned `zoomIndex = index` then panned unconditionally. Post-fix:
+
+- `:262` captures `previousMagnification = scrollView.magnification` *before* the set.
+- `:269` writes `scrollView.magnification = Self.zoomLevels[index]` (AppKit clamps to the live
+  `[minMagnification, maxMagnification]` already installed by `applyEffectiveMagnification()`).
+- `:270` still calls `applyEffectiveMagnification()` (untouched; `:218-231`). That callee's
+  `:226` `guard scrollView.magnification < floor else { return }` is still the strict `<` that
+  F1 diagnosed: AppKit lands *exactly* on `minMagnification`, so this call is a no-op on the
+  clamp path. The fix does not try to paper over that `<` — it reads the actual post-set value
+  instead.
+- `:271` reads `effectiveMagnification = scrollView.magnification`.
+- `:283` `guard effectiveMagnification != previousMagnification else { return }` skips the
+  recenter at `:285-292` when the clamp absorbed the request. Exact `!=` (not an epsilon) is
+  the right comparison for D161's exact-equality clamp case; a tolerance here could swallow a
+  real small zoom. The regression test passing (item 4) is execution evidence that AppKit's
+  two consecutive clamp-to-floor reads compare equal on this path.
+
+`goingIn` (`:261`) and `visRect` (`:260`) are still captured *before* the magnification write,
+so the recenter formula (`:285-292`, `+0.25` / `-0.5`) and its pre-zoom-rect ordering are
+untouched — the four fidelity items stay as previously PASSed.
+
+**2. `zoomIndex` resync — round-down, independently re-derived.** `:278`
+`zoomIndex = Self.zoomLevels.lastIndex(where: { $0 <= effectiveMagnification }) ?? index`.
+`zoomLevels` is still `[0.5, 0.75, 1.0, 1.5, 2.0]` (`:124`). For PARITY's own 2400×1325
+viewport (the 2400×1600 window once HUD chrome is accounted for), the floor formula at
+`:159-163` is `sqrt(w*h/(256*T))` with `T = 9_000` (`:146`): `sqrt(3_180_000 / 2_304_000) =
+sqrt(1.380208…) = 1.1748227…`, strictly between `1.0` (`zoomLevels[2]`) and `1.5`
+(`zoomLevels[3]`). `lastIndex { $0 <= 1.1748 }` is therefore index 2 (`1.0`), never 1
+(`0.75`) and never 3 (`1.5`). Under-report, never over-report, matching the disclosed
+convention.
+
+Hand-trace of the same 4× Zoom Out + 3× Zoom In button sequence the original FAIL table used,
+from the shipped code, not from IMPLEMENTER's numbers:
+
+| press | request | actual mag | `zoomIndex` after `:278` | pan? |
+|---|---|---|---|---|
+| load | — | raised to 1.5 (`:227-230`, floor > 1.0) | 3 | — |
+| Zoom Out 1 | 1.0 (index 2) | 1.5 → ~1.1748 | 2 (`1.0`) | yes — mag moved |
+| Zoom Out 2 | 0.75 (index 1) | ~1.1748 (clamp) | 2 | **no** — `:283` returns |
+| Zoom Out 3 | 0.75 (index 1) | ~1.1748 (clamp) | 2 | **no** |
+| Zoom Out 4 | 0.75 (index 1) | ~1.1748 (clamp) | 2 | **no** (does *not* hit the `:258` index-0 guard — unlike the pre-fix table, where `zoomIndex` had slid to 0) |
+| Zoom In 1 | 1.5 (index 3) | ~1.1748 → 1.5 | 3 | yes — mag moved |
+| Zoom In 2 | 2.0 (index 4) | 1.5 → 2.0 | 4 | yes |
+| Zoom In 3 | index 5 | n/a | 4 | no — `:258` `indices.contains` |
+
+`currentZoomLevel` (`:307`) is `zoomLevels[zoomIndex]`, so it reports `1.0` for the whole
+floor-clamped stretch, then `1.5` / `2.0` on the way back up. It no longer slides through
+`0.75`/`0.5` while the screen sits at 1.1748×. The remaining 1.0-vs-1.1748 gap is inherent to
+a discrete label over a continuous floor, not a silent slide through wrong levels.
+
+**3. Round-down vs `applyEffectiveMagnification`'s round-up — complementary, not a new
+inconsistency.** The raise path (`:227-228`) still uses `firstIndex(where: { $0 >= floor })`
+(smallest discrete level that satisfies a *newly raised* floor) and only runs when
+`magnification < floor`. After a `setZoom` clamp, magnification *is* the floor, so `:226`'s
+`<` is false and the raise does not fire — `viewWillDraw()` (`:322-325`) calling the same
+function every frame does not snap 1.1748× back up to 1.5×. Subsequent Zoom In from the
+settled index 2 requests 1.5, a real step, no skipped level. Round-up on resync would have
+been the new inconsistency: `lastIndex { $0 >= 1.1748 }` = 3 (`1.5`), so Zoom In from the
+floor would request 2.0 and skip 1.5 entirely. Round-down is the convention that keeps
+`zoomIn()`/`zoomOut()` (`:299/:302`, both `zoomIndex ± 1`) honest against a stranded floor.
+
+D18: this UI layer already used `CGFloat` for `zoomLevels` / `NSScrollView.magnification`
+(AppKit-native, not position/physics/trig). The new before/after locals are `CGFloat`. No
+type drift into the sim. D24: this is new-engineering (the C oracle has no dynamic floor);
+the fix does not "correct" an oracle bug. D26: `-ffp-contract=off` still on `CXBolo`
+(`Package.swift:25`).
+
+**4. Regression test — genuine floor-clamped path, not a no-op that happens to pass.**
+`setZoomDoesNotPanTheViewportWhenTheFloorClampAbsorbsTheRequestedChange`
+(`GameRenderViewZoomTests.swift:364-396`), host size `NSSize(width: 2400, height: 1600)` at
+`:365` — PARITY's own repro, not a substitute. Discriminators, all required to pass:
+
+- `:366` `currentZoomLevel == 1.5` on load. This only holds if the floor exceeded 1.0 and
+  `configureZoom()` raised the view (`:183` → `:227-230`). If the host had landed in a
+  size where the floor is ≤ 1.0, this expect fails — the test cannot silently run at a
+  non-stranding size.
+- `:376-382` first `zoomOut()`: magnification must actually drop below 1.5 *and* clip
+  origin must move off the planted `(2000, 2000)`. Proves the pan machinery still fires on
+  a real mag change, so a later no-pan is a real skip, not "both presses were accidental
+  no-ops."
+- `:386-395` second `zoomOut()`: magnification stays put (`< 0.0001`) *and* clip origin
+  stays put (`< 0.01`). That is D161's specified assertion.
+
+The second press is the clamp path, not the `:258` bounds-guard path: after the first out,
+resync lands on index 2, so `zoomOut()` requests index 1 (`0.75`), which *is* in
+`0..<5`. A bounds-guard no-op would require `zoomIndex == 0`. Execution: this test
+**passed** in my own UI-hosting run (`passed after 9.959 seconds`).
+
+Coverage note, non-blocking: the test does not assert `currentZoomLevel` after the clamp
+(D161's specified test was the pan). Resync is locked by the shipped `:278`, not by this
+test; a skip-pan-only implementation that still assigned `zoomIndex = index` would still
+go green here.
+
+**5. T-calibration harness — exists, `.disabled` by default, disclosed reconstruction.**
+`drawTimeCrossesTheFrameBudgetNearTheChosenTileBudget` (`:421-489`), trait
+`@Test(.disabled(Comment(rawValue: "manual T-calibration benchmark -- see file header; enable only when revisiting GameRenderView.tileCountBudget")))`.
+Header at `:398-420` states it is a reconstruction, not a byte-for-byte recovery of the
+uncommitted original. Method matches what item 5c of `fc4894b` asked to be able to re-run:
+live `NSWindow` + `GameView` (`:424-434`), `renderView.displayIfNeeded()` (`:447`), size
+ladder (`:461`), forced 1.0× (`:438`), tile count `w*h/256` (`:441`, the `mag = 1.0`
+reduction of `:159-163`'s own formula), loose sanity band near ~4,000 tiles (`:475-478`).
+My UI-hosting run reported it **skipped** with that exact comment, not executed. Did not
+re-derive `T` this session (out of scope).
+
+Non-blocking reconstruction caveat: from width 1900 upward, `minimumMagnification` at
+1.0×-labeled rungs exceeds 1.0, so `scrollView.magnification = 1.0` at `:438` will itself
+floor-clamp; those rungs then time a *higher* mag than the `w*h/256` label assumes. The
+original crossing region cited for `T = 9,000` (~7,900–11,900 tiles) still sits where the
+floor is < 1.0, so the harness remains usable for a future re-calibration if the operator
+knows that. Not a reason to reject the reconstruction D161 asked for.
+
+**6. Scope discipline — held.** `git show 2ef1f4f --name-only` is exactly
+`Bolo 2026/Bolo 2026/GameRenderView.swift` and
+`Bolo 2026/Bolo 2026Tests/GameRenderViewZoomTests.swift`. Inside `GameRenderView.swift`
+the only production change is `setZoom(to:)` (`:257-293`) plus its new doc comment
+(`:244-256`). `applyEffectiveMagnification()` (`:218-231`), `viewWillDraw()` (`:322-325`),
+`zoomIn()`/`zoomOut()` (`:299/:302`), `currentZoomLevel` (`:307`), `configureZoom()`,
+`scroll(dx:dy:)`, and the four previously-PASSing fidelity items are byte-identical to
+`9489037`. Tests added: the F1 regression (`:364-396`) and the disabled T-harness
+(`:421-489`). Nothing else.
+
+---
+
+#### Test execution — both suites re-run independently
+
+- **UI-hosting** (`xcodebuild test -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026"
+  -destination 'platform=macOS' -only-testing:Bolo 2026Tests`): **"Test run with 33 tests in
+  6 suites passed after 9.971 seconds"**, `** TEST SUCCEEDED **`. Independently counted 33
+  `@Test` annotations under `Bolo 2026/Bolo 2026Tests/` (was 31; +1 regression at `:364` +1
+  disabled harness at `:421`). The T-harness line in the log is `skipped: "manual T-calibration
+  benchmark -- see file header; enable only when revisiting GameRenderView.tileCountBudget"`.
+  The F1 regression passed. D28: 31 → 33, no shrink.
+- **BoloKit** (`swift test`): annotation count independently **757** (552 `BoloKitTests` +
+  205 `DifferentialTests`, 46 files). Execution: `BoloKitTests` **552/552** in 11 suites
+  passed after 4.185 seconds. `DifferentialTests` reported **1 failure in 205** on the first
+  full-suite run: `hostGameEngineSubmitPauseResumeServerTogglesPauseState`
+  (`HostGameEngineTests.swift:742`) — `serverPauseTicks` was **249**, expected
+  `Int(ticksPerSec) * 5` = **250**. Isolated re-run
+  (`swift test --filter hostGameEngineSubmitPauseResumeServerTogglesPauseState`) **passed
+  after 0.132 seconds**. This is the standing D150-era exact-tick-value race (countdown
+  decremented one tick between `waitForCondition` returning and the assertion), previously
+  logged as a non-blocking follow-up, not a new defect. F1 did not touch `HostGameEngine`,
+  `SessionLogic`, or any `Tests/` file. D28 honesty: I did **not** observe 757/757 on the
+  first full run; I observed 756 pass + 1 known flake, isolated-clean. Not an F1 regression
+  and not a test-count shrink.
+
+---
+
+#### CITATION DRIFT (not defects)
+
+- **Test doc comment at `GameRenderViewZoomTests.swift:351-353`** says the 2400×1600 floor
+  (~1.1748×) sits "strictly between `zoomLevels[1]` (0.75) and `zoomLevels[2]` (1.0)". It
+  does not: 1.1748 sits between **1.0 and 1.5** (`zoomLevels[2]` and `[3]`). The test body
+  is still correct — `:366`'s `currentZoomLevel == 1.5` on load is exactly the assertion
+  that the floor exceeded 1.0. IMPLEMENTER's own completion report states the interval
+  correctly; only this comment is wrong.
+- **`setZoom`'s new doc comment (`GameRenderView.swift:254-255`)** attributes the "never
+  let the button state and the screen silently diverge" invariant to `currentZoomLevel`
+  "below". `currentZoomLevel` at `:304-307` does not document that; it is a one-line
+  `zoomLevels[zoomIndex]` accessor. The invariant language lives in
+  `applyEffectiveMagnification()` at `:212-214`. D161's "~238-242" cite was already a
+  pre-fix line-number pointer at the recenter-formula comment, not at this accessor;
+  after the F1 insert those lines shifted further (`:233-242` is still the D24
+  slightly-off-center disclosure).
+- **IMPLEMENTER commit message / report** characterizes the pre-fix phantom pans as
+  "Zoom Out 2-4 … previously 943/542/583/583pt". The original FAIL table's four phantom
+  pans were Zoom Out 2, Zoom Out 3, Zoom In 1, Zoom In 2 (943/542/583/583). Zoom Out 4
+  was 0 pt because `zoomIndex` had already hit the index-0 guard. Post-fix, Zoom Out 4
+  is a clamp no-op (index stays at 2) rather than a bounds-guard no-op — same user-visible
+  result, different branch. Does not affect the correctness of the fix.
+
+---
+
+No `[TO: IMPLEMENTER]` — nothing to fix. F1 is closed on the code; wave-close remains
+PLANNER's call after this PASS.
+
+[TO: PLANNER]
