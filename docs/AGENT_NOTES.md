@@ -3645,3 +3645,44 @@ No `[TO: IMPLEMENTER]` — nothing to fix. F1 is closed on the code; wave-close 
 PLANNER's call after this PASS.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D162: Milestone D.0 CLOSED — PARITY PASS (`04622f0` auditing `2ef1f4f`+`d8ac26d`); D154 Wave 3 pre-brief GO'd
+
+PARITY's re-audit (`04622f0`) independently re-derived the F1 fix against the shipped `setZoom(to:)`
+diff rather than IMPLEMENTER's 7-press table: before/after magnification comparison at
+`GameRenderView.swift:262/:271/:283`, round-down `zoomIndex` resync at `:278`, raise-path
+complementarity with `applyEffectiveMagnification()`'s round-up (`:226-228`) so a clamped 1.1748×
+does not snap back to 1.5× every `viewWillDraw()`. Regression test confirmed a real 2400×1600
+floor-clamped second Zoom Out (not a bounds-guard no-op). Both suites actually executed: 33/33
+UI-hosting (`TEST SUCCEEDED`, T-harness skipped as `.disabled`); BoloKit annotation count 757, first
+full run hit the known D150 pause-resume flake (`serverPauseTicks` 249 vs 250), isolated re-run
+clean. Scope held — only `setZoom(to:)` plus the two test additions. **Verdict: PASS, 0 blocking
+findings.**
+
+**PASS accepted — Milestone D.0 CLOSED. Milestone D CLOSED** (D.0 was the only remaining sub-wave;
+D.1/D.2 already closed by D151). Round-down resync convention accepted as complementary, not a new
+inconsistency — same disclosed choice already accepted at the F1-fix review, now independently
+confirmed.
+
+**Four non-blocking notes logged, not treated as defects requiring a fix cycle** — same
+disclosure-not-defect posture as D159. (1) Test doc comment at `GameRenderViewZoomTests.swift:351-353`
+names the wrong `zoomLevels` interval for the 1.1748 floor (body is correct). (2) Regression test
+does not assert `currentZoomLevel` after clamp; resync is locked by production `:278`, not the test.
+(3) T-harness rungs from width 1900 up themselves floor-clamp, so those labels overstate tiles at
+1.0×; the original `T = 9,000` crossing region still sits where the floor is < 1.0. (4) Two
+citation-location drifts (the button/screen invariant lives on `applyEffectiveMagnification()`, not
+`currentZoomLevel`; IMPLEMENTER's "Zoom Out 2-4" phantom-pan attribution was actually Out 2/3 +
+In 1/2). Whoever next touches `GameRenderViewZoomTests.swift` can fix the comment; not queued now.
+
+**D154 Wave 3 pre-brief GO'd** — message/event log bar, the last named D154 wave, unblocked now that
+the D.0 interlude Jerod chose ahead of it is closed. Same standing rules as Waves 1–2: closely-inspired
+not copied (D67/D154), original art only. This one is **full-track** (new model + HUD surface; the
+C oracle has a comparable event-log bar). IMPLEMENTER writes its own pre-brief before touching code.
+C.4 already shipped a messages panel (`be1b269`) — that is a different surface (chat/alliance
+messages), but D45 applies: verify overlap vs greenfield in the pre-brief rather than assuming
+D154's "no system-event-history model exists" claim is still true. `GameHUDViews.swift`'s own header
+still names the event-log bar as deliberately split out of the D148 HUD pass.
+
+Docs updated: `docs/PLAN.md` (D162 row; D159/D161 correction pointers; Milestone D status row).
+
+[TO: IMPLEMENTER]
