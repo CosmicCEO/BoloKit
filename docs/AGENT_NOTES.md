@@ -3937,3 +3937,45 @@ Format-and-append only on host encode sites — no change to `SR*` bytes. Three 
 single-process) all wired so solo/host play is not silent.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-14 — D154 Wave 3 completion (event log bar, D163)
+
+Coding GO `0cc2c11` (D163). Code commit `6c04e28`. Ready for audit (informational; IMPLEMENTER does not activate PARITY).
+
+#### What shipped vs D163
+
+1. **One sink.** System events append as `ChatMessage` with `to = 3` (`EventLogText.gameTarget` / `MSGGAME`). `MessageTarget` still 0...2. `ChatMessage.displayText` returns the body as-is for `to == 3`.
+2. **C.4 sheet shows `MSGGAME` lines.** `MessagesView` renders those as text-only rows (no `"Player N"` prefix). Send field / picker / List chrome unchanged.
+3. **Full C `printmessage` catalog** in `Sources/BoloNet/EventLogText.swift`, literals copied including `Minute%s`/`Second%s` (`n > 1`) and the two-space `"Your builder cannot do that.  It would kill him."`.
+4. **Win/loss overlay stays out.** `"Time Limit Reached!"` / `"Base Control Reached!"` go in the log only.
+5. **RecvSR skip stays.** Format at `TCPSession.dispatch` (join) and host encode / `runTick` callbacks. Builder-command optional `onPrintMessage` on `resolveBuilderTask` / `builderTick`, threaded through `runTick` as a pass-through so host/solo aren't silent.
+6. **Capture pre-mutation owner** snapshotted at join dispatch and host `CLGrabTile` encode; RecvSR mutation order unchanged.
+7. **No `recvSrPlayerJoin` name-write.** Join-path `"%s joined"` reads `SRPlayerJoin.name` at dispatch.
+8. **Bottom inset did not break D157 arrow-scroll or D160 zoom-floor.** Those tests passed as-is. **No `GameRenderView` inset fix.** D162's four comment notes untouched.
+9. **Display-only bar.** `EventLogBar` via `.safeAreaInset(edge: .bottom)` on `GameView`. `.allowsHitTesting(false)` / `.focusable(false)` — not a hit target, so no `reclaimMapFocus`. Top-bar Messages remains the sheet path.
+10. **No send field in the bar.**
+11. **Inspired tints** (primary / purple / red / cyan), not xbolo `NSColor`s.
+12. **Text-only, `HUDPanelChrome`, no reference bitmap bytes.** Empty = blank chrome, not placeholder copy. Last 3 lines, newest at bottom, `TimelineView` poll.
+
+Three-path wiring: join (`SRDispatchCallbacks.onPrintMessage` + UDP `onBuilderDeathSound`), host (`HostGameEngine.emitGameMessage` next to existing `SR*` encode sites, no wire-byte change), single-process (`GameSession.tick()`).
+
+#### Test counts (D28: add, no shrink)
+
+- **BoloKit `swift test`:** annotation **757 → 774** (+17: 11 formatter, 1 `displayText`, 3 dispatch, 2 builder-need). Expanded this run: BoloKitTests 554 + DifferentialTests 220.
+  - First full run: `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` shortRead (suite contention); **isolated re-run pass**.
+  - Second full run: known D150 flake `hostGameEngineSubmitPauseResumeServerTogglesPauseState` **249 vs 250**; isolate-rerun failed once then **passed**. Not a Wave 3 regression.
+- **`xcodebuild test` `Bolo 2026Tests`:** **33 → 39** (+3 `EventLogBarMath`, +2 `GameSession` sink, +1 bottom-inset layout). All 39 passed, including D157 arrow-scroll and D160 zoom-floor. T-harness skipped as before.
+
+#### Judgment calls (not silently expanded)
+
+- `runTick` grew a defaulted `onPrintMessage` pass-through so host/solo builder-need strings fire. Still the builder-command path, not a RecvSR UI hook.
+- Local builder-death is detected by `builderStatus` transitioning *to* `.parachute` around `runTick` (D163 #5 forbids a `TankLocalTick`/`killBuilder` callback). Join remotes use the existing dgram `onBuilderDeathSound` bit.
+- Tick-path base-capture lines emit only when owner actually changed. Join `recvsr` still always prints, matching C.
+- Join-path `"%s left"` / rejoin / kick / ban still read `PlayerState.name`, which `recvSrPlayerJoin` does not copy (D163 #7). `"%s joined"` is the wire name; later roster lines can be empty until a Wave 6.2 name-write.
+- `GameSession.tick()` is internal (was `private`) so the time-limit sink test can drive it.
+- `TCPSession.RawMessage` gained a public memberwise `init` for dispatch tests.
+- Bar shows last-3 only (not a scrollable full history). With `allowsHitTesting(false)` the user couldn't scroll a `ScrollView` anyway; full history stays in the C.4 sheet.
+
+No new Q-numbered product call.
+
+[TO: PLANNER]
