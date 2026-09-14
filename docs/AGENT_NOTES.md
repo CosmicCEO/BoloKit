@@ -4214,3 +4214,16 @@ D161 pinch/`zoomIndex` desync; `disconnectedLocal` unwired path.
 Docs updated: `docs/PLAN.md` (D164; D163 closed pointer).
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — v1.1.0-beta.1 shipped
+
+**Type:** release. Last pre-release was `v0.1.0-beta.3`; `v1.0.0` already shipped, so this is
+`v1.1.0-beta.1` (build 5), not `v0.1.0-beta.4`.
+
+`MARKETING_VERSION` 1.0.0→1.1.0, `CURRENT_PROJECT_VERSION` 4→5 (`8038586`). Tagged, pushed,
+GitHub prerelease published with a signed `Bolo-2026-v1.1.0-beta.1.zip`. README status brought
+current (D.0 / D154 / event-log closed).
+
+**Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v1.1.0-beta.1
+
+[TO: PLANNER]
