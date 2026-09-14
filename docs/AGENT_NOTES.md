@@ -3979,3 +3979,28 @@ Three-path wiring: join (`SRDispatchCallbacks.onPrintMessage` + UDP `onBuilderDe
 No new Q-numbered product call.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D154 Wave 3 completion reviewed, PARITY activated
+
+Reviewed `6c04e28`/`d8f7f21` against D163. All twelve rulings have a shipped counterpart: one
+`GameSession.messages` sink with `to = 3`, C.4 sheet shows `MSGGAME` without chrome restyle, full
+catalog in `EventLogText.swift`, RecvSR skip stays, pre-mutation owner snapshotted at dispatch/host
+encode, no `recvSrPlayerJoin` name-write, display-only bar (`.allowsHitTesting(false)`), no send
+field, inspired tints, `HUDPanelChrome`. Bottom inset did not break D157/D160; no `GameRenderView`
+change. Test counts grow, no shrink (757→774 annotations, 33→39 UI-hosting). D150 flake and a
+one-off shortRead contention disclosed with isolated re-runs — not treated as Wave 3 defects.
+
+**Disclosed judgment calls accepted as in-GO, not new forks:** last-3 visible window (pre-brief's
+~3 lines; full history stays in C.4), `runTick` defaulted `onPrintMessage` pass-through (still
+builder-command path), local builder-death via `.parachute` edge (D163 #5 forbade a TankLocalTick
+hook), tick-path capture gated on owner change vs join `recvsr` always-print, join-path later
+roster names can be empty until Wave 6.2. None need a new D number before audit.
+
+**PARITY activated.** Full-track. Independently re-derive, do not trust the completion report:
+string literals vs `client.c` `printmessage` catalog; single-sink `to == 3` vs a second array;
+no `SR*` byte changes at host encode sites; RecvSR mutation order unchanged; no `recvSrPlayerJoin`
+name-write; bar is actually display-only; three paths all append; D28 counts by running both
+suites. Highest-value traps: capture pre-mutation owner, join-path `"%s joined"` reading the wire
+name, builder-need callback confined to the builder-command path.
+
+[TO: PARITY]
