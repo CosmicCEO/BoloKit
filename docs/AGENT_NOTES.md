@@ -3303,3 +3303,111 @@ the pointer.
 D160/Milestone D.0 stays open, not closed — awaiting the F1 fix and PARITY re-audit.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-14 — Milestone D.0 F1 fix (`2ef1f4f`)
+
+Per D161's exact fix scope, routed against PARITY's audit (`fc4894b`). Worked in a git worktree
+(`.worktrees/d0-f1-fix`, submodule initialized fresh there) per this project's shared-checkout
+environment notes, then fast-forward merged back onto `main` and removed the worktree/branch.
+
+#### The fix — `GameRenderView.swift`'s `setZoom(to:)`
+
+Root cause exactly as PARITY diagnosed: the recenter pan applied unconditionally, even when
+AppKit's dynamic `minMagnification` floor clamped the requested magnification back to a value
+already in effect (the clamp lands **exactly** on `minMagnification`, not merely near it, so the
+old guard never caught it).
+
+`setZoom(to:)` now:
+1. Captures `scrollView.magnification` before the set (`previousMagnification`).
+2. After the set + `applyEffectiveMagnification()` call (unchanged), reads the actual
+   `effectiveMagnification`.
+3. Resyncs `zoomIndex` to `Self.zoomLevels.lastIndex(where: { $0 <= effectiveMagnification })` —
+   the largest discrete level not exceeding the real on-screen magnification. This keeps
+   `currentZoomLevel` honest even when a clamp lands strictly between two discrete levels (e.g.
+   floor at 1.1748× reports as "1.0×", never "0.75×" or "1.5×" — an under-report, never an
+   over-report), matching `currentZoomLevel`'s own documented invariant that button state and
+   screen must never silently diverge.
+4. Skips the recenter pan entirely (`guard effectiveMagnification != previousMagnification else
+   { return }`) when the requested zoom didn't actually move anything on screen.
+
+**Judgment call, disclosed:** D161's text said the resync should reflect "whatever discrete level
+is actually in effect," but no exact clamp value is ever itself a member of `zoomLevels` when a
+clamp is active — some rounding convention was required. Chose "largest level ≤ actual
+magnification" (round down) over "smallest level ≥ actual" (round up, the convention
+`applyEffectiveMagnification`'s own pre-existing raise-logic uses for a different purpose —
+finding the smallest level that satisfies a newly-raised floor). Round-down means repeated
+Zoom-Out presses against a floor settle onto a stable index instead of oscillating, and a
+subsequent Zoom-In press from that settled index produces a real, correctly-recentered zoom step
+rather than skipping over a whole discrete level. Verified by hand-tracing against PARITY's own
+7-press table (below) before committing, not by assertion alone.
+
+#### Live verification against PARITY's own repro table
+
+Reproduced PARITY's exact scenario in a temporary (uncommitted) throwaway test hosting the real
+`GameView` at 2400×1600, logging magnification/pan/`currentZoomLevel` across the same 7 presses
+PARITY's audit used:
+
+| press | magnification | panned | `currentZoomLevel` |
+|---|---|---|---|
+| start | 1.5 | — | 1.5 |
+| Zoom Out 1 | 1.5 → 1.1748 | (400, 221) — real change | 1.0 |
+| Zoom Out 2 | 1.1748 (no change) | **(0, 0)** | 1.0 |
+| Zoom Out 3 | 1.1748 (no change) | **(0, 0)** | 1.0 |
+| Zoom Out 4 | 1.1748 (no change) | **(0, 0)** | 1.0 |
+| Zoom In 1 | 1.1748 → 1.5 | (511, 282) — real change | 1.5 |
+| Zoom In 2 | 1.5 → 2.0 | (400, 221) — real change | 2.0 |
+| Zoom In 3 | 2.0 (index guard, no change) | (0, 0) | 2.0 |
+
+Compare to PARITY's pre-fix table (943pt/542pt/583pt/583pt phantom pans on the four middle
+presses, `currentZoomLevel` swinging 1.0/0.75/0.5/0.5/0.75/1.0/1.5 with no relation to the actual
+1.1748× on screen the whole time). Post-fix: zero phantom pan on every press where magnification
+didn't move, and `currentZoomLevel` never claims a level the screen isn't at (settles honestly on
+"1.0" for the whole floor-clamped stretch, rather than sliding through three different wrong
+values). This confirms the fix holds beyond the 2-press regression test committed below.
+
+#### Regression test committed
+
+`GameRenderViewZoomTests.setZoomDoesNotPanTheViewportWhenTheFloorClampAbsorbsTheRequestedChange`,
+at PARITY's own 2400×1600 repro size (`GameRenderViewZoomTests.swift`, new MARK section 6): a
+first Zoom Out (real clamp-driven change, pan expected) followed by a second Zoom Out (clamps to
+the same already-in-effect value, pan must NOT fire) — the exact shape PARITY's audit specified.
+Also asserts the first press's pan actually moved the origin, so the test can't pass by both
+presses being accidental no-ops.
+
+**Judgment call, disclosed:** the test's own doc comment notes the view's `configureZoom()`
+already raises the view to 1.5× automatically on load at this host size (the floor exceeds the
+default 1.0× on init), matching PARITY's own table which starts "already 1.5×" for the same
+reason — no explicit `zoomIn()` call needed or wanted in the test setup. My first draft of this
+test incorrectly added one, causing a false failure (start landed at 2.0× instead of 1.5×) that a
+debug-print pass caught before this was committed.
+
+#### T-calibration benchmark harness committed (D161 non-blocking note)
+
+`GameRenderViewZoomTests.drawTimeCrossesTheFrameBudgetNearTheChosenTileBudget`, new MARK section
+7, `.disabled` by default (not part of the 33-test baseline's pass/fail gate, a wall-clock
+machine-dependent perf ladder). **Disclosed: this is a reconstruction, not a recovery** — the
+original coding session's own harness was never committed and no longer exists to copy from. This
+is a fresh implementation matching the method both the original completion report and PARITY's
+audit (item 5c) describe: a live `NSWindow` hosting the real `GameView`, timing
+`renderView.displayIfNeeded()` across a size ladder at a fixed 1.0× magnification, with a loose
+sanity-band check near ~4,000 tiles against D81's independently-measured 6.7–7.3ms. Enabling it
+and re-running is the mechanism a future session should use if `tileCountBudget` is ever
+revisited — this session did not re-run it to re-derive `T` itself (out of scope; D161 only asked
+for the harness to exist, not for a new calibration pass).
+
+#### Testing
+
+`xcodebuild test` (UI-hosting suite): **31 → 33** (regression test + disabled benchmark), all
+passing — `Test run with 33 tests in 6 suites passed after 9.163 seconds`, `** TEST SUCCEEDED **`.
+Confirmed the benchmark test reports `skipped`, not executed, in this run. `swift test` (BoloKit
+baseline): **757/757** (205 + 552 across two suites), unaffected, no shrink (D28).
+
+#### Scope discipline
+
+Touched only `setZoom(to:)` in `GameRenderView.swift`, plus the two test additions above. Did not
+touch `applyEffectiveMagnification()`, the four already-PASSing fidelity items, the
+`NSScrollView.magnification` mechanism, or the native-gesture fix, per D161's explicit scope.
+
+Ready for re-audit.
+
+[TO: PLANNER]
