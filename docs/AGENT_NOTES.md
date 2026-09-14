@@ -4004,3 +4004,186 @@ suites. Highest-value traps: capture pre-mutation owner, join-path `"%s joined"`
 name, builder-need callback confined to the builder-command path.
 
 [TO: PARITY]
+
+### [PARITY] 2026-09-14 — D154 Wave 3 event log bar (`6c04e28`+`d8f7f21`) audited — **PASS**
+
+**Mode:** PARITY. **Type:** post-commit audit, activated by PLANNER's `[TO: PARITY]` tag
+(`3cb7d1a`) on commits `6c04e28` (code) + `d8f7f21` (IMPLEMENTER report). Scope re-derived from
+D163, not from the completion report. **Toolchain:** this session CAN compile/run — `swift`
+6.4 / `xcodebuild` / `plutil` / `codesign` / `vtool` / `xmllint` all present. Both suites were
+actually executed, not merely `@Test`-counted. Domain checklists: SwiftUI HUD surface only
+(display-only bar, `HUDPanelChrome`, tints); no App Intents / accessibility-specialist pass
+beyond what's implied by `.allowsHitTesting(false)` and the existing identifier.
+
+**Verdict: PASS.** 0 blocking findings. The twelve D163 rulings hold in the shipped code. The
+three named traps (capture pre-mutation owner, join-path `"%s joined"` wire name, builder-need
+callback confinement) independently re-derived clean. D157 arrow-scroll and D160 zoom-floor
+tests passed against a `GameView` that now has a non-zero bottom inset; `GameRenderView.swift`
+was not in the wave diff.
+
+---
+
+#### Independently confirmed
+
+**1. One sink, `to = 3`, no `": "` prefix on system lines.** `git grep 'var messages'` under
+`Sources/` + `Bolo 2026/` returns only `GameSession.swift:101`. `appendGameMessage` (`:104-108`)
+writes `ChatMessage(..., to: EventLogText.gameTarget)`. `EventLogText.gameTarget` is `3`
+(`EventLogText.swift:12`); `bolo.h:159-162` is `MSGEVERYONE..MSGGAME`. `MessageTarget`
+(`ChatMessage.swift:27-30`) is still `everyone/allies/nearby = 0/1/2` with no `.game` case;
+`MessageTarget.allCases` test still asserts `[0, 1, 2]`. `displayText` (`ChatMessage.swift:84-87`)
+returns `text` as-is when `to == 3`, else `"\(senderName): \(text)"`.
+
+**2. C.4 `MessagesView` shows those lines without chrome restyle.** `MessagesView.swift:39-46`
+still `List(messages)` + send `HStack` (`:50-66`) + picker over `MessageTarget.allCases`. The
+only Wave 3 branch is `messageRow` (`:86-93`): `to == gameTarget` renders `displayText` with no
+`"Player N"` prefix. Send field / picker / List layout unchanged.
+
+**3. Full C `printmessage` catalog — literals opened in `client.c`, not trusted from the
+report.** Shapes in `EventLogText.swift` match the `asprintf`/`printmessage` call sites:
+
+| C site | C literal | Swift |
+|---|---|---|
+| `client.c:1976` | `"%s joined"` | `:23` |
+| `:2025` | `"%s rejoined"` | `:24` |
+| `:2055` | `"%s left"` | `:25` |
+| `:2092` | `"%s disconnected"` | `:26` |
+| `:2129` | `"%s kicked"` | `:27` |
+| `:2166` | `"%s banned"` | `:28` |
+| `:1055/:1076/:1094` | `"disconnected"` | `:21` `disconnectedLocal` |
+| `:1402/:7078` | `"%s just lost his builder"` | `:29` |
+| `:2261/:2267` | `"%s captured neutral pill %d"` / `"%s captured pill %d from %s"` | `:31-35` |
+| `:2465/:2477` | same two shapes for bases | `:37-41` |
+| `:2928/:2968/:3011` | `"%s accepted/left/requests an alliance"` | `:65-67` |
+| `:6336/:6376/:6411` | `"alliance accepted with %s"` / `"requested alliance with %s"` / `"left alliance with %s"` | `:68-70` |
+| `:3048/:3054/:3062` | `"%d Minute%s and %d Second%s Remaining!"` etc., `n > 1 ? "s" : ""` | `:123-135` |
+| `:3068/:3126` | `"Time Limit Reached!"` / `"Base Control Reached!"` | `:19-20` |
+| `:4589` etc. | `"You need more trees."` / `"You need a pill."` / `"You need more mines."` | `:14-16` |
+| `:6573` | `"Your builder cannot do that.  It would kill him."` (two spaces) | `:18` |
+
+`playerNeutral` (`Physics.swift:119`) is `0xff`, matching `bolo.h:40` `NEUTRAL`. Pill capture
+gates on owner change (`EventLogText.swift:48` ↔ `client.c:2259`); base recvsr always prints
+(`EventLogText.swift:55-62` ↔ `client.c:2463-2480`).
+
+**4. Win/loss overlay not added.** `GameHUDViews.swift:8-9` still names it split out. Terminal
+clock strings are log-only (`EventLogText.swift:19-20`, `remaining(_:reached:)` `:135`). No new
+overlay view in the wave diff.
+
+**5. RecvSR `printmessage` skip still present; formatters at session/dispatch; builder
+callback confined.** `RecvSR.swift` is **not in `6c04e28`**. Header `:18-20` still lists
+`printmessage` as out of scope; grep of that file for `onPrintMessage`/`printmessage` is the
+header only. Join format is `TCPSession.dispatch` (`:251-450`). Host format is
+`HostSession.dispatchHostMessage` grab/alliance + `HostGameEngine.emitGameMessage`. Builder
+`onPrintMessage` is `resolveBuilderTask` (`BuilderCommand.swift:48-50,78,95,109,121`),
+`builderTick`/`readyTick` (`BuilderTick.swift:436,852-861`), and a defaulted `runTick`
+pass-through (`RunTick.swift:89-92,282`) — still the builder-command path, not a RecvSR UI
+hook. `DgramClientApply.swift` still only fires `onBuilderDeathSound` (`:107`); the session
+layer formats `"%s just lost his builder"` from that bit (`GameSession.swift:656-664`).
+
+**6. Capture pre-mutation owner snapshotted; RecvSR mutation order unchanged.** Join:
+`TCPSession.swift:348-357` reads `state.pills[pill].owner` *before* `recvSrCapturePill` at
+`:359-363`; bases `:379-388` before `:390`. Host encode: `HostSession.swift:572-574`
+snapshots owners/names, then `recvClGrabTile` (`:575`); the `onShouldBroadcastCapture*`
+closures (`:577-599`) format from that snapshot, then still `pending.append(.all(SRCapturePill(...).encode()))`
+/ `SRCaptureBase` — same encode as `6c04e28^`. `RecvSR.swift` untouched, so
+`recvSrCapturePill` still mutates after the dispatch snapshot.
+
+**7. No `recvSrPlayerJoin` name-write; join `"%s joined"` is the wire name.**
+`recvSrPlayerJoin` (`RecvSR.swift:76-85`) sets `used`/`connected`/`alliance` only. Dispatch
+(`TCPSession.swift:256-260`) calls `EventLogText.joined(msg.name)` from `SRPlayerJoin.decode`
+*before* `recvSrPlayerJoin`. Test `tcpSessionDispatchFormatsJoinFromTheWireName` asserts
+`printed == ["Bob joined"]`. Later roster lines (`rejoined`/`left`/`disconnected`/`kicked`/
+`banned`) read `PlayerState.name` (`:263-297`) — the disclosed D163 #7 empty-name window, not
+a sneak name-write.
+
+**8. No `GameRenderView` inset rewrite; D157/D160 tests still pass.** `git diff 6c04e28^..6c04e28`
+does not touch `GameRenderView.swift`. This session's `xcodebuild test` executed
+`arrowKeysScrollTheMapBySymmetric64PointsInEachDirection` and the D160 zoom-floor suite
+(including `setZoomDoesNotPanTheViewportWhenTheFloorClampAbsorbsTheRequestedChange`) against
+a `GameView` that now has the bar; all passed. New test
+`bottomSafeAreaInsetPushesScrollViewContentInsetsOffZero` (`GameViewFocusRoutingTests.swift:119-140`)
+asserts `contentInsets.bottom > 0`. D162's four comment notes in
+`GameRenderViewZoomTests.swift` were not touched.
+
+**9–10. Bar is display-only; no send field.** `EventLogBar` (`GameHUDViews.swift:329-350`):
+`.allowsHitTesting(false)`, `.focusable(false)`, no `onTapGesture`, no `TextField`. Placement
+is `GameView.swift:142-144` `.safeAreaInset(edge: .bottom)`. Top-bar `"Messages"` (`:102`)
+still presents the sheet.
+
+**11. Inspired tints, text-only, `HUDPanelChrome`.** `EventLogBar.tint` (`:354-360`) is
+`.primary` / `.purple` / `.red` / `.cyan` — not `NSColor.blueColor`/`purpleColor`/`redColor`.
+Rows are `Text(message.displayText)` only. Chrome is `.hudPanelChrome()` (`:346`). Empty =
+blank `VStack` + minHeight 52, no placeholder copy. Last-3 window is
+`EventLogBarMath.visibleLineCount = 3` (`:303-314`) — disclosed in-GO.
+
+**12. Three paths all append; host encode is format-and-append only.** Join: `handleJoinEvent`
+`.tcpMessage` wires `onPrintMessage` → `appendGameMessage` (`GameSession.swift:650-654`).
+Host: `emitGameMessage` (`HostGameEngine.swift:153-161`) for roster/clock/tick-capture, plus
+`CLDispatchCallbacks.onPrintMessage` (`:370-378`) for encode-site capture/alliance. The
+`SRCapturePill`/`SRCaptureBase`/`SRTimeLimit`/`SRBaseControl` encode calls themselves are
+unchanged (HostSession `:578/:590` still `.all(SRCapture*.encode())`; HostGameEngine
+`:540/:544` still `SRTimeLimit`/`SRBaseControl`.encode()). Single-process: `GameSession.tick()`
+(`:420-465`) appends clock/capture/builder-need/parachute-death into the same `messages`
+array.
+
+**Highest-value traps, re-derived:**
+
+- Capture pre-mutation owner: yes, at both dispatch and host encode; RecvSR order untouched.
+- Join `"%s joined"`: yes, `SRPlayerJoin.name` at dispatch, not `PlayerState.name`.
+- Builder-need confinement: yes. `onPrintMessage` in BoloKit exists only on
+  `resolveBuilderTask` / `builderTick` / `runTick` pass-through. `builderTick` further
+  restricts printing to `player == state.localPlayer` (`BuilderTick.swift:858-861`). RecvSR
+  has no such hook.
+
+**D18 / D24 / D25 / D26 / D27 / D28:** no `Double`/`CGFloat` physics creep (bar layout only).
+No oracle bug silently "fixed" (two-space would-kill string kept; RecvSR skip kept; name-write
+not sneaked). No WinBolo architecture. `-ffp-contract=off` still on `CXBolo`
+(`Package.swift:25`). Capture formatting is a single post-tick / pre-`recvSr*` snapshot, not a
+per-caller overwrite. D28 counts below.
+
+---
+
+#### Test counts actually observed (D28)
+
+Annotation counts via `git grep -c '@Test'` (not trusted from the report): **BoloKitTests 554
++ DifferentialTests 220 = 774**; **Bolo 2026Tests 39** (one of those is the disabled T-harness).
+Matches the claimed 757→774 / 33→39 growth; no shrink.
+
+**Executed this session:**
+
+- `swift test`: BoloKitTests **554/554 passed** (11 suites). DifferentialTests **220 ran, 2
+  failed on the first full run:**
+  - `hostGameEngineSubmitPauseResumeServerTogglesPauseState` — `HostGameEngineTests.swift:742`
+    `serverPauseTicks == Int(ticksPerSec) * 5` (the known D150 249-vs-250 class).
+  - `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain` —
+    `HostGameEngineTests.swift:437` `.shortRead` (suite contention).
+  Isolate-rerun of each: **both passed** (0.135s / 0.409s). Not Wave 3 defects.
+- `xcodebuild test` `-only-testing:Bolo 2026Tests` destination My Mac: **TEST SUCCEEDED**.
+  `"Test run with 39 tests in 6 suites passed"`; T-harness skipped as
+  `drawTimeCrossesTheFrameBudgetNearTheChosenTileBudget`. D157 arrow-scroll and D160
+  zoom-floor tests included in that run, both passed. New
+  `bottomSafeAreaInsetPushesScrollViewContentInsetsOffZero` passed.
+
+---
+
+#### Non-blocking notes (not defects; no `[TO: IMPLEMENTER]`)
+
+1. **`disconnectedLocal` is a formatter only.** `EventLogText.swift:21` matches
+   `client.c:1055` `"disconnected"`, and the unit test covers the literal, but nothing in
+   `GameSession.handleJoinEvent`'s `.tcpEnded`/`.udpEnded` (`:667-671`) appends it — that
+   switch still says disconnection surfacing is "the caller's job." Catalog-complete as a
+   string; unwired as a path. Pre-existing join-path posture, not a Wave 3 silent drop.
+2. **`GameRenderView` comments still say `contentInsets.bottom == 0`** (`:188`, `:572`) while
+   the new hosting test asserts `bottom > 0`. Comment drift only: D157 `scroll(dx:dy:)` is
+   origin-direct (inset-independent) and D160 tests passed with the live inset. D163 #8
+   forbade a drive-by rewrite.
+3. **Builder-need literals are duplicated** as raw strings in `BuilderTick.swift`/
+   `BuilderCommand.swift` rather than `EventLogText.needMoreTrees` etc. Byte-identical to C
+   and to the constants; not a catalog miss.
+4. Disclosed in-GO, re-confirmed not defects: last-3 visible window; local builder-death via
+   `.parachute` edge; tick-path `captureMessages` gates bases on owner change
+   (`EventLogText.swift:167`) while join recvsr / host-encode always print bases; join-path
+   later roster names can be empty under D163 #7.
+
+No new Q-numbered product call. No citation that pointed at the wrong C line.
+
+[TO: PLANNER]
