@@ -344,4 +344,147 @@ struct GameRenderViewZoomTests {
         #expect(renderView.currentZoomLevel == 1.5)
         #expect(scrollView.magnification == 1.5)
     }
+
+    // MARK: - 6. F1 regression (D161, PARITY audit `fc4894b`)
+
+    /// **F1's own live reproduction, made permanent.** PARITY reproduced this at a live
+    /// 2400×1600 window (`scrollView.frame` measures 2400×1325 once the HUD's fixed chrome
+    /// is accounted for): the dynamic floor lands at ~1.1748x, strictly between
+    /// `zoomLevels[1]` (0.75) and `zoomLevels[2]` (1.0). That floor already exceeds the
+    /// default 1.0x zoom on load, so `configureZoom()`'s own init-time
+    /// `applyEffectiveMagnification()` call raises the view to 1.5x automatically --
+    /// exactly PARITY's own repro table, which starts "already 1.5x" for the same reason,
+    /// no button press needed. From there, a first Zoom Out clamps DOWN to the floor (a
+    /// real, on-screen magnification change -- the recenter pan is correct and expected
+    /// there), but a SECOND Zoom Out request clamps to the exact same already-in-effect
+    /// floor value -- no on-screen zoom change at all. The pre-fix code applied the
+    /// recenter pan unconditionally regardless, panning the map by hundreds of points with
+    /// zero zoom change (`setZoom(to:)`'s F1 fix above compares actual magnification
+    /// before/after the set and skips the pan when it didn't move).
+    @Test func setZoomDoesNotPanTheViewportWhenTheFloorClampAbsorbsTheRequestedChange() throws {
+        let (_, renderView, scrollView) = hostGameView(size: NSSize(width: 2400, height: 1600))
+        #expect(renderView.currentZoomLevel == 1.5, "the floor should already have raised the view to 1.5x on load")
+
+        let clipView = scrollView.contentView
+        clipView.scroll(to: NSPoint(x: 2000, y: 2000))
+        scrollView.reflectScrolledClipView(clipView)
+
+        // First Zoom Out: a real clamp-driven magnification change -- the recenter pan
+        // should fire (this is not the defect; asserted here only so the second press below
+        // is a meaningful contrast, not a no-op from the very first call).
+        renderView.zoomOut()
+        let magnificationAfterFirstOut = scrollView.magnification
+        #expect(magnificationAfterFirstOut < 1.5, "the first Zoom Out should have actually moved the magnification")
+        let originAfterFirstOut = clipView.bounds.origin
+        #expect(
+            abs(originAfterFirstOut.x - 2000) > 0.01 || abs(originAfterFirstOut.y - 2000) > 0.01,
+            "the first Zoom Out's real magnification change should have recentered the viewport"
+        )
+
+        // Second Zoom Out: requests a lower discrete level, but the floor clamp absorbs it
+        // right back to the same value already in effect -- F1's exact repro shape.
+        renderView.zoomOut()
+        #expect(
+            abs(scrollView.magnification - magnificationAfterFirstOut) < 0.0001,
+            "still clamped to the same floor -- no actual zoom change happened"
+        )
+        #expect(
+            abs(clipView.bounds.origin.x - originAfterFirstOut.x) < 0.01
+                && abs(clipView.bounds.origin.y - originAfterFirstOut.y) < 0.01,
+            "a setZoom call whose magnification didn't move must not move the clip origin either (F1)"
+        )
+    }
+
+    // MARK: - 7. T-calibration benchmark (D160 item 2 / D161's non-blocking note)
+    //
+    // The live on-screen draw-cost ladder that calibrated `GameRenderView.tileCountBudget`
+    // (`T = 9,000`) was never committed with the original coding session (`9489037`) --
+    // PARITY's audit (`fc4894b`, item 5c) flagged `T = 9,000` as well-argued but not
+    // independently reproducible without it, and D161 routed committing it (even disabled)
+    // back here so a future revision of `T` has something to re-run against.
+    //
+    // **Disclosed reconstruction, not a byte-for-byte recovery:** the original harness's
+    // own source was never committed and no longer exists anywhere to copy from -- this is
+    // a fresh implementation matching the method both AGENT_NOTES.md's "Milestone D.0
+    // landed" completion report and PARITY's own audit (item 5c) describe: a live
+    // `NSWindow` hosting the real `GameView` hierarchy, timing `renderView.displayIfNeeded()`
+    // across a ladder of window sizes at a fixed 1.0x magnification (so visible tile count
+    // is a direct function of viewport area, matching `minimumMagnification`'s own
+    // `w*h/(256*mag^2)` formula at `mag = 1.0`), bracketing D81's own two anchor points
+    // (~4,400 tiles fine / ~32,400 tiles Canvas-crossover). Reconciling near ~4,000 tiles
+    // against D81's independently-measured 6.7-7.3ms is the same sanity anchor the original
+    // session used and PARITY called "the strongest part of the argument."
+    //
+    // `.disabled` by default -- a wall-clock, machine-dependent perf ladder, not a
+    // correctness assertion, and not part of D28's 31-test `xcodebuild` baseline. Enable
+    // manually (remove the trait) only when actually revisiting `tileCountBudget`.
+    @Test(.disabled(Comment(rawValue: "manual T-calibration benchmark -- see file header; enable only when revisiting GameRenderView.tileCountBudget")))
+    func drawTimeCrossesTheFrameBudgetNearTheChosenTileBudget() throws {
+        func measureDrawTime(size: NSSize) -> (tileCount: Double, seconds: Double) {
+            let hosting = NSHostingView(rootView: GameView(initialState: AppRootView.demoState, onQuitToMenu: {}))
+            let window = NSWindow(
+                contentRect: NSRect(origin: .zero, size: size),
+                styleMask: [.titled, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            window.contentView = hosting
+            window.makeKeyAndOrderFront(nil)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            let renderView = findRenderView(hosting)!
+            let scrollView = renderView.enclosingScrollView!
+            scrollView.magnification = 1.0
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+            let tileCount = Double(scrollView.frame.width * scrollView.frame.height) / 256.0
+
+            var samples: [Double] = []
+            for _ in 0..<7 {
+                renderView.needsDisplay = true
+                let start = DispatchTime.now()
+                renderView.displayIfNeeded()
+                let end = DispatchTime.now()
+                samples.append(Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000_000)
+            }
+            samples.sort()
+            window.close()
+            return (tileCount, samples[samples.count / 2])
+        }
+
+        // Sized to bracket D81's own two anchor points: ~4,400 tiles (fine) and ~32,400
+        // tiles (Canvas crossover), plus intermediate rungs around the 16.67ms 60Hz
+        // display-refresh budget this cap actually guards (distinct from D82/D83's 20ms
+        // simulation-tick budget -- draw(_:) runs on AppKit's display cycle, not the tick
+        // loop).
+        let widths: [CGFloat] = [900, 1400, 1900, 2400, 2900, 3400, 4200, 5200]
+        var results: [(tileCount: Double, seconds: Double)] = []
+        for width in widths {
+            results.append(measureDrawTime(size: NSSize(width: width, height: width * 0.75)))
+        }
+
+        for (tiles, seconds) in results {
+            #expect(seconds > 0, "displayIfNeeded() at \(tiles) tiles reported a non-positive draw time")
+        }
+
+        // Sanity anchor (PARITY item 5c's own phrase for this check): near ~4,000 tiles,
+        // this should reconcile with D81's independently-measured 6.7-7.3ms, not just be
+        // self-consistent. Loose band, not a tight re-derivation -- this is a manual
+        // calibration aid, not a strict regression gate.
+        if let nearFourThousand = results.min(by: { abs($0.tileCount - 4_000) < abs($1.tileCount - 4_000) }) {
+            let message = "median draw time near ~4,000 tiles (\(nearFourThousand.tileCount)) was "
+                + "\(nearFourThousand.seconds * 1000)ms -- outside a loose sanity band around D81's 6.7-7.3ms"
+            #expect(nearFourThousand.seconds > 0.003 && nearFourThousand.seconds < 0.030, Comment(rawValue: message))
+        }
+
+        // Report where the median crosses the 16.67ms frame budget -- this harness's job is
+        // to let a human re-derive T, not to assert its exact value.
+        let budgetSeconds = 1.0 / 60.0
+        let crossing = results.first { $0.seconds > budgetSeconds }
+        print("[T-calibration] results:", results.map { "\(Int($0.tileCount))t=\(($0.seconds * 1000).rounded())ms" })
+        if let crossing {
+            print("[T-calibration] frame-budget (16.67ms) crossed near \(Int(crossing.tileCount)) tiles")
+        }
+    }
 }

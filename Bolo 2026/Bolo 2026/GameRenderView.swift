@@ -240,20 +240,48 @@ public final class GameRenderView: NSView {
     /// are only exactly center-preserving for a full 2× step; ported byte-for-byte anyway
     /// since that's the reference's own actual (slightly-off-center for a 1.0→1.5 or
     /// 1.0→0.75 step) behavior, not a bug this port should silently correct.
+    ///
+    /// **F1 fix (D161, PARITY audit `fc4894b`):** this used to set `zoomIndex = index`
+    /// unconditionally, then apply the recenter pan unconditionally too. When AppKit's
+    /// dynamic `minMagnification` floor clamps the requested set, the actual on-screen
+    /// magnification can land exactly where it already was -- a live probe confirmed the
+    /// clamp lands on `minMagnification` *exactly*, not merely near it -- so the old code
+    /// still panned the viewport with zero zoom change (PARITY reproduced this live,
+    /// 540-940pt phantom pans at 2400×1600/1600×1200) and still let `currentZoomLevel`
+    /// report a level the screen wasn't actually at. Fixed by comparing the scroll view's
+    /// *actual* magnification before and after the set: `zoomIndex` now always resyncs to
+    /// the largest discrete level not exceeding the actual on-screen magnification (the
+    /// same "never let the button state and the screen silently diverge" invariant
+    /// `currentZoomLevel` documents below), and the recenter pan is skipped entirely
+    /// whenever that actual magnification didn't move at all.
     private func setZoom(to index: Int) {
         guard Self.zoomLevels.indices.contains(index), let scrollView = enclosingScrollView else { return }
         let clipView = scrollView.contentView
         let visRect = clipView.bounds
         let goingIn = index > zoomIndex
-        zoomIndex = index
+        let previousMagnification = scrollView.magnification
         // AppKit clamps this set to the live `[minMagnification, maxMagnification]` range
         // already installed by a prior `applyEffectiveMagnification()` call -- e.g. zooming
         // out to 0.5x on a viewport whose floor already sits above 0.5x lands at the floor,
         // not at a value below it. The follow-up call below then only needs to recompute the
-        // floor for the *current* viewport and resync `zoomIndex` in the one case that set
-        // couldn't already handle (the floor itself changing since it was last installed).
+        // floor for the *current* viewport (the one case that set couldn't already handle:
+        // the floor itself changing since it was last installed).
         scrollView.magnification = Self.zoomLevels[index]
         applyEffectiveMagnification()
+        let effectiveMagnification = scrollView.magnification
+
+        // Resync `zoomIndex` to whatever discrete level is actually in effect -- AppKit's
+        // clamp can land `effectiveMagnification` on a value matching none of `zoomLevels`
+        // exactly (a dynamic floor sitting strictly between two discrete steps). The
+        // largest level not exceeding the real on-screen magnification is the honest
+        // "currently in effect" answer.
+        zoomIndex = Self.zoomLevels.lastIndex(where: { $0 <= effectiveMagnification }) ?? index
+
+        // If the requested zoom didn't actually move the screen at all -- the clamp landed
+        // exactly back where it already was -- skip the recenter pan entirely. Applying it
+        // here would move the viewport with zero zoom change (F1's phantom-pan defect).
+        guard effectiveMagnification != previousMagnification else { return }
+
         let fraction: CGFloat = goingIn ? 0.25 : -0.5
         let newOrigin = NSPoint(
             x: visRect.origin.x + fraction * visRect.size.width,
