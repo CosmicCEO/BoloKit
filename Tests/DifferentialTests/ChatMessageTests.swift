@@ -66,6 +66,11 @@ private func makePlayers(count: Int) -> [PlayerState] {
     #expect(message.displayText == "Alice: hello")
 }
 
+@Test func chatMessageDisplayTextForGameTargetIsTheBodyAsIs() {
+    let message = ChatMessage(id: 2, player: 0, senderName: "", text: "Alice joined", to: EventLogText.gameTarget)
+    #expect(message.displayText == "Alice joined")
+}
+
 @Test func messageTargetLabelsCoverExactlyTheThreePlayerChoosableCases() {
     // `MSGGAME` (`bolo.h:162`) is server-only -- `sendmessage`'s own `switch` (`client.c:
     // 6718-6742`) never handles it, so `MessageTarget` deliberately has no `.game` case at all.

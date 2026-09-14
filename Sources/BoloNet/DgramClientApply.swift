@@ -24,8 +24,9 @@ import BoloKit
 // near/far sound-effect distinction `dgramclient()` makes by checking
 // `client.fog[][]` is simplified here to a single callback per sound,
 // firing whenever the wire bit is set, with no distance branch.
-// `printmessage`'s builder-death chat line is skipped for the same
-// established reason (UI-layer, never modeled).
+// `printmessage`'s builder-death chat line is formatted at the session/
+// dispatch layer (D154 Wave 3 / D163 #5), not here -- this function still
+// only fires `onBuilderDeathSound`.
 
 /// `client.c`'s dead-reckoning extrapolation loop
 /// (`client.c:1446-1454`) iterates `(mySeq - theirBeliefOfMySeq)/2` times

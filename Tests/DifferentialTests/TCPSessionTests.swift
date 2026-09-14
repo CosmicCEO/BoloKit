@@ -237,3 +237,44 @@ private func makeState() -> GameState {
     #expect(op2 == .baseControl)
     #expect(baseControlValue == 7)
 }
+
+@Test func tcpSessionDispatchFormatsJoinFromTheWireName() throws {
+    var state = makeState()
+    var printed: [String] = []
+    let bytes = SRPlayerJoin(player: 2, name: "Bob", host: "h").encode()
+    try TCPSession.dispatch(
+        TCPSession.RawMessage(opcode: .playerJoin, bytes: bytes),
+        state: &state,
+        callbacks: SRDispatchCallbacks(onPrintMessage: { _, text in printed.append(text) })
+    )
+    #expect(printed == ["Bob joined"])
+    #expect(state.players[2].connected)
+}
+
+@Test func tcpSessionDispatchFormatsCaptureUsingPreMutationOwner() throws {
+    var state = makeState()
+    state.players[0].name = "Alice"
+    state.players[1].name = "Bob"
+    state.pills[0].owner = 1
+    var printed: [String] = []
+    let bytes = SRCapturePill(pill: 0, owner: 0).encode()
+    try TCPSession.dispatch(
+        TCPSession.RawMessage(opcode: .capturePill, bytes: bytes),
+        state: &state,
+        callbacks: SRDispatchCallbacks(onPrintMessage: { _, text in printed.append(text) })
+    )
+    #expect(printed == ["Alice captured pill 0 from Bob"])
+    #expect(state.pills[0].owner == 0)
+}
+
+@Test func tcpSessionDispatchFormatsTimeLimitViaPrintMessage() throws {
+    var state = makeState()
+    var printed: [String] = []
+    let bytes = SRTimeLimit(timeRemaining: 61).encode()
+    try TCPSession.dispatch(
+        TCPSession.RawMessage(opcode: .timeLimit, bytes: bytes),
+        state: &state,
+        callbacks: SRDispatchCallbacks(onPrintMessage: { _, text in printed.append(text) })
+    )
+    #expect(printed == ["1 Minute and 1 Second Remaining!"])
+}

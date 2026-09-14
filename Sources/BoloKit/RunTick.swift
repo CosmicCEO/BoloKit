@@ -85,7 +85,11 @@ public func runTick(
     // `builderTick`/`arriveAtTarget`'s `.getTree` completion — see `TankLocalTick.swift`/
     // `BuilderTick.swift`'s own doc comments at the fire sites.
     onTankShot: () -> Void = {},
-    onTreeHarvest: (Pointi) -> Void = { _ in }
+    onTreeHarvest: (Pointi) -> Void = { _ in },
+    // D154 Wave 3 / D163: pass-through for the builder-command `printmessage`
+    // callback (`readyTick` need-trees/pill/mines and `resolveBuilderTask`
+    // would-kill). Not a RecvSR-style UI hook; builder-command path only.
+    onPrintMessage: (String) -> Void = { _ in }
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -274,7 +278,8 @@ public func runTick(
 
     for player in state.players.indices {
         builderTick(
-            player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest
+            player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
+            onPrintMessage: onPrintMessage
         )
     }
 

@@ -139,6 +139,9 @@ struct GameView: View {
             }
             .frame(width: 220)
         }
+        .safeAreaInset(edge: .bottom) {
+            EventLogBar(session: session)
+        }
         .sheet(isPresented: $showingStatus) {
             PlayerStatusView(session: session, onDone: { showingStatus = false })
         }

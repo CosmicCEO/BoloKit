@@ -5,21 +5,22 @@
 //  D148(B): the always-visible main-window HUD Jerod's own reference screenshot of the original
 //  Mac Bolo showed -- a persistent build-tool strip (left) and player/pill/base status grid +
 //  shell/mine/armor gauges (right), replacing today's "open a sheet to see any of this" shape.
-//  See `docs/AGENT_NOTES.md`'s D148(B) pre-brief for the full zone-by-zone plan, including the
-//  two zones (event-log bar, win/loss surfacing) deliberately split out of this pass.
+//  See `docs/AGENT_NOTES.md`'s D148(B) pre-brief for the zone-by-zone plan. Event-log bar
+//  landed in D154 Wave 3 / D163; win/loss overlay stays split out.
 //
 //  Both panels poll `session.state` on a `TimelineView`, the same "poll, don't observe" shape
 //  `PlayerStatusView`/`GameRenderView` already use -- `GameSession` isn't `ObservableObject` by
 //  design (see that file's own header).
 
 import BoloKit
+import BoloNet
 import SwiftUI
 
 // MARK: - Shared HUD chrome (D154 Wave 2 / D158)
 
-/// Shared beveled-panel treatment for the three always-visible HUD surfaces (`BuilderToolStrip`,
-/// `ResourceGaugesPanel`, and -- applied at the call site in `GameView.swift`, not here --
-/// `PlayerStatusGrid`'s embedded-HUD usage only, per D158 ruling #2). Opaque fill is
+/// Shared beveled-panel treatment for the always-visible HUD surfaces (`BuilderToolStrip`,
+/// `ResourceGaugesPanel`, `EventLogBar`, and -- applied at the call site in `GameView.swift`,
+/// not here -- `PlayerStatusGrid`'s embedded-HUD usage only, per D158 ruling #2). Opaque fill is
 /// non-negotiable, unchanged from D148(B)/D157's flat `Color(nsColor: .windowBackgroundColor)`
 /// background: the original bug this port fixed was text rendering directly over the (frequently
 /// bright/busy) map, so translucency (`.regularMaterial` or similar) risks reproducing that
@@ -290,6 +291,72 @@ struct ResourceGaugesPanel: View {
                 ProgressView(value: Double(GameHUDMath.gaugeFraction(value: value, max: max)))
                     .tint(color)
             }
+        }
+    }
+}
+
+// MARK: - Event log bar (D154 Wave 3 / D163)
+
+/// Pure logic for `EventLogBar` -- last-N window and tint kind, extracted so
+/// `GameHUDViewsTests` can cover them without hosting a live window (D144).
+enum EventLogBarMath {
+    static let visibleLineCount = 3
+
+    enum TintKind: Equatable {
+        case everyone
+        case allies
+        case nearby
+        case game
+    }
+
+    static func visibleMessages(_ messages: [ChatMessage], limit: Int = visibleLineCount) -> [ChatMessage] {
+        guard messages.count > limit else { return messages }
+        return Array(messages.suffix(limit))
+    }
+
+    static func tintKind(to: UInt8) -> TintKind {
+        switch to {
+        case MessageTarget.allies.rawValue: return .allies
+        case MessageTarget.nearby.rawValue: return .nearby
+        case EventLogText.gameTarget: return .game
+        default: return .everyone
+        }
+    }
+}
+
+/// Always-visible bottom log of `GameSession.messages`. Display-only (D163 #9/#10): no tap
+/// target, no send field. Newest at the bottom. Empty = blank chrome, not placeholder copy.
+struct EventLogBar: View {
+    let session: GameSession
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            let visible = EventLogBarMath.visibleMessages(session.messages)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(visible) { message in
+                    Text(message.displayText)
+                        .font(.callout)
+                        .foregroundStyle(Self.tint(EventLogBarMath.tintKind(to: message.to)))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .bottomLeading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .hudPanelChrome()
+            .accessibilityIdentifier("event-log-bar")
+            .allowsHitTesting(false)
+            .focusable(false)
+        }
+    }
+
+    /// Inspired SwiftUI tints, not xbolo's `NSColor.blueColor`/`purpleColor`/`redColor` (D163 #11).
+    static func tint(_ kind: EventLogBarMath.TintKind) -> Color {
+        switch kind {
+        case .everyone: return .primary
+        case .allies: return .purple
+        case .nearby: return .red
+        case .game: return .cyan
         }
     }
 }

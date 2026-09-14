@@ -25,11 +25,11 @@ import Darwin
 // 6538): it just gates on builder availability and queues. Never add a
 // distance cap here.
 //
-// **Dropped side effect:** C's `client.printmessage(MSGGAME, "Your
-// builder cannot do that.  It would kill him.")` calls (mine-tile
-// rejection branches) are not reproduced — no message-channel plumbing
-// exists at this call site, and the return value (`kBuilderDoNothing`) is
-// unaffected either way. Flagged, not silently dropped.
+// **D154 Wave 3 / D163:** C's `client.printmessage(MSGGAME, "Your
+// builder cannot do that.  It would kill him.")` on mined-tile rejection
+// is now an optional `onPrintMessage` callback (builder-command path only;
+// return value still `kBuilderDoNothing`). Two spaces after the period,
+// matching `client.c:6573`.
 
 /// Builder-tool selection, matching C's `BUILDERTREE`..`BUILDERMINE`
 /// (`bolo.h:150-155`; `BUILDERNILL = -1` has no case here — "no tool
@@ -45,7 +45,10 @@ public enum BuilderCommandKind: Int, Hashable, Sendable {
 /// Ported from `getbuildertaskforcommand()` (client.c:6539-6698). See file
 /// header for the `seentiles` → ground-truth-terrain/`findPill`
 /// substitution.
-public func resolveBuilderTask(command: BuilderCommandKind, target: Pointi, state: GameState) -> BuilderTask {
+public func resolveBuilderTask(
+    command: BuilderCommandKind, target: Pointi, state: GameState,
+    onPrintMessage: (String) -> Void = { _ in }
+) -> BuilderTask {
     let x = Int(target.x)
     let y = Int(target.y)
 
@@ -71,6 +74,9 @@ public func resolveBuilderTask(command: BuilderCommandKind, target: Pointi, stat
         case .river, .swamp0, .swamp1, .swamp2, .swamp3, .crater,
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .buildRoad
+        case .minedSwamp, .minedCrater, .minedRubble, .minedGrass:
+            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            return .doNothing
         default:
             return .doNothing
         }
@@ -85,6 +91,9 @@ public func resolveBuilderTask(command: BuilderCommandKind, target: Pointi, stat
             return .buildWall
         case .river:
             return .buildBoat
+        case .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
+            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            return .doNothing
         default:
             return .doNothing
         }
@@ -96,6 +105,9 @@ public func resolveBuilderTask(command: BuilderCommandKind, target: Pointi, stat
         case .swamp0, .swamp1, .swamp2, .swamp3, .crater, .road,
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .buildPill
+        case .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
+            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            return .doNothing
         default:
             return .doNothing
         }
@@ -105,6 +117,9 @@ public func resolveBuilderTask(command: BuilderCommandKind, target: Pointi, stat
         case .swamp0, .swamp1, .swamp2, .swamp3, .crater, .road, .forest,
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .placeMine
+        case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
+            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            return .doNothing
         default:
             return .doNothing
         }

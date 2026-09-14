@@ -185,6 +185,31 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, local: Loca
     #expect(state.players[0].trees == roadTrees - 1)
 }
 
+@Test func readyBuildRoadFailurePrintsNeedMoreTreesForTheLocalPlayer() {
+    var player = connectedPlayer()
+    player.builderTask = .buildRoad
+    player.trees = roadTrees - 1
+    player.builderTarget = Pointi(x: 55, y: 55)
+    var state = makeState(players: [player])
+    var printed: [String] = []
+
+    builderTick(player: 0, state: &state, onPrintMessage: { printed.append($0) })
+
+    #expect(printed == ["You need more trees."])
+}
+
+@Test func resolveBuilderTaskOnMinedGrassRoadPrintsWouldKillHim() {
+    var state = GameState()
+    state.terrain[20, 20] = .minedGrass
+    var printed: [String] = []
+    let task = resolveBuilderTask(
+        command: .road, target: Pointi(x: 20, y: 20), state: state,
+        onPrintMessage: { printed.append($0) }
+    )
+    #expect(task == .doNothing)
+    #expect(printed == ["Your builder cannot do that.  It would kill him."])
+}
+
 @Test func readyBuildRoadSucceedsAndDeductsTrees() {
     var player = connectedPlayer()
     player.builderTask = .buildRoad

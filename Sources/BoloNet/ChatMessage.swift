@@ -78,5 +78,11 @@ public struct ChatMessage: Sendable, Hashable, Identifiable {
         self.to = to
     }
 
-    public var displayText: String { "\(senderName): \(text)" }
+    /// Chat (`recvsrsendmesg`, `client.c:1517`) is `"%s: %s"`. `MSGGAME` (`to == 3`) lines are
+    /// already fully formatted by `EventLogText` — prefixing `senderName:` would render
+    /// `": Alice joined"` (D163 #1/#2).
+    public var displayText: String {
+        if to == EventLogText.gameTarget { return text }
+        return "\(senderName): \(text)"
+    }
 }

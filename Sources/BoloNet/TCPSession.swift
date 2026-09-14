@@ -51,6 +51,11 @@ public struct SRDispatchCallbacks {
     public var onTimeLimit: (UInt16) -> Void = { _ in }
     /// No `GameState` mutation exists for this opcode (Wave 6.2 finding).
     public var onBaseControl: (UInt16) -> Void = { _ in }
+    /// D154 Wave 3 / D163: formatted `printmessage` lines (`MSGGAME` and the clock
+    /// strings). Fired at dispatch *before* the matching `recvSr*` mutates, so capture
+    /// text can still read the pre-mutation pill/base owner. Default no-op keeps every
+    /// existing call site unchanged.
+    public var onPrintMessage: (UInt8, String) -> Void = { _, _ in }
 
     public init(
         onPlayerStatusChanged: @escaping (Int) -> Void = { _ in },
@@ -64,7 +69,8 @@ public struct SRDispatchCallbacks {
         onTankStatusChanged: @escaping () -> Void = {},
         onSendMesg: @escaping (UInt8, UInt8, String) -> Void = { _, _, _ in },
         onTimeLimit: @escaping (UInt16) -> Void = { _ in },
-        onBaseControl: @escaping (UInt16) -> Void = { _ in }
+        onBaseControl: @escaping (UInt16) -> Void = { _ in },
+        onPrintMessage: @escaping (UInt8, String) -> Void = { _, _ in }
     ) {
         self.onPlayerStatusChanged = onPlayerStatusChanged
         self.onPillStatusChanged = onPillStatusChanged
@@ -78,6 +84,7 @@ public struct SRDispatchCallbacks {
         self.onSendMesg = onSendMesg
         self.onTimeLimit = onTimeLimit
         self.onBaseControl = onBaseControl
+        self.onPrintMessage = onPrintMessage
     }
 }
 
@@ -165,6 +172,10 @@ public final class TCPSession: @unchecked Sendable {
     public struct RawMessage: Sendable {
         public let opcode: ServerOpcode
         public let bytes: [UInt8]
+        public init(opcode: ServerOpcode, bytes: [UInt8]) {
+            self.opcode = opcode
+            self.bytes = bytes
+        }
     }
 
     /// **B.8 (D117):** the async, I/O-only half of what `receiveAndDispatchOne` used to do in one
@@ -244,24 +255,46 @@ public final class TCPSession: @unchecked Sendable {
         switch message.opcode {
         case .playerJoin:
             guard let msg = SRPlayerJoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            // D163 #7: join-path `"%s joined"` reads the wire struct, not `PlayerState.name`.
+            callbacks.onPrintMessage(EventLogText.gameTarget, EventLogText.joined(msg.name))
             recvSrPlayerJoin(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
         case .playerRejoin:
             guard let msg = SRPlayerRejoin.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            callbacks.onPrintMessage(
+                EventLogText.gameTarget,
+                EventLogText.rejoined(EventLogText.playerName(Int(msg.player), players: state.players))
+            )
             recvSrPlayerRejoin(
                 player: Int(msg.player), state: &state,
                 onPlayerStatusChanged: callbacks.onPlayerStatusChanged, onPillStatusChanged: callbacks.onPillStatusChanged
             )
         case .playerExit:
             guard let msg = SRPlayerExit.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            callbacks.onPrintMessage(
+                EventLogText.gameTarget,
+                EventLogText.left(EventLogText.playerName(Int(msg.player), players: state.players))
+            )
             recvSrPlayerExit(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
         case .playerDisc:
             guard let msg = SRPlayerDisc.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            callbacks.onPrintMessage(
+                EventLogText.gameTarget,
+                EventLogText.disconnected(EventLogText.playerName(Int(msg.player), players: state.players))
+            )
             recvSrPlayerDisc(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
         case .playerKick:
             guard let msg = SRPlayerKick.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            callbacks.onPrintMessage(
+                EventLogText.gameTarget,
+                EventLogText.kicked(EventLogText.playerName(Int(msg.player), players: state.players))
+            )
             recvSrPlayerKick(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
         case .playerBan:
             guard let msg = SRPlayerBan.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            callbacks.onPrintMessage(
+                EventLogText.gameTarget,
+                EventLogText.banned(EventLogText.playerName(Int(msg.player), players: state.players))
+            )
             recvSrPlayerBan(player: Int(msg.player), state: &state, onPlayerStatusChanged: callbacks.onPlayerStatusChanged)
         case .hangUp:
             // "Not used" per `bolo.h:210` -- no `recvSr*` function exists
@@ -311,6 +344,18 @@ public final class TCPSession: @unchecked Sendable {
             recvSrCoolPill(pill: Int(msg.pill), state: &state)
         case .capturePill:
             guard let msg = SRCapturePill.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            let pill = Int(msg.pill)
+            if state.pills.indices.contains(pill) {
+                let previous = state.pills[pill].owner
+                if let line = EventLogText.capturePill(
+                    capturer: EventLogText.playerName(Int(msg.owner), players: state.players),
+                    pill: pill, previousOwner: previous,
+                    previousOwnerName: EventLogText.playerName(Int(previous), players: state.players),
+                    newOwner: msg.owner
+                ) {
+                    callbacks.onPrintMessage(EventLogText.gameTarget, line)
+                }
+            }
             recvSrCapturePill(
                 pill: Int(msg.pill), owner: msg.owner, state: &state,
                 onPillStatusChanged: callbacks.onPillStatusChanged, onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill,
@@ -330,6 +375,18 @@ public final class TCPSession: @unchecked Sendable {
             recvSrReplenishBase(base: Int(msg.base), state: &state, onBaseStatusChanged: callbacks.onBaseStatusChanged)
         case .captureBase:
             guard let msg = SRCaptureBase.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            let base = Int(msg.base)
+            if state.bases.indices.contains(base) {
+                let previous = state.bases[base].owner
+                callbacks.onPrintMessage(
+                    EventLogText.gameTarget,
+                    EventLogText.captureBase(
+                        capturer: EventLogText.playerName(Int(msg.owner), players: state.players),
+                        base: base, previousOwner: previous,
+                        previousOwnerName: EventLogText.playerName(Int(previous), players: state.players)
+                    )
+                )
+            }
             recvSrCaptureBase(base: Int(msg.base), owner: msg.owner, state: &state, onBaseStatusChanged: callbacks.onBaseStatusChanged)
         case .refuel:
             guard let msg = SRRefuel.decode(bytes) else { throw TCPSessionError.malformedMessage }
@@ -362,6 +419,18 @@ public final class TCPSession: @unchecked Sendable {
             recvSrHitTank(dir: msg.dir, state: &state, onTankStatusChanged: callbacks.onTankStatusChanged, onShouldBroadcastDropPill: callbacks.onShouldBroadcastDropPill)
         case .setAlliance:
             guard let msg = SRSetAlliance.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            let actor = Int(msg.player)
+            if state.players.indices.contains(actor), state.players.indices.contains(state.localPlayer) {
+                if let line = EventLogText.remoteAllianceChange(
+                    localPlayer: state.localPlayer, actor: actor,
+                    actorName: state.players[actor].name,
+                    previousAlliance: state.players[actor].alliance,
+                    newAlliance: msg.alliance,
+                    localAlliance: state.players[state.localPlayer].alliance
+                ) {
+                    callbacks.onPrintMessage(EventLogText.gameTarget, line)
+                }
+            }
             recvSrSetAlliance(
                 player: Int(msg.player), alliance: msg.alliance, state: &state,
                 onPlayerStatusChanged: callbacks.onPlayerStatusChanged, onBaseStatusChanged: callbacks.onBaseStatusChanged,
@@ -370,9 +439,11 @@ public final class TCPSession: @unchecked Sendable {
         case .timeLimit:
             guard let msg = SRTimeLimit.decode(bytes) else { throw TCPSessionError.malformedMessage }
             callbacks.onTimeLimit(msg.timeRemaining)
+            callbacks.onPrintMessage(EventLogText.gameTarget, EventLogText.timeLimitRemaining(Int(msg.timeRemaining)))
         case .baseControl:
             guard let msg = SRBaseControl.decode(bytes) else { throw TCPSessionError.malformedMessage }
             callbacks.onBaseControl(msg.timeLeft)
+            callbacks.onPrintMessage(EventLogText.gameTarget, EventLogText.baseControlRemaining(Int(msg.timeLeft)))
         case .pause:
             guard let msg = SRPause.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrPause(pause: msg.pause, state: &state)

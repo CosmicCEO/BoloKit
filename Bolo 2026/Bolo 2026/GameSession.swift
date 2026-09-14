@@ -101,6 +101,13 @@ public final class GameSession {
     public private(set) var messages: [ChatMessage] = []
     private var nextMessageID: UInt64 = 0
 
+    private func appendGameMessage(_ text: String) {
+        nextMessageID += 1
+        messages.append(
+            ChatMessage(id: nextMessageID, player: 0, senderName: "", text: text, to: EventLogText.gameTarget)
+        )
+    }
+
     public init(initialState: GameState, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = initialState
         self.ticksSinceLastUpdate = Array(repeating: 0, count: initialState.players.count)
@@ -287,6 +294,7 @@ public final class GameSession {
             hostEngine.submitRequestAlliance(players: players)
             return
         }
+        appendLocalAllianceRequest(players)
         if let tcpSession {
             var scratch = state
             BoloKit.requestAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
@@ -304,6 +312,7 @@ public final class GameSession {
             hostEngine.submitLeaveAlliance(players: players)
             return
         }
+        appendLocalAllianceLeave(players)
         if let tcpSession {
             var scratch = state
             BoloKit.leaveAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
@@ -313,6 +322,26 @@ public final class GameSession {
             return
         }
         BoloKit.leaveAlliance(withPlayers: players, state: &state)
+    }
+
+    private func appendLocalAllianceRequest(_ players: UInt16) {
+        guard state.players.indices.contains(state.localPlayer) else { return }
+        for line in EventLogText.localAllianceRequestMessages(
+            withPlayers: players, localPlayer: state.localPlayer,
+            previousAlliance: state.players[state.localPlayer].alliance, players: state.players
+        ) {
+            appendGameMessage(line)
+        }
+    }
+
+    private func appendLocalAllianceLeave(_ players: UInt16) {
+        guard state.players.indices.contains(state.localPlayer) else { return }
+        for line in EventLogText.localAllianceLeaveMessages(
+            withPlayers: players, localPlayer: state.localPlayer,
+            previousAlliance: state.players[state.localPlayer].alliance, players: state.players
+        ) {
+            appendGameMessage(line)
+        }
     }
 
     /// **1.1 backlog C.4:** the messages panel's send action, mirroring `sendmessage()`'s own
@@ -388,7 +417,7 @@ public final class GameSession {
         udpSession?.cancel()
     }
 
-    private func tick() {
+    func tick() {
         let now = DispatchTime.now()
         if let last = lastTickTime {
             recentTickIntervals.append(Double(now.uptimeNanoseconds - last.uptimeNanoseconds) / 1_000_000_000)
@@ -398,19 +427,42 @@ public final class GameSession {
         }
         lastTickTime = now
 
+        var pendingGameMessages: [String] = []
+        let oldPillOwners = state.pills.map(\.owner)
+        let oldBaseOwners = state.bases.map(\.owner)
+        let oldBuilderStatus = state.players.map(\.builderStatus)
+        let playerNames = state.players.map(\.name)
+
         // D125/D148(A): sound-effect triggers -- see SoundPlayer.swift's own header for exactly
         // which names are wired, and why the rest (hittank/build/etc., which still need new
         // BoloKit callback threading) aren't yet.
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
+            onTimeLimitWarning: { seconds in pendingGameMessages.append(EventLogText.timeLimitRemaining(seconds)) },
+            onBaseControlWarning: { seconds in pendingGameMessages.append(EventLogText.baseControlRemaining(seconds)) },
             onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") },
             onExplosion: { _ in SoundPlayer.shared.play("explosion") },
             onSuperboom: { SoundPlayer.shared.play("superboom") },
             onSmallboom: { SoundPlayer.shared.play("explosion") },
             onTankShot: { SoundPlayer.shared.play("tankshot") },
-            onTreeHarvest: { _ in SoundPlayer.shared.play("tree") }
+            onTreeHarvest: { _ in SoundPlayer.shared.play("tree") },
+            onPrintMessage: { pendingGameMessages.append($0) }
         )
+        pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
+            previousPillOwners: oldPillOwners, pills: state.pills,
+            previousBaseOwners: oldBaseOwners, bases: state.bases,
+            players: state.players
+        ))
+        for i in state.players.indices {
+            if oldBuilderStatus[i] != .parachute, state.players[i].builderStatus == .parachute {
+                let name = i < playerNames.count ? playerNames[i] : state.players[i].name
+                pendingGameMessages.append(EventLogText.lostBuilder(name))
+            }
+        }
+        for text in pendingGameMessages {
+            appendGameMessage(text)
+        }
         renderView.render(state)
     }
 
@@ -514,10 +566,21 @@ public final class GameSession {
             // effect waits for the host's own `SRBuilderAck` (`.tcpMessage` case below, already
             // wired to `recvSrBuilderAck` via `TCPSession.dispatch`), matching C's own real
             // `kBuilderGoto` -> sendcl* -> `kBuilderWork` -> `recvsrbuilderack` round trip.
+            var builderNeed: [String] = []
+            let oldBuilderStatus = state.players.indices.contains(localPlayer)
+                ? state.players[localPlayer].builderStatus : nil
             let builderOutbound = builderTick(
                 player: localPlayer, state: &state,
-                joinArrive: { player, state in detectJoinBuilderArrival(player: player, state: state) }
+                joinArrive: { player, state in detectJoinBuilderArrival(player: player, state: state) },
+                onPrintMessage: { builderNeed.append($0) }
             )
+            for text in builderNeed {
+                appendGameMessage(text)
+            }
+            if let oldBuilderStatus, oldBuilderStatus != .parachute,
+               state.players[localPlayer].builderStatus == .parachute {
+                appendGameMessage(EventLogText.lostBuilder(state.players[localPlayer].name))
+            }
             if let builderOutbound, let tcpSession {
                 let bytes: [UInt8]
                 switch builderOutbound {
@@ -574,19 +637,32 @@ public final class GameSession {
             // exclusive `inout` binding, would be a nested-access violation (same reasoning as
             // `HostGameEngine.swift`'s own `onSendMesg` wiring, `HostGameEngine.swift:264-281`).
             let playerNames = state.players.map(\.name)
-            let callbacks = SRDispatchCallbacks(onSendMesg: { [weak self] player, to, text in
-                guard let self else { return }
-                self.nextMessageID += 1
-                let senderIndex = Int(player)
-                let name = playerNames.indices.contains(senderIndex) ? playerNames[senderIndex] : ""
-                self.messages.append(
-                    ChatMessage(id: self.nextMessageID, player: senderIndex, senderName: name, text: text, to: to)
-                )
-            })
+            let callbacks = SRDispatchCallbacks(
+                onSendMesg: { [weak self] player, to, text in
+                    guard let self else { return }
+                    self.nextMessageID += 1
+                    let senderIndex = Int(player)
+                    let name = playerNames.indices.contains(senderIndex) ? playerNames[senderIndex] : ""
+                    self.messages.append(
+                        ChatMessage(id: self.nextMessageID, player: senderIndex, senderName: name, text: text, to: to)
+                    )
+                },
+                onPrintMessage: { [weak self] _, text in
+                    self?.appendGameMessage(text)
+                }
+            )
             try? TCPSession.dispatch(message, state: &state, callbacks: callbacks)
 
         case .udpDatagram(let data):
-            udpSession.apply(data, myOwnSeq: localSeq, state: &state)
+            let playerNames = state.players.map(\.name)
+            var builderDied = false
+            if let result = udpSession.apply(
+                data, myOwnSeq: localSeq, state: &state,
+                onBuilderDeathSound: { builderDied = true }
+            ), builderDied {
+                let name = result.player < playerNames.count ? playerNames[result.player] : ""
+                appendGameMessage(EventLogText.lostBuilder(name))
+            }
 
         case .tcpEnded, .udpEnded:
             // Disconnection -- surfacing this to the user (a visible notice, not a silent

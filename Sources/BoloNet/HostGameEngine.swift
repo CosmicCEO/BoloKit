@@ -144,12 +144,21 @@ public final class HostGameEngine: @unchecked Sendable {
     /// isolation of its own).
     public var onTickRendered: (@MainActor (GameState) -> Void)?
 
-    /// **1.1 backlog C.4:** fired whenever this host's own local chat send resolves to a mask
-    /// that includes the host's own player slot -- mirrors a real client receiving its own
-    /// `SRSendMesg` back over the wire (`sendsrsendmesg`'s `sendToMask` loop, `HostSession.swift:
-    /// 243`, includes the sender whenever the sender's own bit is set in the mask it computed),
-    /// except the host has no socket to itself so this is the direct in-process equivalent.
+    /// **1.1 backlog C.4 / D154 Wave 3:** fired for chat that includes the host's own slot
+    /// *and* for `MSGGAME` system-event lines (roster/capture/alliance/clock/builder). The host
+    /// has no socket to itself, so this is the in-process equivalent of receiving those `SR*`
+    /// display events back over the wire.
     public var onMessageReceived: (@MainActor (ChatMessage) -> Void)?
+
+    private func emitGameMessage(_ text: String) async {
+        nextMessageID += 1
+        let message = ChatMessage(
+            id: nextMessageID, player: 0, senderName: "", text: text, to: EventLogText.gameTarget
+        )
+        if let onMessageReceived {
+            await onMessageReceived(message)
+        }
+    }
 
     public init(initialState: GameState, listener: HostListener, dgramListener: HostDgramListener) {
         self.state = initialState
@@ -310,7 +319,11 @@ public final class HostGameEngine: @unchecked Sendable {
             // I/O-only (just `receiveOneHostMessageBytes`, never touches `state`), matching the
             // three static producers' own discipline. Reads the same `connection`
             // `processJoinAttempt` already registered into `table` for this player.
-            if case .accepted(let player, _) = outcome {
+            if case .accepted(let player, let rejoin) = outcome {
+                if state.players.indices.contains(player) {
+                    let name = state.players[player].name
+                    await emitGameMessage(rejoin ? EventLogText.rejoined(name) : EventLogText.joined(name))
+                }
                 let continuation = self.continuation
                 Task {
                     while true {
@@ -354,18 +367,33 @@ public final class HostGameEngine: @unchecked Sendable {
                         if let onMessageReceived = self.onMessageReceived {
                             Task { await onMessageReceived(message) }
                         }
+                    }, onPrintMessage: { [weak self] text in
+                        guard let self else { return }
+                        self.nextMessageID += 1
+                        let message = ChatMessage(
+                            id: self.nextMessageID, player: 0, senderName: "", text: text, to: EventLogText.gameTarget
+                        )
+                        if let onMessageReceived = self.onMessageReceived {
+                            Task { await onMessageReceived(message) }
+                        }
                     })
                 )
             } catch {
+                let name = player < playerNames.count ? playerNames[player] : ""
                 await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
+                await emitGameMessage(EventLogText.disconnected(name))
                 return
             }
             if opcode == .hangUp {
+                let name = player < playerNames.count ? playerNames[player] : ""
                 await handlePlayerDisconnect(player: player, reason: .normal, state: &state, table: table)
+                await emitGameMessage(EventLogText.left(name))
             }
 
         case .clConnectionEnded(let player):
+            let name = state.players.indices.contains(player) ? state.players[player].name : ""
             await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
+            await emitGameMessage(EventLogText.disconnected(name))
 
         case .localInputChanged(let set, let clear):
             state.players[state.localPlayer].inputFlags.formUnion(set)
@@ -378,13 +406,28 @@ public final class HostGameEngine: @unchecked Sendable {
             queueBuilderCommand(command: command, target: target, player: state.localPlayer, state: &state)
 
         case .kickPlayer(let player):
+            let name = state.players.indices.contains(player) ? state.players[player].name : ""
             await hostKickPlayer(player: player, state: &state, table: table)
+            await emitGameMessage(EventLogText.kicked(name))
 
         case .banPlayer(let player):
+            let name = state.players.indices.contains(player) ? state.players[player].name : ""
+            let wasConnected = state.players.indices.contains(player) && state.players[player].connected
             await hostBanPlayer(player: player, state: &state, table: table)
+            if wasConnected {
+                await emitGameMessage(EventLogText.banned(name))
+            }
 
         case .requestAlliance(let players):
             let localPlayer = state.localPlayer
+            if state.players.indices.contains(localPlayer) {
+                for line in EventLogText.localAllianceRequestMessages(
+                    withPlayers: players, localPlayer: localPlayer,
+                    previousAlliance: state.players[localPlayer].alliance, players: state.players
+                ) {
+                    await emitGameMessage(line)
+                }
+            }
             var broadcast: [UInt8]?
             requestAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 broadcast = SRSetAlliance(player: UInt8(localPlayer), alliance: alliance).encode()
@@ -395,6 +438,14 @@ public final class HostGameEngine: @unchecked Sendable {
 
         case .leaveAlliance(let players):
             let localPlayer = state.localPlayer
+            if state.players.indices.contains(localPlayer) {
+                for line in EventLogText.localAllianceLeaveMessages(
+                    withPlayers: players, localPlayer: localPlayer,
+                    previousAlliance: state.players[localPlayer].alliance, players: state.players
+                ) {
+                    await emitGameMessage(line)
+                }
+            }
             var broadcast: [UInt8]?
             leaveAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 broadcast = SRSetAlliance(player: UInt8(localPlayer), alliance: alliance).encode()
@@ -474,13 +525,25 @@ public final class HostGameEngine: @unchecked Sendable {
         let ticksSinceLastUpdate = await table.allTicksSinceLastUpdate(currentTick: state.ticks)
         lastKnownTicksSinceLastUpdate = ticksSinceLastUpdate
 
+        var pendingGameMessages: [String] = []
+        let oldPillOwners = state.pills.map(\.owner)
+        let oldBaseOwners = state.bases.map(\.owner)
+        let oldBuilderStatus = state.players.map(\.builderStatus)
+        let playerNames = state.players.map(\.name)
+
         runTick(
             state: &state,
             ticksSinceLastUpdate: ticksSinceLastUpdate,
             onPlayerDisconnected: { player in disconnectedPlayers.append(player) },
             onPause: { seconds in pending.append(SRPause(pause: UInt8(seconds)).encode()) },
-            onTimeLimitWarning: { seconds in pending.append(SRTimeLimit(timeRemaining: UInt16(seconds)).encode()) },
-            onBaseControlWarning: { seconds in pending.append(SRBaseControl(timeLeft: UInt16(seconds)).encode()) },
+            onTimeLimitWarning: { seconds in
+                pending.append(SRTimeLimit(timeRemaining: UInt16(seconds)).encode())
+                pendingGameMessages.append(EventLogText.timeLimitRemaining(seconds))
+            },
+            onBaseControlWarning: { seconds in
+                pending.append(SRBaseControl(timeLeft: UInt16(seconds)).encode())
+                pendingGameMessages.append(EventLogText.baseControlRemaining(seconds))
+            },
             onCoolPill: { pill in pending.append(SRCoolPill(pill: UInt8(pill)).encode()) },
             onReplenishBase: { base in pending.append(SRReplenishBase(base: UInt8(base)).encode()) },
             onGrow: { x, y in pending.append(SRGrow(x: UInt8(x), y: UInt8(y)).encode()) },
@@ -490,8 +553,21 @@ public final class HostGameEngine: @unchecked Sendable {
             onShouldBroadcastSmallBoom: { player, x, y in
                 pending.append(SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode())
             },
-            onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) }
+            onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) },
+            onPrintMessage: { pendingGameMessages.append($0) }
         )
+
+        pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
+            previousPillOwners: oldPillOwners, pills: state.pills,
+            previousBaseOwners: oldBaseOwners, bases: state.bases,
+            players: state.players
+        ))
+        for i in state.players.indices {
+            if oldBuilderStatus[i] != .parachute, state.players[i].builderStatus == .parachute {
+                let name = i < playerNames.count ? playerNames[i] : state.players[i].name
+                pendingGameMessages.append(EventLogText.lostBuilder(name))
+            }
+        }
 
         for bytes in pending {
             await table.sendToAll(bytes)
@@ -500,8 +576,14 @@ public final class HostGameEngine: @unchecked Sendable {
         for player in disconnectedPlayers {
             // Mirrors `handlePlayerDisconnect`'s own `.abnormal` broadcast + table cleanup
             // (`HostSession.swift:310,312`) -- NOT a call to that function itself, see above.
+            let name = player < playerNames.count ? playerNames[player] : ""
             await table.sendToAllExcept(player, SRPlayerDisc(player: UInt8(player)).encode())
             await table.disconnect(player)
+            pendingGameMessages.append(EventLogText.disconnected(name))
+        }
+
+        for text in pendingGameMessages {
+            await emitGameMessage(text)
         }
 
         // B.7 (D108): fires every tick, including paused/time-limit-reached ticks (the guard

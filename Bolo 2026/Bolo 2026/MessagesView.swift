@@ -83,13 +83,23 @@ struct MessagesView: View {
 
     @ViewBuilder
     private func messageRow(_ message: ChatMessage, snapshot: GameState) -> some View {
-        HStack(alignment: .top) {
-            Text(message.senderName.isEmpty ? "Player \(message.player)" : message.senderName)
-                .fontWeight(.semibold)
-                .foregroundStyle(message.player == snapshot.localPlayer ? Color.accentColor : .primary)
-            Text(message.text)
-            Spacer()
+        if message.to == EventLogText.gameTarget {
+            // D163 #2: same sink as the bar, so `MSGGAME` lines appear here too. Not a chrome
+            // restyle -- the send field / picker / List layout are unchanged.
+            HStack(alignment: .top) {
+                Text(message.displayText)
+                Spacer()
+            }
+            .font(.callout)
+        } else {
+            HStack(alignment: .top) {
+                Text(message.senderName.isEmpty ? "Player \(message.player)" : message.senderName)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(message.player == snapshot.localPlayer ? Color.accentColor : .primary)
+                Text(message.text)
+                Spacer()
+            }
+            .font(.callout)
         }
-        .font(.callout)
     }
 }

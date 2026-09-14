@@ -7,6 +7,7 @@
 //  precedent of pulling pure logic out of view code for direct unit-testing.
 
 import Testing
+import BoloNet
 
 @testable import Bolo_2026
 
@@ -34,5 +35,24 @@ struct GameHUDViewsTests {
 
     @Test func zeroMaxIsSafeAndYieldsZero() {
         #expect(GameHUDMath.gaugeFraction(value: 5, max: 0) == 0)
+    }
+
+    @Test func eventLogBarVisibleMessagesKeepsTheNewestThree() {
+        let messages = (1...5).map {
+            ChatMessage(id: UInt64($0), player: 0, senderName: "", text: "\($0)", to: EventLogText.gameTarget)
+        }
+        let visible = EventLogBarMath.visibleMessages(messages)
+        #expect(visible.map(\.id) == [3, 4, 5])
+    }
+
+    @Test func eventLogBarVisibleMessagesEmptyIsEmpty() {
+        #expect(EventLogBarMath.visibleMessages([]).isEmpty)
+    }
+
+    @Test func eventLogBarTintKindMatchesMessageTarget() {
+        #expect(EventLogBarMath.tintKind(to: MessageTarget.everyone.rawValue) == .everyone)
+        #expect(EventLogBarMath.tintKind(to: MessageTarget.allies.rawValue) == .allies)
+        #expect(EventLogBarMath.tintKind(to: MessageTarget.nearby.rawValue) == .nearby)
+        #expect(EventLogBarMath.tintKind(to: EventLogText.gameTarget) == .game)
     }
 }

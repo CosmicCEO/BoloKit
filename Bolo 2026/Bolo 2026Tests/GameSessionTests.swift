@@ -28,10 +28,14 @@ private func makeTrivialImage() -> CGImage {
 }
 
 @MainActor
-private func makeSession(players: [PlayerState] = [PlayerState()]) -> GameSession {
+private func makeSession(
+    players: [PlayerState] = [PlayerState()],
+    configure: (inout GameState) -> Void = { _ in }
+) -> GameSession {
     var state = GameState()
     state.players = players
     state.localPlayer = 0
+    configure(&state)
     let image = makeTrivialImage()
     return GameSession(initialState: state, tilesImage: image, spritesImage: image)
 }
@@ -100,5 +104,40 @@ struct GameSessionTests {
         session.leaveAlliance(0b10)
 
         #expect(session.state.players[0].alliance & 0b10 == 0)
+    }
+
+    @Test func singleProcessTickAppendsTimeLimitWarningToTheOneSink() {
+        var player = PlayerState()
+        player.name = "Jerod"
+        player.connected = true
+        let session = makeSession(players: [player]) { state in
+            state.timeLimit = 10
+            state.ticks = UInt64(Int(ticksPerSec) * 10 - Int(ticksPerSec) * 5)
+        }
+
+        session.tick()
+
+        #expect(session.messages.count == 1)
+        #expect(session.messages[0].to == EventLogText.gameTarget)
+        #expect(session.messages[0].text == "5 Seconds Remaining!")
+        #expect(session.messages[0].displayText == "5 Seconds Remaining!")
+    }
+
+    @Test func singleProcessRequestAllianceAppendsRequestedLine() {
+        var players = [PlayerState(), PlayerState()]
+        players[0].used = true
+        players[0].connected = true
+        players[0].name = "Alice"
+        players[0].alliance = 0b01
+        players[1].used = true
+        players[1].connected = true
+        players[1].name = "Bob"
+        players[1].alliance = 0b10
+        let session = makeSession(players: players)
+
+        session.requestAlliance(0b10)
+
+        #expect(session.messages.map(\.text) == ["requested alliance with Bob"])
+        #expect(session.messages[0].to == EventLogText.gameTarget)
     }
 }

@@ -115,4 +115,27 @@ struct GameViewFocusRoutingTests {
         sendArrow(124)  // Right -- back to the seeded x
         #expect(origin() == NSPoint(x: 2000, y: 2000))
     }
+
+    @Test func bottomSafeAreaInsetPushesScrollViewContentInsetsOffZero() throws {
+        // D154 Wave 3: `EventLogBar` is a `.safeAreaInset(edge: .bottom)` on `GameView`.
+        // SwiftUI's accessibility identifier does not reliably appear on the AppKit
+        // hierarchy, so this asserts the layout consequence instead: D157 measured
+        // `contentInsets.bottom == 0` before the bar; a non-zero bottom inset is the
+        // bar occupying that edge. Arrow-key scroll (the test above) still passes
+        // with this inset -- no `GameRenderView` fix required (D163 #8).
+        let hosting = NSHostingView(rootView: GameView(initialState: AppRootView.demoState, onQuitToMenu: {}))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hosting
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        let renderView = try #require(findRenderView(hosting), "GameRenderView not found in hosted hierarchy")
+        let scrollView = try #require(renderView.enclosingScrollView, "GameRenderView has no enclosing NSScrollView")
+        #expect(scrollView.contentInsets.bottom > 0)
+    }
 }

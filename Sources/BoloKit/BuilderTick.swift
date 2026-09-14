@@ -433,13 +433,15 @@ private func placeMineWork(at point: Pointi, state: inout GameState, onMineExplo
 /// does. On failure (insufficient resources, no free pill): discards the
 /// order (`builderTask = .doNothing`) and leaves everything else
 /// untouched. Ported from the `kBuilderReady` case (client.c:4543-4787).
-private func readyTick(player: Int, state: inout GameState) {
+private func readyTick(player: Int, state: inout GameState, onPrintMessage: (String) -> Void) {
     // D137: resolve any pending mouse-issued builder command (C:
     // client.c:4544-4545 — `getbuildertaskforcommand` resolution, cleared
     // immediately regardless of outcome) before reading `builderTask`.
     if let command = state.players[player].pendingBuilderCommand {
         let target = state.players[player].pendingBuilderTarget
-        state.players[player].builderTask = resolveBuilderTask(command: command, target: target, state: state)
+        state.players[player].builderTask = resolveBuilderTask(
+            command: command, target: target, state: state, onPrintMessage: onPrintMessage
+        )
         state.players[player].builderTarget = target
         state.players[player].pendingBuilderCommand = nil
     }
@@ -464,6 +466,7 @@ private func readyTick(player: Int, state: inout GameState) {
     case .buildRoad:
         guard state.players[player].trees >= roadTrees else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more trees.")
             return
         }
         state.players[player].builder = launch
@@ -476,6 +479,7 @@ private func readyTick(player: Int, state: inout GameState) {
     case .buildWall:
         guard state.players[player].trees >= wallTrees else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more trees.")
             return
         }
         state.players[player].builder = launch
@@ -488,6 +492,7 @@ private func readyTick(player: Int, state: inout GameState) {
     case .buildBoat:
         guard state.players[player].trees >= boatTrees else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more trees.")
             return
         }
         state.players[player].builder = launch
@@ -500,12 +505,14 @@ private func readyTick(player: Int, state: inout GameState) {
     case .buildPill:
         guard state.players[player].trees >= pillTrees else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more trees.")
             return
         }
         guard let pillIndex = state.pills.indices.first(where: {
             state.pills[$0].owner == UInt8(player) && state.pills[$0].armour == pillOnboard
         }) else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need a pill.")
             return
         }
         state.players[player].builder = launch
@@ -526,6 +533,7 @@ private func readyTick(player: Int, state: inout GameState) {
     case .repairPill:
         guard state.players[player].trees > 0 else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more trees.")
             return
         }
         state.players[player].builder = launch
@@ -551,6 +559,7 @@ private func readyTick(player: Int, state: inout GameState) {
     case .placeMine:
         guard state.players[player].mines > 0 else {
             state.players[player].builderTask = .doNothing
+            onPrintMessage("You need more mines.")
             return
         }
         state.players[player].builder = launch
@@ -839,13 +848,17 @@ public func builderTick(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onTreeHarvest: (Pointi) -> Void = { _ in },
-    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil,
+    onPrintMessage: (String) -> Void = { _ in }
 ) -> JoinOutboundBuilderCL? {
     guard state.players[player].connected else { return nil }
 
     switch state.players[player].builderStatus {
     case .ready:
-        readyTick(player: player, state: &state)
+        // C's `printmessage` here is the local client's UI sink; only the local
+        // player's builder-need / would-kill lines go to the log (D163 #5).
+        let print = (player == state.localPlayer) ? onPrintMessage : { _ in }
+        readyTick(player: player, state: &state, onPrintMessage: print)
 
     case .goto:
         return gotoTick(

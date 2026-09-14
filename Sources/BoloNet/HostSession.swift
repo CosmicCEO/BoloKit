@@ -403,15 +403,20 @@ public struct CLDispatchCallbacks {
     /// whether the sending player's chosen target mask happens to include the host, mirroring how
     /// a real client would receive its own `SRSendMesg` back over the wire it doesn't have.
     public var onSendMesg: (UInt8, UInt8, UInt16, String) -> Void = { _, _, _, _ in }
+    /// D154 Wave 3 / D163: formatted `MSGGAME` lines generated at host encode sites
+    /// (capture/alliance). Default no-op.
+    public var onPrintMessage: (String) -> Void = { _ in }
 
     public init(
         onMineExplosion: @escaping (Pointi) -> Void = { _ in },
         onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in },
-        onSendMesg: @escaping (UInt8, UInt8, UInt16, String) -> Void = { _, _, _, _ in }
+        onSendMesg: @escaping (UInt8, UInt8, UInt16, String) -> Void = { _, _, _, _ in },
+        onPrintMessage: @escaping (String) -> Void = { _ in }
     ) {
         self.onMineExplosion = onMineExplosion
         self.onSuperboomTerrain = onSuperboomTerrain
         self.onSendMesg = onSendMesg
+        self.onPrintMessage = onPrintMessage
     }
 }
 
@@ -564,13 +569,34 @@ public func dispatchHostMessage(
 
     case .grabTile:
         guard let msg = CLGrabTile.decode(bytes) else { throw HostSessionError.malformedMessage }
+        let previousPillOwners = state.pills.map(\.owner)
+        let previousBaseOwners = state.bases.map(\.owner)
+        let playerNames = state.players.map(\.name)
         recvClGrabTile(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastCapturePill: { pill, owner in
                 pending.append(.all(SRCapturePill(pill: UInt8(pill), owner: owner).encode()))
+                let previous = pill < previousPillOwners.count ? previousPillOwners[pill] : owner
+                let capturer = Int(owner) < playerNames.count ? playerNames[Int(owner)] : ""
+                let previousName = Int(previous) < playerNames.count ? playerNames[Int(previous)] : ""
+                if let line = EventLogText.capturePill(
+                    capturer: capturer, pill: pill, previousOwner: previous,
+                    previousOwnerName: previousName, newOwner: owner
+                ) {
+                    callbacks.onPrintMessage(line)
+                }
             },
             onShouldBroadcastCaptureBase: { base, owner in
                 pending.append(.all(SRCaptureBase(base: UInt8(base), owner: owner).encode()))
+                let previous = base < previousBaseOwners.count ? previousBaseOwners[base] : owner
+                let capturer = Int(owner) < playerNames.count ? playerNames[Int(owner)] : ""
+                let previousName = Int(previous) < playerNames.count ? playerNames[Int(previous)] : ""
+                callbacks.onPrintMessage(
+                    EventLogText.captureBase(
+                        capturer: capturer, base: base, previousOwner: previous,
+                        previousOwnerName: previousName
+                    )
+                )
             },
             onShouldBroadcastGrabBoat: { p, x, y in
                 pending.append(.all(SRGrabBoat(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
@@ -802,6 +828,17 @@ public func dispatchHostMessage(
 
     case .setAlliance:
         guard let msg = CLSetAlliance.decode(bytes) else { throw HostSessionError.malformedMessage }
+        if state.players.indices.contains(player), state.players.indices.contains(state.localPlayer) {
+            if let line = EventLogText.remoteAllianceChange(
+                localPlayer: state.localPlayer, actor: player,
+                actorName: state.players[player].name,
+                previousAlliance: state.players[player].alliance,
+                newAlliance: msg.alliance,
+                localAlliance: state.players[state.localPlayer].alliance
+            ) {
+                callbacks.onPrintMessage(line)
+            }
+        }
         recvClSetAlliance(player: player, alliance: msg.alliance, state: &state, onShouldBroadcastAlliance: { p, alliance in
             pending.append(.allExcept(p, SRSetAlliance(player: UInt8(p), alliance: alliance).encode()))
         })
