@@ -3686,3 +3686,212 @@ still names the event-log bar as deliberately split out of the D148 HUD pass.
 Docs updated: `docs/PLAN.md` (D162 row; D159/D161 correction pointers; Milestone D status row).
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-14 — D154 Wave 3 pre-brief (message/event log bar)
+
+Pre-brief only. No Swift this dispatch. Oracle read this session: `GSXBoloController.h`/`.m`
+(`messagesPanel`/`messagesTextView`/`printMessage:`/`printmessage()`), `client.c`'s
+`printmessage` + every `client.printmessage(...)` call site, `bolo.h` `MSGEVERYONE`/`MSGALLIES`/
+`MSGNEARBY`/`MSGGAME`. Swift grepped under `Sources/` and `Bolo 2026/` for existing
+message/event-history models (mandatory D45 check against D154's 2026-09-10 "no
+system-event-history model exists" claim).
+
+#### D45 overlap vs greenfield — **PARTIAL**, not greenfield, not already covered
+
+D154's claim is stale in one direction and still true in another.
+
+**Already exists (C.4, `be1b269`, still live):**
+
+- Model: `ChatMessage` (`Sources/BoloNet/ChatMessage.swift`) + `GameSession.messages: [ChatMessage]`
+  (kept off `GameState` on purpose — C's `printmessage` is a pure display sink, same finding
+  restated in that file's header). Populated on all three paths (host via
+  `HostGameEngine.onMessageReceived`, join via `SRDispatchCallbacks.onSendMesg`, single-process
+  via `GameSession.sendMessage` appending directly).
+- Send path: `computeMessageMask` / `MessageTarget` (everyone/allies/nearby only — `MSGGAME` is
+  deliberately not a player-choosable case).
+- Surface: `MessagesView` — a **sheet** (`GameView.swift:147-149`), not a HUD bar. Opened from
+  the top-bar "Messages" button. Scrollback `List` + draft field + target picker. Tests:
+  `ChatMessageTests.swift`, `GameSessionTests.singleProcessSendMessage*`.
+
+**Does not exist (this is the Wave 3 gap):**
+
+- No always-visible bottom event-log bar. `GameView` has `.safeAreaInset` on top/leading/trailing
+  only; `GameHUDViews.swift:9` still names the event-log bar as deliberately split out of D148(B).
+  `GameRenderView`'s documented HUD `contentInsets` are still `top 48 / left 56 / right 228 /
+  bottom 0`.
+- No `MSGGAME` system-event generation anywhere. `RecvSR.swift:18-20`, `SessionLogic.swift:11-17`,
+  `BuilderCommand.swift:28-32`, `TankLocalTick.swift:96-97`, `DgramClientApply.swift:27-28` all
+  document `printmessage` as a standing UI skip. Grep of `Sources/` + `Bolo 2026/` for the C
+  strings ("You need more trees.", "just lost his builder", "captured neutral", "Time Limit
+  Reached!", etc.) returns nothing in Swift. `runTick`'s `onTimeLimitWarning`/`onBaseControlWarning`
+  exist and are wired on the host to *broadcast* `SRTimeLimit`/`SRBaseControl`, but no UI sink
+  formats them. Join-path `SRDispatchCallbacks.onTimeLimit`/`onBaseControl` exist and are unused
+  by `GameSession.handleJoinEvent`.
+
+C.4 is therefore a **different surface over a chat-only slice of the same C sink**. Wave 3 is not
+"already covered by opening the Messages sheet." It is also not greenfield: inventing a second
+history array next to `GameSession.messages` would fork the C oracle's one-`NSTextView` model.
+
+#### Oracle layout correction (flagged, not silently "fixed" in the GO text)
+
+PLAN.md/D162 say "the C oracle has a comparable bottom event-log bar." Read directly:
+`GSXBoloController.h:23` is `IBOutlet NSPanel *messagesPanel` — a **floating panel**, not a
+bottom strip inside `boloWindow`. `messagesTextView` (`:205`) is that panel's `NSTextView`.
+`printmessage()` (`GSXBoloController.m:3739-3777`) color-codes by type (everyone = default,
+allies = purple, nearby = red, `MSGGAME` = blue) and `printMessage:` (`:2707-2714`) appends +
+scrolls to the bottom. One sink, every event.
+
+The **bottom-bar placement** D148/D154 named is Jerod's 0.9 Cheshire screenshot, not xbolo's
+panel. Wave 3 should take event *catalog + single-sink semantics* from the C oracle and
+*placement* from the 0.9 HUD idiom (always-visible bottom bar), same closely-inspired latitude
+Waves 1–2 got. Not a pixel copy of either.
+
+#### C `printmessage` catalog (read from `client.c`, not from PLAN.md)
+
+All `MSGGAME` unless noted:
+
+- Chat: `"%s: %s"` with type = `srsendmesg->to` (`MSGEVERYONE`/`MSGALLIES`/`MSGNEARBY`) — **already
+  in `GameSession.messages`**.
+- Roster: `"%s joined"` / `"%s rejoined"` / `"%s left"` / `"%s disconnected"` / `"%s kicked"` /
+  `"%s banned"`; local `"disconnected"`.
+- Capture (prints **pre-mutation** owner): `"%s captured neutral pill %d"` /
+  `"%s captured pill %d from %s"`; same two shapes for bases. Gated on owner actually changing.
+- Alliance: `"%s accepted the alliance"` / `"%s left the alliance"` / `"%s requests an alliance"`
+  (from `recvsrsetalliance`); `"alliance accepted with %s"` / `"requested alliance with %s"` /
+  `"left alliance with %s"` (from local `requestalliance`/`leavealliance`).
+- Clock: `"%d Minute(s) and %d Second(s) Remaining!"` / `"%d Minute(s) Remaining!"` /
+  `"%d Second(s) Remaining!"` / `"Time Limit Reached!"` / `"Base Control Reached!"` — identical
+  wording for time-limit and base-control except the zero-second terminal string.
+- Local builder feedback: `"You need more trees."` / `"You need a pill."` / `"You need more mines."`
+  / `"Your builder cannot do that.  It would kill him."` (`BuilderCommand.swift` already flags the
+  last as dropped).
+- `"%s just lost his builder"` (`dgramclient` builder-death bit; `DgramClientApply.swift` already
+  flags this skip).
+
+`PlayerState.name` exists (Wave 6.3) and is set on host-side `applyJoin` and join-preamble apply.
+`recvSrPlayerJoin` still does **not** copy `SRPlayerJoin.name` onto `PlayerState` (Wave 6.2
+standing skip). Join-path `"%s joined"` cannot be formatted from post-`recvSr*` state; it has to
+read the wire struct at `TCPSession.dispatch`.
+
+#### Proposed concrete changes
+
+1. **Single sink, not a second array.** Keep `GameSession.messages`. System events append as
+   `ChatMessage` with `to = 3` (`MSGGAME`; `MessageTarget` stays 0...2 so the C.4 picker is
+   unchanged). `displayText` grows a `to == 3` branch that returns `text` as-is — today's
+   `"\(senderName): \(text)"` would render `": Jerod joined"`. C.4's sheet then shows the same
+   history the bar does, matching C's one `NSTextView`. Flagged below.
+
+2. **Pure formatters** (new small helper, likely `Bolo 2026/EventLogText.swift` or a `BoloNet`
+   neighbor of `ChatMessage.swift` — exact file is a coding-time call, not an architecture fork):
+   one function per C `asprintf` shape, literals copied from `client.c`. Differentially testable
+   without a display. Does **not** reverse RecvSR's `printmessage` skip; BoloKit simulation
+   functions stay UI-free.
+
+3. **Session-layer wiring**, three paths, using callbacks that already exist wherever possible:
+   - Join: extend `GameSession.handleJoinEvent`'s `SRDispatchCallbacks` to also format
+     `onTimeLimit`/`onBaseControl`, snapshot pre-mutation pill/base owner + `SRPlayerJoin.name`
+     at `TCPSession.dispatch` (or a thin wrapper around it) before `recvSr*` mutates.
+   - Host: hook the same formatters at `HostGameEngine` next to the existing `SRTimeLimit`/
+     `SRCapture*` encode sites (`HostSession.swift:570-573`, `HostGameEngine.swift:482-483`) and
+     feed them through the existing `onMessageReceived` (or a sibling callback). Capture text
+     needs the pre-mutation owner, same trap as join.
+   - Single-process: `GameSession.tick()`'s `runTick(...)` currently wires only sound callbacks;
+     add `onTimeLimitWarning`/`onBaseControlWarning` → formatter → append. Roster/capture on this
+     path only fire if a second player exists in the local `GameState` (rare in demo; still wire
+     it so the sink is path-complete). Builder-need strings need a new return/callback from
+     `queueBuilderCommand`/`resolveBuilderTask` — that is the one BoloKit signature touch this
+     wave may need; flagged below rather than assumed.
+
+4. **HUD surface: `EventLogBar` in `GameHUDViews.swift`**, placed with
+   `.safeAreaInset(edge: .bottom)` on `GameView`. Display-only (no send field — C.4 keeps send).
+   Reuse `HUDPanelChrome` (D158 opaque-fill non-negotiable). ~3 visible lines, newest at bottom,
+   `ScrollViewReader` pin like `MessagesView`. `TimelineView` poll, same "poll, don't observe"
+   shape as the other HUD panels. After any tap, `reclaimMapFocus()` (D148(B) first-responder
+   rule). Color: system events a distinct cool tint, allies/nearby/everyone loosely echoing C's
+   purple/red/default — original SwiftUI colors, not `NSColor.blueColor`/`purpleColor` copied.
+   Empty state: blank bar, not placeholder copy.
+
+5. **C.4 sheet stays.** Not replaced, not restyled this wave beyond showing `MSGGAME` lines if
+   PLANNER accepts the single-sink call. Top-bar "Messages" button stays.
+
+#### Visual treatment (design call within D67/D154, same latitude as Waves 1–2)
+
+A compact beveled strip across the bottom of the game window, ~52–64pt tall, 3 lines of
+`.callout` text, left-aligned, auto-scrolled. Chrome is `HUDPanelChrome` so it reads as the
+same family as the left strip / right gauges, not a fourth visual language. No reference
+bitmap bytes, no `StatusBackground.png` palette matching. Not a recreation of xbolo's floating
+`messagesPanel`.
+
+#### Judgment calls — flagged, not silently decided
+
+1. **Overlap classification is PARTIAL.** If PLANNER wants this treated as greenfield anyway
+   (ignore `GameSession.messages`, new array), say so — I will not fork the sink without a ruling.
+2. **Single sink → C.4 sheet starts showing system events.** Oracle-faithful, but it is a
+   behavior change of an already-shipped C.4 surface. Alternative: bar-only filter, sheet stays
+   chat-only. Defaulting to single-sink-both-surfaces.
+3. **Event catalog is the full C `printmessage` set**, including local builder-need strings and
+   builder-death. Thinner slice (chat-in-bar only, or roster+clock only) would make this a HUD
+   restyle over the existing chat model, which is not what "full-track / new model" asked for —
+   but it is cheaper. Defaulting to the full catalog.
+4. **Win/loss overlay stays out.** `"Time Limit Reached!"`/`"Base Control Reached!"` go in the
+   log (they are `printmessage` lines). A dedicated win/loss UI is the other D148(B) split-out
+   zone; not this wave.
+5. **BoloKit `printmessage` skip stays.** Format at the session/dispatch layer. Exception:
+   builder-need / "would kill him" currently have no callback at all (`queueBuilderCommand`
+   returns `BuilderTask` / no-ops silently). Wiring those means a small BoloKit signature
+   addition, not a RecvSR rewrite. Defaulting to adding an `onPrintMessage`-style optional
+   callback only on the builder-command path, nowhere else in BoloKit.
+6. **Capture pre-mutation owner.** C reads `client.pills[i].owner` *before* applying
+   `SRCapturePill`. Swift `recvSrCapturePill` mutates first, then `onPillStatusChanged`. I will
+   snapshot at the dispatch/host encode site, not change RecvSR's mutation order. Same for bases.
+7. **`recvSrPlayerJoin` still doesn't copy `name`.** Join-path `"%s joined"` reads
+   `SRPlayerJoin.name` at dispatch. Not sneaking a RecvSR name-write into this wave (that would
+   be a Wave 6.2 policy reversal, not event-log work).
+8. **Bottom `safeAreaInset` changes D157/D160's measured `contentInsets` from `bottom: 0` to
+   non-zero.** `GameRenderView.scroll(dx:dy:)` and the zoom floor both measure against the
+   unobscured region. I will re-measure and, if the new inset breaks arrow-key scroll or the
+   zoom floor tests, fix `contentInsets` handling in `GameRenderView` *only as required for the
+   new bar* — not a drive-by of the four D162 non-blocking `GameRenderViewZoomTests.swift` notes,
+   and not a re-open of F1. Flagging because this is the one already-PASSed mechanism the bar
+   can perturb.
+9. **Tap-on-bar opens the C.4 sheet.** Convenient; also a new control in the first-responder
+   path. Alternative: display-only, no hit target. Defaulting to tap-opens-sheet +
+   `reclaimMapFocus`, matching "Messages" in the top bar.
+10. **No send field in the bar.** Send stays C.4. The 0.9 screenshot's bar is a log, not a
+    composer. Flagging in case PLANNER wants the composer always-visible too.
+11. **Color coding is inspired, not copied.** Exact `NSColor.blueColor`/`purpleColor`/`redColor`
+    would be closer to xbolo's panel than to original art. Defaulting to SwiftUI semantic tints.
+12. **License/art:** `HUDPanelChrome` reuse, SF Symbols only if a leading icon is wanted (default:
+    no icon, text only — the C sink is text). No reference bitmap bytes.
+
+#### Test plan (D28: no shrink)
+
+Baseline at last D162 report: **757** BoloKit (`swift test`; annotation count; first full run
+may still hit the known D150 pause-resume flake), **33** UI-hosting (`Bolo 2026Tests`). This wave
+adds, does not replace:
+
+- Formatter unit tests for every C string shape (minutes/seconds pluralization included —
+  `client.c:3048` `"Minute%s"` / `"Second%s"`).
+- `ChatMessage.displayText` for `to == 3`.
+- `GameSessionTests` append of a system event on the single-process path (time-limit warning
+  via `tick()`, and/or a direct `append` helper if one is extracted).
+- UI-hosting: bar is present in `GameView`'s hierarchy / has opaque chrome (pure-logic extract
+  if a live window is the wrong tool; same D144 "extract, don't UI-automate" posture). Will not
+  touch `GameRenderViewZoomTests.swift` unless the bottom-inset interaction forces a production
+  change in `GameRenderView` that those tests already cover — even then, the four D162 comment
+  notes stay untouched unless I am already editing that file for a real failure.
+
+#### Risks
+
+- Bottom inset vs D157 scroll / D160 zoom floor (item 8).
+- Host-path capture/roster hooks sit next to already-PARITY-passed encode sites — easy to
+  accidentally change broadcast behavior. Format-and-append only; no change to the `SR*` bytes.
+- `GameSession` isn't `ObservableObject`; the bar must poll like the other HUD panels or it will
+  sit empty.
+- Three-path completeness: a sink that only works on join (where `SRDispatchCallbacks` already
+  exist) would leave solo/host play silent, which is most of Jerod's current use.
+
+**Not yet touched:** no Swift this session. Test counts unchanged. Four D162
+`GameRenderViewZoomTests.swift` notes not touched.
+
+[TO: PLANNER]
