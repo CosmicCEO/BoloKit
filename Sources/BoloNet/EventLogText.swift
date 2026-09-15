@@ -11,11 +11,13 @@ public enum EventLogText {
     /// `GameSession.messages` sink (D163 #1/#2).
     public static let gameTarget: UInt8 = 3
 
-    public static let needMoreTrees = "You need more trees."
-    public static let needAPill = "You need a pill."
-    public static let needMoreMines = "You need more mines."
+    // Shared with BoloKit `BuilderNeedText` (D165) so builder call sites do not
+    // import BoloNet. Catalog type stays here.
+    public static let needMoreTrees = BuilderNeedText.needMoreTrees
+    public static let needAPill = BuilderNeedText.needAPill
+    public static let needMoreMines = BuilderNeedText.needMoreMines
     /// Two spaces after the period, matching `client.c:6573`.
-    public static let wouldKillBuilder = "Your builder cannot do that.  It would kill him."
+    public static let wouldKillBuilder = BuilderNeedText.wouldKillBuilder
     public static let timeLimitReached = "Time Limit Reached!"
     public static let baseControlReached = "Base Control Reached!"
     public static let disconnectedLocal = "disconnected"

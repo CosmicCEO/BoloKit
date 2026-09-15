@@ -140,4 +140,13 @@ struct GameSessionTests {
         #expect(session.messages.map(\.text) == ["requested alliance with Bob"])
         #expect(session.messages[0].to == EventLogText.gameTarget)
     }
+
+    @Test func joinTransportEndedAppendsDisconnectedLocalToTheOneSink() {
+        let session = makeSession()
+        session.appendDisconnectedLocal()
+        #expect(session.messages.count == 1)
+        #expect(session.messages[0].text == EventLogText.disconnectedLocal)
+        #expect(session.messages[0].to == EventLogText.gameTarget)
+        #expect(session.messages[0].displayText == "disconnected")
+    }
 }

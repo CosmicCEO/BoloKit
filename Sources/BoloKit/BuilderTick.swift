@@ -466,7 +466,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .buildRoad:
         guard state.players[player].trees >= roadTrees else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more trees.")
+            onPrintMessage(BuilderNeedText.needMoreTrees)
             return
         }
         state.players[player].builder = launch
@@ -479,7 +479,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .buildWall:
         guard state.players[player].trees >= wallTrees else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more trees.")
+            onPrintMessage(BuilderNeedText.needMoreTrees)
             return
         }
         state.players[player].builder = launch
@@ -492,7 +492,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .buildBoat:
         guard state.players[player].trees >= boatTrees else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more trees.")
+            onPrintMessage(BuilderNeedText.needMoreTrees)
             return
         }
         state.players[player].builder = launch
@@ -505,14 +505,14 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .buildPill:
         guard state.players[player].trees >= pillTrees else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more trees.")
+            onPrintMessage(BuilderNeedText.needMoreTrees)
             return
         }
         guard let pillIndex = state.pills.indices.first(where: {
             state.pills[$0].owner == UInt8(player) && state.pills[$0].armour == pillOnboard
         }) else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need a pill.")
+            onPrintMessage(BuilderNeedText.needAPill)
             return
         }
         state.players[player].builder = launch
@@ -533,7 +533,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .repairPill:
         guard state.players[player].trees > 0 else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more trees.")
+            onPrintMessage(BuilderNeedText.needMoreTrees)
             return
         }
         state.players[player].builder = launch
@@ -559,7 +559,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
     case .placeMine:
         guard state.players[player].mines > 0 else {
             state.players[player].builderTask = .doNothing
-            onPrintMessage("You need more mines.")
+            onPrintMessage(BuilderNeedText.needMoreMines)
             return
         }
         state.players[player].builder = launch

@@ -108,6 +108,13 @@ public final class GameSession {
         )
     }
 
+    /// Join-path local disconnect (`client.c:1055`/`1076`/`1094` `"disconnected"`).
+    /// `.tcpEnded`/`.udpEnded` both call this. Host-side `"%s disconnected"` is a
+    /// different C site (`:2092`) already wired on `HostGameEngine`.
+    func appendDisconnectedLocal() {
+        appendGameMessage(EventLogText.disconnectedLocal)
+    }
+
     public init(initialState: GameState, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = initialState
         self.ticksSinceLastUpdate = Array(repeating: 0, count: initialState.players.count)
@@ -665,10 +672,9 @@ public final class GameSession {
             }
 
         case .tcpEnded, .udpEnded:
-            // Disconnection -- surfacing this to the user (a visible notice, not a silent
-            // freeze, matching D109's own precedent) is the caller's job, not this consumer
-            // loop's; no `state` mutation of its own is needed here either way.
-            break
+            // `client.c:1055`/`1076`/`1094` `printmessage(MSGGAME, "disconnected")`.
+            // No `state` mutation; both transport ends surface the same local line.
+            appendDisconnectedLocal()
         }
     }
 

@@ -75,7 +75,7 @@ public func resolveBuilderTask(
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .buildRoad
         case .minedSwamp, .minedCrater, .minedRubble, .minedGrass:
-            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            onPrintMessage(BuilderNeedText.wouldKillBuilder)
             return .doNothing
         default:
             return .doNothing
@@ -92,7 +92,7 @@ public func resolveBuilderTask(
         case .river:
             return .buildBoat
         case .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
-            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            onPrintMessage(BuilderNeedText.wouldKillBuilder)
             return .doNothing
         default:
             return .doNothing
@@ -106,7 +106,7 @@ public func resolveBuilderTask(
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .buildPill
         case .minedSwamp, .minedCrater, .minedRoad, .minedRubble, .minedGrass:
-            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            onPrintMessage(BuilderNeedText.wouldKillBuilder)
             return .doNothing
         default:
             return .doNothing
@@ -118,7 +118,7 @@ public func resolveBuilderTask(
             .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3:
             return .placeMine
         case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
-            onPrintMessage("Your builder cannot do that.  It would kill him.")
+            onPrintMessage(BuilderNeedText.wouldKillBuilder)
             return .doNothing
         default:
             return .doNothing

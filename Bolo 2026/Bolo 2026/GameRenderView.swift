@@ -185,8 +185,9 @@ public final class GameRenderView: NSView {
 
     /// Registered on the enclosing `NSScrollView`'s own frame, not its `NSClipView`
     /// (`contentView`) -- live-measured this session: `GameView`'s HUD `safeAreaInset`s
-    /// contribute a *fixed* `contentInsets` (top 48/left 56/right 228/bottom 0, same figures
-    /// D157 already measured) that doesn't itself change with window size, so the scroll
+    /// contribute a *fixed* `contentInsets` (top 48/left 56/right 228, same figures D157
+    /// already measured; bottom is the `EventLogBar` safe-area inset, not 0) that doesn't
+    /// itself change with window size, so the scroll
     /// view's frame and its clip view's frame move together 1:1 on every resize this session
     /// observed -- observing either would do, this one matches `applyEffectiveMagnification`'s
     /// own read of `scrollView.frame` below.
@@ -569,8 +570,9 @@ public final class GameRenderView: NSView {
     /// scroll view's insets are asymmetric by construction -- `GameView`'s HUD panels
     /// (`safeAreaInset`s for the top bar, leading `BuilderToolStrip`, trailing
     /// `ResourceGaugesPanel`/`PlayerStatusGrid`) push SwiftUI's `ScrollView` to set
-    /// `contentInsets` of top:48/left:56/right:228/bottom:0 (confirmed live via
-    /// `GameViewFocusRoutingTests`). Requesting a full-`bounds`-sized rect offset by a fixed 64pt
+    /// `contentInsets` of top:48/left:56/right:228 plus a non-zero bottom from
+    /// `EventLogBar` (D154 Wave 3; `bottomSafeAreaInsetPushesScrollViewContentInsetsOffZero`).
+    /// Requesting a full-`bounds`-sized rect offset by a fixed 64pt
     /// nudge, as this used to do, is a request AppKit only partially (or never) has to honor to
     /// satisfy "reveal the rect" against that inset region -- explains the exact asymmetry Jerod
     /// hit live (up fully worked, right/down partially moved, left no-opped: each clipped by
