@@ -4,7 +4,7 @@ IMPLEMENTER Bootstrap
 
 > **Read this first, then `git log --oneline -5 && git status`, before anything else.** This file
 > can lag reality. For full wave status/decisions text: `docs/PLAN.md`. For the latest events:
-> the tail of `docs/AGENT_NOTES.md`. Other agent bootstraps are available for partner context: `docs/PARITY.md`, `docs/PLANNER.md`.
+> the tail of `docs/AGENT_NOTES.md`. Other agent bootstraps are available for partner context: `docs/PARITY.md`, `CLAUDE.md` (or `docs/PLANNER.md`).
 
 ## Your role
 

@@ -83,7 +83,7 @@ public struct CLUpdateExplosion: Sendable, Hashable {
     static func decode(from r: inout WireReader) -> CLUpdateExplosion? {
         guard let x = r.getU16(),
               let y = r.getU16(),
-              let _tile = r.getU8(),
+              r.getU8() != nil, // tile byte read and discarded
               let counter = r.getU8()
         else { return nil }
         return CLUpdateExplosion(point: Vec2f(x: fixedDecode(x), y: fixedDecode(y)), counter: counter)

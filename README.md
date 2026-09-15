@@ -26,7 +26,7 @@ orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP)
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
 are all complete and PARITY-verified against the C reference. **`v1.0.0` shipped** (real,
 non-prerelease GitHub release). Current drop is **`v1.1.0-beta.1`** (build 5). 774
-SwiftPM tests (BoloKitTests + DifferentialTests) plus 39 app-target tests (`Bolo 2026Tests`)
+SwiftPM tests (BoloKitTests + DifferentialTests) plus 40 app-target tests (`Bolo 2026Tests`)
 are passing (one pre-existing, documented flaky timing test excluded from that count's
 stability claim -- see `docs/PLAN.md`). **`Bolo 2026` is playable, host-and-join
 multiplayer**: a window opens with an always-visible HUD (build-tool selector, resource gauges,

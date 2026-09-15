@@ -1163,3 +1163,24 @@ fog-of-war, B.10's remaining Milestone-D-adjacent items, Milestone D itself (zoo
 `Reference/c` submodule removal, full notarization), further network-bug investigation, and the
 real two-instance playtest. Full uncompressed text (every pre-brief, completion report, and
 ruling, D125 through D149) preserved in git history per D28.
+
+## Archived 2026-09-15 — D150 through D165: visual parity, zoom/scroll (Milestone D.0), D154 event log, v1.1.0-beta.1 ship, and D165 light-track cleanup
+
+- **D150 (Visual-parity sweep):** Jerod-initiated visual parity sweep against C oracle. PARITY filed 4 findings: Trees HUD gauge, base resource status bars, player lag color indicator, sprite gap. All 4 GO'd and closed 2026-09-10 (PARITY PASS `72a27cf` auditing `d72e70f`). Fix also caught and resolved a host self-eviction bug in `RunTick.swift`.
+- **D151 (Scope reduction & oracle retention):** Signing/notarization permanently removed from Milestone D scope (Q29 closed); app ships Apple Development signed indefinitely. `Reference/c` submodule retained permanently with strengthened attribution in `README.md`. Milestone D reduced to D.0 (zoom/scroll) only.
+- **D152 (Visual parity fixes):** Added mouse-polled selector and aim crosshair to `GameRenderView.swift` (`drawSelector`/`drawCrosshair`); added house/fort silhouette base glyph with ownership coloring distinct from river in `BoloGlyphsCore`. Closed 2026-09-10 (PARITY PASS `9646b05` auditing `75dab88`). Tank heading vs movement investigated and confirmed clean.
+- **D153 (Tank sprite vertical mirroring defect):** CoreGraphics `ctx.draw(cell, in: dst)` was ignoring AppKit `isFlipped`, vertically mirroring blitted cells (terrain, mines, sprites) in place and reversing perceived rotation. Fixed with shared `blit(_:in:_:)` helper flipping vertically around destination center.
+- **D154 (Cheshire Bolo 0.9 visuals & Event Log):**
+  - *Wave 1 (Terrain & Glyphs):* Dark-asphalt roads, dashed lone segment, wall bevel highlight, 8-spoke sunburst pillbox icon. Closed 2026-09-10 (PARITY PASS `f719e09` auditing `22e758d`).
+  - *Wave 2 (HUD Chrome Restyle):* `HUDPanelChrome` beveled panel chrome + SF Symbols / `PillSunburstShape` across `BuilderToolStrip`, `ResourceGaugesPanel`, and embedded `PlayerStatusGrid`. Closed 2026-09-13 (PARITY PASS `c7784bc` auditing `e9ae864`+`0ddd728`).
+  - *Wave 3 (Event Log Bar):* Bottom message/event log bar (`EventLogBar`), catalog in `EventLogText.swift`, single `messages` sink on `GameSession`. Closed 2026-09-14 (PARITY PASS `8bdc103` auditing `6c04e28`+`d8f7f21`).
+- **D155 (Player alliance initialization):** Fixed non-networked local starts (`AppRootView.swift` demoState and `HostGameView.swift` startHosting) never initializing `player.alliance`, causing self-unallied state. Fixed (`player.alliance = 1 << 0`). Closed 2026-09-11 (PARITY PASS `cdcd036` auditing `b025b2c`). Bug 2 (firing on base) unconfirmed / awaiting re-test.
+- **D156 (Mine detonation on shell touch/impact):** Wired `onMineExplosion` trigger on shell expiration/forest block by threading causer through `ShellTick.swift` without exclusivity violation. Closed 2026-09-12 (PARITY PASS `fd4156f` auditing `51fa074`).
+- **D157 (Build tool selector & scroll keys):** Background material + explicit selection indicator on builder tools; fixed arrow key scroll clipping by scrolling `NSClipView` directly instead of `scrollToVisible`. Closed 2026-09-12 (PARITY PASS `9b2b8c0` / `4f606ba`).
+- **D158 / D159:** D154 Wave 2 pre-brief review and PARITY audit close.
+- **D160 / D161 / D162 (Milestone D.0 — Zoom/Scroll rendering):** Implemented `NSScrollView.magnification` zoom levels; PARITY caught F1 phantom pan on floor clamp; fixed recenter skip and round-down `zoomIndex` resync. Closed 2026-09-14 (PARITY PASS `04622f0` auditing `2ef1f4f`+`d8ac26d`). Milestone D completely closed.
+- **D163 / D164:** D154 Wave 3 pre-brief, coding, and PARITY audit close (`8bdc103`). D154 completely closed.
+- **v1.1.0-beta.1 Shipped (2026-09-14):** Build 5 tagged, pushed, GitHub release published with signed `Bolo-2026-v1.1.0-beta.1.zip` (`8038586`/`a14c365`).
+- **D165 (Light-track cleanup):** Wired `disconnectedLocal` on join `.tcpEnded`/`.udpEnded`, fixed `GameRenderView` comment drift, and extracted `BuilderNeedText` constants in `BoloKit`. Closed 2026-09-14 (`c24cff7`).
+
+**Ground truth at close of this span:** 774 SwiftPM tests (554 BoloKitTests + 220 DifferentialTests) + 40 `Bolo 2026Tests` app-target tests, all green. Full uncompressed text (every pre-brief, completion report, audit, and ruling, D150 through D165) preserved in git history per D28.

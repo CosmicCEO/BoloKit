@@ -201,7 +201,7 @@ struct BuilderToolStrip: View {
     }
 }
 
-extension BuilderCommandKind: CaseIterable {
+extension BuilderCommandKind: @retroactive CaseIterable {
     public static var allCases: [BuilderCommandKind] { [.tree, .road, .wall, .pill, .mine] }
 }
 

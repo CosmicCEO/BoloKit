@@ -10,8 +10,8 @@ ADMIN AGENT Bootstrap
 > says — this file, `PLAN.md`, and `AGENT_NOTES.md` can all lag reality, and this project runs
 > multiple concurrent sessions against the same working tree more often than not.
 >
-> This is one of four role bootstraps — `CLAUDE.md` (Implementer), `docs/PARITY.md`, and
-> `docs/PLANNER.md` cover the other three. Reading them now isn't required, but useful context for knowing what each role owns so you don't duplicate or overstep it.
+> This is one of four role bootstraps — `docs/IMPLEMENTER.md` (Implementer), `docs/PARITY.md` (Parity), and
+> `CLAUDE.md` / `docs/PLANNER.md` (Planner) cover the other three. Reading them now isn't required, but useful context for knowing what each role owns so you don't duplicate or overstep it.
 
 ---
 
