@@ -24,7 +24,7 @@ chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire c
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
 are all complete and verified against the C reference. **`v1.0.0` shipped** (real,
-non-prerelease GitHub release). Current drop is **`v1.1.0-beta.1`** (build 5). 775
+non-prerelease GitHub release). Current drop is **`v1.1.0`** (build 6). 775
 SwiftPM tests (BoloKitTests + DifferentialTests) plus 49 app-target tests (`Bolo 2026Tests`)
 are passing (one pre-existing, documented flaky timing test excluded from that count's
 stability claim -- see `docs/STATUS.md`). **`Bolo 2026` is playable, host-and-join
@@ -45,8 +45,8 @@ Apple Development code signing, not notarized, and a fresh download needs a one-
 environment issue on some machines causes `Network.framework`'s listener creation to fail; the
 app falls back automatically to local-only play in that case, with an on-screen notice -- root
 cause not found despite investigation (ruled out: beta-OS-specific, ad-hoc signing), deliberately
-not under active investigation to avoid further escalation-of-commitment cost. Win/loss overlay and host-admin pause/allow-join/unban landed in the `v1.1.0` close-out.
-Still filed: a `hiddenmines`-style fog-of-war mode.
+not under active investigation to avoid further escalation-of-commitment cost. Win/loss overlay and host-admin pause/allow-join/unban are in `v1.1.0`.
+Still filed: a `hiddenmines`-style fog-of-war mode ([#1](https://github.com/CosmicCEO/BoloKit/issues/1)).
 See `docs/STATUS.md` for current state and open backlog, `docs/CONSTRAINTS.md` for standing engineering rules. Wave history is in git at tag `legacy-agent-process`.
 
 ## Approach

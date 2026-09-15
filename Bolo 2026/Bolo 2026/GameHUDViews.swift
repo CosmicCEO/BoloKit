@@ -415,8 +415,8 @@ struct HostAdminBar: View {
     var reclaimFocus: () -> Void = {}
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            if session.canHostAdmin {
+        if session.canHostAdmin {
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
                 HStack(spacing: 8) {
                     Button(session.isServerPaused ? "Resume" : "Pause") {
                         session.pauseResumeServer()

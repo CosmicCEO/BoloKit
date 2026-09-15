@@ -1,6 +1,6 @@
 # Status
 
-**Current drop:** `v1.1.0-beta.1` (build 5). **`v1.0.0` shipped.**
+**Current drop:** `v1.1.0` (build 6). **`v1.0.0` shipped.**
 
 The C-oracle port (simulation core, networking, v1 UI slice) is complete. **Bolo 2026** is playable host-and-join multiplayer: HUD (build-tool selector, resource gauges, player/pill/base status, bottom event-log bar), bundled default map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session.
 
@@ -18,7 +18,7 @@ Wave-by-wave history and the retired four-role process live at git tag `legacy-a
 
 Tracked as GitHub issues. Do not invent a wave/GO protocol around them.
 
-- [#4 Ship v1.1.0](https://github.com/CosmicCEO/BoloKit/issues/4) — tag `v1.1.0`; playtest polish; version bump. Drop is still labeled `v1.1.0-beta.1`.
+- [#4 Ship v1.1.0](https://github.com/CosmicCEO/BoloKit/issues/4) — **this drop.**
 - [#1 Hidden-mines fog-of-war](https://github.com/CosmicCEO/BoloKit/issues/1) — `seentiles` / `increasevis` / `decreasevis` / `testhiddenmine`; alliance vision merge. Default stays fully visible.
 - [#6 Dedicated headless host](https://github.com/CosmicCEO/BoloKit/issues/6) — SPM executable over `HostGameEngine`. See `docs/notes/HOSTMODELS.md`.
 
