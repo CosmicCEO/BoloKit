@@ -1,10 +1,12 @@
 # Function-level coverage: `Reference/c` → Swift
 
-Point-in-time snapshot (2026-09-09): every top-level C function in `client.c` / `server.c` / support files was enumerated and grepped in `Sources/`. Completeness check (was anything silently missed?), not a defect review.
+Point-in-time snapshot (2026-09-15): re-grepped `Sources/` against `Reference/c`. Completeness check (was anything silently missed?), not a defect review.
 
-**Some rows have landed since the snapshot.** In particular `sendsrflood` (`onShouldBroadcastFlood` in `MineChain.swift` / `HostGameEngine.swift`) and `serverloadmap` (`serverPostProcessLoadedMap` in `BMap.swift`) are present in tree. Verify against `Sources/` before treating a row as still open. `lockserver`/`unlockserver` are C pthread serialization around a global `server` struct; the Swift host's single-consumer actor already covers that — no port.
+`sendsrflood` (`onShouldBroadcastFlood` in `MineChain.swift` / `HostGameEngine.swift`), `serverloadmap` (`serverPostProcessLoadedMap` in `BMap.swift`), and the host-admin surface (`pauseResumeServer` / `setAllowJoin` / `togglejoinserver` / `unbanplayer` in `SessionLogic.swift` + `HostGameEngine` submit APIs + HUD) are in tree. `lockserver`/`unlockserver` are C pthread serialization around a global `server` struct; the Swift host's single-consumer actor already covers that — no port.
 
-## Totals (as of 2026-09-09)
+Brace-on-same-line function regex undercounts `client.c`/`server.c` versus the 2026-09-09 enumeration (many K&R / split signatures). Totals below are the 2026-09-09 census; the **Remaining gaps** list is what was re-verified against `Sources/` on 2026-09-15.
+
+## Totals (census 2026-09-09; gaps re-verified 2026-09-15)
 
 | Source | Functions | Ported | Deferred (logged decision) | Unaccounted |
 |---|---|---|---|---|
@@ -17,16 +19,16 @@ Point-in-time snapshot (2026-09-09): every top-level C function in `client.c` / 
 
 ## Remaining gaps worth checking
 
-### Host-admin command surface
+### Host-admin command surface — landed
 
-`bolo.c` wrappers and `server.c` implementations were missing together at snapshot time:
+Confirmed in `Sources/` on 2026-09-15 (`SessionLogic.swift`, `HostGameEngine.swift` submit APIs, `GameSession` / HUD):
 
-- Manual pause/resume: `pauseresumegame` (bolo.c:100) → `pauseresumeserver` (server.c:387), `togglejoingame` (bolo.c:104) → `togglejoinserver` (server.c:427), plus `getpauseserver`/`pauseserver`/`resumeserver` (server.c:369/373/380)
-- Allow-join toggle: `allowjoinserver` (bolo.c:52) → `getallowjoinserver`/`setallowjoinserver` (server.c:419/423)
-- Unban: `unbanplayer` (server.c:550) — `bannedPlayers` is append-only in the Swift port; ban exists (`SessionLogic.swift`) but nothing removes an entry
-- `initbolo` (bolo.c:70) — orchestrating init; callees `initserver`/`initclient` are separately accounted
+- Pause/resume: `pauseResumeServer` / `pauseServer` / `resumeServer` (`pauseresumegame` / `pauseresumeserver`)
+- Allow-join: `setAllowJoin` / `togglejoinserver`
+- Unban: `unbanPlayer` (`unbanplayer`) — no longer append-only
+- Kick/ban UI was already present
 
-Kick/ban UI exists. Confirm pause/join-toggle/unban against current `Sources/` before starting work.
+`initbolo` remains an orchestrating init; callees `initserver`/`initclient` are architectural (Network.framework).
 
 ### Deferred on purpose
 

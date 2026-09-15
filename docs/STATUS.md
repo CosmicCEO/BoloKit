@@ -1,12 +1,12 @@
 # Status
 
-**Current drop:** `v1.1.0` (build 6). **`v1.0.0` shipped.**
+**Current drop:** `v1.2.0` (build 7). **`v1.1.0` and `v1.0.0` shipped.**
 
 The C-oracle port (simulation core, networking, v1 UI slice) is complete. **Bolo 2026** is playable host-and-join multiplayer: HUD (build-tool selector, resource gauges, player/pill/base status, bottom event-log bar), bundled default map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session.
 
 Host/Join UI, join-side outbound protocol (movement, tile-entry, builder-task, shell-impact), HUD/kick-ban, key remap, alliance panel, messages panel, procedural sound (24 effects; several wired), preferences, zoom/scroll, and the terrain/HUD chrome/event-log visual pass are all in.
 
-**Tests (as of the `v1.1.0` close-out pass):** 775 SwiftPM (555 BoloKitTests + 220 DifferentialTests) + 49 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check, not a full-suite flake of that class.
+**Tests (as of the `v1.2.0` close-out pass):** 775 SwiftPM (555 BoloKitTests + 220 DifferentialTests) + 65 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check, not a full-suite flake of that class. SwiftPM count unchanged this sprint (no BoloKit/BoloNet edits); confirm with `swift test` at tag.
 
 **Signing:** permanently out of scope. Apple Development-signed, not notarized.
 
@@ -16,25 +16,29 @@ Wave-by-wave history and the retired four-role process live at git tag `legacy-a
 
 ## Next sprints
 
-Tracked as GitHub issues. Do not invent a wave/GO protocol around them.
+Tracked as GitHub issues and milestones. Do not invent a wave/GO protocol around them. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43).
 
-- [#4 Ship v1.1.0](https://github.com/CosmicCEO/BoloKit/issues/4) — **this drop.**
-- [#1 Hidden-mines fog-of-war](https://github.com/CosmicCEO/BoloKit/issues/1) — `seentiles` / `increasevis` / `decreasevis` / `testhiddenmine`; alliance vision merge. Default stays fully visible.
-- [#6 Dedicated headless host](https://github.com/CosmicCEO/BoloKit/issues/6) — SPM executable over `HostGameEngine`. See `docs/notes/HOSTMODELS.md`.
+- [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) — #14 Bonjour, #21 AWDL, #20 `bolo://`, #24 tracker+UPnP, #6 dedicated host, #26 Quick Look (needs the v1.2 UTI).
+- [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) — #17 controller, #3 lag tint, #8 remaining sounds, #23 Observable HUD, #22 App Intents, #16 OSLog.
+- [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) — [#1](https://github.com/CosmicCEO/BoloKit/issues/1).
+- Later: v1.6 Metal (#25), v1.7 packs. Decide:* on [project 2](https://github.com/users/CosmicCEO/projects/2).
 
 ## Parking lot
 
-Non-blocking; not in the three sprints.
+Decide / later-milestone items. Not coding work until a ruling or a release milestone says so.
 
-- [#5 Q14 explosions-list owner](https://github.com/CosmicCEO/BoloKit/issues/5) — C disagrees with itself; cosmetic.
-- [#7 D155(2) fire on captured base](https://github.com/CosmicCEO/BoloKit/issues/7) — unconfirmed; do not “fix” without a live repro.
-- [#8 Wire remaining procedural sounds](https://github.com/CosmicCEO/BoloKit/issues/8)
-- [#3 Join-side connection lag tint](https://github.com/CosmicCEO/BoloKit/issues/3)
-- [#9 Standalone tracker daemon](https://github.com/CosmicCEO/BoloKit/issues/9) — not the dedicated game host.
-- [#2 Refresh ORACLE_COVERAGE.md snapshot](https://github.com/CosmicCEO/BoloKit/issues/2)
+- [#5 Q14 explosions-list owner](https://github.com/CosmicCEO/BoloKit/issues/5) — Decide: Oracle parking lot.
+- [#7 D155(2) fire on captured base](https://github.com/CosmicCEO/BoloKit/issues/7) — Decide: Oracle parking lot.
+- [#9 Standalone tracker daemon](https://github.com/CosmicCEO/BoloKit/issues/9) — Decide: WAN directory.
 
-## Landed this close-out (`v1.1.0` sprint)
+## Landed this close-out (`v1.2.0` sprint)
 
-- **Win/loss UI** — `MatchEndOverlay` latches on `EventLogText.timeLimitReached` / `baseControlReached` already written to `GameSession.messages`. Display-only; no new `GameState` flag.
-- **Host-admin surface** — pause/resume and allow-join on the host top bar; unban on the status grid. Engine submit APIs were already in (`HostGameEngine` D129).
-- **Q23** — `runTick` now forwards `onMineExplosion` / `onSuperboomTerrain` into `tankMoveTick` (dead-tumble superboom). `recvSrSmallBoom` / `recvSrSuperBoom` nested `smallboom`/`superboom` now pass all three closures. `onDropPills` was already replaced by `onShouldBroadcastDropPill` (B.5d).
+Mac-native chrome. No BoloKit physics changes.
+
+- [#12](https://github.com/CosmicCEO/BoloKit/issues/12) PrivacyInfo.xcprivacy (UserDefaults CA92.1)
+- [#13](https://github.com/CosmicCEO/BoloKit/issues/13) Game Mode, games category, Full Screen
+- [#11](https://github.com/CosmicCEO/BoloKit/issues/11) `com.cosmicceo.bolo-map` UTI and Open With
+- [#15](https://github.com/CosmicCEO/BoloKit/issues/15) Icon Composer `AppIcon.icon`
+- [#18](https://github.com/CosmicCEO/BoloKit/issues/18) SwiftUI Game/View Commands
+- [#19](https://github.com/CosmicCEO/BoloKit/issues/19) VoiceOver HUD labels
+- [#2](https://github.com/CosmicCEO/BoloKit/issues/2) ORACLE_COVERAGE snapshot refresh
