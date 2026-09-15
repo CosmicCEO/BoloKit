@@ -24,4 +24,16 @@ struct AppInfoPlistTests {
         let copyright = info["NSHumanReadableCopyright"] as? String ?? ""
         #expect(!copyright.isEmpty)
     }
+
+    @Test func exportsBoloMapUTIAsViewer() {
+        let exported = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
+        let ids = exported.compactMap { $0["UTTypeIdentifier"] as? String }
+        #expect(ids.contains("com.cosmicceo.bolo-map"))
+
+        let docs = info["CFBundleDocumentTypes"] as? [[String: Any]] ?? []
+        let map = docs.first {
+            ($0["LSItemContentTypes"] as? [String])?.contains("com.cosmicceo.bolo-map") == true
+        }
+        #expect(map?["CFBundleTypeRole"] as? String == "Viewer")
+    }
 }

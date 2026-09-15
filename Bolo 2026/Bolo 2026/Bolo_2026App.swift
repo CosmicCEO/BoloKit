@@ -10,9 +10,14 @@ import SwiftUI
 
 @main
 struct Bolo_2026App: App {
+    @State private var pendingMapURL: URL?
+
     var body: some Scene {
         WindowGroup {
-            AppRootView()
+            AppRootView(pendingMapURL: $pendingMapURL)
+                .onOpenURL { url in
+                    pendingMapURL = url
+                }
         }
         .commands {
             CommandGroup(after: .windowArrangement) {

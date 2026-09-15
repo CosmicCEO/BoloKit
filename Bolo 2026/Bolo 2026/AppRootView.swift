@@ -42,8 +42,19 @@ enum AppScreen {
     case hostingFallback(GameState)
 }
 
+/// Finder / Open With: apply the map only on the new-game Host form. A live session
+/// keeps the URL pending until Quit to Menu remounts Host.
+nonisolated enum MapOpenPolicy: Sendable {
+    static func retainPending(isPlaying: Bool) -> Bool { isPlaying }
+}
+
 struct AppRootView: View {
     @State private var screen: AppScreen = .newGame
+    @Binding var pendingMapURL: URL?
+
+    init(pendingMapURL: Binding<URL?> = .constant(nil)) {
+        _pendingMapURL = pendingMapURL
+    }
 
     var body: some View {
         switch screen {
@@ -53,7 +64,8 @@ struct AppRootView: View {
                 onStartHostingLocalOnly: { state in screen = .hostingFallback(state) },
                 onJoinedGame: { tcpSession, udpSession, state in
                     screen = .playing(tcpSession: tcpSession, udpSession: udpSession, state: state)
-                }
+                },
+                pendingMapURL: $pendingMapURL
             )
         case .playing(let tcpSession, let udpSession, let state):
             GameView(

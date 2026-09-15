@@ -49,6 +49,9 @@ struct HostGameView: View {
     /// D109's fallback target -- fires with the same fully-assembled `GameState` `onStartHosting`
     /// would have, when the real listener couldn't be constructed on this machine.
     let onStartHostingLocalOnly: (GameState) -> Void
+    /// Finder / Open With URL. Consumed here only while Host is on screen; a live play
+    /// session leaves it pending (`MapOpenPolicy`).
+    @Binding var pendingMapURL: URL?
 
     @State private var mapURL: URL?
     /// Decoded from `mapURL`'s bytes via `decodeBMap` -- terrain/pills/bases/starts only; the
@@ -77,7 +80,7 @@ struct HostGameView: View {
     @State private var hostErrorMessage: String?
     @State private var isStartingHost = false
 
-    private let mapContentType = UTType(filenameExtension: "map") ?? .data
+    static let mapContentType = UTType(exportedAs: "com.cosmicceo.bolo-map")
 
     /// Milestone C.5 (D120): `portText`'s initial value now reads the same `"GSHostPortNumber"`
     /// key `PreferencesView`'s `@AppStorage` writes to (both back onto `UserDefaults.standard`,
@@ -86,10 +89,12 @@ struct HostGameView: View {
     /// `String` state with no extra conversion property.
     init(
         onStartHosting: @escaping (HostGameEngine) -> Void,
-        onStartHostingLocalOnly: @escaping (GameState) -> Void
+        onStartHostingLocalOnly: @escaping (GameState) -> Void,
+        pendingMapURL: Binding<URL?> = .constant(nil)
     ) {
         self.onStartHosting = onStartHosting
         self.onStartHostingLocalOnly = onStartHostingLocalOnly
+        _pendingMapURL = pendingMapURL
         let storedPort = UserDefaults.standard.object(forKey: "GSHostPortNumber") as? Int
         _portText = State(initialValue: String(storedPort ?? 50000))
     }
@@ -145,7 +150,7 @@ struct HostGameView: View {
                 .disabled(mapState == nil || isStartingHost)
         }
         .padding()
-        .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: [mapContentType]) { result in
+        .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: [Self.mapContentType]) { result in
             handleMapPickerResult(result)
         }
         // D132: bundled default map, applied on first appearance only (`mapState == nil` guards
@@ -154,30 +159,49 @@ struct HostGameView: View {
         // `applyDecodedMap` below -- via the byte-for-byte `encodeBMap` output of
         // `BoloKit.defaultBundledMapState()`, embedded in `DefaultMap.swift`.
         .onAppear {
-            guard mapState == nil else { return }
-            applyDecodedMap(bytes: defaultMapFileBytes)
+            if pendingMapURL != nil {
+                consumePendingMap()
+            } else if mapState == nil {
+                applyDecodedMap(bytes: defaultMapFileBytes)
+            }
+        }
+        .onChange(of: pendingMapURL) { _, _ in
+            consumePendingMap()
         }
     }
 
     private func handleMapPickerResult(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        applyLoadedMap(url: url, outcome: Self.loadMap(from: url))
+    }
+
+    private func consumePendingMap() {
+        guard let url = pendingMapURL else { return }
+        pendingMapURL = nil
+        applyLoadedMap(url: url, outcome: Self.loadMap(from: url))
+    }
+
+    private func applyLoadedMap(url: URL, outcome: MapLoadOutcome) {
+        mapURL = url
         mapErrorMessage = nil
         mapState = nil
-
-        guard case .success(let url) = result else { return }
-        mapURL = url
-
-        guard url.startAccessingSecurityScopedResource() else {
-            mapErrorMessage = "Unable to Open Map File"
-            return
+        switch outcome {
+        case .failure(let message):
+            mapErrorMessage = message
+        case .success(let decoded):
+            mapState = decoded
         }
-        defer { url.stopAccessingSecurityScopedResource() }
+    }
 
+    /// Security-scoped read when the system provided a scoped URL; plain `Data(contentsOf:)`
+    /// otherwise (temp files in tests, non-scoped `onOpenURL`).
+    static func loadMap(from url: URL) -> MapLoadOutcome {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
-            mapErrorMessage = "Unable to Open Map File"
-            return
+            return .failure("Unable to Open Map File")
         }
-
-        applyDecodedMap(bytes: Array(data))
+        return decodeAndPostProcessMap(bytes: Array(data))
     }
 
     /// D144: outcome type for `decodeAndPostProcessMap` below -- pulled out of `applyDecodedMap`

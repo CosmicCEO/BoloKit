@@ -31,10 +31,27 @@ struct NewGameView: View {
     /// once the join form successfully completes a handshake. Carries the live `TCPSession`/
     /// `UDPSession` pair as of Milestone B.8 (D113), not a bare `GameState`.
     let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
+    @Binding var pendingMapURL: URL?
+
+    init(
+        onStartHosting: @escaping (HostGameEngine) -> Void,
+        onStartHostingLocalOnly: @escaping (GameState) -> Void,
+        onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void,
+        pendingMapURL: Binding<URL?> = .constant(nil)
+    ) {
+        self.onStartHosting = onStartHosting
+        self.onStartHostingLocalOnly = onStartHostingLocalOnly
+        self.onJoinedGame = onJoinedGame
+        _pendingMapURL = pendingMapURL
+    }
 
     var body: some View {
         TabView {
-            HostGameView(onStartHosting: onStartHosting, onStartHostingLocalOnly: onStartHostingLocalOnly)
+            HostGameView(
+                onStartHosting: onStartHosting,
+                onStartHostingLocalOnly: onStartHostingLocalOnly,
+                pendingMapURL: $pendingMapURL
+            )
                 .tabItem { Text("Host") }
             JoinGameView(onJoinedGame: onJoinedGame)
                 .tabItem { Text("Join") }

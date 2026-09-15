@@ -14,7 +14,9 @@
 //  targets the pure function `decodeAndPostProcessMap` was extracted into instead, per D144's
 //  own "pure logic extractable... without a display/window server" scope.
 
+import Foundation
 import Testing
+import UniformTypeIdentifiers
 import BoloKit
 
 @testable import Bolo_2026
@@ -83,5 +85,42 @@ struct HostGameViewTests {
         // D131/`serverPostProcessLoadedMap`: pill owner always forced to NEUTRAL server-side,
         // regardless of whatever the map file itself stored (owner=2 above).
         #expect(decoded.pills[0].owner == playerNeutral)
+    }
+
+    @Test func mapContentTypeIdentifierIsExportedBoloMap() {
+        #expect(HostGameView.mapContentType.identifier == "com.cosmicceo.bolo-map")
+    }
+
+    @Test func loadMapFromURLDecodesAValidMap() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bolo-load-\(UUID().uuidString).map")
+        try Data(bmapBytes(nstarts: 1, tail: [5, 5, 0])).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let outcome = HostGameView.loadMap(from: url)
+        guard case .success(let decoded) = outcome else {
+            Issue.record("expected .success, got \(outcome)")
+            return
+        }
+        #expect(decoded.starts.count == 1)
+    }
+
+    @Test func loadMapFromURLRejectsGarbage() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bolo-bad-\(UUID().uuidString).map")
+        try Data([0, 1, 2, 3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let outcome = HostGameView.loadMap(from: url)
+        guard case .failure(let message) = outcome else {
+            Issue.record("expected .failure, got \(outcome)")
+            return
+        }
+        #expect(message == "Incompatible Map Version")
+    }
+
+    @Test func openURLWhilePlayingLeavesMapPending() {
+        #expect(MapOpenPolicy.retainPending(isPlaying: true))
+        #expect(!MapOpenPolicy.retainPending(isPlaying: false))
     }
 }
