@@ -257,7 +257,10 @@ struct HostGameView: View {
         switch Self.decodeAndPostProcessMap(bytes: bytes) {
         case .failure(let message):
             mapErrorMessage = message
-        case .success(let decoded):
+        case .success(var decoded):
+            if bytes == defaultMapFileBytes {
+                applyDefaultBundledMapOwners(&decoded)
+            }
             mapState = decoded
         }
     }

@@ -741,28 +741,8 @@ public func serverPostProcessLoadedMap(_ state: inout GameState) {
 // to become valid, since `serverPostProcessLoadedMap` normalizes any site's terrain on load
 // (`serverNormalizeSiteTerrain(.sea) == .grass0`), the same as it would for any real imported map.
 
-/// A simple rectilinear approximation of Alabama's outline (D135 scope amendment), sized to
-/// this map's coordinate space: a rectangular main body, a corner notch on the southeast
-/// (echoing the Chattahoochee River border cut), and a narrow southward panhandle tail
-/// (echoing the coastal strip down to Mobile Bay). Approximated from general geographic
-/// knowledge, not sourced from any GIS/map data file (`docs/U.S.A.map` was never read).
-///
-/// Every existing start/pill/base coordinate is confirmed to fall inside this shape (see the
-/// D135 pre-brief in `docs/AGENT_NOTES.md`), so no site coordinates needed to move.
-private func isAlabamaSilhouette(x: Int32, y: Int32) -> Bool {
-    // Main rectangular body.
-    let mainBody = (x >= 30 && x <= 226 && y >= 30 && y <= 226)
-    // Southeast corner notch: trimmed short of the (216, 216) start/pill/base sites so land
-    // coverage there is untouched.
-    let southeastNotch = (x >= 222 && x <= 226 && y >= 205 && y <= 226)
-    // Coastal panhandle: a narrow tail extending south past the main body, toward the coast.
-    let panhandle = (x >= 100 && x <= 156 && y >= 226 && y <= 245)
-    return (mainBody && !southeastNotch) || panhandle
-}
-
 /// Draws a simple straight-line `terrain` feature between two points via a basic Bresenham
-/// walk, clamped to in-bounds grid cells. Used for D135's second scope amendment (roads/rivers)
-/// — a coarse approximation, not a curved/authentic river or highway course.
+/// walk, clamped to in-bounds grid cells.
 private func drawLine(from a: (x: Int32, y: Int32), to b: (x: Int32, y: Int32), terrain: Terrain, into grid: inout TerrainGrid) {
     var x0 = a.x, y0 = a.y
     let x1 = b.x, y1 = b.y
@@ -778,54 +758,51 @@ private func drawLine(from a: (x: Int32, y: Int32), to b: (x: Int32, y: Int32), 
     }
 }
 
-/// Builds the small default map's `GameState`: 4 starts near the mine-zone's corners, 2 pills, 2
-/// bases, otherwise stock `mapDefault()` terrain. Used both to generate the bundled map bytes
-/// (see `Bolo 2026/Bolo 2026/DefaultMap.swift`) and directly in tests.
+/// Compact teaching island: grass `x 100...145`, `y 118...140`, one east-west river,
+/// one road bridge, 1 start, 2 pills, 3 bases. Owners in this struct are the
+/// scenario source of truth; `serverPostProcessLoadedMap` still wipes them
+/// (C `serverloadmap`). Restore with `applyDefaultBundledMapOwners`.
 public func defaultBundledMapState() -> GameState {
     var state = GameState()
     state.terrain = .mapDefault()
-    // D135: carve a connected landmass so starts/pills/bases sit on land and tanks can drive
-    // between them, instead of `mapDefault()`'s all-sea grid producing isolated single-tile
-    // grass islands at each site after normalization. Shaped as an Alabama silhouette per D135's
-    // scope amendment rather than a plain rectangle/blob.
-    for y in Int32(30)...Int32(245) {
-        for x in Int32(30)...Int32(226) {
-            if isAlabamaSilhouette(x: x, y: y) {
-                state.terrain[Int(x), Int(y)] = .grass0
-            }
+    for y in 118...140 {
+        for x in 100...145 {
+            state.terrain[x, y] = .grass0
         }
     }
-    // D135 second amendment: a coarse road network connecting the 4 "city" start sites and 2
-    // pill/base rows (approximating a highway grid), plus 3 major rivers with simple straight-
-    // line courses (approximating the Tennessee, Alabama, and Tombigbee rivers' general
-    // directions). All coordinates are rough approximations from general geographic knowledge,
-    // not sourced from any GIS/map/atlas data file — timeboxed per PLANNER's note, not claiming
-    // real-world accuracy. Site tiles (starts/pills/bases) are re-normalized after this by
-    // `serverPostProcessLoadedMap` regardless of what terrain these lines paint under them.
-    drawLine(from: (40, 40), to: (216, 40), terrain: .road, into: &state.terrain)
-    drawLine(from: (40, 216), to: (216, 216), terrain: .road, into: &state.terrain)
-    drawLine(from: (40, 40), to: (40, 216), terrain: .road, into: &state.terrain)
-    drawLine(from: (216, 40), to: (216, 216), terrain: .road, into: &state.terrain)
-    drawLine(from: (128, 60), to: (128, 196), terrain: .road, into: &state.terrain)
-    drawLine(from: (60, 128), to: (196, 128), terrain: .road, into: &state.terrain)
-    drawLine(from: (30, 55), to: (226, 70), terrain: .river, into: &state.terrain)   // Tennessee
-    drawLine(from: (90, 120), to: (190, 210), terrain: .river, into: &state.terrain) // Alabama
-    drawLine(from: (60, 60), to: (110, 226), terrain: .river, into: &state.terrain)  // Tombigbee
+    drawLine(from: (100, 129), to: (145, 129), terrain: .river, into: &state.terrain)
+    state.terrain[120, 129] = .road
+    let enemy = UInt8(maxPlayers - 1)
     state.starts = [
-        Start(x: 40, y: 40, dir: 4),
-        Start(x: 216, y: 40, dir: 12),
-        Start(x: 40, y: 216, dir: 4),
-        Start(x: 216, y: 216, dir: 12),
+        Start(x: 102, y: 121, dir: 0),
     ]
     state.pills = [
-        Pill(x: 128, y: 60, armour: 15, owner: playerNeutral, speed: 25, counter: 0),
-        Pill(x: 128, y: 196, armour: 15, owner: playerNeutral, speed: 25, counter: 0),
+        Pill(x: 108, y: 123, armour: 0, owner: playerNeutral, speed: 50, counter: 0),
+        Pill(x: 140, y: 123, armour: 15, owner: enemy, speed: 50, counter: 0),
     ]
     state.bases = [
-        Base(x: 60, y: 128, armour: 90, owner: playerNeutral, shells: 90, mines: 90),
-        Base(x: 196, y: 128, armour: 90, owner: playerNeutral, shells: 90, mines: 90),
+        Base(x: 105, y: 123, armour: 90, owner: 0, shells: 90, mines: 90),
+        Base(x: 108, y: 134, armour: 90, owner: playerNeutral, shells: 90, mines: 90),
+        Base(x: 140, y: 134, armour: 90, owner: enemy, shells: 90, mines: 90),
     ]
     return state
+}
+
+/// Re-applies bundled-map pill/base owners and pickup armour after
+/// `serverPostProcessLoadedMap`. Match by tile. Does not change post-process.
+public func applyDefaultBundledMapOwners(_ state: inout GameState) {
+    let authored = defaultBundledMapState()
+    for i in state.pills.indices {
+        if let src = authored.pills.first(where: { $0.x == state.pills[i].x && $0.y == state.pills[i].y }) {
+            state.pills[i].owner = src.owner
+            state.pills[i].armour = src.armour
+        }
+    }
+    for i in state.bases.indices {
+        if let src = authored.bases.first(where: { $0.x == state.bases[i].x && $0.y == state.bases[i].y }) {
+            state.bases[i].owner = src.owner
+        }
+    }
 }
 
 public func encodeBMap(_ state: GameState) -> [UInt8] {

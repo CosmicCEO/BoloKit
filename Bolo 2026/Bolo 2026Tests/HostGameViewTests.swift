@@ -87,6 +87,19 @@ struct HostGameViewTests {
         #expect(decoded.pills[0].owner == playerNeutral)
     }
 
+    @Test func bundledDefaultMapRestoresScenarioOwnersAfterPostProcess() {
+        let outcome = HostGameView.decodeAndPostProcessMap(bytes: defaultMapFileBytes)
+        guard case .success(var decoded) = outcome else {
+            Issue.record("expected .success, got \(outcome)")
+            return
+        }
+        #expect(decoded.pills.allSatisfy { $0.owner == playerNeutral })
+        applyDefaultBundledMapOwners(&decoded)
+        #expect(decoded.bases.contains { $0.owner == 0 })
+        #expect(decoded.pills.contains { $0.owner == UInt8(maxPlayers - 1) && $0.armour == 15 })
+        #expect(decoded.pills.contains { $0.armour == 0 && $0.owner == playerNeutral })
+    }
+
     @Test func mapContentTypeIdentifierIsExportedBoloMap() {
         #expect(HostGameView.mapContentType.identifier == "com.cosmicceo.bolo-map")
     }
