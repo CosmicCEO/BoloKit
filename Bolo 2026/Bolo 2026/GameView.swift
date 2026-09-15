@@ -88,6 +88,9 @@ struct GameView: View {
         ScrollView([.horizontal, .vertical]) {
             GameRenderRepresentable(session: session)
         }
+        .overlay {
+            MatchEndOverlay(session: session)
+        }
         .frame(minWidth: 480, minHeight: 360)
         .onAppear { session.start() }
         .onDisappear { Task { @MainActor in await session.stop() } }
@@ -96,6 +99,7 @@ struct GameView: View {
                 if let notice {
                     Text(notice).foregroundStyle(.orange)
                 }
+                HostAdminBar(session: session, reclaimFocus: reclaimMapFocus)
                 Spacer()
                 Button("Status") { showingStatus = true }
                 Button("Alliances") { showingAlliances = true }

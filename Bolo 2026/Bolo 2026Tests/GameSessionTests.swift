@@ -80,6 +80,31 @@ struct GameSessionTests {
         session.banPlayer(0)
     }
 
+    @Test func canHostAdminIsFalseWithoutAHostEngine() {
+        let session = makeSession()
+        #expect(session.canHostAdmin == false)
+    }
+
+    @Test func hostAdminCommandsAreSafeNoOpsWithoutAHostEngine() {
+        let session = makeSession()
+        session.pauseResumeServer()
+        session.setAllowJoin(false)
+        session.unbanPlayer(index: 0)
+        #expect(session.allowJoin)
+        #expect(session.bannedPlayers.isEmpty)
+    }
+
+    @Test func hostAdminReadsPauseAndBanListFromStateOnSingleProcessPath() {
+        let session = makeSession { state in
+            state.serverPauseTicks = 50
+            state.allowJoin = false
+            state.bannedPlayers = [BannedPlayer(name: "Eve", address: "1.2.3.4")]
+        }
+        #expect(session.isServerPaused)
+        #expect(!session.allowJoin)
+        #expect(session.bannedPlayers == [BannedPlayer(name: "Eve", address: "1.2.3.4")])
+    }
+
     @Test func singleProcessRequestAllianceMutatesStateDirectly() {
         var players = [PlayerState(), PlayerState()]
         players[0].used = true
@@ -121,6 +146,20 @@ struct GameSessionTests {
         #expect(session.messages[0].to == EventLogText.gameTarget)
         #expect(session.messages[0].text == "5 Seconds Remaining!")
         #expect(session.messages[0].displayText == "5 Seconds Remaining!")
+    }
+
+    @Test func singleProcessTickAtTimeLimitReachedDrivesMatchEndOverlay() {
+        var player = PlayerState()
+        player.connected = true
+        let session = makeSession(players: [player]) { state in
+            state.timeLimit = 10
+            state.ticks = UInt64(Int(ticksPerSec) * 10)
+        }
+
+        session.tick()
+
+        #expect(session.messages.map(\.text) == [EventLogText.timeLimitReached])
+        #expect(MatchEndMath.kind(from: session.messages) == .timeLimit)
     }
 
     @Test func singleProcessRequestAllianceAppendsRequestedLine() {

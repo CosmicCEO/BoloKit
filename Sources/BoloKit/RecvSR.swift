@@ -462,9 +462,17 @@ public func recvSrSmallBoom(
         if state.local.armour < 0 {
             state.local.armour = 0
             if state.players[localPlayer].mines > 32 {
-                superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                superboom(
+                    state: &state,
+                    onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
             } else if state.players[localPlayer].mines > 0 || state.local.shells > 0 {
-                smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                smallboom(
+                    state: &state,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
             } else {
                 killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
             }
@@ -540,9 +548,17 @@ public func recvSrSuperBoom(
             if state.local.armour < 0 {
                 state.local.armour = 0
                 if state.players[localPlayer].mines > 32 {
-                    superboom(state: &state, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                    superboom(
+                        state: &state,
+                        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                    )
                 } else if state.players[localPlayer].mines > 0 || state.local.shells > 0 {
-                    smallboom(state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                    smallboom(
+                        state: &state,
+                        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                    )
                 } else {
                     killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                 }

@@ -305,3 +305,21 @@ private func alliedPlayers(count: Int) -> [PlayerState] {
 
     #expect(state.ticks == 10)
 }
+
+@Test func runTickDeadTumbleSuperboomForwardsTerrainCallback() {
+    var player = connectedPlayer(dead: true)
+    player.mines = 32
+    var state = makeState(players: [player])
+    state.local.respawnCounter = explodeTicks - 1
+    state.terrain[50, 50] = .grass0
+    state.terrain[51, 50] = .grass0
+    state.terrain[50, 51] = .grass0
+    state.terrain[51, 51] = .grass0
+
+    var terrainHits: [Pointi] = []
+    runTick(
+        state: &state, ticksSinceLastUpdate: [0],
+        onSuperboomTerrain: { terrainHits.append($0) }
+    )
+    #expect(!terrainHits.isEmpty)
+}

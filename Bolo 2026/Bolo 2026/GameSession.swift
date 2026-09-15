@@ -266,6 +266,34 @@ public final class GameSession {
         hostEngine?.submitBanPlayer(player)
     }
 
+    /// Host-only pause/resume, allow-join, unban -- same gate as kick/ban (`hostEngine != nil`).
+    /// Engine entry points already exist (`submitPauseResumeServer` / `submitSetAllowJoin` /
+    /// `submitUnbanPlayer`); this is the app-side surface.
+    public var canHostAdmin: Bool { hostEngine != nil }
+
+    /// Live host `GameState` when hosting; otherwise this session's own copy.
+    private var adminState: GameState { hostEngine?.state ?? state }
+
+    public var isServerPaused: Bool {
+        adminState.serverPauseTicks != 0 || adminState.clientPauseDisplaySeconds != 0
+    }
+
+    public var allowJoin: Bool { adminState.allowJoin }
+
+    public var bannedPlayers: [BannedPlayer] { adminState.bannedPlayers }
+
+    public func pauseResumeServer() {
+        hostEngine?.submitPauseResumeServer()
+    }
+
+    public func setAllowJoin(_ allowJoin: Bool) {
+        hostEngine?.submitSetAllowJoin(allowJoin)
+    }
+
+    public func unbanPlayer(index: Int) {
+        hostEngine?.submitUnbanPlayer(index: index)
+    }
+
     /// **D150(3):** ticks elapsed since `player`'s last real network update, mirroring
     /// `client.players[player].lastupdate`'s role in `setPlayerStatus:`
     /// (`GSXBoloController.m:2196-2210`) -- `PlayerStatusGrid` uses this to color-code a

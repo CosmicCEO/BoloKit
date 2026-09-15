@@ -5,8 +5,8 @@
 //  D148(B): the always-visible main-window HUD Jerod's own reference screenshot of the original
 //  Mac Bolo showed -- a persistent build-tool strip (left) and player/pill/base status grid +
 //  shell/mine/armor gauges (right), replacing today's "open a sheet to see any of this" shape.
-//  See `docs/AGENT_NOTES.md`'s D148(B) pre-brief for the zone-by-zone plan. Event-log bar
-//  landed in D154 Wave 3 / D163; win/loss overlay stays split out.
+//  Event-log bar landed in D154 Wave 3 / D163. Win/loss overlay (`MatchEndOverlay`) is display-
+//  only: it latches on the C catalog reached-strings already written to `GameSession.messages`.
 //
 //  Both panels poll `session.state` on a `TimelineView`, the same "poll, don't observe" shape
 //  `PlayerStatusView`/`GameRenderView` already use -- `GameSession` isn't `ObservableObject` by
@@ -358,6 +358,99 @@ struct EventLogBar: View {
         case .nearby: return .red
         case .game: return .cyan
         }
+    }
+}
+
+// MARK: - Match end overlay
+
+/// Display-only latch over `GameSession.messages`. Does not add a `GameState` flag:
+/// `RunTick` already freezes on the reached tick, and C's `client.timelimitreached` /
+/// `client.basecontrolreached` are set from the same `printmessage` strings.
+enum MatchEndKind: Equatable {
+    case timeLimit
+    case baseControl
+}
+
+enum MatchEndMath {
+    static func kind(from messages: [ChatMessage]) -> MatchEndKind? {
+        var found: MatchEndKind?
+        for message in messages {
+            if message.text == EventLogText.timeLimitReached {
+                found = .timeLimit
+            } else if message.text == EventLogText.baseControlReached {
+                found = .baseControl
+            }
+        }
+        return found
+    }
+
+    static func title(_ kind: MatchEndKind) -> String {
+        switch kind {
+        case .timeLimit: return EventLogText.timeLimitReached
+        case .baseControl: return EventLogText.baseControlReached
+        }
+    }
+}
+
+/// Polls `session.messages` the same way `EventLogBar` does — `GameSession` is not
+/// `ObservableObject`. Hit-testing is off so scroll/quit still work while the sim is frozen.
+struct MatchEndOverlay: View {
+    let session: GameSession
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            if let kind = MatchEndMath.kind(from: session.messages) {
+                MatchEndOverlayPanel(title: MatchEndMath.title(kind))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityIdentifier("match-end-overlay")
+    }
+}
+
+/// Host-only pause / allow-join. Polls live `HostGameEngine` state; join and
+/// single-process paths render nothing (`canHostAdmin` is false).
+struct HostAdminBar: View {
+    let session: GameSession
+    var reclaimFocus: () -> Void = {}
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+            if session.canHostAdmin {
+                HStack(spacing: 8) {
+                    Button(session.isServerPaused ? "Resume" : "Pause") {
+                        session.pauseResumeServer()
+                        reclaimFocus()
+                    }
+                    Toggle(
+                        "Allow Join",
+                        isOn: Binding(
+                            get: { session.allowJoin },
+                            set: { newValue in
+                                session.setAllowJoin(newValue)
+                                reclaimFocus()
+                            }
+                        )
+                    )
+                    .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+}
+
+struct MatchEndOverlayPanel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.title2.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .hudPanelChrome()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .accessibilityIdentifier("match-end-overlay-title")
     }
 }
 

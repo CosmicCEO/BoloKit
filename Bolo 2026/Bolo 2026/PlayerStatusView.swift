@@ -104,6 +104,24 @@ struct PlayerStatusGrid: View {
                 // Symbols approved for Wave 2 chrome).
                 Label("Bases", systemImage: "house.fill")
             }
+            if session.canHostAdmin {
+                let banned = session.bannedPlayers
+                Section {
+                    if banned.isEmpty {
+                        Text("None").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(banned.enumerated()), id: \.offset) { offset, bannedPlayer in
+                            HStack {
+                                Text(bannedPlayer.name.isEmpty ? bannedPlayer.address : bannedPlayer.name)
+                                Spacer()
+                                Button("Unban") { session.unbanPlayer(index: offset) }
+                            }
+                        }
+                    }
+                } header: {
+                    Label("Banned", systemImage: "nosign")
+                }
+            }
         }
         // D154 Wave 2: lets the shared `HUDPanelChrome` fill (applied at the embedded-HUD call
         // site in `GameView.swift`, per D158 ruling #2) show through instead of the List's own

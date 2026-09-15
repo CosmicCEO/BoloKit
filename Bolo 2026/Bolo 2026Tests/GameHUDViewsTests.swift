@@ -55,4 +55,43 @@ struct GameHUDViewsTests {
         #expect(EventLogBarMath.tintKind(to: MessageTarget.nearby.rawValue) == .nearby)
         #expect(EventLogBarMath.tintKind(to: EventLogText.gameTarget) == .game)
     }
+
+    @Test func matchEndKindNilWhenLogIsEmpty() {
+        #expect(MatchEndMath.kind(from: []) == nil)
+    }
+
+    @Test func matchEndKindNilOnCountdownWarning() {
+        let messages = [
+            gameMessage(EventLogText.timeLimitRemaining(10)),
+            gameMessage(EventLogText.baseControlRemaining(5)),
+        ]
+        #expect(MatchEndMath.kind(from: messages) == nil)
+    }
+
+    @Test func matchEndKindTimeLimitUsesCatalogReachedString() {
+        let messages = [
+            gameMessage(EventLogText.timeLimitRemaining(1)),
+            gameMessage(EventLogText.timeLimitReached),
+        ]
+        #expect(MatchEndMath.kind(from: messages) == .timeLimit)
+        #expect(MatchEndMath.title(.timeLimit) == EventLogText.timeLimitReached)
+    }
+
+    @Test func matchEndKindBaseControlUsesCatalogReachedString() {
+        let messages = [gameMessage(EventLogText.baseControlReached)]
+        #expect(MatchEndMath.kind(from: messages) == .baseControl)
+        #expect(MatchEndMath.title(.baseControl) == EventLogText.baseControlReached)
+    }
+
+    @Test func matchEndKindLatchesThroughLaterUnrelatedLogLines() {
+        let messages = [
+            gameMessage(EventLogText.timeLimitReached),
+            gameMessage(EventLogText.disconnectedLocal),
+        ]
+        #expect(MatchEndMath.kind(from: messages) == .timeLimit)
+    }
+}
+
+private func gameMessage(_ text: String, id: UInt64 = 1) -> ChatMessage {
+    ChatMessage(id: id, player: 0, senderName: "", text: text, to: EventLogText.gameTarget)
 }

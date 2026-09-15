@@ -265,6 +265,7 @@ public func runTick(
         tankMoveTick(
             player: player, state: &state,
             onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
+            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }
