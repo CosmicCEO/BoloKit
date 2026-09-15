@@ -4269,3 +4269,20 @@ Coding GO `d666095` (D165). Code commit `7e3ce5e`. No pre-brief (in-GO). Ready f
 No new Q-numbered product call. Do not declare the wave done.
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D165 CLOSED — light-track director review (`7e3ce5e`)
+
+Reviewed `7e3ce5e`/`ada39a0` against D165. All three items shipped; (1) was a session-layer
+append, not dropped. Diff is comments + constants + one `appendDisconnectedLocal` helper and a
+sink test. No `GameRenderView` logic. No RecvSR. No BoloKit→BoloNet cycle (`BuilderNeedText` in
+BoloKit, `EventLogText` aliases). Host sibling correctly skipped (`"%s disconnected"` is a
+different C site, already wired).
+
+**Disclosed dual-print** (`.tcpEnded` and `.udpEnded` can both append `"disconnected"`) accepted
+as in-GO — D165 forbade a dedup that would exceed a session-layer append.
+
+Tests: 774 unchanged SPM (554/554 + 220/220 this run); 39→40 UI-hosting. D28 add, no shrink.
+
+**D165 CLOSED.** No PARITY. No next-wave GO.
+
+[TO: PLANNER]
