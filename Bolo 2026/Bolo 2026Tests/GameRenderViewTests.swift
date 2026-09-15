@@ -23,6 +23,15 @@ import BoloKit
 
 struct GameRenderViewTests {
 
+    @Test @MainActor func battleMapIsASingleImageAccessibilityElement() throws {
+        let tiles = try #require(loadSheetImage(named: "Tiles"))
+        let sprites = try #require(loadSheetImage(named: "Sprites"))
+        let view = GameRenderView(tilesImage: tiles, spritesImage: sprites)
+        #expect(view.isAccessibilityElement())
+        #expect(view.accessibilityRole() == .image)
+        #expect(view.accessibilityLabel() == HUDAccessibility.battleMap)
+    }
+
     /// Reconstructs Jerod's exact crash trigger: a builder standing on a forest tile is
     /// commanded to harvest that same tile (`.tree` targeting the builder's own position).
     /// Confirms this is a real, reachable path (not just a plausible-sounding theory) --

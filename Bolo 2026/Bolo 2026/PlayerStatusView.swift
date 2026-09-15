@@ -91,6 +91,7 @@ struct PlayerStatusGrid: View {
                 // builder-tool strip's pill icon, per D158's "no second visual vocabulary" call.
                 HStack(spacing: 4) {
                     PillSunburstShape().fill(Color.blue).frame(width: 10, height: 10)
+                        .accessibilityHidden(true)
                     Text("Pillboxes")
                 }
             }
@@ -174,6 +175,7 @@ struct PlayerStatusGrid: View {
         let lag = staleness(forPlayer: index)
         HStack {
             Circle().fill(status.tint).frame(width: 10, height: 10)
+                .accessibilityHidden(true)
             Text(player.name.isEmpty ? "Player \(index)" : player.name)
                 .foregroundStyle(lag?.foreground ?? Color.primary)
                 .padding(.horizontal, 4)
@@ -185,6 +187,8 @@ struct PlayerStatusGrid: View {
                 Button("Ban") { session.banPlayer(index) }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(player.name.isEmpty ? "Player \(index)" : player.name), \(status.label)")
     }
 
     private func ownershipStatus(owner: UInt8, snapshot: GameState) -> OwnershipStatus {
@@ -200,10 +204,13 @@ struct PlayerStatusGrid: View {
         let status = ownershipStatus(owner: owner, snapshot: snapshot)
         HStack {
             Circle().fill(status.tint).frame(width: 10, height: 10)
+                .accessibilityHidden(true)
             Text(name)
             Spacer()
             Text(status.label).foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name), \(status.label)")
     }
 }
 

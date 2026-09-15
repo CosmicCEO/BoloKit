@@ -13,6 +13,14 @@ import BoloNet
 
 @MainActor
 struct GameHUDViewsTests {
+    @Test func gaugeAccessibilityLabelReadsValueOfMax() {
+        #expect(HUDAccessibility.gauge("Shells", value: 20, max: 40) == "Shells 20 of 40")
+    }
+
+    @Test func battleMapAccessibilityLabelIsHumanReadable() {
+        #expect(HUDAccessibility.battleMap == "Battle map")
+    }
+
     @Test func fullValueYieldsOne() {
         #expect(GameHUDMath.gaugeFraction(value: 40, max: 40) == 1)
     }

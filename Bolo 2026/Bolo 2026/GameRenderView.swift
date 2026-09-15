@@ -108,6 +108,9 @@ public final class GameRenderView: NSView {
         self.tilesImage = tilesImage
         self.spritesImage = spritesImage
         super.init(frame: NSRect(x: 0, y: 0, width: mapPixelSize, height: mapPixelSize))
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+        setAccessibilityLabel(HUDAccessibility.battleMap)
     }
 
     @available(*, unavailable)

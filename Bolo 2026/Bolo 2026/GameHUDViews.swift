@@ -138,10 +138,12 @@ struct BuilderToolStrip: View {
                                 PillSunburstShape()
                                     .fill(Self.tint(for: tool))
                                     .frame(width: 15, height: 15)
+                                    .accessibilityHidden(true)
                             } else {
                                 Image(systemName: Self.iconName(for: tool))
                                     .font(.system(size: 14))
                                     .foregroundStyle(Self.tint(for: tool))
+                                    .accessibilityHidden(true)
                             }
                             // Text kept as a visible fallback/accessibility label, not deleted --
                             // D154's pre-brief specifically called out not removing it.
@@ -152,6 +154,8 @@ struct BuilderToolStrip: View {
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
+                    .accessibilityLabel(BuilderToolStrip.label(for: tool))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                     .background(
                         RoundedRectangle(cornerRadius: 6)
                             .fill(selected ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.15))
@@ -279,6 +283,7 @@ struct ResourceGaugesPanel: View {
                 .font(.system(size: 12))
                 .foregroundStyle(color)
                 .frame(width: 14)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(label).font(.caption).foregroundStyle(.secondary)
@@ -290,8 +295,11 @@ struct ResourceGaugesPanel: View {
                 }
                 ProgressView(value: Double(GameHUDMath.gaugeFraction(value: value, max: max)))
                     .tint(color)
+                    .accessibilityHidden(true)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(HUDAccessibility.gauge(label, value: value, max: max))
     }
 }
 
@@ -345,6 +353,7 @@ struct EventLogBar: View {
             .padding(.vertical, 6)
             .hudPanelChrome()
             .accessibilityIdentifier("event-log-bar")
+            .accessibilityLabel("Event log")
             .allowsHitTesting(false)
             .focusable(false)
         }
@@ -456,6 +465,14 @@ struct MatchEndOverlayPanel: View {
 
 /// D148(B): extracted per D144/D145/D146's precedent of pulling pure logic out of view code so
 /// it's directly unit-testable (`Bolo 2026Tests/GameHUDViewsTests.swift`).
+enum HUDAccessibility {
+    static let battleMap = "Battle map"
+
+    static func gauge(_ label: String, value: Int, max: Int) -> String {
+        "\(label) \(value) of \(max)"
+    }
+}
+
 enum GameHUDMath {
     /// Clamped 0...1 -- neither a negative `value` (shouldn't happen, but `mines`/`shells`/
     /// `armour` are plain `Int`/`UInt8` with no invariant enforced at this layer) nor a `value`
