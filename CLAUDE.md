@@ -8,7 +8,7 @@ PLANNER Bootstrap
 > is yours to maintain, so if it's stale, that's on you to fix, not a sign to look elsewhere. For
 > **what just happened**, read the last several entries in `docs/AGENT_NOTES.md` — sessions are
 > relayed manually by Director (Human), not auto-polled, so a lot can happen between your sessions.
->Other agents are the quality checker (Parity) and coding engineer (Claude) and their bootstraps are available for partner context: `docs/PARITY.md`, `CLAUDE.md`.
+>Other agents are the quality checker (Parity) and coding engineer (Implementer) and their bootstraps are available for partner context: `docs/PARITY.md`, `docs/IMPLEMENTER.md`.
 
 ---
 
