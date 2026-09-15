@@ -138,4 +138,23 @@ struct GameViewFocusRoutingTests {
         let scrollView = try #require(renderView.enclosingScrollView, "GameRenderView has no enclosing NSScrollView")
         #expect(scrollView.contentInsets.bottom > 0)
     }
+
+    @Test func reclaimMapFocusRestoresRenderViewFirstResponder() throws {
+        let hosting = NSHostingView(rootView: GameView(initialState: AppRootView.demoState, onQuitToMenu: {}))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hosting
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        let renderView = try #require(findRenderView(hosting), "GameRenderView not found in hosted hierarchy")
+        window.makeFirstResponder(hosting)
+        #expect(window.firstResponder !== renderView)
+        window.makeFirstResponder(renderView)
+        #expect(window.firstResponder === renderView)
+    }
 }

@@ -20,6 +20,7 @@ struct Bolo_2026App: App {
                 }
         }
         .commands {
+            PlayCommands()
             CommandGroup(after: .windowArrangement) {
                 Button("Full Screen") {
                     NSApp.keyWindow?.toggleFullScreen(nil)

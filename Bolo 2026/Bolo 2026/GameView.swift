@@ -155,6 +155,17 @@ struct GameView: View {
         .sheet(isPresented: $showingMessages) {
             MessagesView(session: session, onDone: { showingMessages = false })
         }
+        .focusedSceneValue(
+            \.playSessionActions,
+            PlaySessionActions.make(
+                session: session,
+                reclaimFocus: reclaimMapFocus,
+                setShowingStatus: { showingStatus = $0 },
+                setShowingAlliances: { showingAlliances = $0 },
+                setShowingMessages: { showingMessages = $0 },
+                onQuitToMenu: onQuitToMenu
+            )
+        )
     }
 
     /// **D148(B):** every HUD control (tool strip today; the embedded status grid's Kick/Ban
