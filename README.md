@@ -14,8 +14,7 @@ This is a derivative Swift port of **[XBolo](https://github.com/bananazon/xbolo)
 itself a clone of Stuart Cheshire's original *Bolo*. `Reference/c` holds XBolo's C/Objective-C
 source in-tree as a git submodule — kept there permanently, not as a historical artifact pending
 removal, because it's a live, executable oracle: every ported module is checked against it with
-differential tests, and PARITY audits hand-trace new Swift work against it directly. See `LICENSE`
-for the full attribution chain and license terms.
+differential tests. See `LICENSE` for the full attribution chain and license terms.
 
 ## Status
 
@@ -24,11 +23,11 @@ terrain/tiles, BMAP, and the full simulation core (tank/shell/builder/pillbox ph
 chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire codec, tick
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
-are all complete and PARITY-verified against the C reference. **`v1.0.0` shipped** (real,
+are all complete and verified against the C reference. **`v1.0.0` shipped** (real,
 non-prerelease GitHub release). Current drop is **`v1.1.0-beta.1`** (build 5). 774
 SwiftPM tests (BoloKitTests + DifferentialTests) plus 40 app-target tests (`Bolo 2026Tests`)
 are passing (one pre-existing, documented flaky timing test excluded from that count's
-stability claim -- see `docs/PLAN.md`). **`Bolo 2026` is playable, host-and-join
+stability claim -- see `docs/STATUS.md`). **`Bolo 2026` is playable, host-and-join
 multiplayer**: a window opens with an always-visible HUD (build-tool selector, resource gauges,
 player/pill/base status, bottom event-log bar), renders a real bundled default map (or an imported one) from generated
 assets, and drives a tank via the actual physics engine, keyboard- and mouse-controlled
@@ -49,7 +48,7 @@ cause not found despite investigation (ruled out: beta-OS-specific, ad-hoc signi
 not under active investigation to avoid further escalation-of-commitment cost. Filed but not yet
 scheduled: win/loss UI presentation (the simulation already computes the underlying condition)
 and a `hiddenmines`-style fog-of-war mode.
-See `docs/PLAN.md` for the full wave-by-wave status and decisions log.
+See `docs/STATUS.md` for current state and open backlog, `docs/CONSTRAINTS.md` for standing engineering rules. Wave history is in git at tag `legacy-agent-process`.
 
 ## Approach
 
@@ -59,51 +58,14 @@ See `docs/PLAN.md` for the full wave-by-wave status and decisions log.
 - `Sources/BoloKit` is the target: a pure Swift simulation with no AppKit dependency,
   shared by both the client and server roles (the original kept two separate copies).
 - Fidelity to the original 1993 Macintosh Bolo (version 0.99.7bv) is tracked in
-  `docs/FIDELITY.md`, sourced from emulation and replay-log analysis — not from other
-  GPL-licensed Bolo implementations, to keep this project's license clean.
+  `docs/CONSTRAINTS.md`, against the C oracle — not from other GPL-licensed Bolo
+  implementations, to keep this project's license clean.
 - All sprite/tile art is generated from Unicode/ASCII glyphs rather than reproduced from
   the original's copyrighted assets.
 
-## Contributors & Partners
+## Contributors
 
-This project is a collaborative AI-human pair-programming endeavor, currently run as one human
-plus a structured multi-agent team using macos command line tools for xcode which are driven by claude code agent and subagents at the command line:
-
-Learning arc:
-- began with one claude agent and claude chat in xcode.app
-- learned more about claude and integrated claude.app with a planner and quality agent, everything manually passed between three agents
--- developed understanding of cost of long workflows, long logs, repeat read and write
--- developed a clean process of plan do check and act, based around a single agent notes scratch pad
--- developed a bootstrapping process for agents so that I could archive the xcode agent and restart where I left; did the same thing for planner, quality agents in the app
--- developed a better understanding of cost of documents, began archiving completed agent notes.md at close of each wave, maintaining a constant plan.md for open questions, decisions and etc.
-- learned more about agents and multi-agents, deployed the claude command line interface
--- using existing bootstraps, exported skills from planner, quality, admin, and xcode coder imported into claude cli
--- initiated same 4 agent paradigm in 4 terminal windows for one wave
--- initiated one terminal window claude agent planner and asked her to spawn sub-agents as needed for quality, coding, admin; planner agent picks up the memories and bootstrap skills from previously imported baseline
--- initially defined gating for my intervention at all waves, but quickly removed
--- learned more about claude cli commands and began requesting planner to spawn subagents to tasks based on agent model complexity rather than always using sonnet high, for example sonnet low for admin agent doing product cleanup and archival duties.
-
-Current state:
-
-Claude Planner
--- subagent coder uses xcode mcp
--- subagent quality uses memories and skills developed in first 75% of project
--- subagent admin uses memories and skill developed in middle of project
-Human Director is hands off except for pre-planning /plan command and /exit-plan commands
--- human director monitors progress and is briefed at each stage gate
-
-To do:
-
-- implement additional token saving ideas into skill sets or figure out how to adopt pre-formed skills from claude website
-- adopt a more visual mode for monitoring progress (dashboard GUI)
-- finish the project and archive my learning in github
-
-**Parallel Implementer agents:** running multiple Xcode Implementer agents at once on unrelated,
-independently-scoped waves (separate git worktrees/branches) has been proven possible and
-beneficial for this project. An earlier attempt appeared to fail from the approach itself, but
-was later confirmed to be an unrelated Claude API server-side issue, since resolved -- the
-parallel-agent approach itself is sound. Worth doing whenever the Director can afford the
-additional AI credits/time it costs to run more than one agent concurrently.
+Human + AI pair-programming. Project instructions for agents are in `AGENTS.md`.
 
 ## Licensing
 

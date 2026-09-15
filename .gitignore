@@ -4,5 +4,4 @@
 xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
-.claude/settings.local.json
-.claude/worktrees/
+.claude/

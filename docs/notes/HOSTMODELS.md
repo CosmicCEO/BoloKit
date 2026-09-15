@@ -1,9 +1,8 @@
 # HOSTMODELS — how other Bolo implementations split (or don't split) client vs. server
 
-> **Research note, PLANNER, 2026-09-03.** Prompted by an open runtime question: does the Swift
-> port need a standalone dedicated/headless server binary, or does the planned "Bolo 2026" app
-> hosting in-process cover it? Logged as **Q22** in `docs/PLAN.md`. This document is the
-> reference; `PLAN.md`'s row is the pointer.
+> **Research note, 2026-09-03.** Does the Swift port need a standalone dedicated/headless
+> server binary, or does in-process hosting in the Bolo 2026 app cover it? This document is
+> the reference. Historical Q22 ruling: `git show legacy-agent-process:docs/PLAN.md`.
 
 ## Why this matters for us
 
