@@ -51,3 +51,4 @@ Open product work: GitHub issues (summary in `docs/STATUS.md`). Next sprints: #1
 - `docs/ORACLE_COVERAGE.md` — C-function coverage snapshot (verify against `Sources/` before treating a row as still open)
 - `docs/notes/HOSTMODELS.md` — in-process host vs dedicated server research
 - Wave history and the old four-role process: `git show legacy-agent-process:docs/PLAN.md`
+- GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43, skill `.grok/skills/bolokit-github-boards/`
