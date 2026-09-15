@@ -1,0 +1,34 @@
+{
+  "fill" : {
+    "solid" : "srgb:0.27451,0.54902,0.23529,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "Tank.png",
+          "name" : "Tank",
+          "opacity" : 1
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Foreground",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [],
+    "squares" : "shared"
+  }
+}

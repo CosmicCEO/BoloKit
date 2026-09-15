@@ -25,6 +25,10 @@ struct AppInfoPlistTests {
         #expect(!copyright.isEmpty)
     }
 
+    @Test func compiledAppIconIcnsIsInTheBundle() {
+        #expect(Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil)
+    }
+
     @Test func exportsBoloMapUTIAsViewer() {
         let exported = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
         let ids = exported.compactMap { $0["UTTypeIdentifier"] as? String }
