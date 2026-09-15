@@ -14,13 +14,24 @@ Host/Join UI, join-side outbound protocol (movement, tile-entry, builder-task, s
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process` (`docs/PLAN.md` at that tag). Do not restore those files to the working tree.
 
-## Open product backlog
+## Next sprints
 
-Not scheduled; do not invent a wave/GO protocol around them.
+Tracked as GitHub issues. Do not invent a wave/GO protocol around them.
 
-- **`hiddenmines`-style fog-of-war** — never modeled (`seentiles` / `fog` / `increasevis` / `decreasevis`). Alliance currently has no vision-merge side effect. Default is fully visible.
-- **Q14 — explosions-list attribution** — C uses two irreconcilable owner rules (shell-list owner vs hardcoded `client.player`). Swift uses `state.players[shell.owner].explosions`. Cosmetic list today; still unresolved.
-- **D155(2) — fire while standing on a captured base** — reported, traced as matching C's three-term fire gate (input / cooldown / shells). Unconfirmed; do not "fix" without a live repro.
+- [#4 Ship v1.1.0](https://github.com/CosmicCEO/BoloKit/issues/4) — tag `v1.1.0`; playtest polish; version bump. Drop is still labeled `v1.1.0-beta.1`.
+- [#1 Hidden-mines fog-of-war](https://github.com/CosmicCEO/BoloKit/issues/1) — `seentiles` / `increasevis` / `decreasevis` / `testhiddenmine`; alliance vision merge. Default stays fully visible.
+- [#6 Dedicated headless host](https://github.com/CosmicCEO/BoloKit/issues/6) — SPM executable over `HostGameEngine`. See `docs/notes/HOSTMODELS.md`.
+
+## Parking lot
+
+Non-blocking; not in the three sprints.
+
+- [#5 Q14 explosions-list owner](https://github.com/CosmicCEO/BoloKit/issues/5) — C disagrees with itself; cosmetic.
+- [#7 D155(2) fire on captured base](https://github.com/CosmicCEO/BoloKit/issues/7) — unconfirmed; do not “fix” without a live repro.
+- [#8 Wire remaining procedural sounds](https://github.com/CosmicCEO/BoloKit/issues/8)
+- [#3 Join-side connection lag tint](https://github.com/CosmicCEO/BoloKit/issues/3)
+- [#9 Standalone tracker daemon](https://github.com/CosmicCEO/BoloKit/issues/9) — not the dedicated game host.
+- [#2 Refresh ORACLE_COVERAGE.md snapshot](https://github.com/CosmicCEO/BoloKit/issues/2)
 
 ## Landed this close-out (`v1.1.0` sprint)
 
