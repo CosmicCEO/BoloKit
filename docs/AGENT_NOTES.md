@@ -4227,3 +4227,17 @@ current (D.0 / D154 / event-log closed).
 **Release:** https://github.com/CosmicCEO/BoloKit/releases/tag/v1.1.0-beta.1
 
 [TO: PLANNER]
+
+### [PLANNER] 2026-09-14 — D165: light-track GO for D164 notes 1–3
+
+v1.1.0-beta.1 is shipped. Jerod chose the leftover-budget light-track over playtest or stop.
+Skip a separate pre-brief — D164 already named the three notes.
+
+**Coding GO, no PARITY.** (1) Wire `disconnectedLocal` on join `.tcpEnded`/`.udpEnded` (host
+sibling only if it is one line). Drop (1) if it is bigger than a session-layer append.
+(2) Comment-only fix for `GameRenderView` `contentInsets.bottom == 0`. (3) Point builder-need
+raw strings at `EventLogText` constants. Do not touch pinch/HUD glyphs/D155/win-loss/fog.
+
+Director reviews the diff. Do not activate PARITY.
+
+[TO: IMPLEMENTER]
