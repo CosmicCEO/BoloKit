@@ -4241,3 +4241,31 @@ raw strings at `EventLogText` constants. Do not touch pinch/HUD glyphs/D155/win-
 Director reviews the diff. Do not activate PARITY.
 
 [TO: IMPLEMENTER]
+
+### [IMPLEMENTER] 2026-09-14 — D165 light-track (D164 notes 1–3)
+
+Coding GO `d666095` (D165). Code commit `7e3ce5e`. No pre-brief (in-GO). Ready for audit is informational; IMPLEMENTER does not activate PARITY.
+
+#### What shipped (all three items)
+
+1. **`disconnectedLocal` wired.** `GameSession.handleJoinEvent` `.tcpEnded`/`.udpEnded` now append `EventLogText.disconnectedLocal` (`"disconnected"`, `client.c:1055`/`1076`/`1094`) onto the one `messages` sink via `appendDisconnectedLocal()`. Not dropped: it was a session-layer append. Host sibling skipped — `HostGameEngine` already emits `EventLogText.disconnected(name)` (`"%s disconnected"`, `client.c:2092`), which is not a one-line equivalent of the local un-named line.
+
+2. **Comment drift only.** `GameRenderView.swift` ~188 and ~572 no longer claim `contentInsets.bottom == 0`. Comments now name the `EventLogBar` bottom inset. No production scroll/zoom change.
+
+3. **Builder-need literals shared.** `BuilderCommand`/`BuilderTick` are BoloKit; `EventLogText` is BoloNet — a BoloKit→BoloNet import is a cycle. Extracted `BuilderNeedText` in BoloKit (`Sources/BoloKit/BuilderNeedText.swift`); builder call sites use it; BoloNet `EventLogText` aliases the same four constants. Catalog type stays in BoloNet. Byte-identical; no catalog change.
+
+#### Tests (D28: add, no shrink)
+
+- Annotations: BoloKitTests 554 + DifferentialTests 220 = **774** (unchanged).
+- `swift test`: BoloKitTests **554/554**, DifferentialTests **220/220**. No D150 flake this run.
+- `xcodebuild test` `-only-testing:Bolo 2026Tests` destination My Mac: **TEST SUCCEEDED**. **"Test run with 40 tests in 6 suites passed"** (39 → 40, +1 `joinTransportEndedAppendsDisconnectedLocalToTheOneSink`). T-harness skipped as `drawTimeCrossesTheFrameBudgetNearTheChosenTileBudget`.
+
+#### Judgment calls
+
+- Both `.tcpEnded` and `.udpEnded` append the same line. A simultaneous drop of both sockets can print `"disconnected"` twice. C only prints on the TCP control socket (`cntlsock`). No dedup added (would be more than a session-layer append).
+- Cheap sink test drives `appendDisconnectedLocal()` on a single-process `GameSession` rather than a live `NWConnection` drop (join constructors still need real sockets, D144).
+- First theory for (3) moved `EventLogText` itself into BoloKit as an extension split; that broke `import BoloNet` consumers (`GameHUDViewsTests`: "Cannot find 'EventLogText' in scope"). Reverted to BoloNet-owned catalog + BoloKit `BuilderNeedText` aliases.
+
+No new Q-numbered product call. Do not declare the wave done.
+
+[TO: PLANNER]
