@@ -66,17 +66,13 @@ Not coding work until a ruling or a release milestone says so.
 
 ## This sprint (v1.3.0 in progress, not tagged)
 
-Branch `issue-20-bolo-url`. Test counts on this branch (not a release tag): SwiftPM 802 (575 + 227) + 78 `Bolo 2026Tests` (77 pass + 1 pre-existing skip). Confirm before any tag.
+[#20](https://github.com/CosmicCEO/BoloKit/issues/20) and [#26](https://github.com/CosmicCEO/BoloKit/issues/26) closed via PR #47 (merged to `main`). [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour advertise/browse/join-via-endpoint — **open**, code landed, live two-peer LAN unverifiable: `NWListener` EINVAL on the physical Mac and Parallels guest, including a bare `swiftc` bind. Do not reopen that investigation.
 
-- [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://join?host=&port=` + ShareLink (password omitted)
-- [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Finder `.map` thumbnails (`QLThumbnailProvider`, generated tiles). Needs a logout once for the appex to attach. Chooser also accepts XBolo’s `com.gengasw.xbolo.map`
-- [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour advertise/browse/join-via-endpoint — **open**. Live two-peer LAN unverifiable: `NWListener` EINVAL on the physical Mac and Parallels guest, including a bare `swiftc` bind. Do not reopen that investigation.
-
-[#21](https://github.com/CosmicCEO/BoloKit/issues/21) / [#24](https://github.com/CosmicCEO/BoloKit/issues/24) / [#6](https://github.com/CosmicCEO/BoloKit/issues/6) untouched this sprint; same bind block.
+**Ruling (2026-09-16):** [#21](https://github.com/CosmicCEO/BoloKit/issues/21) (AWDL advertise/browse) and [#6](https://github.com/CosmicCEO/BoloKit/issues/6) (dedicated headless host, a listener) both require binding a `Network.framework` listener locally to write or verify — the same EINVAL block as #14. They stay parked in v1.3.0 until the environment issue lifts or a field Mac is available; do not grind on them in the meantime. [#24](https://github.com/CosmicCEO/BoloKit/issues/24) (tracker announce + UPnP NAT-PMP) is outbound-only — no local listener bind — and is the one v1.3.0 item that can be written and verified tonight. Milestone due 30 Oct 2026 (~6.5 weeks out); no schedule risk yet from the three parked issues.
 
 ## Landed early (v1.4.0, no tag)
 
-[#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog / `OSSignposter` intervals on `runTick`, `GameRenderView.draw(_:)`, and host `clUpdate` send. Subsystem `com.cosmicceo.Bolo-2026`, categories `tick` / `render` / `net`. `DispatchSourceTimer` unchanged. Branch `issue-16-oslog`. Test counts on this branch: SwiftPM 805 (575 + 230) + 82 `Bolo 2026Tests` (81 pass + 1 pre-existing skip). Not a `v1.4.0` tag.
+[#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog / `OSSignposter` intervals on `runTick`, `GameRenderView.draw(_:)`, and host `clUpdate` send. Subsystem `com.cosmicceo.Bolo-2026`, categories `tick` / `render` / `net`. `DispatchSourceTimer` unchanged. Branch `issue-16-oslog`. Test counts confirmed 2026-09-16: SwiftPM 804 (575 + 229) + 82 `Bolo 2026Tests` (81 pass + 1 pre-existing skip); the 1 SwiftPM failure was `hostGameEngineSubmitPauseResumeServerTogglesPauseState`, the documented pre-existing timing flake — isolated rerun passed. Not a `v1.4.0` tag.
 
 ## Landed (`v1.2.3` patch)
 
