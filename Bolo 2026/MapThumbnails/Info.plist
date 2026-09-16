@@ -12,12 +12,12 @@
 				<string>com.gengasw.xbolo.map</string>
 			</array>
 			<key>QLThumbnailMinimumDimension</key>
-			<integer>0</integer>
+			<integer>32</integer>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.quicklook.thumbnail</string>
 		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).ThumbnailProvider</string>
+		<string>ThumbnailProvider</string>
 	</dict>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
