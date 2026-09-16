@@ -4,6 +4,10 @@
 <dict>
 	<key>LSSupportsGameMode</key>
 	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_bolo2026._tcp</string>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

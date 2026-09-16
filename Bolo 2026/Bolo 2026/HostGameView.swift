@@ -294,7 +294,9 @@ struct HostGameView: View {
         defer { isStartingHost = false }
 
         do {
-            let listener = try await HostListener(port: port)
+            let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
+            let bonjourName = storedName.flatMap { $0.isEmpty ? nil : $0 }
+            let listener = try await HostListener(port: port, bonjourName: bonjourName)
             let dgramListener = try await HostDgramListener(port: port)
             let engine = HostGameEngine(initialState: state, listener: listener, dgramListener: dgramListener)
             engine.start()

@@ -302,13 +302,14 @@ public final class HostListener: @unchecked Sendable {
     /// instead, applying uniformly to every accepted connection. Same
     /// effective behavior via a different mechanism, consistent with
     /// D31/D42's "rebuild the mechanism, not the fidelity" latitude.
-    public init(port: UInt16) async throws {
+    public init(port: UInt16, bonjourName: String? = nil) async throws {
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         let boundPort = NWEndpoint.Port(rawValue: port)!
         forceIPv4(parameters, port: boundPort)
         listener = try NWListener(using: parameters, on: boundPort)
+        listener.service = NWListener.Service(name: bonjourName, type: bolo2026BonjourServiceType)
         var continuationBox: AsyncStream<NWConnection>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }
         let connectionContinuation = continuationBox!
@@ -343,6 +344,10 @@ public final class HostListener: @unchecked Sendable {
     public var connections: AsyncStream<NWConnection> { stream }
 
     public var port: UInt16? { listener.port?.rawValue }
+
+    /// `_bolo2026._tcp` registration on this listener (#14). Nil only if
+    /// the listener has already been cancelled.
+    public var bonjourService: NWListener.Service? { listener.service }
 
     public func cancel() {
         listener.cancel()

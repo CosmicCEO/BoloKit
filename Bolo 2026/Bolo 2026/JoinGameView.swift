@@ -59,6 +59,10 @@ struct JoinGameView: View {
     @State private var trackerGames: [TrackerHostList] = []
     @State private var trackerErrorMessage: String?
 
+    @State private var lanBrowser: BonjourBrowser?
+    @State private var lanGames: [LANGame] = []
+    @State private var lanErrorMessage: String?
+
     /// Milestone C.5 (D120): `nameText`/`trackerHostnameText`'s initial values now read the same
     /// `"GSPlayerNameString"`/`"GSTrackerString"` keys `PreferencesView`'s `@AppStorage` writes to
     /// (both back onto `UserDefaults.standard`, the same store) -- `portText` deliberately does
@@ -81,6 +85,21 @@ struct JoinGameView: View {
                 TextField("Port", text: $portText)
                 SecureField("Password (if required)", text: $passwordText)
                 TextField("Player Name", text: $nameText)
+            }
+
+            Section("LAN") {
+                if let lanErrorMessage {
+                    Text(lanErrorMessage).foregroundStyle(.red)
+                }
+                if lanGames.isEmpty {
+                    Text("No local games yet.").foregroundStyle(.secondary)
+                }
+                ForEach(lanGames, id: \.self) { game in
+                    Button(action: { fill(from: game) }) {
+                        Text(game.name)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Section("Tracker") {
@@ -123,6 +142,8 @@ struct JoinGameView: View {
                 .disabled(isJoining || UInt16(portText) == nil)
         }
         .padding()
+        .onAppear(perform: startLANBrowse)
+        .onDisappear(perform: stopLANBrowse)
     }
 
     private var progressLabel: String {
@@ -156,6 +177,36 @@ struct JoinGameView: View {
     private func fill(from listing: TrackerHostList) {
         addressText = Self.dottedAddress(listing.addr)
         portText = String(listing.game.port)
+    }
+
+    private func fill(from game: LANGame) {
+        lanErrorMessage = nil
+        Task { @MainActor in
+            do {
+                let resolved = try await resolveBonjourService(game)
+                addressText = resolved.host
+                portText = String(resolved.port)
+            } catch {
+                lanErrorMessage = "Couldn't resolve that game."
+            }
+        }
+    }
+
+    private func startLANBrowse() {
+        stopLANBrowse()
+        let browser = BonjourBrowser()
+        lanBrowser = browser
+        Task { @MainActor in
+            for await games in browser.games {
+                lanGames = games
+            }
+        }
+    }
+
+    private func stopLANBrowse() {
+        lanBrowser?.cancel()
+        lanBrowser = nil
+        lanGames = []
     }
 
     private static func dottedAddress(_ addr: UInt32) -> String {

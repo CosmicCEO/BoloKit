@@ -29,6 +29,16 @@ struct AppInfoPlistTests {
         #expect(Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil)
     }
 
+    @Test func declaresBolo2026BonjourService() {
+        let services = info["NSBonjourServices"] as? [String] ?? []
+        #expect(services.contains("_bolo2026._tcp"))
+    }
+
+    @Test func localNetworkUsageDescriptionIsNonEmpty() {
+        let usage = info["NSLocalNetworkUsageDescription"] as? String ?? ""
+        #expect(!usage.isEmpty)
+    }
+
     @Test func exportsBoloMapUTIAsViewer() {
         let exported = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
         let ids = exported.compactMap { $0["UTTypeIdentifier"] as? String }
