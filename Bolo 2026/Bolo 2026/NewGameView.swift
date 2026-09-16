@@ -32,31 +32,45 @@ struct NewGameView: View {
     /// `UDPSession` pair as of Milestone B.8 (D113), not a bare `GameState`.
     let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
     @Binding var pendingMapURL: URL?
+    @Binding var pendingJoinURL: URL?
+    @State private var tab: Tab = .host
+
+    private enum Tab: Hashable {
+        case host, join
+    }
 
     init(
         onStartHosting: @escaping (HostGameEngine) -> Void,
         onStartHostingLocalOnly: @escaping (GameState) -> Void,
         onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void,
-        pendingMapURL: Binding<URL?> = .constant(nil)
+        pendingMapURL: Binding<URL?> = .constant(nil),
+        pendingJoinURL: Binding<URL?> = .constant(nil)
     ) {
         self.onStartHosting = onStartHosting
         self.onStartHostingLocalOnly = onStartHostingLocalOnly
         self.onJoinedGame = onJoinedGame
         _pendingMapURL = pendingMapURL
+        _pendingJoinURL = pendingJoinURL
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             HostGameView(
                 onStartHosting: onStartHosting,
                 onStartHostingLocalOnly: onStartHostingLocalOnly,
                 pendingMapURL: $pendingMapURL
             )
                 .tabItem { Text("Host") }
-            JoinGameView(onJoinedGame: onJoinedGame)
+                .tag(Tab.host)
+            JoinGameView(onJoinedGame: onJoinedGame, pendingJoinURL: $pendingJoinURL)
                 .tabItem { Text("Join") }
+                .tag(Tab.join)
         }
         .frame(minWidth: 420, minHeight: 280)
+        .onAppear { if pendingJoinURL != nil { tab = .join } }
+        .onChange(of: pendingJoinURL) { _, url in
+            if url != nil { tab = .join }
+        }
     }
 }
 

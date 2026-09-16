@@ -29,6 +29,22 @@ struct AppInfoPlistTests {
         #expect(Bundle.main.url(forResource: "AppIcon", withExtension: "icns") != nil)
     }
 
+    @Test func declaresBolo2026BonjourService() {
+        let services = info["NSBonjourServices"] as? [String] ?? []
+        #expect(services.contains("_bolo2026._tcp"))
+    }
+
+    @Test func localNetworkUsageDescriptionIsNonEmpty() {
+        let usage = info["NSLocalNetworkUsageDescription"] as? String ?? ""
+        #expect(!usage.isEmpty)
+    }
+
+    @Test func registersBoloURLScheme() {
+        let types = info["CFBundleURLTypes"] as? [[String: Any]] ?? []
+        let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+        #expect(schemes.contains("bolo"))
+    }
+
     @Test func exportsBoloMapUTIAsViewer() {
         let exported = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
         let ids = exported.compactMap { $0["UTTypeIdentifier"] as? String }
@@ -39,5 +55,13 @@ struct AppInfoPlistTests {
             ($0["LSItemContentTypes"] as? [String])?.contains("com.cosmicceo.bolo-map") == true
         }
         #expect(map?["CFBundleTypeRole"] as? String == "Viewer")
+        let docTypes = map?["LSItemContentTypes"] as? [String] ?? []
+        #expect(docTypes.contains("com.gengasw.xbolo.map"))
+    }
+
+    @Test func importsXBoloMapUTI() {
+        let imported = info["UTImportedTypeDeclarations"] as? [[String: Any]] ?? []
+        let ids = imported.compactMap { $0["UTTypeIdentifier"] as? String }
+        #expect(ids.contains("com.gengasw.xbolo.map"))
     }
 }

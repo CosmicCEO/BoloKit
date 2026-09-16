@@ -45,6 +45,7 @@ import SwiftUI
 
 struct JoinGameView: View {
     let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
+    @Binding var pendingJoinURL: URL?
 
     @State private var addressText = "127.0.0.1"
     @State private var portText = "50000"  // GSJoinPortNumber's own shipped default
@@ -59,6 +60,10 @@ struct JoinGameView: View {
     @State private var trackerGames: [TrackerHostList] = []
     @State private var trackerErrorMessage: String?
 
+    @State private var lanBrowser: BonjourBrowser?
+    @State private var lanGames: [LANGame] = []
+    @State private var selectedLANGame: LANGame?
+
     /// Milestone C.5 (D120): `nameText`/`trackerHostnameText`'s initial values now read the same
     /// `"GSPlayerNameString"`/`"GSTrackerString"` keys `PreferencesView`'s `@AppStorage` writes to
     /// (both back onto `UserDefaults.standard`, the same store) -- `portText` deliberately does
@@ -66,8 +71,12 @@ struct JoinGameView: View {
     /// listening port (`HostGameView`'s own field), not this view's join-target port, which the
     /// reference's own `GSJoinPortNumber` keeps as a genuinely separate default (also 50000, but a
     /// different key, never wired to a preference in this v1 slice).
-    init(onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void) {
+    init(
+        onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void,
+        pendingJoinURL: Binding<URL?> = .constant(nil)
+    ) {
         self.onJoinedGame = onJoinedGame
+        _pendingJoinURL = pendingJoinURL
         let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
         _nameText = State(initialValue: storedName ?? "Newbie")
         let storedTracker = UserDefaults.standard.string(forKey: "GSTrackerString")
@@ -81,6 +90,19 @@ struct JoinGameView: View {
                 TextField("Port", text: $portText)
                 SecureField("Password (if required)", text: $passwordText)
                 TextField("Player Name", text: $nameText)
+            }
+
+            Section("LAN") {
+                if lanGames.isEmpty {
+                    Text("No local games yet.").foregroundStyle(.secondary)
+                }
+                ForEach(lanGames, id: \.self) { game in
+                    Button(action: { selectedLANGame = game }) {
+                        Text(game.name)
+                            .fontWeight(selectedLANGame == game ? .semibold : .regular)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Section("Tracker") {
@@ -119,10 +141,21 @@ struct JoinGameView: View {
                 Text(errorMessage).foregroundStyle(.red)
             }
 
-            Button("Join", action: startJoining)
-                .disabled(isJoining || UInt16(portText) == nil)
+            HStack {
+                Button("Join", action: startJoining)
+                    .disabled(isJoining || (selectedLANGame == nil && UInt16(portText) == nil))
+                if selectedLANGame == nil, let port = UInt16(portText), !addressText.isEmpty {
+                    ShareLink(item: BoloJoinURL.make(host: addressText, port: port))
+                }
+            }
         }
         .padding()
+        .onAppear {
+            consumePendingJoin()
+            startLANBrowse()
+        }
+        .onChange(of: pendingJoinURL) { _, _ in consumePendingJoin() }
+        .onDisappear(perform: stopLANBrowse)
     }
 
     private var progressLabel: String {
@@ -154,8 +187,35 @@ struct JoinGameView: View {
     }
 
     private func fill(from listing: TrackerHostList) {
+        selectedLANGame = nil
         addressText = Self.dottedAddress(listing.addr)
         portText = String(listing.game.port)
+    }
+
+    private func consumePendingJoin() {
+        guard let url = pendingJoinURL, let join = BoloJoinURL.parse(url) else { return }
+        pendingJoinURL = nil
+        selectedLANGame = nil
+        addressText = join.host
+        portText = String(join.port)
+    }
+
+    private func startLANBrowse() {
+        stopLANBrowse()
+        let browser = BonjourBrowser()
+        lanBrowser = browser
+        Task { @MainActor in
+            for await games in browser.games {
+                lanGames = games
+            }
+        }
+    }
+
+    private func stopLANBrowse() {
+        lanBrowser?.cancel()
+        lanBrowser = nil
+        lanGames = []
+        selectedLANGame = nil
     }
 
     private static func dottedAddress(_ addr: UInt32) -> String {
@@ -171,19 +231,30 @@ struct JoinGameView: View {
     }
 
     private func startJoining() {
-        guard let port = UInt16(portText) else { return }
+        let lanGame = selectedLANGame
+        if lanGame == nil, UInt16(portText) == nil { return }
         errorMessage = nil
         isJoining = true
         progress = nil
 
         Task { @MainActor in
             do {
-                let result = try await TCPSession.join(
-                    host: addressText, port: port, name: nameText, pass: passwordText,
-                    onProgress: { newProgress in
-                        Task { @MainActor in progress = newProgress }
-                    }
-                )
+                let onProgress: @Sendable (JoinProgress) -> Void = { newProgress in
+                    Task { @MainActor in progress = newProgress }
+                }
+                let result: (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8])
+                if let lanGame {
+                    result = try await TCPSession.join(
+                        to: lanGame.endpoint, name: nameText, pass: passwordText, onProgress: onProgress
+                    )
+                } else if let port = UInt16(portText) {
+                    result = try await TCPSession.join(
+                        host: addressText, port: port, name: nameText, pass: passwordText, onProgress: onProgress
+                    )
+                } else {
+                    isJoining = false
+                    return
+                }
 
                 var state = GameState()
                 guard applyBoloPreamble(result.preamble, mapData: result.mapData, state: &state) else {
@@ -195,7 +266,7 @@ struct JoinGameView: View {
 
                 let udpSession: UDPSession
                 do {
-                    udpSession = try await UDPSession(host: addressText, port: port)
+                    udpSession = try await UDPSession(host: result.session.remoteHost, port: result.session.remotePort)
                 } catch {
                     isJoining = false
                     result.session.cancel()

@@ -267,6 +267,19 @@ private func makeState() -> GameState {
     #expect(state.pills[0].owner == 0)
 }
 
+@Test func tcpSessionInitToHostPortExposesRemoteHostPort() async throws {
+    let (listener, port, waiter) = try await startLoopbackTCPListener()
+    defer { listener.cancel() }
+
+    let endpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+    let session = try await TCPSession(to: endpoint)
+    defer { session.cancel() }
+    _ = await waiter.wait()
+
+    #expect(session.remoteHost.contains("127.0.0.1"))
+    #expect(session.remotePort == port)
+}
+
 @Test func tcpSessionDispatchFormatsTimeLimitViaPrintMessage() throws {
     var state = makeState()
     var printed: [String] = []

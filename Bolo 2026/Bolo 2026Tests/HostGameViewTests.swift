@@ -104,6 +104,12 @@ struct HostGameViewTests {
         #expect(HostGameView.mapContentType.identifier == "com.cosmicceo.bolo-map")
     }
 
+    @Test func mapPickerAcceptsXBoloMapUTI() {
+        let ids = HostGameView.mapPickerContentTypes.map(\.identifier)
+        #expect(ids.contains("com.cosmicceo.bolo-map"))
+        #expect(ids.contains("com.gengasw.xbolo.map"))
+    }
+
     @Test func loadMapFromURLDecodesAValidMap() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("bolo-load-\(UUID().uuidString).map")
