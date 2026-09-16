@@ -81,6 +81,11 @@ struct HostGameView: View {
     @State private var isStartingHost = false
 
     static let mapContentType = UTType(exportedAs: "com.cosmicceo.bolo-map")
+    /// Existing `.map` files on this Mac are often still tagged as XBolo's UTI
+    /// (`mdls` on `U.S.A.map`). Import it so the picker is not greyed out and
+    /// Quick Look can match the same files.
+    static let importedXBoloMapType = UTType(importedAs: "com.gengasw.xbolo.map")
+    static var mapPickerContentTypes: [UTType] { [mapContentType, importedXBoloMapType] }
 
     /// Milestone C.5 (D120): `portText`'s initial value now reads the same `"GSHostPortNumber"`
     /// key `PreferencesView`'s `@AppStorage` writes to (both back onto `UserDefaults.standard`,
@@ -150,7 +155,7 @@ struct HostGameView: View {
                 .disabled(mapState == nil || isStartingHost)
         }
         .padding()
-        .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: [Self.mapContentType]) { result in
+        .fileImporter(isPresented: $isChoosingMap, allowedContentTypes: Self.mapPickerContentTypes) { result in
             handleMapPickerResult(result)
         }
         // D132: bundled default map, applied on first appearance only (`mapState == nil` guards

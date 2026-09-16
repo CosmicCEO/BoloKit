@@ -9,6 +9,7 @@
 			<key>QLSupportedContentTypes</key>
 			<array>
 				<string>com.cosmicceo.bolo-map</string>
+				<string>com.gengasw.xbolo.map</string>
 			</array>
 			<key>QLThumbnailMinimumDimension</key>
 			<integer>0</integer>
@@ -18,5 +19,25 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ThumbnailProvider</string>
 	</dict>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Bolo Map</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.gengasw.xbolo.map</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>map</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

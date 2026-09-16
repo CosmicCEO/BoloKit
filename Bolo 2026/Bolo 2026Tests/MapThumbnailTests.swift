@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 import BoloKit
 @testable import Bolo_2026
@@ -42,5 +43,18 @@ struct MapThumbnailTests {
             }
         }
         #expect(sawOther, "thumbnail should show land against sea, not a flat fill")
+    }
+
+    @Test func usaMapThumbnailIs256AndNotFlat() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("docs/U.S.A.map")
+        let bytes = Array(try Data(contentsOf: url))
+        let tiles = try #require(MapThumbnail.loadTiles())
+        let image = try #require(MapThumbnail.makeImage(from: bytes, tiles: tiles))
+        #expect(image.width == 256)
+        #expect(image.height == 256)
     }
 }

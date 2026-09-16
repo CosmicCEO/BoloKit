@@ -55,5 +55,13 @@ struct AppInfoPlistTests {
             ($0["LSItemContentTypes"] as? [String])?.contains("com.cosmicceo.bolo-map") == true
         }
         #expect(map?["CFBundleTypeRole"] as? String == "Viewer")
+        let docTypes = map?["LSItemContentTypes"] as? [String] ?? []
+        #expect(docTypes.contains("com.gengasw.xbolo.map"))
+    }
+
+    @Test func importsXBoloMapUTI() {
+        let imported = info["UTImportedTypeDeclarations"] as? [[String: Any]] ?? []
+        let ids = imported.compactMap { $0["UTTypeIdentifier"] as? String }
+        #expect(ids.contains("com.gengasw.xbolo.map"))
     }
 }
