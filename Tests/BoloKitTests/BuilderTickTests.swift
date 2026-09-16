@@ -489,6 +489,7 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, local: Loca
     #expect(state.pills[0].y == 50)
     #expect(state.pills[0].owner == 0)
     #expect(state.pills[0].armour == UInt8(maxPillArmour))
+    #expect(state.pills[0].speed == UInt8(maxTicksPerShot))
     // 10 trees * 4 = 40 armour, clamped to 15, refund (40-15)/4 = 6.
     #expect(state.players[0].builderTrees == 6)
 }

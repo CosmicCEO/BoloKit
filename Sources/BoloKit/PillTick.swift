@@ -42,6 +42,12 @@ import Darwin
 // pill enqueue on `localPlayer`'s list (no target client). Tank
 // lead-targeting math is unchanged.
 //
+// **v1.2.3 duel cadence:** XBolo map pills reload at up to 100 ticks. A
+// faster shooter melts them before the first return shot. While the
+// closest target is a hostile pill, fire at `minTicksPerShot` so both
+// turrets open together. Tank-only aims keep `speed` (speed 0 clamps to
+// min, not a machine gun).
+//
 // **A real, C-source-acknowledged precision quirk, not a bug to fix:**
 // `(SHELLVEL*SHELLVEL) - dot2f(compi, compi)` computes in double precision
 // (`SHELLVEL` is the double literal `7.0`), but is then passed to `fabsf`
@@ -207,9 +213,13 @@ public func pillTick(
             continue
         }
         let closestSet = inRange.filter { $0.mag == minMag }
+        let dueling = closestSet.contains { if case .pill = $0.target { return true }; return false }
+        let cadence: UInt8 = dueling
+            ? UInt8(minTicksPerShot)
+            : (state.pills[i].speed == 0 ? UInt8(minTicksPerShot) : state.pills[i].speed)
 
         state.pills[i].counter += 1
-        guard state.pills[i].counter >= state.pills[i].speed else { continue }
+        guard state.pills[i].counter >= cadence else { continue }
 
         let enqueuePillShot: Int = {
             if state.localPlayer >= 0, state.localPlayer < state.players.count {

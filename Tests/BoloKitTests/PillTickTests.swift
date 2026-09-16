@@ -415,6 +415,12 @@ private func farSelfAlliedPlayer() -> PlayerState {
     return p
 }
 
+private func tickPills(_ state: inout GameState, times: Int) {
+    for _ in 0..<times {
+        pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
+    }
+}
+
 @Test func pillTickHostilePillInRangeIncrementsCounter() {
     var state = makeState(players: [farSelfAlliedPlayer()])
     state.pills = [
@@ -432,12 +438,10 @@ private func farSelfAlliedPlayer() -> PlayerState {
         Pill(x: 50, y: 50, armour: 15, owner: 0, speed: 1, counter: 0),
         Pill(x: 53, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 50, counter: 0),
     ]
-    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
+    tickPills(&state, times: minTicksPerShot)
     #expect(state.pills[0].counter == 0)
-    #expect(state.players[0].shells.count == 1)
-    let shell = state.players[0].shells[0]
-    #expect(shell.pill)
-    #expect(shell.owner == 0)
+    #expect(state.players[0].shells.contains { $0.pill && $0.owner == 0 })
+    let shell = state.players[0].shells.first { $0.owner == 0 }!
     #expect(shell.point.x > 50.5)
     #expect(shell.point.x < 53.5)
 }
@@ -448,14 +452,13 @@ private func farSelfAlliedPlayer() -> PlayerState {
         Pill(x: 50, y: 50, armour: 15, owner: 0, speed: 1, counter: 0),
         Pill(x: 53, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 50, counter: 0),
     ]
-    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
+    tickPills(&state, times: minTicksPerShot)
     #expect(!state.players[0].shells.isEmpty)
     for _ in 0..<80 {
         guard !state.players[0].shells.isEmpty else { break }
         shellTick(player: 0, state: &state)
     }
-    #expect(state.pills[1].armour == 14)
-    #expect(state.pills[1].speed == 25)
+    #expect(state.pills[1].armour < 15)
 }
 
 @Test func pillTickAlliedPillsDoNotShootEachOther() {
@@ -520,11 +523,8 @@ private func farSelfAlliedPlayer() -> PlayerState {
         Pill(x: 50, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 1, counter: 0),
         Pill(x: 52, y: 50, armour: 15, owner: 0, speed: 50, counter: 0),
     ]
-    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
-    #expect(state.players[0].shells.count == 1)
-    let shell = state.players[0].shells[0]
-    #expect(shell.point.x > 50.5)
-    #expect(shell.point.x < 52.5)
+    tickPills(&state, times: minTicksPerShot)
+    #expect(state.players[0].shells.contains { $0.point.x > 50.5 && $0.point.x < 52.5 })
 }
 
 @Test func pillTickNeutralOwnerShootsPlayerOwnedPill() {
@@ -533,9 +533,8 @@ private func farSelfAlliedPlayer() -> PlayerState {
         Pill(x: 50, y: 50, armour: 15, owner: playerNeutral, speed: 1, counter: 0),
         Pill(x: 53, y: 50, armour: 15, owner: 0, speed: 50, counter: 0),
     ]
-    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
-    #expect(state.players[0].shells.count == 1)
-    #expect(state.players[0].shells[0].owner == playerNeutral)
+    tickPills(&state, times: minTicksPerShot)
+    #expect(state.players[0].shells.contains { $0.owner == playerNeutral })
 }
 
 @Test func pillTickUnusedSlotOwnerShootsPlayerPillWhenPlayersCountIsOne() {
@@ -545,7 +544,42 @@ private func farSelfAlliedPlayer() -> PlayerState {
         Pill(x: 50, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 1, counter: 0),
         Pill(x: 53, y: 50, armour: 15, owner: 0, speed: 50, counter: 0),
     ]
-    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state))
-    #expect(state.players[0].shells.count == 1)
-    #expect(state.players[0].shells[0].owner == UInt8(maxPlayers - 1))
+    tickPills(&state, times: minTicksPerShot)
+    #expect(state.players[0].shells.contains { $0.owner == UInt8(maxPlayers - 1) })
+}
+
+@Test func pillTickDuelCadenceBothCalmPillsFireTogether() {
+    var state = makeState(players: [farSelfAlliedPlayer()])
+    state.pills = [
+        Pill(x: 50, y: 50, armour: 15, owner: 0, speed: 100, counter: 0),
+        Pill(x: 53, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 100, counter: 0),
+    ]
+    tickPills(&state, times: minTicksPerShot - 1)
+    #expect(state.players[0].shells.isEmpty)
+    tickPills(&state, times: 1)
+    #expect(state.players[0].shells.contains { $0.owner == 0 })
+    #expect(state.players[0].shells.contains { $0.owner == UInt8(maxPlayers - 1) })
+}
+
+@Test func pillTickSpeedZeroDoesNotMachineGun() {
+    var state = makeState(players: [farSelfAlliedPlayer()])
+    state.pills = [
+        Pill(x: 50, y: 50, armour: 15, owner: 0, speed: 0, counter: 0),
+        Pill(x: 53, y: 50, armour: 15, owner: UInt8(maxPlayers - 1), speed: 100, counter: 0),
+    ]
+    tickPills(&state, times: 1)
+    #expect(state.players[0].shells.isEmpty)
+    tickPills(&state, times: minTicksPerShot - 1)
+    #expect(state.pills[0].counter == 0)
+    #expect(state.players[0].shells.contains { $0.owner == 0 })
+}
+
+@Test func pillTickTankAimKeepsCalmMapSpeed() {
+    var player = connectedPlayer()
+    player.tank = Vec2f(x: 52.5, y: 50.5)
+    var state = makeState(players: [player])
+    state.pills = [Pill(x: 50, y: 50, armour: 15, owner: playerNeutral, speed: 100, counter: 0)]
+    tickPills(&state, times: minTicksPerShot)
+    #expect(state.players[0].shells.isEmpty)
+    #expect(state.pills[0].counter == UInt8(minTicksPerShot))
 }

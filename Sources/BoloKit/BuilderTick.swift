@@ -328,9 +328,9 @@ private func buildBoat(at point: Pointi, trees: Int, state: inout GameState, onM
 /// Ported from `recvclbuildpill()` (server.c:2528). `pillIndex` is the pill
 /// slot reserved at READY time (`state.players[player].builderPill`); on success this
 /// places it at `point` for `owner`, with armour = `trees * 4` clamped to
-/// `maxPillArmour` (excess trees refunded). `speed`/`counter` are
-/// deliberately left untouched — C only ever sets `x`/`y`/`owner`/`armour`
-/// here, leaving the pill's map-authored reload rate as-is.
+/// `maxPillArmour` (excess trees refunded). C leaves `speed` untouched
+/// (map-authored). v1.2.3 also sets `speed = maxTicksPerShot` like
+/// `recvSrBuildPill`, so a place cannot inherit speed 0 and machine-gun.
 private func buildPill(
     at point: Pointi, trees: Int, pillIndex: Int, owner: Int,
     state: inout GameState, onMineExplosion: (Pointi) -> Void
@@ -348,6 +348,7 @@ private func buildPill(
         state.pills[pillIndex].x = UInt8(x)
         state.pills[pillIndex].y = UInt8(y)
         state.pills[pillIndex].owner = UInt8(owner)
+        state.pills[pillIndex].speed = UInt8(maxTicksPerShot)
         let armour = trees * 4
         if armour > maxPillArmour {
             state.pills[pillIndex].armour = UInt8(maxPillArmour)

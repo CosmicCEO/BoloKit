@@ -24,6 +24,7 @@ Product law that survives the retired decision log. Provenance IDs in parenthese
 - Replicate documented C bugs unless a constraint here already records a safety deviation (e.g. bounds guards that prevent C memory corruption). Fidelity *fixes* are a separate activity from porting. (D24)
 - **Display:** unowned, not-onboard pills render as `neutralPill00…15` / `NPIL00…15` (yellow, matching `neutralBase`). C `tilefor()` has no NPIL family and paints them hostile. Sim and `serverPostProcessLoadedMap` are unchanged. (v1.2.1)
 - **Pills:** hostile armed pills acquire other hostile armed pills (same range/vis as tanks). XBolo `pilllogic()` is tank-only; this restores Cheshire-era turret duels so a placed pill can degrade an enemy pill for capture. (v1.2.2)
+- **Pill duel cadence:** while the closest target is a hostile pill, fire at `minTicksPerShot` so both turrets open together. XBolo map `speed` (up to 100 ticks) is the calm tank-only reload; a faster shooter would otherwise melt a map pill before its first return shot. Speed 0 clamps to `minTicksPerShot`, not a machine gun. (v1.2.3)
 - When N C per-player replicas mutate what becomes one shared Swift field, do not "call once per player in index order" — a later call can overwrite an earlier result in the same tick. Elect once per tick. (D27)
 - Integer conversions from C's wrapping casts use `truncatingIfNeeded`, not trapping `UInt32(...)` / `Int16(...)`.
 - Simulation tick is 50 Hz (`ticksPerSec` in `Physics.swift`).

@@ -40,7 +40,7 @@ xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
 
 ## Current ship
 
-`v1.2.2` (build 9). Playable host-and-join. 792 SwiftPM tests (572 BoloKitTests + 220 DifferentialTests) plus 66 `Bolo 2026Tests`. One pre-existing flaky timing test exists; do not treat a single isolated flake of that class as a new regression.
+`v1.2.3` (build 10). Playable host-and-join. 795 SwiftPM tests (575 BoloKitTests + 220 DifferentialTests) plus 66 `Bolo 2026Tests`. One pre-existing flaky timing test exists; do not treat a single isolated flake of that class as a new regression.
 
 Open product work: GitHub issues (summary in `docs/STATUS.md`). Next sprint: v1.3.0 find-and-share (Bonjour, `bolo://`, dedicated host).
 

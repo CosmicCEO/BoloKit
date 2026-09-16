@@ -24,7 +24,7 @@ chains and explosions, spawn/respawn, tree growth) -- Wave 6 (networking: wire c
 orchestrator, broadcast/session handlers, transport, tracker protocol + NAT-PMP) -- and Wave 7's
 v1 vertical slice (asset pipeline, an Xcode app target, game rendering, and the input/tick loop)
 are all complete and verified against the C reference. **`v1.0.0` shipped** (real,
-non-prerelease GitHub release). Current drop is **`v1.2.2`** (build 9). 792
+non-prerelease GitHub release). Current drop is **`v1.2.3`** (build 10). 795
 SwiftPM tests (BoloKitTests + DifferentialTests) plus 66 app-target tests (`Bolo 2026Tests`)
 are passing (one pre-existing, documented flaky timing test excluded from that count's
 stability claim -- see `docs/STATUS.md`). **`Bolo 2026` is playable, host-and-join
