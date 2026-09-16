@@ -37,11 +37,11 @@ New v1.* work: **issue** → release or patch **milestone** → add to [project 
 
 ## Path to 2.0.0 — [project 1](https://github.com/users/CosmicCEO/projects/1)
 
-Current sprint target: **[v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2)** (due 30 Oct 2026).
+Current sprint target: **[v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2)** (due 30 Oct 2026). Milestone stays open — do not tag `v1.3.0` until every issue closes.
 
 | Milestone | Due | Issues |
 |-----------|-----|--------|
-| [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour, [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://`, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look |
+| [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN environment-blocked), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://` **closed**, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look **closed** |
 | [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog |
 | [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
@@ -63,6 +63,16 @@ Not coding work until a ruling or a release milestone says so.
 | [Decide: Physics](https://github.com/CosmicCEO/BoloKit/milestone/12) | [#40](https://github.com/CosmicCEO/BoloKit/issues/40) worthwhile?, [#41](https://github.com/CosmicCEO/BoloKit/issues/41) blockers, [#42](https://github.com/CosmicCEO/BoloKit/issues/42) combat context |
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
+
+## This sprint (v1.3.0 in progress, not tagged)
+
+Branch `issue-20-bolo-url`. Test counts on this branch (not a release tag): SwiftPM 802 (575 + 227) + 78 `Bolo 2026Tests` (77 pass + 1 pre-existing skip). Confirm before any tag.
+
+- [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://join?host=&port=` + ShareLink (password omitted)
+- [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Finder `.map` thumbnails (`QLThumbnailProvider`, generated tiles). Needs a logout once for the appex to attach. Chooser also accepts XBolo’s `com.gengasw.xbolo.map`
+- [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour advertise/browse/join-via-endpoint — **open**. Live two-peer LAN unverifiable: `NWListener` EINVAL on the physical Mac and Parallels guest, including a bare `swiftc` bind. Do not reopen that investigation.
+
+[#21](https://github.com/CosmicCEO/BoloKit/issues/21) / [#24](https://github.com/CosmicCEO/BoloKit/issues/24) / [#6](https://github.com/CosmicCEO/BoloKit/issues/6) untouched this sprint; same bind block.
 
 ## Landed (`v1.2.3` patch)
 
