@@ -35,6 +35,13 @@ import Darwin
 // the current tied-closest set reproduces that exactly, rather than
 // approximating it away by picking one winner.
 //
+// **v1.2.2 Cheshire playability:** XBolo `pilllogic()` acquires tanks only.
+// Hostile armed pills also acquire other hostile armed pills (same
+// range/vis) so a placed turret can wear down an enemy pill for capture —
+// a competition gap XBolo left vs Mac Bolo 0.99.7bv. Shells aimed at a
+// pill enqueue on `localPlayer`'s list (no target client). Tank
+// lead-targeting math is unchanged.
+//
 // **A real, C-source-acknowledged precision quirk, not a bug to fix:**
 // `(SHELLVEL*SHELLVEL) - dot2f(compi, compi)` computes in double precision
 // (`SHELLVEL` is the double literal `7.0`), but is then passed to `fabsf`
@@ -143,6 +150,21 @@ public func pillTick(
         }
 
         let pillCenter = Vec2f(x: Float(state.pills[i].x) + 0.5, y: Float(state.pills[i].y) + 0.5)
+        let shooterOwner = state.pills[i].owner
+
+        func isHostileTarget(owner: UInt8) -> Bool {
+            shooterOwner == playerNeutral || owner == playerNeutral
+                || !testAlliance(Int(shooterOwner), Int(owner), players: state.players)
+        }
+
+        func inSight(_ target: Vec2f) -> (diff: Vec2f, mag: Float)? {
+            let diff = target - pillCenter
+            let mag = mag2f(diff)
+            guard mag > 0, (mag <= 2.0 || forestVis(target, state: state) > 0.25), mag <= 8.0 else {
+                return nil
+            }
+            return (diff, mag)
+        }
 
         // Two distinct "nobody's a target" cases, with different C
         // outcomes: if there's no alive connected player *at all*, no
@@ -156,75 +178,108 @@ public func pillTick(
         }
         guard !aliveConnected.isEmpty else { continue }
 
-        let eligible = aliveConnected.filter { player in
-            state.pills[i].owner == playerNeutral
-                || !testAlliance(Int(state.pills[i].owner), player, players: state.players)
+        let eligibleTanks = aliveConnected.filter { isHostileTarget(owner: UInt8($0)) }
+        let eligiblePills = state.pills.indices.filter { j in
+            j != i && state.pills[j].armour != pillOnboard && state.pills[j].armour > 0
+                && isHostileTarget(owner: state.pills[j].owner)
         }
 
-        guard !eligible.isEmpty else {
+        guard !eligibleTanks.isEmpty || !eligiblePills.isEmpty else {
             state.pills[i].counter = 0
             continue
         }
 
-        let inRange: [(player: Int, mag: Float)] = eligible.compactMap { player in
-            let diff = state.players[player].tank - pillCenter
-            let mag = mag2f(diff)
-            guard (mag <= 2.0 || forestVis(state.players[player].tank, state: state) > 0.25) && mag <= 8.0 else {
-                return nil
+        var inRange: [(target: PillAim, mag: Float, diff: Vec2f)] = []
+        for player in eligibleTanks {
+            if let seen = inSight(state.players[player].tank) {
+                inRange.append((.tank(player), seen.mag, seen.diff))
             }
-            return (player, mag)
+        }
+        for j in eligiblePills {
+            let center = Vec2f(x: Float(state.pills[j].x) + 0.5, y: Float(state.pills[j].y) + 0.5)
+            if let seen = inSight(center) {
+                inRange.append((.pill(j), seen.mag, seen.diff))
+            }
         }
 
         guard let minMag = inRange.map(\.mag).min() else {
-            // No `else` branch in C here at this nesting level — everyone
-            // eligible is simply out of range, so the counter freezes
-            // (not resets), "remembering" partial charge. Not a bug to
-            // smooth over.
+            // Eligible but all out of range: freeze (C has no else here).
             continue
         }
-        // A player is disqualified in C iff someone else eligible has
-        // strictly smaller mag — i.e. iff they're not in the argmin set.
-        // Ties (equal minimum mag) all survive together.
-        let closestSet = inRange.filter { $0.mag == minMag }.map(\.player)
+        let closestSet = inRange.filter { $0.mag == minMag }
 
         state.pills[i].counter += 1
         guard state.pills[i].counter >= state.pills[i].speed else { continue }
 
-        for player in closestSet {
-            let diff = state.players[player].tank - pillCenter
-            let old = oldTankPositions[player]
-            let vel = (state.players[player].tank - old) * ticksPerSec
-            let compi = vel - prj2f(diff, vel)
-            // C: `sqrtf(fabsf((SHELLVEL*SHELLVEL) - dot2f(compi, compi)))` —
-            // SHELLVEL is a double literal, so the subtraction computes in
-            // double, then narrows to Float when passed to `fabsf` (not
-            // `fabs`) — before the absolute value, not after. See file header.
-            let raw = Float(Double(shellVelocity) * Double(shellVelocity) - Double(dot2f(compi, compi)))
-            let compj = unit2f(diff) * sqrtf(fabsf(raw))
-
-            // C: `mul2f(diff, 0.70711219/mag)` — 0.70711219 is a double
-            // literal, so the division computes in double and narrows to
-            // Float once when passed as `mul2f`'s scalar argument.
-            let offset = Float(0.70711219 / Double(minMag))
-            let shell = Shell(
-                point: pillCenter + diff * offset,
-                dir: vec2dir(compi + compj),
-                // C: `8.5 - 0.70711219` — both double literals, subtracted
-                // in double, narrowed to Float once at assignment to `range`.
-                range: Float((8.5 as Double) - 0.70711219),
-                owner: state.pills[i].owner,
-                boat: false,
-                pill: true
-            )
-
-            if !shellCollisionTest(
-                shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion,
-                onShouldBroadcastDropPill: onShouldBroadcastDropPill
-            ) {
-                state.players[player].shells.append(shell)
+        let enqueuePillShot: Int = {
+            if state.localPlayer >= 0, state.localPlayer < state.players.count {
+                return state.localPlayer
             }
+            return aliveConnected[0]
+        }()
+
+        for aim in closestSet {
+            let vel: Vec2f
+            let enqueue: Int
+            switch aim.target {
+            case .tank(let player):
+                let old = player < oldTankPositions.count ? oldTankPositions[player] : state.players[player].tank
+                vel = (state.players[player].tank - old) * ticksPerSec
+                enqueue = player
+            case .pill:
+                vel = Vec2f(x: 0, y: 0)
+                enqueue = enqueuePillShot
+            }
+            emitPillShell(
+                from: pillCenter, diff: aim.diff, minMag: minMag, vel: vel, owner: shooterOwner,
+                enqueuePlayer: enqueue, state: &state, onMineExplosion: onMineExplosion,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
         }
 
         state.pills[i].counter = 0
+    }
+}
+
+private enum PillAim {
+    case tank(Int)
+    case pill(Int)
+}
+
+/// Shared muzzle spawn + lead-targeting for tank and pill aims. Tank `vel`
+/// is the C `pilllogic` term; pill aims pass zero. `enqueuePlayer` is the
+/// shell-list owner (`shellTick` walks every connected list).
+private func emitPillShell(
+    from pillCenter: Vec2f,
+    diff: Vec2f,
+    minMag: Float,
+    vel: Vec2f,
+    owner: UInt8,
+    enqueuePlayer: Int,
+    state: inout GameState,
+    onMineExplosion: (Pointi) -> Void,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void
+) {
+    let compi = vel - prj2f(diff, vel)
+    // C: `sqrtf(fabsf((SHELLVEL*SHELLVEL) - dot2f(compi, compi)))` —
+    // SHELLVEL is a double literal, so the subtraction computes in
+    // double, then narrows to Float when passed to `fabsf` (not
+    // `fabs`) — before the absolute value, not after. See file header.
+    let raw = Float(Double(shellVelocity) * Double(shellVelocity) - Double(dot2f(compi, compi)))
+    let compj = unit2f(diff) * sqrtf(fabsf(raw))
+    let offset = Float(0.70711219 / Double(minMag))
+    let shell = Shell(
+        point: pillCenter + diff * offset,
+        dir: vec2dir(compi + compj),
+        range: Float((8.5 as Double) - 0.70711219),
+        owner: owner,
+        boat: false,
+        pill: true
+    )
+    if !shellCollisionTest(
+        shell: shell, player: enqueuePlayer, state: &state, onMineExplosion: onMineExplosion,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    ) {
+        state.players[enqueuePlayer].shells.append(shell)
     }
 }

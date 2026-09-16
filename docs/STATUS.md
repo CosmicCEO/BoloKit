@@ -1,12 +1,12 @@
 # Status
 
-**Current drop:** `v1.2.1` (build 8). **`v1.2.0`, `v1.1.0` and `v1.0.0` shipped.**
+**Current drop:** `v1.2.2` (build 9). **`v1.2.1`, `v1.2.0`, `v1.1.0` and `v1.0.0` shipped.**
 
 The C-oracle port (simulation core, networking, v1 UI slice) is complete. **Bolo 2026** is playable host-and-join multiplayer: HUD (build-tool selector, resource gauges, player/pill/base status, bottom event-log bar), bundled default map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session.
 
 Host/Join UI, join-side outbound protocol (movement, tile-entry, builder-task, shell-impact), HUD/kick-ban, key remap, alliance panel, messages panel, procedural sound (24 effects; several wired), preferences, zoom/scroll, and the terrain/HUD chrome/event-log visual pass are all in.
 
-**Tests (as of the `v1.2.1` pass):** 782 SwiftPM (562 BoloKitTests + 220 DifferentialTests) + 66 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check, not a full-suite flake of that class. Confirm with `swift test` at tag. BoloKitTests 557 → 562 this patch (NPIL display).
+**Tests (as of the `v1.2.2` pass):** 792 SwiftPM (572 BoloKitTests + 220 DifferentialTests) + 66 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check, not a full-suite flake of that class. Confirm with `swift test` at tag. BoloKitTests 562 → 572 this patch (pill-vs-pill).
 
 **Signing:** permanently out of scope. Apple Development-signed, not notarized.
 
@@ -31,7 +31,11 @@ Decide / later-milestone items. Not coding work until a ruling or a release mile
 - [#7 D155(2) fire on captured base](https://github.com/CosmicCEO/BoloKit/issues/7) — Decide: Oracle parking lot.
 - [#9 Standalone tracker daemon](https://github.com/CosmicCEO/BoloKit/issues/9) — Decide: WAN directory.
 
-## Landed this close-out (`v1.2.1` patch)
+## Landed this close-out (`v1.2.2` patch)
+
+[#45](https://github.com/CosmicCEO/BoloKit/issues/45) Hostile armed pills acquire other hostile armed pills (same range/vis as tanks). XBolo `pilllogic()` is tank-only; this fills a Cheshire-era competition gap so a placed turret can degrade an enemy pill for capture. Allied pills still ignore each other. Training map unchanged.
+
+## Previous close-out (`v1.2.1` patch)
 
 [#44](https://github.com/CosmicCEO/BoloKit/issues/44) Unowned pills draw yellow (`neutralPill00…15` / `NPIL00…15`), matching `neutralBase`. C `tilefor()` still paints them hostile — documented product overlay, not a sim change. Dead (armour 0) pills get a visible wreck mound. Training-map pickup at `(108, 123)` is now readable as unowned.
 

@@ -6,7 +6,8 @@ Product law that survives the retired decision log. Provenance IDs in parenthese
 
 - Native macOS Swift port of MIT-licensed xbolo. Keep the original copyright notice (`LICENSE`). (D1, D13)
 - `Reference/c` stays in-tree permanently as a live oracle. (D151, superseding D61)
-- Fidelity target: Mac Bolo **0.99.7bv**, not WinBolo. (D3)
+- Fidelity target: Mac Bolo **0.99.7bv** *player experience*, not WinBolo. (D3)
+- XBolo (`Reference/c`) is the executable spec for what it implemented. It omitted physics, playability, and competition present in Cheshire's game. Documented overlays fill those gaps. Do not copy WinBolo to fill them.
 - No WinBolo / network interop. Self-contained. (D4)
 - Never copy Stuart Cheshire's original art or sound bytes. Glyphs are procedural (Unicode/ASCII). Sounds are generated. (D5, D10, D67)
 - WinBolo/LinBolo (GPL v2, John Morrison) is read-only clean-room. Do not copy, transliterate, or closely paraphrase its code. (D25, D33)
@@ -22,6 +23,7 @@ Product law that survives the retired decision log. Provenance IDs in parenthese
 - No test or doc coverage shrink without a named replacement. Report before/after counts. (D28)
 - Replicate documented C bugs unless a constraint here already records a safety deviation (e.g. bounds guards that prevent C memory corruption). Fidelity *fixes* are a separate activity from porting. (D24)
 - **Display:** unowned, not-onboard pills render as `neutralPill00…15` / `NPIL00…15` (yellow, matching `neutralBase`). C `tilefor()` has no NPIL family and paints them hostile. Sim and `serverPostProcessLoadedMap` are unchanged. (v1.2.1)
+- **Pills:** hostile armed pills acquire other hostile armed pills (same range/vis as tanks). XBolo `pilllogic()` is tank-only; this restores Cheshire-era turret duels so a placed pill can degrade an enemy pill for capture. (v1.2.2)
 - When N C per-player replicas mutate what becomes one shared Swift field, do not "call once per player in index order" — a later call can overwrite an earlier result in the same tick. Elect once per tick. (D27)
 - Integer conversions from C's wrapping casts use `truncatingIfNeeded`, not trapping `UInt32(...)` / `Int16(...)`.
 - Simulation tick is 50 Hz (`ticksPerSec` in `Physics.swift`).
