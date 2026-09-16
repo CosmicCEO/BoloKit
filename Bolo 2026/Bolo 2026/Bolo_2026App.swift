@@ -11,12 +11,17 @@ import SwiftUI
 @main
 struct Bolo_2026App: App {
     @State private var pendingMapURL: URL?
+    @State private var pendingJoinURL: URL?
 
     var body: some Scene {
         WindowGroup {
-            AppRootView(pendingMapURL: $pendingMapURL)
+            AppRootView(pendingMapURL: $pendingMapURL, pendingJoinURL: $pendingJoinURL)
                 .onOpenURL { url in
-                    pendingMapURL = url
+                    if BoloJoinURL.parse(url) != nil {
+                        pendingJoinURL = url
+                    } else {
+                        pendingMapURL = url
+                    }
                 }
         }
         .commands {

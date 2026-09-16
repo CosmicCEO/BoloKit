@@ -39,6 +39,12 @@ struct AppInfoPlistTests {
         #expect(!usage.isEmpty)
     }
 
+    @Test func registersBoloURLScheme() {
+        let types = info["CFBundleURLTypes"] as? [[String: Any]] ?? []
+        let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+        #expect(schemes.contains("bolo"))
+    }
+
     @Test func exportsBoloMapUTIAsViewer() {
         let exported = info["UTExportedTypeDeclarations"] as? [[String: Any]] ?? []
         let ids = exported.compactMap { $0["UTTypeIdentifier"] as? String }

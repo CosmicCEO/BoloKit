@@ -45,6 +45,7 @@ import SwiftUI
 
 struct JoinGameView: View {
     let onJoinedGame: (TCPSession, UDPSession, GameState) -> Void
+    @Binding var pendingJoinURL: URL?
 
     @State private var addressText = "127.0.0.1"
     @State private var portText = "50000"  // GSJoinPortNumber's own shipped default
@@ -70,8 +71,12 @@ struct JoinGameView: View {
     /// listening port (`HostGameView`'s own field), not this view's join-target port, which the
     /// reference's own `GSJoinPortNumber` keeps as a genuinely separate default (also 50000, but a
     /// different key, never wired to a preference in this v1 slice).
-    init(onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void) {
+    init(
+        onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void,
+        pendingJoinURL: Binding<URL?> = .constant(nil)
+    ) {
         self.onJoinedGame = onJoinedGame
+        _pendingJoinURL = pendingJoinURL
         let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
         _nameText = State(initialValue: storedName ?? "Newbie")
         let storedTracker = UserDefaults.standard.string(forKey: "GSTrackerString")
@@ -136,11 +141,20 @@ struct JoinGameView: View {
                 Text(errorMessage).foregroundStyle(.red)
             }
 
-            Button("Join", action: startJoining)
-                .disabled(isJoining || (selectedLANGame == nil && UInt16(portText) == nil))
+            HStack {
+                Button("Join", action: startJoining)
+                    .disabled(isJoining || (selectedLANGame == nil && UInt16(portText) == nil))
+                if selectedLANGame == nil, let port = UInt16(portText), !addressText.isEmpty {
+                    ShareLink(item: BoloJoinURL.make(host: addressText, port: port))
+                }
+            }
         }
         .padding()
-        .onAppear(perform: startLANBrowse)
+        .onAppear {
+            consumePendingJoin()
+            startLANBrowse()
+        }
+        .onChange(of: pendingJoinURL) { _, _ in consumePendingJoin() }
         .onDisappear(perform: stopLANBrowse)
     }
 
@@ -176,6 +190,14 @@ struct JoinGameView: View {
         selectedLANGame = nil
         addressText = Self.dottedAddress(listing.addr)
         portText = String(listing.game.port)
+    }
+
+    private func consumePendingJoin() {
+        guard let url = pendingJoinURL, let join = BoloJoinURL.parse(url) else { return }
+        pendingJoinURL = nil
+        selectedLANGame = nil
+        addressText = join.host
+        portText = String(join.port)
     }
 
     private func startLANBrowse() {

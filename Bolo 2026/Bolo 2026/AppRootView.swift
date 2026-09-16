@@ -51,9 +51,14 @@ nonisolated enum MapOpenPolicy: Sendable {
 struct AppRootView: View {
     @State private var screen: AppScreen = .newGame
     @Binding var pendingMapURL: URL?
+    @Binding var pendingJoinURL: URL?
 
-    init(pendingMapURL: Binding<URL?> = .constant(nil)) {
+    init(
+        pendingMapURL: Binding<URL?> = .constant(nil),
+        pendingJoinURL: Binding<URL?> = .constant(nil)
+    ) {
         _pendingMapURL = pendingMapURL
+        _pendingJoinURL = pendingJoinURL
     }
 
     var body: some View {
@@ -65,7 +70,8 @@ struct AppRootView: View {
                 onJoinedGame: { tcpSession, udpSession, state in
                     screen = .playing(tcpSession: tcpSession, udpSession: udpSession, state: state)
                 },
-                pendingMapURL: $pendingMapURL
+                pendingMapURL: $pendingMapURL,
+                pendingJoinURL: $pendingJoinURL
             )
         case .playing(let tcpSession, let udpSession, let state):
             GameView(

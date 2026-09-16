@@ -2,12 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>LSSupportsGameMode</key>
-	<true/>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_bolo2026._tcp</string>
-	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -22,6 +16,25 @@
 				<string>com.cosmicceo.bolo-map</string>
 			</array>
 		</dict>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.cosmicceo.bolo-join</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bolo</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsGameMode</key>
+	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_bolo2026._tcp</string>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
