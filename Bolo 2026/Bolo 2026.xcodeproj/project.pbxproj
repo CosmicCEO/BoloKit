@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		625612D2305B0AC00074447F /* QuickLookThumbnailing.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 625612D1305B0ABF0074447F /* QuickLookThumbnailing.framework */; };
+		625612D4305B0AC00074447F /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 625612D3305B0AC00074447F /* Quartz.framework */; };
+		625612DB305B0AC00074447F /* MapThumbnails.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 625612CF305B0ABF0074447F /* MapThumbnails.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		625612F1305B0AC00074447F /* BoloKit in Frameworks */ = {isa = PBXBuildFile; productRef = 625612F2305B0AC00074447F /* BoloKit */; };
 		B01A0001304B70C6007A9580 /* BoloKit in Frameworks */ = {isa = PBXBuildFile; productRef = B01A0010304B70C6007A9580 /* BoloKit */; };
 		B01A0004304B70C6007A9580 /* BoloNet in Frameworks */ = {isa = PBXBuildFile; productRef = B01A0012304B70C6007A9580 /* BoloNet */; };
 /* End PBXBuildFile section */
@@ -19,17 +23,57 @@
 			remoteGlobalIDString = 6288C26D304B70C6007A9580;
 			remoteInfo = "Bolo 2026";
 		};
+		625612D9305B0AC00074447F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6288C266304B70C6007A9580 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 625612CE305B0ABF0074447F;
+			remoteInfo = MapThumbnails;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		625612E0305B0AC00074447F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				625612DB305B0AC00074447F /* MapThumbnails.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		621536A530531BF40087F86E /* Bolo 2026Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Bolo 2026Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		625612CF305B0ABF0074447F /* MapThumbnails.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MapThumbnails.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		625612D1305B0ABF0074447F /* QuickLookThumbnailing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuickLookThumbnailing.framework; path = System/Library/Frameworks/QuickLookThumbnailing.framework; sourceTree = SDKROOT; };
+		625612D3305B0AC00074447F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		6288C26E304B70C6007A9580 /* Bolo 2026.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Bolo 2026.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		625612DC305B0AC00074447F /* Exceptions for "MapThumbnails" folder in "MapThumbnails" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 625612CE305B0ABF0074447F /* MapThumbnails */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		621536A630531BF40087F86E /* Bolo 2026Tests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Bolo 2026Tests";
+			sourceTree = "<group>";
+		};
+		625612D5305B0AC00074447F /* MapThumbnails */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				625612DC305B0AC00074447F /* Exceptions for "MapThumbnails" folder in "MapThumbnails" target */,
+			);
+			path = MapThumbnails;
 			sourceTree = "<group>";
 		};
 		6288C270304B70C6007A9580 /* Bolo 2026 */ = {
@@ -45,6 +89,14 @@
 			files = (
 			);
 		};
+		625612CC305B0ABF0074447F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				625612D2305B0AC00074447F /* QuickLookThumbnailing.framework in Frameworks */,
+				625612D4305B0AC00074447F /* Quartz.framework in Frameworks */,
+				625612F1305B0AC00074447F /* BoloKit in Frameworks */,
+			);
+		};
 		6288C26B304B70C6007A9580 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -55,11 +107,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		625612D0305B0ABF0074447F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				625612D1305B0ABF0074447F /* QuickLookThumbnailing.framework */,
+				625612D3305B0AC00074447F /* Quartz.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		6288C265304B70C6007A9580 = {
 			isa = PBXGroup;
 			children = (
 				6288C270304B70C6007A9580 /* Bolo 2026 */,
 				621536A630531BF40087F86E /* Bolo 2026Tests */,
+				625612D5305B0AC00074447F /* MapThumbnails */,
+				625612D0305B0ABF0074447F /* Frameworks */,
 				6288C26F304B70C6007A9580 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -69,6 +132,7 @@
 			children = (
 				6288C26E304B70C6007A9580 /* Bolo 2026.app */,
 				621536A530531BF40087F86E /* Bolo 2026Tests.xctest */,
+				625612CF305B0ABF0074447F /* MapThumbnails.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -97,6 +161,31 @@
 			productReference = 621536A530531BF40087F86E /* Bolo 2026Tests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		625612CE305B0ABF0074447F /* MapThumbnails */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 625612DD305B0AC00074447F /* Build configuration list for PBXNativeTarget "MapThumbnails" */;
+			buildPhases = (
+				625612CB305B0ABF0074447F /* Sources */,
+				625612CC305B0ABF0074447F /* Frameworks */,
+				625612CD305B0ABF0074447F /* Resources */,
+				625612F3305B0AC00074447F /* Generate Glyph Sheets */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				625612F4305B0AC00074447F /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				625612D5305B0AC00074447F /* MapThumbnails */,
+			);
+			name = MapThumbnails;
+			packageProductDependencies = (
+				625612F2305B0AC00074447F /* BoloKit */,
+			);
+			productName = MapThumbnails;
+			productReference = 625612CF305B0ABF0074447F /* MapThumbnails.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		6288C26D304B70C6007A9580 /* Bolo 2026 */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6288C279304B70C7007A9580 /* Build configuration list for PBXNativeTarget "Bolo 2026" */;
@@ -106,12 +195,14 @@
 				6288C26C304B70C6007A9580 /* Resources */,
 				B01A0002304B70C6007A9580 /* Generate Glyph Sheets */,
 				B01A0005304B70C6007A9580 /* Generate Sound Effects */,
+				625612E0305B0AC00074447F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				B01A0003304B70C6007A9580 /* PBXTargetDependency */,
 				B01A0006304B70C6007A9580 /* PBXTargetDependency */,
+				625612DA305B0AC00074447F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6288C270304B70C6007A9580 /* Bolo 2026 */,
@@ -139,6 +230,9 @@
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = 6288C26D304B70C6007A9580;
 					};
+					625612CE305B0ABF0074447F = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					6288C26D304B70C6007A9580 = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -163,12 +257,18 @@
 			targets = (
 				6288C26D304B70C6007A9580 /* Bolo 2026 */,
 				621536A430531BF40087F86E /* Bolo 2026Tests */,
+				625612CE305B0ABF0074447F /* MapThumbnails */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		621536A330531BF40087F86E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		625612CD305B0ABF0074447F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -181,6 +281,23 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		625612F3305B0AC00074447F /* Generate Glyph Sheets */ = {
+			isa = PBXShellScriptBuildPhase;
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/BoloGlyphs",
+			);
+			name = "Generate Glyph Sheets";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Tiles.png",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"set -e",
+				"mkdir -p \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"\"$BUILT_PRODUCTS_DIR/BoloGlyphs\" \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"",
+				"",
+			);
+		};
 		B01A0002304B70C6007A9580 /* Generate Glyph Sheets */ = {
 			isa = PBXShellScriptBuildPhase;
 			inputPaths = (
@@ -254,6 +371,11 @@
 			files = (
 			);
 		};
+		625612CB305B0ABF0074447F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		6288C26A304B70C6007A9580 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -266,6 +388,15 @@
 			isa = PBXTargetDependency;
 			target = 6288C26D304B70C6007A9580 /* Bolo 2026 */;
 			targetProxy = 621536A930531BF40087F86E /* PBXContainerItemProxy */;
+		};
+		625612DA305B0AC00074447F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 625612CE305B0ABF0074447F /* MapThumbnails */;
+			targetProxy = 625612D9305B0AC00074447F /* PBXContainerItemProxy */;
+		};
+		625612F4305B0AC00074447F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = B01A0011304B70C6007A9580 /* BoloGlyphs */;
 		};
 		B01A0003304B70C6007A9580 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -325,6 +456,64 @@
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Bolo 2026.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Bolo 2026";
 				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		625612DE305B0AC00074447F /* Debug configuration for PBXNativeTarget "MapThumbnails" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L527M49YJ9;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MapThumbnails/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MapThumbnails;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.cosmicceo.Bolo-2026.MapThumbnails";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		625612DF305B0AC00074447F /* Release configuration for PBXNativeTarget "MapThumbnails" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L527M49YJ9;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MapThumbnails/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MapThumbnails;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.cosmicceo.Bolo-2026.MapThumbnails";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -549,6 +738,14 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		625612DD305B0AC00074447F /* Build configuration list for PBXNativeTarget "MapThumbnails" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				625612DE305B0AC00074447F /* Debug configuration for PBXNativeTarget "MapThumbnails" */,
+				625612DF305B0AC00074447F /* Release configuration for PBXNativeTarget "MapThumbnails" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		6288C269304B70C6007A9580 /* Build configuration list for PBXProject "Bolo 2026" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -575,6 +772,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		625612F2305B0AC00074447F /* BoloKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BoloKit;
+		};
 		B01A0010304B70C6007A9580 /* BoloKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BoloKit;

@@ -1,0 +1,1 @@
+../Bolo 2026/MapThumbnail.swift
