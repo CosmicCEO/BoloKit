@@ -28,6 +28,9 @@ import BoloKit
 public enum TCPSessionError: Error {
     case connectionClosed
     case malformedMessage
+    /// Outbound connect succeeded but the peer address is not a host:port
+    /// (should not happen after `.ready` on a TCP path).
+    case unresolvedPeer
 }
 
 /// Every callback a full 30-function `recvSr*` dispatch can fire, plus
@@ -90,11 +93,36 @@ public struct SRDispatchCallbacks {
 
 public final class TCPSession: @unchecked Sendable {
     private let connection: NWConnection
+    /// Peer used for the matching UDP channel. Typed join stores the
+    /// strings the caller passed; Bonjour join reads them off the live path.
+    public let remoteHost: String
+    public let remotePort: UInt16
 
     public init(host: String, port: UInt16) async throws {
         let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
         self.connection = connection
+        self.remoteHost = host
+        self.remotePort = port
         try await Self.waitUntilReady(connection)
+    }
+
+    public init(to endpoint: NWEndpoint) async throws {
+        let connection = NWConnection(to: endpoint, using: .tcp)
+        self.connection = connection
+        try await Self.waitUntilReady(connection)
+        guard let resolved = Self.hostPort(from: connection.currentPath?.remoteEndpoint)
+            ?? Self.hostPort(from: endpoint)
+        else {
+            connection.cancel()
+            throw TCPSessionError.unresolvedPeer
+        }
+        self.remoteHost = resolved.host
+        self.remotePort = resolved.port
+    }
+
+    private static func hostPort(from endpoint: NWEndpoint?) -> (host: String, port: UInt16)? {
+        guard case .hostPort(let host, let port) = endpoint else { return nil }
+        return ("\(host)", port.rawValue)
     }
 
     private static func waitUntilReady(_ connection: NWConnection) async throws {
@@ -479,12 +507,33 @@ public final class TCPSession: @unchecked Sendable {
         connectTimeoutSeconds: Double = 15,
         onProgress: @escaping @Sendable (JoinProgress) -> Void = { _ in }
     ) async throws -> (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8]) {
+        try await join(
+            connect: { try await TCPSession(host: host, port: port) },
+            name: name, pass: pass, connectTimeoutSeconds: connectTimeoutSeconds, onProgress: onProgress
+        )
+    }
+
+    public static func join(
+        to endpoint: NWEndpoint, name: String, pass: String,
+        connectTimeoutSeconds: Double = 15,
+        onProgress: @escaping @Sendable (JoinProgress) -> Void = { _ in }
+    ) async throws -> (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8]) {
+        try await join(
+            connect: { try await TCPSession(to: endpoint) },
+            name: name, pass: pass, connectTimeoutSeconds: connectTimeoutSeconds, onProgress: onProgress
+        )
+    }
+
+    private static func join(
+        connect: @escaping @Sendable () async throws -> TCPSession,
+        name: String, pass: String,
+        connectTimeoutSeconds: Double,
+        onProgress: @escaping @Sendable (JoinProgress) -> Void
+    ) async throws -> (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8]) {
         onProgress(.connecting)
         do {
             return try await withConnectTimeout(seconds: connectTimeoutSeconds) {
-                // Not inside the `do` below on purpose -- if connecting itself throws, there is
-                // no live session yet for that block's `catch` to cancel.
-                let session = try await TCPSession(host: host, port: port)
+                let session = try await connect()
                 do {
                     onProgress(.sendingJoin)
                     let joinPreamble = JoinPreamble(name: name, pass: pass)

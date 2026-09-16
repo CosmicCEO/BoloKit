@@ -61,7 +61,7 @@ struct JoinGameView: View {
 
     @State private var lanBrowser: BonjourBrowser?
     @State private var lanGames: [LANGame] = []
-    @State private var lanErrorMessage: String?
+    @State private var selectedLANGame: LANGame?
 
     /// Milestone C.5 (D120): `nameText`/`trackerHostnameText`'s initial values now read the same
     /// `"GSPlayerNameString"`/`"GSTrackerString"` keys `PreferencesView`'s `@AppStorage` writes to
@@ -88,15 +88,13 @@ struct JoinGameView: View {
             }
 
             Section("LAN") {
-                if let lanErrorMessage {
-                    Text(lanErrorMessage).foregroundStyle(.red)
-                }
                 if lanGames.isEmpty {
                     Text("No local games yet.").foregroundStyle(.secondary)
                 }
                 ForEach(lanGames, id: \.self) { game in
-                    Button(action: { fill(from: game) }) {
+                    Button(action: { selectedLANGame = game }) {
                         Text(game.name)
+                            .fontWeight(selectedLANGame == game ? .semibold : .regular)
                     }
                     .buttonStyle(.plain)
                 }
@@ -139,7 +137,7 @@ struct JoinGameView: View {
             }
 
             Button("Join", action: startJoining)
-                .disabled(isJoining || UInt16(portText) == nil)
+                .disabled(isJoining || (selectedLANGame == nil && UInt16(portText) == nil))
         }
         .padding()
         .onAppear(perform: startLANBrowse)
@@ -175,21 +173,9 @@ struct JoinGameView: View {
     }
 
     private func fill(from listing: TrackerHostList) {
+        selectedLANGame = nil
         addressText = Self.dottedAddress(listing.addr)
         portText = String(listing.game.port)
-    }
-
-    private func fill(from game: LANGame) {
-        lanErrorMessage = nil
-        Task { @MainActor in
-            do {
-                let resolved = try await resolveBonjourService(game)
-                addressText = resolved.host
-                portText = String(resolved.port)
-            } catch {
-                lanErrorMessage = "Couldn't resolve that game."
-            }
-        }
     }
 
     private func startLANBrowse() {
@@ -207,6 +193,7 @@ struct JoinGameView: View {
         lanBrowser?.cancel()
         lanBrowser = nil
         lanGames = []
+        selectedLANGame = nil
     }
 
     private static func dottedAddress(_ addr: UInt32) -> String {
@@ -222,19 +209,30 @@ struct JoinGameView: View {
     }
 
     private func startJoining() {
-        guard let port = UInt16(portText) else { return }
+        let lanGame = selectedLANGame
+        if lanGame == nil, UInt16(portText) == nil { return }
         errorMessage = nil
         isJoining = true
         progress = nil
 
         Task { @MainActor in
             do {
-                let result = try await TCPSession.join(
-                    host: addressText, port: port, name: nameText, pass: passwordText,
-                    onProgress: { newProgress in
-                        Task { @MainActor in progress = newProgress }
-                    }
-                )
+                let onProgress: @Sendable (JoinProgress) -> Void = { newProgress in
+                    Task { @MainActor in progress = newProgress }
+                }
+                let result: (session: TCPSession, preamble: BoloPreamble, mapData: [UInt8])
+                if let lanGame {
+                    result = try await TCPSession.join(
+                        to: lanGame.endpoint, name: nameText, pass: passwordText, onProgress: onProgress
+                    )
+                } else if let port = UInt16(portText) {
+                    result = try await TCPSession.join(
+                        host: addressText, port: port, name: nameText, pass: passwordText, onProgress: onProgress
+                    )
+                } else {
+                    isJoining = false
+                    return
+                }
 
                 var state = GameState()
                 guard applyBoloPreamble(result.preamble, mapData: result.mapData, state: &state) else {
@@ -246,7 +244,7 @@ struct JoinGameView: View {
 
                 let udpSession: UDPSession
                 do {
-                    udpSession = try await UDPSession(host: addressText, port: port)
+                    udpSession = try await UDPSession(host: result.session.remoteHost, port: result.session.remotePort)
                 } catch {
                     isJoining = false
                     result.session.cancel()
