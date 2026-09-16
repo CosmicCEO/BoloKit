@@ -247,15 +247,16 @@ private let expectedTile: [Terrain: Tile] = [
     #expect(tile == .hostilePill03)
 }
 
-@Test func tileForReportsHostilePillWhenOwnerIsNeutral() {
-    // Mirrors tilefor()'s literal condition: pill.owner != NEUTRAL is required for the
-    // friendly branch, so a neutral-owned pill (still not onboard) falls to hostile, not
-    // some third neutral-pill case -- there is no neutral pill tile in the Tile enum.
+@Test func tileForReportsNeutralPillWhenOwnerIsNeutral() {
+    // v1.2.1 product overlay: C tilefor() still paints unowned pills hostile
+    // (no NPIL family). Bolo 2026 draws them as neutralPillNN, yellow like
+    // neutralBase, so a pickable wreck is visible as unowned.
     let terrain = TerrainGrid.mapDefault()
     let players = [PlayerState(used: true)]
-    let pill = Pill(x: 5, y: 5, armour: 0, owner: playerNeutral, speed: 0, counter: 0)
-    let tile = tileFor(x: 5, y: 5, terrain: terrain, pills: [pill], bases: [], localPlayer: 0, players: players)
-    #expect(tile == .hostilePill00)
+    let dead = Pill(x: 5, y: 5, armour: 0, owner: playerNeutral, speed: 0, counter: 0)
+    #expect(tileFor(x: 5, y: 5, terrain: terrain, pills: [dead], bases: [], localPlayer: 0, players: players) == .neutralPill00)
+    let live = Pill(x: 6, y: 6, armour: 15, owner: playerNeutral, speed: 0, counter: 0)
+    #expect(tileFor(x: 6, y: 6, terrain: terrain, pills: [live], bases: [], localPlayer: 0, players: players) == .neutralPill15)
 }
 
 @Test func tileForSkipsOnboardPills() {
@@ -334,6 +335,31 @@ private let expectedTile: [Terrain: Tile] = [
     let state = GameState(terrain: .mapDefault(), pills: [pill], players: players, localPlayer: 0)
     let grid = displayTileGrid(for: state)
     #expect(grid[40, 40] == Tile.friendlyPill05.rawValue)
+}
+
+@Test func displayTileGridOverlaysUnownedPillAsNeutral() {
+    let pill = Pill(x: 40, y: 40, armour: 0, owner: playerNeutral, speed: 0, counter: 0)
+    let state = GameState(terrain: .mapDefault(), pills: [pill], players: [PlayerState(used: true)], localPlayer: 0)
+    let grid = displayTileGrid(for: state)
+    #expect(grid[40, 40] == Tile.neutralPill00.rawValue)
+}
+
+@Test func roadAndWaterLikePredicatesTreatNeutralPillsAsLand() {
+    var grid = TileGrid()
+    grid[10, 10] = Tile.neutralPill00.rawValue
+    #expect(isRoadLikeTile(grid, 10, 10) == 1)
+    #expect(isWaterLikeToWaterTile(grid, 10, 10) == 1)
+    grid[10, 10] = Tile.neutralPill15.rawValue
+    #expect(isRoadLikeTile(grid, 10, 10) == 1)
+    #expect(isWaterLikeToWaterTile(grid, 10, 10) == 1)
+}
+
+@Test func mapimageMapsNeutralPillTilesToNPIL() {
+    var grid = TileGrid()
+    grid[8, 8] = Tile.neutralPill00.rawValue
+    #expect(mapimage(grid, 8, 8) == NPIL00IMAGE)
+    grid[8, 8] = Tile.neutralPill15.rawValue
+    #expect(mapimage(grid, 8, 8) == NPIL15IMAGE)
 }
 
 @Test func writeRunGuardsAgainstOverrunPastColumn256() {

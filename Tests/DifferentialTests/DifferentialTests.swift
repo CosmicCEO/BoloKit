@@ -706,8 +706,9 @@ import Foundation
         #expect(BoloKit.Tile.unknown.rawValue == CXBolo.kUnknownTile)
 
         var grid = [Int32](repeating: 0, count: 256 * 256)
-        
-        let validTiles: [Int32] = BoloKit.Tile.allCases.map { $0.rawValue }
+
+        // Oracle tiles only (0...unknown). v1.2.1 NPIL raw values 54+ have no C equivalent.
+        let validTiles: [Int32] = BoloKit.Tile.allCases.map(\.rawValue).filter { $0 <= BoloKit.Tile.unknown.rawValue }
         for i in 0..<grid.count {
             grid[i] = validTiles[i % validTiles.count]
         }
@@ -751,8 +752,8 @@ import Foundation
         #expect(BoloKit.SELETRIMAGE == CXBolo.SELETRIMAGE)
 
         var grid = [Int32](repeating: 0, count: 256 * 256)
-        
-        let validTiles = BoloKit.Tile.allCases.map { $0.rawValue }
+
+        let validTiles = BoloKit.Tile.allCases.map(\.rawValue).filter { $0 <= BoloKit.Tile.unknown.rawValue }
         for i in 0..<grid.count {
             grid[i] = validTiles[i % validTiles.count]
         }

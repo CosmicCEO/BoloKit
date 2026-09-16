@@ -94,22 +94,34 @@ public func terrainToTile(_ terrain: Int32) -> Int32 {
 
 // MARK: - Display Tile (Wave 7.2)
 
+/// Shared by `tileFor` and `displayTileGrid`. Unowned → NPIL (v1.2.1); else allied → FPIL; else HPIL.
+private func displayTile(forPill pill: Pill, localPlayer: Int, players: [PlayerState]) -> Tile {
+    let armour = Int32(pill.armour)
+    if pill.owner == playerNeutral {
+        return Tile(rawValue: Tile.neutralPill00.rawValue + armour)!
+    }
+    if testAlliance(Int(pill.owner), localPlayer, players: players) {
+        return Tile(rawValue: Tile.friendlyPill00.rawValue + armour)!
+    }
+    return Tile(rawValue: Tile.hostilePill00.rawValue + armour)!
+}
+
 /// Converts a map cell to its canonical display tile, overlaying live pills/bases on top of
 /// the underlying terrain. Ported from `tilefor()` (Reference/c/client.c:6106-6141) — the
 /// non-fog variant. `fogtilefor()`'s `hiddenmines`/`seentiles` branch is out of scope for v1
 /// (D65: every tile fully visible). Pills take priority over bases, which take priority over
 /// terrain, matching the C's literal scan order exactly (both linear scans, not spatial
 /// lookups — same as the oracle, not a performance regression this port introduced).
+///
+/// v1.2.1 product overlay: C `tilefor()` paints `owner == NEUTRAL` as hostile (no NPIL
+/// family). Unowned, not-onboard pills use `neutralPill00 + armour` so they read yellow
+/// like `neutralBase`. Sim and `serverPostProcessLoadedMap` are unchanged.
 public func tileFor(
     x: Int32, y: Int32, terrain: TerrainGrid, pills: [Pill], bases: [Base],
     localPlayer: Int, players: [PlayerState]
 ) -> Tile {
     for pill in pills where pill.armour != pillOnboard && Int32(pill.x) == x && Int32(pill.y) == y {
-        if pill.owner != playerNeutral && testAlliance(Int(pill.owner), localPlayer, players: players) {
-            return Tile(rawValue: Tile.friendlyPill00.rawValue + Int32(pill.armour))!
-        } else {
-            return Tile(rawValue: Tile.hostilePill00.rawValue + Int32(pill.armour))!
-        }
+        return displayTile(forPill: pill, localPlayer: localPlayer, players: players)
     }
     for base in bases where Int32(base.x) == x && Int32(base.y) == y {
         if base.owner == playerNeutral {
@@ -136,10 +148,7 @@ public func displayTileGrid(for state: GameState) -> TileGrid {
     for pill in state.pills where pill.armour != pillOnboard {
         let key = Int(pill.y) * 256 + Int(pill.x)
         guard pillOverlay[key] == nil else { continue }  // first match wins, matching tilefor()
-        let friendly = pill.owner != playerNeutral
-            && testAlliance(Int(pill.owner), state.localPlayer, players: state.players)
-        let base = friendly ? Tile.friendlyPill00 : Tile.hostilePill00
-        pillOverlay[key] = Tile(rawValue: base.rawValue + Int32(pill.armour))!
+        pillOverlay[key] = displayTile(forPill: pill, localPlayer: state.localPlayer, players: state.players)
     }
 
     var baseOverlay: [Int: Tile] = [:]

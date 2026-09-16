@@ -1,6 +1,6 @@
 import BoloKit
 
-// Procedural glyph drawing (D67): nothing in the 290-cell image set is
+// Procedural glyph drawing (D67): nothing in the tile/sprite image set is
 // actual text, so this draws everything with pixel-level primitives rather
 // than vendoring an OFL font. `GlyphRole` is the seam a font-backed source
 // could plug into later without reworking `ImageIndex`/`SheetBuilder`.
@@ -9,7 +9,7 @@ public enum GlyphRole: Sendable {
     case connective(family: TileFamily, ortho: UInt8, diag: UInt8)
     case flatFill(r: UInt8, g: UInt8, b: UInt8)
     case mine
-    case pill(armor: Int, friendly: Bool)
+    case pill(armor: Int, ownership: BaseOwnership)
     /// `ownership`: 0 = player, 1 = friendly, 2 = enemy.
     case tank(heading: Int, ownership: Int, destroyed: Bool)
     case shell(frame: Int)
@@ -24,7 +24,7 @@ public enum GlyphRole: Sendable {
 
 /// **D152 item 2:** who currently controls a refuelling base -- `NBAS00IMAGE`/`FBAS00IMAGE`/
 /// `HBAS00IMAGE`'s three cases (`ImageIndex.swift`), same partition `mapimage()` already uses.
-public enum BaseOwnership: Sendable {
+public enum BaseOwnership: Sendable, Equatable {
     case neutral
     case friendly
     case hostile
@@ -40,8 +40,8 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
     case .mine:
         c.fillRect(0, 0, 16, 16, 40, 40, 40)
         c.fillCircle(cx: 8, cy: 8, radius: 3, 200, 30, 30)
-    case .pill(let armor, let friendly):
-        drawPill(&c, armor: armor, friendly: friendly)
+    case .pill(let armor, let ownership):
+        drawPill(&c, armor: armor, ownership: ownership)
     case .tank(let heading, let ownership, let destroyed):
         drawTank(&c, heading: heading, ownership: ownership, destroyed: destroyed)
     case .shell(let frame):
@@ -171,16 +171,17 @@ private func drawIsolatedRoadMarker(_ c: inout Canvas16) {
     c.fillRect(7, 9, 9, 12, r, g, b)
 }
 
-/// D154 Wave 1: redesigned from a flat armor-level fill bar into a sunburst/spoked icon,
-/// inspired by (not copied from) the reference's spoked pillbox icon. Armor level modulates
-/// spoke length (2.5px at armor 0 .. 6.5px at armor 15) rather than a bar height; owner color
-/// is unchanged from the prior design (friendly/hostile), including its already-disclosed,
-/// out-of-scope collision with `tankPalette(1)` (D152) -- not touched by this wave.
-private func drawPill(_ c: inout Canvas16, armor: Int, friendly: Bool) {
-    let (r, g, b): (UInt8, UInt8, UInt8) = friendly ? (60, 110, 220) : (200, 50, 50)
+/// D154 Wave 1 sunburst, plus v1.2.1 three-way ownership (yellow unowned, matching
+/// `basePalette(.neutral)`) and a visible wreck mound at armor 0.
+private func drawPill(_ c: inout Canvas16, armor: Int, ownership: BaseOwnership) {
+    let (r, g, b) = pillPalette(ownership)
     let level = min(max(armor, 0), 15)
-    // Dark inset backing, distinct from `.mine`'s full-cell fill + small solid dot.
     c.fillRect(2, 2, 14, 14, 45, 45, 50, 220)
+    if level == 0 {
+        c.fillRect(4, 9, 12, 13, r, g, b)
+        c.fillRect(5, 7, 11, 9, r, g, b)
+        c.fillRect(6, 6, 10, 7, r, g, b)
+    }
     let length = 2.5 + (Double(level) / 15.0) * 4.0
     let dirs: [(Double, Double)] = [
         (1, 0), (0.70711, 0.70711), (0, 1), (-0.70711, 0.70711),
@@ -190,6 +191,14 @@ private func drawPill(_ c: inout Canvas16, armor: Int, friendly: Bool) {
         c.fillRotatedBar(dx: dx, dy: dy, length: length, halfWidth: 0.7, r, g, b)
     }
     c.fillCircle(cx: 8, cy: 8, radius: 1.8, r, g, b)
+}
+
+private func pillPalette(_ ownership: BaseOwnership) -> (UInt8, UInt8, UInt8) {
+    switch ownership {
+    case .neutral: return (200, 200, 60)
+    case .friendly: return (60, 110, 220)
+    case .hostile: return (200, 50, 50)
+    }
 }
 
 /// **D152 item 2:** friendly shifted off `(60,110,220)` -- byte-identical to `familyColor(.river)`

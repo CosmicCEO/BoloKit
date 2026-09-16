@@ -190,6 +190,23 @@ private func encodeFullBMap(pills: [Pill], bases: [Base], starts: [Start], grid:
     #expect(authored.pills.count == 2)
 }
 
+@Test func defaultBundledPickupRendersAsNeutralPill() {
+    var decoded = GameState()
+    #expect(decodeBMap(encodeBMap(defaultBundledMapState()), into: &decoded))
+    serverPostProcessLoadedMap(&decoded)
+    applyDefaultBundledMapOwners(&decoded)
+    let pickup = tileFor(
+        x: 108, y: 123, terrain: decoded.terrain, pills: decoded.pills, bases: decoded.bases,
+        localPlayer: decoded.localPlayer, players: decoded.players
+    )
+    let enemy = tileFor(
+        x: 140, y: 123, terrain: decoded.terrain, pills: decoded.pills, bases: decoded.bases,
+        localPlayer: decoded.localPlayer, players: decoded.players
+    )
+    #expect(pickup == .neutralPill00)
+    #expect(enemy == .hostilePill15)
+}
+
 @Test func enemyPillIsOutOfRangeOfPickupAndStart() {
     let state = defaultBundledMapState()
     let pickup = state.pills.first { $0.armour == 0 }!

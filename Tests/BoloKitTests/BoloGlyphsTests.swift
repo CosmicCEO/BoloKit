@@ -33,7 +33,21 @@ struct BoloGlyphsTests {
             #expect(seen.insert(index).inserted)
         }
         #expect(seen.count == tileIndexRange.count)
-        #expect(tileIndexRange.count == 177)
+        #expect(tileIndexRange.count == 193)
+    }
+
+    @Test("NPIL00-15 dispatch as yellow unowned pills")
+    func npilRangeDispatchesNeutralPills() {
+        let connectivity = deriveAllConnectivity()
+        for i in 0...15 {
+            let index = NPIL00IMAGE + Int32(i)
+            guard case .pill(let armor, let ownership) = tileGlyphRole(for: index, connectivity: connectivity) else {
+                Issue.record("NPIL\(i) has no pill glyph")
+                continue
+            }
+            #expect(armor == i)
+            #expect(ownership == .neutral)
+        }
     }
 
     @Test("mapimage never returns -1 for any probed in-bounds neighbor configuration")

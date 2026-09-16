@@ -1,6 +1,6 @@
 import BoloKit
 
-// Consumes BoloKit's existing 290 image constants and `mapimage()` as the
+// Consumes BoloKit's image constants and `mapimage()` as the
 // single source of truth (D63) -- no re-parse of `images.h` here.
 
 /// Cell math shared by both sheets, top-left origin (D66): `row = idx >> 4`,
@@ -9,8 +9,8 @@ import BoloKit
 public func cellRow(_ index: Int32) -> Int { Int(index) >> 4 }
 public func cellCol(_ index: Int32) -> Int { Int(index) & 0xF }
 
-/// Tile sheet is dense `0x00`-`0xb0` (D62) -- every index in range is used.
-public let tileIndexRange: ClosedRange<Int32> = 0x00...MINE00IMAGE
+/// Tile sheet is dense `0x00`-`0xc0` (D62 + v1.2.1 NPIL) -- every index in range is used.
+public let tileIndexRange: ClosedRange<Int32> = 0x00...NPIL15IMAGE
 
 /// Sprite sheet is sparse (D62): tank rows + shells `0x00`-`0x65`,
 /// explosions `0x70`-`0x75`, builder frames `0x80`-`0x82`, crosshair/select
@@ -37,9 +37,11 @@ public func tileGlyphRole(for index: Int32, connectivity: [Int32: ConnectiveGlyp
     case HBAS00IMAGE: return .base(ownership: .hostile)
     case MINE00IMAGE: return .mine
     case FPIL00IMAGE...FPIL15IMAGE:
-        return .pill(armor: Int(index - FPIL00IMAGE), friendly: true)
+        return .pill(armor: Int(index - FPIL00IMAGE), ownership: .friendly)
     case HPIL00IMAGE...HPIL15IMAGE:
-        return .pill(armor: Int(index - HPIL00IMAGE), friendly: false)
+        return .pill(armor: Int(index - HPIL00IMAGE), ownership: .hostile)
+    case NPIL00IMAGE...NPIL15IMAGE:
+        return .pill(armor: Int(index - NPIL00IMAGE), ownership: .neutral)
     default:
         return nil
     }

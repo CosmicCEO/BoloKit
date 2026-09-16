@@ -179,6 +179,23 @@ public let HPIL13IMAGE: Int32 = 0xad
 public let HPIL14IMAGE: Int32 = 0xae
 public let HPIL15IMAGE: Int32 = 0xaf
 public let MINE00IMAGE: Int32 = 0xb0
+/// v1.2.1 product overlay — not in `images.h` / CXBolo. Fits in the 256×256 sheet after MINE.
+public let NPIL00IMAGE: Int32 = 0xb1
+public let NPIL01IMAGE: Int32 = 0xb2
+public let NPIL02IMAGE: Int32 = 0xb3
+public let NPIL03IMAGE: Int32 = 0xb4
+public let NPIL04IMAGE: Int32 = 0xb5
+public let NPIL05IMAGE: Int32 = 0xb6
+public let NPIL06IMAGE: Int32 = 0xb7
+public let NPIL07IMAGE: Int32 = 0xb8
+public let NPIL08IMAGE: Int32 = 0xb9
+public let NPIL09IMAGE: Int32 = 0xba
+public let NPIL10IMAGE: Int32 = 0xbb
+public let NPIL11IMAGE: Int32 = 0xbc
+public let NPIL12IMAGE: Int32 = 0xbd
+public let NPIL13IMAGE: Int32 = 0xbe
+public let NPIL14IMAGE: Int32 = 0xbf
+public let NPIL15IMAGE: Int32 = 0xc0
 
 // MARK: - Sprite Image Constants
 
@@ -811,6 +828,9 @@ public func mapimage(_ tiles: UnsafePointer<Int32>, _ x: Int32, _ y: Int32) -> I
 
     case Tile.hostilePill00.rawValue...Tile.hostilePill15.rawValue:
         return HPIL00IMAGE + (tile - Tile.hostilePill00.rawValue)
+
+    case Tile.neutralPill00.rawValue...Tile.neutralPill15.rawValue:
+        return NPIL00IMAGE + (tile - Tile.neutralPill00.rawValue)
 
     case Tile.neutralBase.rawValue:
         return NBAS00IMAGE

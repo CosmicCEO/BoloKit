@@ -38,6 +38,13 @@ import Darwin
     case hostilePill12 = 49, hostilePill13 = 50, hostilePill14 = 51, hostilePill15 = 52
 
     case unknown = 53
+
+    /// v1.2.1 product overlay. C `tilefor()` has no NPIL family (unowned pills
+    /// paint as hostile). These sit after `unknown` so 0–53 stay CXBolo-identical.
+    case neutralPill00 = 54, neutralPill01 = 55, neutralPill02 = 56, neutralPill03 = 57
+    case neutralPill04 = 58, neutralPill05 = 59, neutralPill06 = 60, neutralPill07 = 61
+    case neutralPill08 = 62, neutralPill09 = 63, neutralPill10 = 64, neutralPill11 = 65
+    case neutralPill12 = 66, neutralPill13 = 67, neutralPill14 = 68, neutralPill15 = 69
 }
 
 // MARK: - TileGrid Structure
@@ -114,6 +121,8 @@ public func isRoadLikeTile(_ tiles: UnsafePointer<Int32>, _ x: Int32, _ y: Int32
         return 1
     case Tile.hostilePill00.rawValue...Tile.hostilePill15.rawValue:
         return 1
+    case Tile.neutralPill00.rawValue...Tile.neutralPill15.rawValue:
+        return 1
     case Tile.unknown.rawValue:
         return 1
     default:
@@ -160,6 +169,8 @@ public func isWaterLikeToWaterTile(_ tiles: UnsafePointer<Int32>, _ x: Int32, _ 
     case Tile.friendlyPill00.rawValue...Tile.friendlyPill15.rawValue:
         return 1
     case Tile.hostilePill00.rawValue...Tile.hostilePill15.rawValue:
+        return 1
+    case Tile.neutralPill00.rawValue...Tile.neutralPill15.rawValue:
         return 1
     case Tile.unknown.rawValue:
         return 1
