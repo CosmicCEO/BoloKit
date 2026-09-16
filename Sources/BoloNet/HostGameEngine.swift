@@ -1,5 +1,6 @@
 import BoloKit
 import Network
+import os
 
 // MARK: - Milestone B.5b (D96) — the real host-network engine's tick/dgram/accept half
 //
@@ -531,6 +532,7 @@ public final class HostGameEngine: @unchecked Sendable {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
+        let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state,
             ticksSinceLastUpdate: ticksSinceLastUpdate,
@@ -556,6 +558,7 @@ public final class HostGameEngine: @unchecked Sendable {
             onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) },
             onPrintMessage: { pendingGameMessages.append($0) }
         )
+        BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
 
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
             previousPillOwners: oldPillOwners, pills: state.pills,
@@ -629,11 +632,13 @@ public final class HostGameEngine: @unchecked Sendable {
         localSeq += 1
         guard localSeq % 5 == 0 else { return }
         guard state.players.indices.contains(state.localPlayer) else { return }
+        let netSignpost = BoloSignposts.net.beginInterval(BoloSignposts.clUpdateName)
         let seqSnapshot = await table.allSeqsAsUInt32()
         let update = assembleClUpdate(player: state.localPlayer, state: state, seq: seqSnapshot)
         let bytes = update.encode()
         for player in 0..<maxPlayers where player != state.localPlayer {
             await table.sendDgram(bytes, to: player)
         }
+        BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
     }
 }

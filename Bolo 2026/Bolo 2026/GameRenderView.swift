@@ -32,6 +32,8 @@
 
 import AppKit
 import BoloKit
+import BoloNet
+import os
 import SwiftUI
 
 private let tileSize = 16
@@ -351,6 +353,8 @@ public final class GameRenderView: NSView {
     }
 
     public override func draw(_ dirtyRect: NSRect) {
+        let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
+        defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         drawTerrain(ctx, dirtyRect: dirtyRect)
         drawSprites(ctx)

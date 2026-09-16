@@ -57,6 +57,7 @@
 import AppKit
 import BoloKit
 import BoloNet
+import os
 
 /// See `GameSession`'s own B.8 header above.
 private enum JoinEvent: Sendable {
@@ -471,6 +472,7 @@ public final class GameSession {
         // D125/D148(A): sound-effect triggers -- see SoundPlayer.swift's own header for exactly
         // which names are wired, and why the rest (hittank/build/etc., which still need new
         // BoloKit callback threading) aren't yet.
+        let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
             onTimeLimitWarning: { seconds in pendingGameMessages.append(EventLogText.timeLimitRemaining(seconds)) },
@@ -484,6 +486,7 @@ public final class GameSession {
             onTreeHarvest: { _ in SoundPlayer.shared.play("tree") },
             onPrintMessage: { pendingGameMessages.append($0) }
         )
+        BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
             previousPillOwners: oldPillOwners, pills: state.pills,
             previousBaseOwners: oldBaseOwners, bases: state.bases,
