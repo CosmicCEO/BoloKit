@@ -1,56 +1,89 @@
 # Status
 
-**Current drop:** `v1.2.3` (build 10). **`v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.0` and `v1.0.0` shipped.**
+**Current drop:** `v1.2.3` (build 10). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.2.3). **`v1.2.2`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
 
-The C-oracle port (simulation core, networking, v1 UI slice) is complete. **Bolo 2026** is playable host-and-join multiplayer: HUD (build-tool selector, resource gauges, player/pill/base status, bottom event-log bar), bundled default map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session.
+**Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
 
-Host/Join UI, join-side outbound protocol (movement, tile-entry, builder-task, shell-impact), HUD/kick-ban, key remap, alliance panel, messages panel, procedural sound (24 effects; several wired), preferences, zoom/scroll, and the terrain/HUD chrome/event-log visual pass are all in.
+**Tests (as of the `v1.2.3` pass):** 795 SwiftPM (575 BoloKitTests + 220 DifferentialTests) + 66 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check. Confirm with `swift test` at tag.
 
-**Tests (as of the `v1.2.3` pass):** 795 SwiftPM (575 BoloKitTests + 220 DifferentialTests) + 66 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check, not a full-suite flake of that class. Confirm with `swift test` at tag. BoloKitTests 572 → 575 this patch (duel cadence).
+**Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
-**Signing:** permanently out of scope. Apple Development-signed, not notarized.
+**Known environment issue:** on some machines `NWListener` EINVAL. The app falls back to local-only play with an on-screen notice. Do not reopen an unbounded investigation.
 
-**Known environment issue:** on some machines `Network.framework` listener creation fails (`NWListener` EINVAL). The app falls back to local-only play with an on-screen notice. Root cause not found (ruled out: beta-OS-only, ad-hoc signing). Do not reopen an unbounded investigation.
+Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process` (`docs/PLAN.md` at that tag). Do not restore those files to the working tree.
+## How we track work
 
-## Next sprints
+Source of truth: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43) and skill `.grok/skills/bolokit-github-boards/`. Do not invent a wave/GO protocol. Do not restore a Planner / Implementer / Parity split.
 
-Tracked as GitHub issues and milestones. Do not invent a wave/GO protocol around them. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43).
+| Layer | What it is |
+|-------|------------|
+| **Issue** | One unit of work in `CosmicCEO/BoloKit`. Do not clone the list onto a new board. GitHub types: Feature, Bug, Task. |
+| **Milestone** | Time box + kind. See below. |
+| **Sprint** | Two weeks, Monday start, due Friday of week 2. Skip any window that contains a US federal holiday (OPM). A release milestone may span one or more sprints. |
+| **Project** | Grouping only. User-owned, **linked** to the repo so they show on the [Projects tab](https://github.com/CosmicCEO/BoloKit/projects). |
 
-- [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) — #14 Bonjour, #21 AWDL, #20 `bolo://`, #24 tracker+UPnP, #6 dedicated host, #26 Quick Look (needs the v1.2 UTI).
-- [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) — #17 controller, #3 lag tint, #8 remaining sounds, #23 Observable HUD, #22 App Intents, #16 OSLog.
-- [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) — [#1](https://github.com/CosmicCEO/BoloKit/issues/1).
-- Later: v1.6 Metal (#25), v1.7 packs. Decide:* on [project 2](https://github.com/users/CosmicCEO/projects/2).
+### Milestone kinds
 
-## Parking lot
+| Kind | Title shape | When it closes |
+|------|-------------|----------------|
+| **Release** | `v1.x.0 — …` | Every issue closed → tag `v1.x.0`, GitHub release, update this file. |
+| **Patch** | `v1.x.y — …` (`y ≥ 1`) | Ship-between-sprints work (playability, display, hotfixes). Tag `v1.x.y`, GitHub release. Does not replace the next `v1.x.0` sprint. |
+| **Decide** | `Decide: …` | Written ruling, **no code**. Then `not_planned` or move the issue to a future release milestone. Due **3 May 2027**. |
 
-Decide / later-milestone items. Not coding work until a ruling or a release milestone says so.
+New v1.* work: **issue** → release or patch **milestone** → add to [project 1](https://github.com/users/CosmicCEO/projects/1). New Decide work → Decide milestone → [project 2](https://github.com/users/CosmicCEO/projects/2). GitHub MCP `projects_*` may 403; `gh project item-add` is the fallback.
 
-- [#5 Q14 explosions-list owner](https://github.com/CosmicCEO/BoloKit/issues/5) — Decide: Oracle parking lot.
-- [#7 D155(2) fire on captured base](https://github.com/CosmicCEO/BoloKit/issues/7) — Decide: Oracle parking lot.
-- [#9 Standalone tracker daemon](https://github.com/CosmicCEO/BoloKit/issues/9) — Decide: WAN directory.
+**2.0.0** is the tag when the 1.* path is done. It is not a milestone yet.
 
-## Landed this close-out (`v1.2.3` patch)
+## Path to 2.0.0 — [project 1](https://github.com/users/CosmicCEO/projects/1)
 
-[#46](https://github.com/CosmicCEO/BoloKit/issues/46) Pill-vs-pill uses combat cadence (`minTicksPerShot`) so a calm map turret returns fire instead of dying still charging. Tank-only aims keep XBolo `speed`. Host `buildPill` sets `maxTicksPerShot` like `recvSrBuildPill`.
+Current sprint target: **[v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2)** (due 30 Oct 2026).
 
-## Previous close-out (`v1.2.2` patch)
+| Milestone | Due | Issues |
+|-----------|-----|--------|
+| [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour, [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://`, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look |
+| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog |
+| [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
+| [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
+| [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
 
-[#45](https://github.com/CosmicCEO/BoloKit/issues/45) Hostile armed pills acquire other hostile armed pills (same range/vis as tanks). XBolo `pilllogic()` is tank-only; this fills a Cheshire-era competition gap so a placed turret can degrade an enemy pill for capture. Allied pills still ignore each other. Training map unchanged.
+Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**.
 
-## Previous close-out (`v1.2.1` patch)
+## Decide — [project 2](https://github.com/users/CosmicCEO/projects/2)
 
-[#44](https://github.com/CosmicCEO/BoloKit/issues/44) Unowned pills draw yellow (`neutralPill00…15` / `NPIL00…15`), matching `neutralBase`. C `tilefor()` still paints them hostile — documented product overlay, not a sim change. Dead (armour 0) pills get a visible wreck mound. Training-map pickup at `(108, 123)` is now readable as unowned.
+Not coding work until a ruling or a release milestone says so.
 
-## Previous close-out (`v1.2.0` sprint)
+| Milestone | Issues |
+|-----------|--------|
+| [Decide: WAN directory](https://github.com/CosmicCEO/BoloKit/milestone/5) | [#9](https://github.com/CosmicCEO/BoloKit/issues/9) standalone tracker |
+| [Decide: P2P beyond Bonjour+AWDL](https://github.com/CosmicCEO/BoloKit/milestone/6) | [#29](https://github.com/CosmicCEO/BoloKit/issues/29) Wi-Fi Aware |
+| [Decide: Apple Developer Program](https://github.com/CosmicCEO/BoloKit/milestone/7) | [#10](https://github.com/CosmicCEO/BoloKit/issues/10) discovery/invite, [#27](https://github.com/CosmicCEO/BoloKit/issues/27) Game Center, [#28](https://github.com/CosmicCEO/BoloKit/issues/28) SharePlay, [#30](https://github.com/CosmicCEO/BoloKit/issues/30) CloudKit lobby |
+| [Decide: Foundation Models](https://github.com/CosmicCEO/BoloKit/milestone/9) | [#31](https://github.com/CosmicCEO/BoloKit/issues/31) coach |
+| [Decide: Oracle parking lot](https://github.com/CosmicCEO/BoloKit/milestone/10) | [#5](https://github.com/CosmicCEO/BoloKit/issues/5) Q14 explosions owner, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) D155(2) fire on captured base |
+| [Decide: Physics](https://github.com/CosmicCEO/BoloKit/milestone/12) | [#40](https://github.com/CosmicCEO/BoloKit/issues/40) worthwhile?, [#41](https://github.com/CosmicCEO/BoloKit/issues/41) blockers, [#42](https://github.com/CosmicCEO/BoloKit/issues/42) combat context |
 
-Mac-native chrome. No BoloKit physics changes.
+[#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
-- [#12](https://github.com/CosmicCEO/BoloKit/issues/12) PrivacyInfo.xcprivacy (UserDefaults CA92.1)
-- [#13](https://github.com/CosmicCEO/BoloKit/issues/13) Game Mode, games category, Full Screen
-- [#11](https://github.com/CosmicCEO/BoloKit/issues/11) `com.cosmicceo.bolo-map` UTI and Open With
+## Landed (`v1.2.3` patch)
+
+[#46](https://github.com/CosmicCEO/BoloKit/issues/46) Pill-vs-pill combat cadence (`minTicksPerShot`) so a calm map turret returns fire.
+
+## Previous (`v1.2.2` patch)
+
+[#45](https://github.com/CosmicCEO/BoloKit/issues/45) Hostile pills acquire hostile pills. XBolo `pilllogic()` is tank-only.
+
+## Previous (`v1.2.1` patch)
+
+[#44](https://github.com/CosmicCEO/BoloKit/issues/44) Unowned pills draw yellow (`NPIL`). Training-map pickup at `(108, 123)`.
+
+## Previous (`v1.2.0` sprint)
+
+Mac-native chrome. Training island replaced Alabama after the tag.
+
+- [#12](https://github.com/CosmicCEO/BoloKit/issues/12) PrivacyInfo.xcprivacy
+- [#13](https://github.com/CosmicCEO/BoloKit/issues/13) Game Mode, Full Screen
+- [#11](https://github.com/CosmicCEO/BoloKit/issues/11) `com.cosmicceo.bolo-map` UTI
 - [#15](https://github.com/CosmicCEO/BoloKit/issues/15) Icon Composer `AppIcon.icon`
-- [#18](https://github.com/CosmicCEO/BoloKit/issues/18) SwiftUI Game/View Commands
-- [#19](https://github.com/CosmicCEO/BoloKit/issues/19) VoiceOver HUD labels
-- [#2](https://github.com/CosmicCEO/BoloKit/issues/2) ORACLE_COVERAGE snapshot refresh
+- [#18](https://github.com/CosmicCEO/BoloKit/issues/18) Game/View Commands
+- [#19](https://github.com/CosmicCEO/BoloKit/issues/19) VoiceOver HUD
+- [#2](https://github.com/CosmicCEO/BoloKit/issues/2) ORACLE_COVERAGE snapshot

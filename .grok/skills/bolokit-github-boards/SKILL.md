@@ -14,7 +14,7 @@ description: >
 ## Layers
 
 - **Source** = git + existing issues.
-- **Milestone** = time box. `v1.x.0` = RELEASE (tag when closed). `Decide:` = written ruling, no code.
+- **Milestone** = time box. `v1.x.0` = RELEASE (tag when every issue closes). `v1.x.y` (`y ≥ 1`) = PATCH between planned sprints. `Decide:` = written ruling, no code.
 - **Project** = grouping only, user-owned, **linked** to `CosmicCEO/BoloKit`.
 
 | Project | URL | Contents |
@@ -24,6 +24,8 @@ description: >
 
 Repo tab: https://github.com/CosmicCEO/BoloKit/projects
 
-New v1.* work: existing or new **issue** → v1.* **milestone** → `gh project item-add 1`. New Decide work → Decide milestone → `item-add 2`.
+New v1.* work: existing or new **issue** → release or patch **milestone** → `gh project item-add 1`. New Decide work → Decide milestone → `item-add 2`.
+
+Sprints are two weeks (Monday–Friday of week 2). Skip windows that contain a US federal holiday. Patch milestones do not replace the next `v1.x.0` sprint.
 
 Projects v2 mechanics (scopes, link): user skill `github-projects-v2`.
