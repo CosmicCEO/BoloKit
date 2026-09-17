@@ -22,6 +22,7 @@ Product law that survives the retired decision log. Provenance IDs in parenthese
 - `CXBolo` builds with `-ffp-contract=off`. Required for bit-identical `dot2f`/`mag2f` against the C oracle on arm64. (D26)
 - No test or doc coverage shrink without a named replacement. Report before/after counts. (D28)
 - Replicate documented C bugs unless a constraint here already records a safety deviation (e.g. bounds guards that prevent C memory corruption). Fidelity *fixes* are a separate activity from porting. (D24)
+- **Invisible-bug exception to D24:** a documented C bug with no observable effect on rendered output or game-state transitions may be implemented as the evidently-intended behavior instead of replicated bug-for-bug, when the bug and the reasoning are recorded here. Anything with observable effect still needs bit-for-bit differential parity — this is a narrow carve-out, not a general license to drift from the oracle. (v1.5.0)
 - **Display:** unowned, not-onboard pills render as `neutralPill00…15` / `NPIL00…15` (yellow, matching `neutralBase`). C `tilefor()` has no NPIL family and paints them hostile. Sim and `serverPostProcessLoadedMap` are unchanged. (v1.2.1)
 - **Pills:** hostile armed pills acquire other hostile armed pills (same range/vis as tanks). XBolo `pilllogic()` is tank-only; this restores Cheshire-era turret duels so a placed pill can degrade an enemy pill for capture. (v1.2.2)
 - **Pill duel cadence:** while the closest target is a hostile pill, fire at `minTicksPerShot` so both turrets open together. XBolo map `speed` (up to 100 ticks) is the calm tank-only reload; a faster shooter would otherwise melt a map pill before its first return shot. Speed 0 clamps to `minTicksPerShot`, not a machine gun. (v1.2.3)
@@ -41,6 +42,58 @@ XBolo must match original Bolo 0.99.7, **not** WinBolo:
 - **Builder retrieval:** original retrieves stranded builders by proximity. WinBolo requires killing them first. Match the proximity-only check.
 - **Pillbox range:** WinBolo fires ~0.5 squares too far. Use only the C oracle constant.
 - **Tick rate:** 50 Hz in both original and WinBolo. Matches `ticksPerSec`.
+
+## Fog-of-war (v1.5.0, issue #1)
+
+- **Host-authoritative fog, not client-side rendering-only (deviation from `Reference/c`):**
+  in the C oracle, fog is a pure client-side rendering filter — every client already holds
+  full ground-truth terrain/mines locally over the wire; `fog`/`seentiles` only gate what
+  gets drawn. This port's host instead tracks one `FogState` per connected player slot and
+  redacts every terrain-affecting broadcast (including the initial map send) per
+  recipient — a player who has never had a tile visible never receives its true data over
+  the wire at all. Confirmed with the repo owner: a deliberate, documented deviation
+  because it improves the security/trust model with no visible-output cost to a
+  well-behaved client. The visibility *algorithm* (`increaseVis`/`decreaseVis`/
+  `fogTileFor`/`revealNearbyHiddenMines`) stays bit-for-bit ported and differentially
+  tested against `Reference/c`; only *where the state lives* and *what crosses the wire*
+  differs.
+- **`hiddenMines` gates the entire fog system**, not just mine-substitution as in C (where
+  `fog`/`seentiles` tracking is always on and `hiddenmines` only gates `fogtilefor`'s
+  mined-terrain substitution branch). Matches the issue's "fully visible remains default"
+  requirement; zero added cost when the host doesn't enable it.
+- **Pill/base ownership is never fog-redacted**, matching the oracle: `fogtilefor`'s
+  pill/base branch reads live ownership unconditionally regardless of `hiddenmines`; only
+  the mined-terrain branch is gated. `SRCapturePill`/`SRCaptureBase`/etc. stay
+  unconditional broadcasts.
+- **`increasevis`'s `insetrect(r, -1, -1)` second pass** (`client.c:3876-3921`) actually
+  *grows* the reveal-recompute rect by 1 in each direction — a sign-convention artifact of
+  `insetrect`, not a deliberate behavior, with no visible/gameplay consequence either way.
+  Per the invisible-bug exception above: implemented as the evidently-intended behavior —
+  re-snapshot `seenTiles` over exactly the same rect `fog` was incremented over, no
+  separate inset pass.
+- **`testhiddenmine`/`refresh`'s unbounded near-map-edge indexing** in C silently wraps to
+  an adjacent row (row-major memory layout); a literal Swift `Array` port would trap. Real
+  safety deviation, not an invisible-bug judgment call: bounds-clamp coordinates into
+  `0..<256` before indexing.
+- **Never-seen tiles cross the wire as ordinary `sea` terrain.** `BMap.swift`'s RLE nibble
+  codec has no room for a real "unknown" sentinel. The client separately tracks which
+  tiles it has actually received a reveal for (from the initial map plus subsequent reveal
+  messages) and renders `Tile.unknown` for anything not yet revealed. No wire format
+  change; costs nothing extra on the wire in the common case.
+- **`fogVis`/`calcVis`** (`bolo.c:108-150,214-323`) are never called anywhere in
+  `Reference/c` — confirmed by exhaustive grep, unlike `forestVis` (`bolo.c:174`), which
+  *is* called (for pillbox target-acquisition line-of-sight, already ported at
+  `PillTick.swift:86`, unrelated to fog). Working theory, confirmed with the repo owner:
+  an unfinished Mac Bolo feature XBolo's own port left unwired, not a feature the real
+  game lacked — this port's fidelity target is Mac Bolo 0.99.7bv, not XBolo specifically
+  (D3). Ported bit-for-bit and differentially tested against `Reference/c`'s own (unused)
+  functions, *and* wired into sprite rendering as a continuous per-sprite fade near the
+  fog boundary. The math is oracle-verified; the wiring is a reconstruction with no
+  oracle-exercised behavior to verify against.
+- Vision-rectangle sizes have no `bolo.h` macro — hardcoded literals at each `client.c`
+  call site: tank vision 29×29 tiles (`pos ± 14`), pill/base vision 15×15 tiles
+  (`pos ± 7`), hidden-mine proximity 2.0 world units, `calcVis` self-visibility floor 3.0
+  world units.
 
 ## Physics constants
 
