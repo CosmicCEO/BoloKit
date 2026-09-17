@@ -864,3 +864,168 @@ private actor HostRenderedTicksBox {
     #expect(engine.state.players[1].connected == false)
     #expect(await engine.table.isConnected(0), "player 0 should be unaffected -- only player 1 was seeded stale")
 }
+
+// MARK: - startNetworkDiscovery (#24: wire host tracker announce + UPnP)
+
+private final class DiscoveryConnectionWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pendingConnection: NWConnection?
+    private var continuation: CheckedContinuation<NWConnection, Never>?
+
+    func deliver(_ connection: NWConnection) {
+        lock.lock()
+        if let continuation {
+            self.continuation = nil
+            lock.unlock()
+            continuation.resume(returning: connection)
+        } else {
+            pendingConnection = connection
+            lock.unlock()
+        }
+    }
+
+    private func takePending() -> NWConnection? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let pendingConnection {
+            self.pendingConnection = nil
+            return pendingConnection
+        }
+        return nil
+    }
+
+    private func register(_ continuation: CheckedContinuation<NWConnection, Never>) {
+        lock.lock()
+        if let pendingConnection {
+            self.pendingConnection = nil
+            lock.unlock()
+            continuation.resume(returning: pendingConnection)
+        } else {
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    func wait() async -> NWConnection {
+        if let connection = takePending() {
+            return connection
+        }
+        return await withCheckedContinuation { continuation in
+            register(continuation)
+        }
+    }
+}
+
+private func startLoopbackTrackerListener() async throws -> (NWListener, UInt16, DiscoveryConnectionWaiter) {
+    let listener = try NWListener(using: .tcp, on: .any)
+    let waiter = DiscoveryConnectionWaiter()
+
+    listener.newConnectionHandler = { connection in
+        connection.start(queue: .main)
+        waiter.deliver(connection)
+    }
+
+    let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
+        nonisolated(unsafe) var resumed = false
+        listener.stateUpdateHandler = { state in
+            guard !resumed else { return }
+            switch state {
+            case .ready:
+                resumed = true
+                continuation.resume(returning: listener.port?.rawValue ?? 0)
+            case .failed(let error):
+                resumed = true
+                continuation.resume(throwing: error)
+            default:
+                break
+            }
+        }
+        listener.start(queue: .main)
+    }
+    return (listener, port, waiter)
+}
+
+private func receiveExactlyStream(_ connection: NWConnection, _ count: Int) async throws -> [UInt8] {
+    try await withCheckedThrowingContinuation { continuation in
+        connection.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
+            if let error {
+                continuation.resume(throwing: error)
+                return
+            }
+            guard let data, data.count == count else {
+                continuation.resume(throwing: HarnessError.shortRead)
+                return
+            }
+            continuation.resume(returning: Array(data))
+        }
+    }
+}
+
+private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        connection.send(
+            content: Data(bytes),
+            completion: .contentProcessed { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            }
+        )
+    }
+}
+
+@Suite struct HostGameEngineNetworkDiscoveryTests {
+
+    @Test func testStartNetworkDiscoveryRegistersWithTrackerAndSendsHeartbeats() async throws {
+        let (trackerListener, trackerPort, waiter) = try await startLoopbackTrackerListener()
+        defer { trackerListener.cancel() }
+
+        async let daemonScript: (BoloNet.TrackerHost?, [UInt8]) = {
+            let connection = await waiter.wait()
+            let preambleBytes = try await receiveExactlyStream(connection, TrackerPreamble.wireSize)
+            guard TrackerPreamble.decode(preambleBytes) != nil else { return (nil, []) }
+            try await sendStreamBytes(connection, [TrackerVersionStatus.ok.rawValue])
+
+            let requestByte = try await receiveExactlyStream(connection, 1)
+            guard requestByte.first == TrackerRequestType.host.rawValue else { return (nil, []) }
+            let hostBytes = try await receiveExactlyStream(connection, BoloNet.TrackerHost.wireSize)
+            let received = BoloNet.TrackerHost.decode(hostBytes)
+
+            try await sendStreamBytes(connection, [TrackerTCPPortStatus.ok.rawValue])
+            try await sendStreamBytes(connection, [TrackerUDPPortStatus.ok.rawValue])
+
+            // sendtrackerupdate() sends a BARE TrackerHost -- no request byte -- confirming the
+            // engine's own heartbeat task fires on `heartbeatInterval`, not just the initial handshake.
+            let heartbeat = try await receiveExactlyStream(connection, BoloNet.TrackerHost.wireSize)
+            return (received, heartbeat)
+        }()
+
+        let (engine, _, dgramPort) = try await makeEngine()
+        defer { engine.stop() }
+        engine.start()
+
+        await engine.startNetworkDiscovery(
+            trackerHostname: "127.0.0.1", trackerServerPort: trackerPort, advertisedPort: dgramPort,
+            hostPlayerName: "Host", mapName: "Arena", upnpEnabled: false,
+            heartbeatInterval: .milliseconds(50)
+        )
+
+        let (received, heartbeatBytes) = try await daemonScript
+        #expect(received?.playerName == "Host")
+        #expect(received?.mapName == "Arena")
+        #expect(received?.port == dgramPort)
+        let expectedHeartbeat = trackerHost(hostPlayerName: "Host", mapName: "Arena", port: dgramPort, state: engine.state)
+        #expect(heartbeatBytes == expectedHeartbeat.encodeAsHeartbeat())
+    }
+
+    @Test func testStartNetworkDiscoveryIsANoOpWithNoTrackerAndNoUPnP() async throws {
+        let (engine, _, dgramPort) = try await makeEngine()
+        defer { engine.stop() }
+        engine.start()
+
+        // Should return promptly and not throw/crash -- T-5's "no tracker configured is success,
+        // not an error" precedent (`TrackerRegistration.swift`) extended to this call site.
+        await engine.startNetworkDiscovery(
+            trackerHostname: nil, advertisedPort: dgramPort, hostPlayerName: "Host", mapName: "Arena",
+            upnpEnabled: false
+        )
+    }
+}
