@@ -84,6 +84,11 @@ public final class GameSession {
     private let udpSession: UDPSession?
     private var joinContinuation: AsyncStream<JoinEvent>.Continuation?
     private var joinConsumerTask: Task<Void, Never>?
+    /// **Issue #17:** drives `renderView`'s existing `onInputFlagsChange`/`onLayMineKeyDown`/
+    /// `performViewAction` surface off a connected `GCExtendedGamepad`, same as the keyboard path
+    /// -- created once per session, after `renderView`'s own per-path closures are wired, so it
+    /// works identically on all three paths with no path-specific code here.
+    private var controllerInput: GameControllerInputHandler?
     /// Mirrors `HostGameEngine.localSeq`'s identical role -- this client's own outgoing per-tick
     /// counter, `assembleClUpdate`'s own broadcast cadence gate (`% 5 == 0`, ~10Hz).
     private var localSeq: Int32 = 0
@@ -147,6 +152,7 @@ public final class GameSession {
             guard let self else { return }
             queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// B.7 (D108): the host path -- renders live off `hostEngine`'s own running state instead of
@@ -183,6 +189,7 @@ public final class GameSession {
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// **B.8 (D113/D114/D116):** the join path -- `tcpSession`/`udpSession` are already-live,
@@ -254,6 +261,7 @@ public final class GameSession {
             guard let self else { return }
             queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no
