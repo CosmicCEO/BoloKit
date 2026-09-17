@@ -42,7 +42,7 @@ Current sprint target: **[v1.3.0 Find and share games](https://github.com/Cosmic
 | Milestone | Due | Issues |
 |-----------|-----|--------|
 | [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN environment-blocked), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://` **closed**, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look **closed** |
-| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD **closed** (early), [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog |
+| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD **closed** (early), [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog **closed** (PR #48 pending merge) |
 | [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
@@ -64,19 +64,23 @@ Not coding work until a ruling or a release milestone says so.
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
-## This sprint (v1.3.0 in progress, not tagged)
+## v1.3.0 (in progress, not tagged)
 
-Branch `issue-20-bolo-url`. Test counts on this branch (not a release tag): SwiftPM 802 (575 + 227) + 78 `Bolo 2026Tests` (77 pass + 1 pre-existing skip). Confirm before any tag.
+[#20](https://github.com/CosmicCEO/BoloKit/issues/20) and [#26](https://github.com/CosmicCEO/BoloKit/issues/26) merged to `main` (PRs #47, #49 — `issue-20-bolo-url`/`issue-23-hud-snapshot` branches are stale, safe to delete).
 
-- [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://join?host=&port=` + ShareLink (password omitted)
-- [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Finder `.map` thumbnails (`QLThumbnailProvider`, generated tiles). Needs a logout once for the appex to attach. Chooser also accepts XBolo’s `com.gengasw.xbolo.map`
+- [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://join?host=&port=` + ShareLink (password omitted) — **closed**
+- [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Finder `.map` thumbnails (`QLThumbnailProvider`, generated tiles). Needs a logout once for the appex to attach. Chooser also accepts XBolo’s `com.gengasw.xbolo.map` — **closed**
 - [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour advertise/browse/join-via-endpoint — **open**. Live two-peer LAN unverifiable: `NWListener` EINVAL on the physical Mac and Parallels guest, including a bare `swiftc` bind. Do not reopen that investigation.
 
-[#21](https://github.com/CosmicCEO/BoloKit/issues/21) / [#24](https://github.com/CosmicCEO/BoloKit/issues/24) / [#6](https://github.com/CosmicCEO/BoloKit/issues/6) untouched this sprint; same bind block.
+[#21](https://github.com/CosmicCEO/BoloKit/issues/21) / [#24](https://github.com/CosmicCEO/BoloKit/issues/24) / [#6](https://github.com/CosmicCEO/BoloKit/issues/6) untouched; same bind block.
 
-## Landed early (v1.4.0, no tag)
+## v1.4.0 (in progress, no tag)
 
-[#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD snapshot -- `HUDSnapshot`, a display-only `@MainActor @Observable` projection of `GameState` (the first `@Observable` type in this codebase), populated from `GameSession`'s tick path. `ResourceGaugesPanel`/`PlayerStatusGrid` read it directly instead of polling `session.state` on a `TimelineView`; `GameSession.state` itself is still not `ObservableObject`. Branch `issue-23-hud-snapshot`. Test counts on this branch: 82 `Bolo 2026Tests` (81 pass + 1 pre-existing skip); no `BoloKit`/`BoloNet` sources touched, SwiftPM suite unaffected. Not a `v1.4.0` tag.
+- [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD snapshot — **closed**, merged to `main` (PR #49). `HUDSnapshot`, a display-only `@MainActor @Observable` projection of `GameState` (the first `@Observable` type in this codebase), populated from `GameSession`'s tick path. `ResourceGaugesPanel`/`PlayerStatusGrid` read it directly instead of polling `session.state` on a `TimelineView`; `GameSession.state` itself is still not `ObservableObject`.
+- [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog signposts on tick/draw/clUpdate — **closed**. Fix pushed on branch `issue-16-oslog`, open as [PR #48](https://github.com/CosmicCEO/BoloKit/pull/48) (author-reported 804 SwiftPM + 82 `Bolo 2026Tests`, one pre-existing flake); not yet merged — needs a real `swift test`/`xcodebuild` pass on a toolchain before merge, this container has none.
+- [#3](https://github.com/CosmicCEO/BoloKit/issues/3) Join-side connection lag tint — **open**. Fix pushed on branch `claude/plan-next-issue-5u8ew6`, open as [PR #50](https://github.com/CosmicCEO/BoloKit/pull/50); author disclosed no Swift/Xcode toolchain in that session, so it was hand-traced against `UDPSessionTests.swift`, not run. Needs a real test pass before merge.
+- [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents for Host/Join last — **open**. Work committed and pushed to branch `issue-22-app-intents`, no PR opened yet. Author disclosed no Swift/Xcode toolchain; `AppIntentsTests.swift` adds 7 `@Test` functions but none of it has been built or run. Needs a toolchain pass, then a PR.
+- [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller mapping, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds — untouched.
 
 ## Landed (`v1.2.3` patch)
 
