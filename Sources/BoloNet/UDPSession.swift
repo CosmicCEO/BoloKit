@@ -197,4 +197,15 @@ public final class UDPSession: @unchecked Sendable {
     public func allRemoteSeqsAsUInt32() -> [UInt32] {
         remoteSeqs.map { UInt32(bitPattern: $0) }
     }
+
+    /// D150(3) follow-on: `player`'s entry in `remoteLastUpdates` -- the join client's own
+    /// `localSeq` at the moment that player's last real `CLUpdate` was applied (`apply(_:...)`
+    /// above), the identical role `HostSessionTable.slots[player].lastUpdate` plays on the host
+    /// side. `GameSession.connectionAge(for:)` subtracts this from its own current `localSeq` to
+    /// get the join-side "ticks since last update" the host path already derives from its own
+    /// table via `allTicksSinceLastUpdate(currentTick:)`. `0` (this table's initial value) until
+    /// a real update for `player` has ever been applied, same as the host table's own default.
+    public func lastUpdate(for player: Int) -> Int32 {
+        remoteLastUpdates[player]
+    }
 }

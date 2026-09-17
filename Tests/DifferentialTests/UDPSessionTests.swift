@@ -293,3 +293,31 @@ private func sampleHeader(player: UInt8, remoteSeqForLocal: Int32) -> CLUpdateHe
     expected[1] = 5  // sampleHeader's own fixed seq value for whichever player it's built for
     #expect(session.allRemoteSeqsAsUInt32() == expected)
 }
+
+// D150(3): `lastUpdate(for:)` is `GameSession.connectionAge(for:)`'s join-side source -- the
+// caller's own `localSeq` (here `myOwnSeq:`) at the moment a player's last real update was
+// applied, mirroring `HostSessionTable.lastUpdate(for:)` on the host side. Proves it starts at 0
+// (no update ever applied) and reflects the actual `myOwnSeq` passed to `receiveAndApply`, not a
+// re-derivation of the remote header's own seq (already covered by the sibling test above).
+@Test func udpSessionLastUpdateReflectsCallersOwnSeqAtApplyTime() async throws {
+    let (listener, port, waiter) = try await startLoopbackUDPListener()
+    defer { listener.cancel() }
+
+    let session = try await UDPSession(host: "127.0.0.1", port: port)
+    defer { session.cancel() }
+
+    try await session.sendLocalUpdate(CLUpdate(header: sampleHeader(player: 0, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    let harnessConnection = await waiter.wait()
+    _ = try await receiveOneDatagram(harnessConnection)
+
+    #expect(session.lastUpdate(for: 1) == 0)
+
+    var state = GameState()
+    state.localPlayer = 0
+    state.players = (0..<maxPlayers).map { i in PlayerState(connected: i == 1, used: i == 1) }
+    try await sendDatagram(harnessConnection, CLUpdate(header: sampleHeader(player: 1, remoteSeqForLocal: 0), shells: [], explosions: []).encode())
+    _ = try await session.receiveAndApply(myOwnSeq: 42, state: &state)
+
+    #expect(session.lastUpdate(for: 1) == 42)
+    #expect(session.lastUpdate(for: 0) == 0)  // untouched slot stays at its initial value
+}
