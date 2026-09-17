@@ -89,7 +89,27 @@ public func runTick(
     // D154 Wave 3 / D163: pass-through for the builder-command `printmessage`
     // callback (`readyTick` need-trees/pill/mines and `resolveBuilderTask`
     // would-kill). Not a RecvSR-style UI hook; builder-command path only.
-    onPrintMessage: (String) -> Void = { _ in }
+    onPrintMessage: (String) -> Void = { _ in },
+    // Issue #8: remaining sound-only hooks. `onHitTank` fires on `shellTick`'s own tank-hit test
+    // (ShellTick.swift); `onHitTerrain`/`onHitTree` fire in `applyDamage`'s terrain-vs-forest
+    // split; `onMine` fires on a tank's own successful mine plant (`TankLocalTick.swift`'s
+    // `plantMine` call sites); `onBuild` fires on a builder's completed road/wall/boat/pill/
+    // repair action (`BuilderTick.swift`'s `arriveAtTarget`); `onBuilderDeath` fires
+    // unconditionally in `killBuilder`, reached from every mine-detonation/splash-damage/
+    // shell-collision path that can kill a builder (see `MineChain.swift`'s `explosionAt`/
+    // `superboomAt`); `onSink` fires in `drown`; `onBubbles` fires on `tankLocalTick`'s own
+    // river-drain branch; `onPillShot` fires whenever a pillbox actually fires
+    // (`PillTick.swift`'s `emitPillShell`). No near/far fog split — see `SoundPlayer.swift`'s
+    // own header for why every one of these is map-wide-because-no-fog, not local-player-only.
+    onHitTank: () -> Void = {},
+    onHitTerrain: (Pointi) -> Void = { _ in },
+    onHitTree: (Pointi) -> Void = { _ in },
+    onMine: (Pointi) -> Void = { _ in },
+    onBuild: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
+    onSink: () -> Void = {},
+    onBubbles: () -> Void = {},
+    onPillShot: () -> Void = {}
 ) {
     // 1. Pause gate. `serverPauseTicks` mirrors `server.pause`'s tri-state
     // countdown (server.c:1088-1099); `clientPauseDisplaySeconds` mirrors
@@ -223,11 +243,13 @@ public func runTick(
     replenishBases(state: &state, onReplenishBase: onReplenishBase)
     growTrees(state: &state, onGrow: onGrow)
     chain(
-        state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+        state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+        onSuperboomTerrain: onSuperboomTerrain,
         onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom
     )
     flood(
-        state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+        state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+        onSuperboomTerrain: onSuperboomTerrain,
         onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom,
         onShouldBroadcastFlood: onShouldBroadcastFlood
     )
@@ -265,7 +287,7 @@ public func runTick(
         tankMoveTick(
             player: player, state: &state,
             onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }
@@ -273,27 +295,29 @@ public func runTick(
     let localOld = oldTankPositions[state.localPlayer]
     tankLocalTick(
         old: Pointi(x: Int32(localOld.x), y: Int32(localOld.y)), state: &state,
-        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
-        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onTankShot: onTankShot
+        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onTankShot: onTankShot,
+        onBubbles: onBubbles, onMine: onMine, onSink: onSink
     )
 
     for player in state.players.indices {
         builderTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            onPrintMessage: onPrintMessage
+            onBuild: onBuild, onPrintMessage: onPrintMessage
         )
     }
 
     pillTick(
         state: &state, oldTankPositions: oldTankPositions, onMineExplosion: onMineExplosion,
-        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill, onPillShot: onPillShot
     )
 
     for player in state.players.indices {
         shellTick(
-            player: player, state: &state, onMineExplosion: onMineExplosion,
+            player: player, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
             onSuperboomTerrain: onSuperboomTerrain,
-            onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+            onHitTank: onHitTank, onHitTerrain: onHitTerrain, onHitTree: onHitTree
         )
     }
 
