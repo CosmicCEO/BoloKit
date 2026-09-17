@@ -136,6 +136,14 @@ public final class HostGameEngine: @unchecked Sendable {
     /// all, just appended text) so this is purely a display-layer concern invented for this port.
     private var nextMessageID: UInt64 = 0
 
+    /// **v1.3.0 #24:** tracker registration/heartbeat and UPnP port mapping, both best-effort --
+    /// see `startNetworkDiscovery`'s own doc comment.
+    private var trackerSession: TrackerSession?
+    private var trackerHeartbeatTask: Task<Void, Never>?
+    private var portMapping: PortMapping?
+    private var portMappingTask: Task<Void, Never>?
+    private static let discoveryLogger = Logger(subsystem: BoloSignposts.subsystem, category: BoloSignposts.netCategory)
+
     /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
     /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
     /// only the consumer `Task` may ever touch). Hopped onto the main actor here, at the single
@@ -204,6 +212,63 @@ public final class HostGameEngine: @unchecked Sendable {
         }
     }
 
+    /// **v1.3.0 #24:** wires the two "Announce on Tracker" / "UPnP Port Mapping" host-form toggles
+    /// (`HostGameView.swift`) to the already-shipped `registerWithTracker`/`PortMapping` (Wave
+    /// 6.5). Separate from `start()` -- which stays synchronous and non-throwing, matching its own
+    /// "safe to call once" contract above -- because tracker registration is a real network
+    /// handshake. Both halves are best-effort: a nil/empty `trackerHostname` skips tracker
+    /// registration entirely (T-5's "no tracker configured is success" precedent,
+    /// `TrackerRegistration.swift`), and either half failing (unreachable tracker, no UPnP
+    /// gateway) never blocks or tears down hosting -- LAN-only play is still a first-class
+    /// outcome.
+    ///
+    /// `heartbeatInterval` defaults to `TRACKERUPDATESECONDS` (`server.h:20`, 60s) but is
+    /// overridable for tests, matching `registerWithTracker`'s own `trackerServerPort` parameter's
+    /// existing test-injection precedent.
+    public func startNetworkDiscovery(
+        trackerHostname: String?, trackerServerPort: UInt16 = BoloNet.trackerPort, advertisedPort: UInt16,
+        hostPlayerName: String, mapName: String, upnpEnabled: Bool,
+        heartbeatInterval: Duration = .seconds(60)
+    ) async {
+        if let trackerHostname, !trackerHostname.isEmpty {
+            do {
+                let session = try await registerWithTracker(
+                    hostname: trackerHostname, trackerServerPort: trackerServerPort, advertisedPort: advertisedPort,
+                    hostPlayerName: hostPlayerName, mapName: mapName, state: state
+                )
+                trackerSession = session
+                if let session {
+                    trackerHeartbeatTask = Task { [weak self] in
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: heartbeatInterval)
+                            guard !Task.isCancelled, let self else { return }
+                            let host = trackerHost(
+                                hostPlayerName: hostPlayerName, mapName: mapName, port: advertisedPort, state: self.state
+                            )
+                            try? await session.sendHeartbeat(host)
+                        }
+                    }
+                }
+            } catch {
+                Self.discoveryLogger.error("tracker registration failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+
+        if upnpEnabled {
+            do {
+                let mapping = try PortMapping(internalPort: advertisedPort)
+                portMapping = mapping
+                portMappingTask = Task {
+                    for await update in mapping.updates {
+                        Self.discoveryLogger.debug("UPnP mapping updated: external port \(update.externalPort, privacy: .public)")
+                    }
+                }
+            } catch {
+                Self.discoveryLogger.error("UPnP port mapping failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
     public func stop() {
         timer?.cancel()
         timer = nil
@@ -212,6 +277,14 @@ public final class HostGameEngine: @unchecked Sendable {
         consumerTask?.cancel()
         consumerTask = nil
         continuation = nil
+        trackerHeartbeatTask?.cancel()
+        trackerHeartbeatTask = nil
+        trackerSession?.cancel()
+        trackerSession = nil
+        portMappingTask?.cancel()
+        portMappingTask = nil
+        portMapping?.cancel()
+        portMapping = nil
     }
 
     /// **B.7 (D102/D108):** the fix for the teardown gap PARITY found -- `stop()` alone cancels

@@ -38,6 +38,11 @@
 //  `JoinGameView`'s post-handshake flow already runs -- with a visible in-game notice, rather than
 //  a dead-end form error. Real multi-human-one-machine networked play stays unscoped for now.
 //
+//  v1.3.0 #24: B.7/B.8's disclosed Tracker/UPnP gap above is closed -- `startHosting()` now calls
+//  the new `HostGameEngine.startNetworkDiscovery` right after `engine.start()`, best-effort (a
+//  failed/skipped tracker or UPnP request never blocks hosting, matching D109's own "solo play
+//  must still work" precedent).
+//
 
 import BoloKit
 import BoloNet
@@ -67,14 +72,8 @@ struct HostGameView: View {
     @State private var passwordText = ""
     @State private var dominationType: DominationType = .open
     @State private var baseControlSeconds: Double = 30
-    /// No live effect yet -- no listener exists to bind this to until B.5. Kept in the form so
-    /// the UI doesn't need rework once B.5 lands and actually needs a port.
     @State private var portText = "50000"
-    /// Milestone B.6 (D105 Part 2, split from B.4): same "no live effect yet" treatment as
-    /// `portText` above, for the identical reason -- `startHosting()` below still only produces a
-    /// local `GameState` (D94's own disclosed scope), so there is no real listener for
-    /// `registerWithTracker`/`PortMapping` (both already shipped, Wave 6.5) to bind to yet. Kept
-    /// in the form now so it doesn't need rework once real host-network wiring lands.
+    /// v1.3.0 #24: wired to `HostGameEngine.startNetworkDiscovery` in `startHosting()` below.
     @State private var trackerEnabled = false
     @State private var upnpEnabled = false
     @State private var hostErrorMessage: String?
@@ -132,9 +131,9 @@ struct HostGameView: View {
                 }
                 TextField("Port", text: $portText)
                 Toggle("Announce on Tracker", isOn: $trackerEnabled)
-                    .help("Not wired to hosting yet")
+                    .help("Registers this game with the tracker hostname set in Preferences")
                 Toggle("UPnP Port Mapping", isOn: $upnpEnabled)
-                    .help("Not wired to hosting yet")
+                    .help("Requests a NAT-PMP/UPnP port mapping for this game's port")
             }
 
             Section("Domination") {
@@ -321,6 +320,17 @@ struct HostGameView: View {
             let dgramListener = try await HostDgramListener(port: port)
             let engine = HostGameEngine(initialState: state, listener: listener, dgramListener: dgramListener)
             engine.start()
+            // v1.3.0 #24: best-effort, matches `startNetworkDiscovery`'s own "never blocks hosting"
+            // contract -- `trackerEnabled`/`upnpEnabled` off (or a failure inside either) is a
+            // silent LAN-only outcome, not an error surfaced to this form.
+            let trackerHostname = UserDefaults.standard.string(forKey: "GSTrackerString")
+            await engine.startNetworkDiscovery(
+                trackerHostname: trackerEnabled ? trackerHostname : nil,
+                advertisedPort: port,
+                hostPlayerName: bonjourName ?? "Newbie",
+                mapName: mapURL?.lastPathComponent ?? "",
+                upnpEnabled: upnpEnabled
+            )
             onStartHosting(engine)
         } catch {
             // D109: a real, environment-level Network.framework failure this port's own code
