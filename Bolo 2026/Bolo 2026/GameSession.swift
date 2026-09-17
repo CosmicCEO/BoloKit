@@ -306,17 +306,29 @@ public final class GameSession {
     /// **D150(3):** ticks elapsed since `player`'s last real network update, mirroring
     /// `client.players[player].lastupdate`'s role in `setPlayerStatus:`
     /// (`GSXBoloController.m:2196-2210`) -- `PlayerStatusGrid` uses this to color-code a
-    /// lagging/dropped connection. `nil` on the join or single-process path (same host-only
-    /// scope `canKickBan` above already has -- this port's join-side client tracks its own
-    /// per-peer freshness in `UDPSession`'s private `remoteLastUpdates`, a differently-owned
-    /// table not wired to `GameSession`; disclosed gap, see the D150 pre-brief in
-    /// `docs/AGENT_NOTES.md`), rather than a synthetic 0 that would misleadingly read as
-    /// "always fresh."
+    /// lagging/dropped connection.
+    ///
+    /// Host path: `hostEngine.lastKnownTicksSinceLastUpdate`, already `currentTick - lastUpdate`
+    /// per-slot (`HostSessionTable.allTicksSinceLastUpdate`).
+    ///
+    /// Join path: this port's own client tracks its per-peer freshness in `UDPSession`'s
+    /// `remoteLastUpdates` -- the same role, just recorded as this session's own `localSeq` value
+    /// at the last real update rather than an absolute host tick, so the age is `localSeq -
+    /// udpSession.lastUpdate(for:)` instead of `hostEngine`'s ready-made subtraction.
+    ///
+    /// `nil` on the single-process path (neither `hostEngine` nor `udpSession`), rather than a
+    /// synthetic 0 that would misleadingly read as "always fresh."
     public func connectionAge(for player: Int) -> UInt64? {
-        guard let hostEngine else { return nil }
-        let ages = hostEngine.lastKnownTicksSinceLastUpdate
-        guard ages.indices.contains(player) else { return nil }
-        return ages[player]
+        if let hostEngine {
+            let ages = hostEngine.lastKnownTicksSinceLastUpdate
+            guard ages.indices.contains(player) else { return nil }
+            return ages[player]
+        }
+        if let udpSession {
+            guard (0..<maxPlayers).contains(player) else { return nil }
+            return UInt64(bitPattern: Int64(localSeq) - Int64(udpSession.lastUpdate(for: player)))
+        }
+        return nil
     }
 
     /// **C.2 (D128):** alliance request, wired across all three of `GameSession`'s paths --
