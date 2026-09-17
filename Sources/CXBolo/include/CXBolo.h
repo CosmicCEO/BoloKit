@@ -94,6 +94,20 @@ struct PillShellResult {
 
 struct PillShellResult pillshell_oracle(Vec2f tank, Vec2f old, Vec2f pill);
 
+// v1.5.0 (issue #1): permanent verbatim extracts of fogvis()'s interpolation arithmetic,
+// calcvis()'s final distance/blend formula, and fogtilefor()'s mine-substitution decision,
+// for oracle testing. Same reduced-parameter, no-globals form as forestvis_oracle above.
+float fogvis_oracle(
+  float fx, float fy,
+  int isFogCenter,
+  int isFogXm1Y, int isFogXp1Y, int isFogXYm1, int isFogXYp1,
+  int isFogXm1Ym1, int isFogXm1Yp1, int isFogXp1Ym1, int isFogXp1Yp1
+);
+
+float calcvis_blend_oracle(float forestvis, float fogvis, float dist);
+
+int fogtilefor_hides_mine_oracle(int hiddenmines, int tileMatchesPrevious);
+
 // Wave 6.0 wire-codec oracle extracts (netops.c) of sendclupdate()/
 // dgramclient()'s pure encode/decode transforms, plus struct-layout ground
 // truth for the CL*/SR* TCP structs and CLUpdate's UDP header.

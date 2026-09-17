@@ -1,0 +1,186 @@
+import Darwin
+
+// MARK: - v1.5.0 (issue #1) — fog-of-war state and vision algorithm
+//
+// Ported from `client.h:59,61`'s per-client `fog[WIDTH][WIDTH]`/`seentiles[WIDTH][WIDTH]`
+// globals and `client.c`'s `increasevis`/`decreasevis`/`fogtilefor`/`testhiddenmine`
+// (3850-3921, 6143-6270, 4462-4498). See `docs/CONSTRAINTS.md`'s "Fog-of-war (v1.5.0)"
+// section for the full rationale behind every deviation noted below.
+//
+// **Deviation from C's architecture, not from the algorithm:** in C there is exactly one
+// `FogState`-equivalent per running process (the single global `struct Client client`),
+// because C's networking sends every client full ground truth and fog is purely a local
+// rendering filter. This port instead gives the HOST one `FogState` per connected player
+// slot, and redacts what crosses the wire per recipient (wired up in `HostGameEngine`/
+// `HostListener`, not here). This file only ports the algorithm itself, which stays
+// bit-for-bit faithful to `Reference/c` regardless of who owns the state.
+
+/// Per-observer fog-of-war state. One instance represents one observer's accumulated
+/// vision: the host's own view, or (once wired into `HostGameEngine`) one per connected
+/// player slot. Mirrors C's `fog`/`seentiles` globals, unified into a value type since
+/// this port has no separate client/server split.
+public struct FogState: Sendable {
+    /// Reference-count grid; `fog[y*256+x] > 0` means the tile is currently visible.
+    /// Mirrors `fog[WIDTH][WIDTH]` — magnitude counts overlapping vision sources (own
+    /// tank, own pills/bases, allied tanks/pills/bases) so one source moving away doesn't
+    /// falsely re-fog a tile another source still covers. `Int16` comfortably bounds the
+    /// realistic overlap count; this is a pure count, never sent over the wire, so exact
+    /// bit-width parity with C's `int` isn't required.
+    public var fog: [Int16]
+    /// Last-observed display `Tile` at each coordinate, at full resolution (pill/base
+    /// occupancy classification included, matching what `fogTileFor` actually returns —
+    /// not collapsed to raw terrain). `.unknown` where never seen. Mirrors `seentiles`.
+    public var seenTiles: [Tile]
+
+    public init() {
+        fog = [Int16](repeating: 0, count: 256 * 256)
+        seenTiles = [Tile](repeating: .unknown, count: 256 * 256)
+    }
+
+    /// `seenTiles` as a `TileGrid`, ready for `mapimage()`/`isMinedTile()` — the same
+    /// autotiling functions `GameRenderView.drawTerrain` already calls against live
+    /// ground truth today. Recomputed on read rather than kept as a second stored
+    /// representation, since this is a rendering-time convenience, not a hot path.
+    public var tileGrid: TileGrid {
+        var grid = TileGrid()
+        grid.storage = seenTiles.map(\.rawValue)
+        return grid
+    }
+}
+
+// MARK: - increaseVis / decreaseVis
+
+/// Ported from `increasevis()` (`client.c:3876-3921`). Clips `r` to the map, increments
+/// `fog` over the clipped rect, then re-snapshots `seenTiles` via `fogTileFor` wherever
+/// `fog <= 1` (the tile just transitioned to visible) over that **same** rect.
+///
+/// **Deviation (`docs/CONSTRAINTS.md`):** C's second pass runs over
+/// `insetrect(r, -1, -1)`, which actually *grows* the rect by 1 in each direction due to
+/// `insetrect`'s sign convention — a sign artifact, not a deliberate behavior, with no
+/// visible/gameplay consequence either way (a tile's final visible/hidden state and
+/// revealed value are unaffected; only how eagerly an already-covered neighbor gets
+/// redundantly re-snapshot changes). This port re-snapshots over the same clipped rect
+/// `fog` was incremented over, per the invisible-bug exception to D24.
+public func increaseVis(
+    _ r: Recti, state: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    hiddenMines: Bool, observer: Int, players: [PlayerState]
+) {
+    let clipped = intersectionrect(worldRect, r)
+    guard clipped.size.width > 0, clipped.size.height > 0 else { return }
+
+    let minX = clipped.origin.x
+    let minY = clipped.origin.y
+    let maxX = minX + clipped.size.width
+    let maxY = minY + clipped.size.height
+
+    for y in minY..<maxY {
+        for x in minX..<maxX {
+            state.fog[Int(y) * 256 + Int(x)] += 1
+        }
+    }
+    for y in minY..<maxY {
+        for x in minX..<maxX {
+            let index = Int(y) * 256 + Int(x)
+            guard state.fog[index] <= 1 else { continue }
+            state.seenTiles[index] = fogTileFor(
+                x: x, y: y, previousSeen: state.seenTiles[index], terrain: terrain,
+                pills: pills, bases: bases, hiddenMines: hiddenMines, observer: observer, players: players
+            )
+        }
+    }
+}
+
+/// Ported from `decreasevis()` (`client.c:3850-3874`). Decrements `fog` over the clipped
+/// rect. Does **not** clear `seenTiles` — the last-seen snapshot persists (stale) while
+/// re-fogged, matching C exactly.
+public func decreaseVis(_ r: Recti, state: inout FogState) {
+    let clipped = intersectionrect(worldRect, r)
+    guard clipped.size.width > 0, clipped.size.height > 0 else { return }
+
+    let minX = clipped.origin.x
+    let minY = clipped.origin.y
+    let maxX = minX + clipped.size.width
+    let maxY = minY + clipped.size.height
+
+    for y in minY..<maxY {
+        for x in minX..<maxX {
+            state.fog[Int(y) * 256 + Int(x)] -= 1
+        }
+    }
+}
+
+// MARK: - fogTileFor
+
+/// Ported from the `static fogtilefor()` (`client.c:6143-6270`). Reuses `tileFor` — its
+/// own doc comment already names it "the non-fog variant" of this exact C function — for
+/// the shared pill/base/terrain resolution, then layers on the one piece `tileFor`
+/// deliberately left out: mined-terrain substitution. A mine is hidden (rendered as its
+/// unmined equivalent) unless `hiddenMines` is false, or `previousSeen` already equals
+/// this exact mined tile (sticky reveal — once shown, a mine stays shown to this observer
+/// even after re-fogging and re-revealing).
+public func fogTileFor(
+    x: Int32, y: Int32, previousSeen: Tile, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    hiddenMines: Bool, observer: Int, players: [PlayerState]
+) -> Tile {
+    let resolved = tileFor(x: x, y: y, terrain: terrain, pills: pills, bases: bases, localPlayer: observer, players: players)
+    guard hiddenMines else { return resolved }
+
+    let unminedEquivalent: Tile
+    switch resolved {
+    case .minedSea: unminedEquivalent = .sea
+    case .minedSwamp: unminedEquivalent = .swamp
+    case .minedCrater: unminedEquivalent = .crater
+    case .minedRoad: unminedEquivalent = .road
+    case .minedForest: unminedEquivalent = .forest
+    case .minedRubble: unminedEquivalent = .rubble
+    case .minedGrass: unminedEquivalent = .grass
+    default:
+        return resolved
+    }
+    return previousSeen == resolved ? resolved : unminedEquivalent
+}
+
+// MARK: - revealNearbyHiddenMines
+
+/// Ported from `testhiddenmine()` (`client.c:4462-4498`), deliberately renamed — despite
+/// its C name, this is not a boolean predicate (its `TRY`/`CLEANUP`/`ERRHANDLER`-wrapped
+/// return value is always 0 on success, and its call site only ever checks for the -1
+/// error sentinel, never treats it as "is there a mine here"). It force-reveals any mined
+/// tile within 2.0 world units of `tankPos` in the surrounding 3×3 tile block, regardless
+/// of alliance or current fog state. Called every tick for the local/observing player's
+/// own tank only (`client.c:4273-4280`).
+///
+/// **Deviation (`docs/CONSTRAINTS.md`):** C indexes `client.terrain[y][x]` with no bounds
+/// check near map edges, silently wrapping to an adjacent row (row-major memory layout).
+/// This port relies on `TerrainGrid`'s own bounds-checked subscript (`nil` off-map) — a
+/// real safety deviation, not a judgment call, since a literal Swift `Array` port would
+/// trap instead of silently reading wrong-but-harmless data.
+public func revealNearbyHiddenMines(
+    tankPos: Vec2f, state: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    hiddenMines: Bool, observer: Int, players: [PlayerState]
+) {
+    let originX = Int32(tankPos.x) - 1
+    let originY = Int32(tankPos.y) - 1
+
+    for dy in Int32(0)..<3 {
+        for dx in Int32(0)..<3 {
+            let x = originX + dx
+            let y = originY + dy
+            guard let rawTerrain = terrain[Int(x), Int(y)] else { continue }
+
+            let tileCenter = Vec2f(x: Float(x) + 0.5, y: Float(y) + 0.5)
+            guard mag2f(sub2f(tileCenter, tankPos)) <= 2.0 else { continue }
+
+            switch rawTerrain {
+            case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
+                let index = Int(y) * 256 + Int(x)
+                state.seenTiles[index] = fogTileFor(
+                    x: x, y: y, previousSeen: state.seenTiles[index], terrain: terrain,
+                    pills: pills, bases: bases, hiddenMines: hiddenMines, observer: observer, players: players
+                )
+            default:
+                break
+            }
+        }
+    }
+}
