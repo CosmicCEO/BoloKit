@@ -554,6 +554,15 @@ public final class GameRenderView: NSView {
         // `if (event) { ... }` guards around every one of those branches
         // (`GSXBoloController.m:1688-1717`).
         guard isDown, let action = nonMaskAction(forKeyCode: keyCode, bindings: bindings) else { return }
+        performViewAction(action)
+    }
+
+    /// **Issue #17:** extracted out of `applyKeyChange` so `GameControllerInputHandler`
+    /// (`GameControllerInput.swift`) can drive the same 6 view actions off a controller-button
+    /// down edge, without duplicating this switch or going through a keycode at all. `action`
+    /// being a mask action (or unrecognized here) is a silent no-op, matching the keyboard path's
+    /// own `default: break`.
+    public func performViewAction(_ action: InputAction) {
         switch action {
         case .scrollUp: scroll(dx: 0, dy: -64)
         case .scrollDown: scroll(dx: 0, dy: 64)
