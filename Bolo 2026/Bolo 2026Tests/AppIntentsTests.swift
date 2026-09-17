@@ -25,6 +25,7 @@ struct AppIntentsTests {
     }
 }
 
+@Suite(.serialized)
 struct LastJoinedHostStoreTests {
     private static let hostKey = "GSLastJoinHostString"
     private static let portKey = "GSLastJoinPortNumber"

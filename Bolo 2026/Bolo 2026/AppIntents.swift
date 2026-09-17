@@ -43,7 +43,7 @@ nonisolated struct LastJoinedHost: Equatable, Sendable {
     var port: UInt16
 }
 
-enum LastJoinedHostStore {
+nonisolated enum LastJoinedHostStore {
     private static let hostKey = "GSLastJoinHostString"
     private static let portKey = "GSLastJoinPortNumber"
 
