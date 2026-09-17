@@ -485,7 +485,8 @@ public final class HostGameEngine: @unchecked Sendable {
                         if let onMessageReceived = self.onMessageReceived {
                             Task { await onMessageReceived(message) }
                         }
-                    })
+                    }),
+                    fogStates: fogStates
                 )
             } catch {
                 let name = player < playerNames.count ? playerNames[player] : ""
@@ -602,6 +603,14 @@ public final class HostGameEngine: @unchecked Sendable {
 
     private func tick() async {
         var pending: [[UInt8]] = []
+        // v1.5.0 #1: terrain-affecting tick-driven broadcasts (regrowth, flood, mine-chain
+        // detonations) get masked instead of sent to everyone -- flushed separately below,
+        // after `runTick` returns. Snapshotted before `runTick(state: &state, ...)` takes
+        // exclusive access to `state`, since these callbacks fire *during* that call
+        // (matches `dispatchHostMessage`'s own identical fix, `HostSession.swift`) --
+        // `fogStates` itself is a different property, safe to read live.
+        var maskedPending: [(mask: UInt16, bytes: [UInt8])] = []
+        let hiddenMinesSnapshot = state.hiddenMines
         // B.5c: `RunTick.swift`'s own step 4 already drops onboard pills (via `onShouldBroadcastDropPill`,
         // already wired above) and sets `connected = false` for a lag-timed-out player BEFORE
         // firing `onPlayerDisconnected` -- this callback's only remaining job is the network-side
@@ -659,14 +668,21 @@ public final class HostGameEngine: @unchecked Sendable {
             },
             onCoolPill: { pill in pending.append(SRCoolPill(pill: UInt8(pill)).encode()) },
             onReplenishBase: { base in pending.append(SRReplenishBase(base: UInt8(base)).encode()) },
-            onGrow: { x, y in pending.append(SRGrow(x: UInt8(x), y: UInt8(y)).encode()) },
+            onGrow: { [weak self] x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRGrow(x: UInt8(x), y: UInt8(y)).encode()))
+            },
             onShouldBroadcastDropPill: { pill, x, y in
                 pending.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
             },
-            onShouldBroadcastSmallBoom: { player, x, y in
-                pending.append(SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode())
+            onShouldBroadcastSmallBoom: { [weak self] player, x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode()))
             },
-            onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) },
+            onShouldBroadcastFlood: { [weak self] x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
+            },
             onPrintMessage: { pendingGameMessages.append($0) }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
@@ -689,6 +705,9 @@ public final class HostGameEngine: @unchecked Sendable {
 
         for bytes in pending {
             await table.sendToAll(bytes)
+        }
+        for (mask, bytes) in maskedPending {
+            await table.sendToMask(mask, bytes)
         }
 
         for player in disconnectedPlayers {

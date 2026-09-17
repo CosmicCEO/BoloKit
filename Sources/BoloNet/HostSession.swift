@@ -494,6 +494,32 @@ public func receiveOneHostMessageBytes(from connection: NWConnection) async thro
     }
 }
 
+/// v1.5.0 #1: the mask of currently-connected players whose own `FogState` has `(x, y)`
+/// visible right now, for a terrain-affecting broadcast (mine place/drop, explosions, boat/
+/// road/wall construction, tree growth/regrowth) -- players who can't currently see the tile
+/// keep their prior (possibly stale) value until they observe it themselves, matching this
+/// port's host-authoritative fog deviation (`docs/CONSTRAINTS.md`). `0xFFFF` when
+/// `hiddenMines` is off, matching every other broadcast's `.all` behavior exactly at zero
+/// added cost (`HostSessionTable.sendToMask` only ever touches actually-connected slots
+/// regardless of which other bits are set).
+///
+/// **Known precision limit:** a multi-tile event (`SRSmallBoom`/`SRSuperBoom`'s blast
+/// radius) only carries its trigger coordinate on the wire -- the receiving client
+/// reconstructs the full blast pattern locally from that one point. This gates on
+/// visibility of the trigger tile only, not every tile the resulting blast might touch.
+/// Typical vision radii (14-29 tiles) dwarf a blast radius (1-3 tiles), so this is a sound
+/// approximation, not exact tile-by-tile fog at a blast's edge.
+func terrainVisibilityMask(x: Int, y: Int, hiddenMines: Bool, fogStates: [Int: FogState]) -> UInt16 {
+    guard hiddenMines else { return 0xFFFF }
+    var mask: UInt16 = 0
+    guard x >= 0, x < 256, y >= 0, y < 256 else { return mask }
+    let index = y * 256 + x
+    for (player, fogState) in fogStates where fogState.fog[index] > 0 {
+        mask |= 1 << player
+    }
+    return mask
+}
+
 /// Pure half of `receiveAndDispatchOneHostMessage` (B.5c, D96): decodes `bytes` (already read by
 /// `receiveOneHostMessageBytes`) and dispatches to the matching `recvCl*` function (Wave 6.6) --
 /// or, for the two opcodes with no such function (`CLHangUp`/`CLSendMesg`, per `RecvCL.swift`'s
@@ -506,11 +532,26 @@ public func receiveOneHostMessageBytes(from connection: NWConnection) async thro
 /// `CLHitTank`, whose wire struct carries an explicit, semantically different `player` field (the
 /// tank being hit, not the sender -- `RecvCL.swift`'s own doc comment on `recvClHitTank`), used
 /// instead.
+/// `fogStates` (v1.5.0 #1): the caller's (`HostGameEngine`) per-connected-player-slot fog
+/// state, for `terrainVisibilityMask` to redact terrain-affecting broadcasts against. Empty
+/// by default so every existing test call site is unaffected -- `terrainVisibilityMask`
+/// itself already short-circuits to `.all`'s behavior whenever `state.hiddenMines` is false,
+/// regardless.
 public func dispatchHostMessage(
     opcode: ClientOpcode, bytes: [UInt8], player: Int, state: inout GameState, table: HostSessionTable,
-    callbacks: CLDispatchCallbacks = CLDispatchCallbacks()
+    callbacks: CLDispatchCallbacks = CLDispatchCallbacks(), fogStates: [Int: FogState] = [:]
 ) async throws {
     var pending: [PendingBroadcast] = []
+    // Snapshot before any `recvCl*(..., state: &state, ...)` call below takes exclusive
+    // access -- `terrainMask`'s closures run *during* that access (from inside a
+    // `recvCl*`-owned callback), so reading `state.hiddenMines` directly from within them
+    // would be the identical overlapping-access violation this file's own header already
+    // documents for other fields (`onShouldBroadcastBuild` et al.'s own extra-parameter
+    // fix, above). `hiddenMines` cannot change mid-dispatch of a single message.
+    let hiddenMinesSnapshot = state.hiddenMines
+    func terrainMask(x: Int, y: Int) -> UInt16 {
+        terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: fogStates)
+    }
 
     switch opcode {
     case .hangUp:
@@ -530,7 +571,7 @@ public func dispatchHostMessage(
     case .dropBoat:
         guard let msg = CLDropBoat.decode(bytes) else { throw HostSessionError.malformedMessage }
         recvClDropBoat(x: Int(msg.x), y: Int(msg.y), state: &state, onShouldBroadcastDropBoat: { x, y in
-            pending.append(.all(SRDropBoat(x: UInt8(x), y: UInt8(y)).encode()))
+            pending.append(.mask(terrainMask(x: x, y: y), SRDropBoat(x: UInt8(x), y: UInt8(y)).encode()))
         })
 
     case .dropPills:
@@ -547,7 +588,7 @@ public func dispatchHostMessage(
         recvClDropMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastDropMine: { p, x, y in
-                pending.append(.all(SRDropMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRDropMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastMineAck: { p, success in
                 pending.append(.one(p, SRMineAck(success: success ? 1 : 0).encode()))
@@ -559,7 +600,7 @@ public func dispatchHostMessage(
         recvClTouch(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -602,7 +643,7 @@ public func dispatchHostMessage(
                 pending.append(.all(SRGrabBoat(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -615,7 +656,7 @@ public func dispatchHostMessage(
         recvClGrabTrees(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastGrabTrees: { x, y in
-                pending.append(.all(SRGrabTrees(x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRGrabTrees(x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
@@ -624,7 +665,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -637,7 +678,7 @@ public func dispatchHostMessage(
         recvClBuildRoad(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
             onShouldBroadcastBuild: { x, y, terrain in
-                pending.append(.all(SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
@@ -646,7 +687,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -659,7 +700,7 @@ public func dispatchHostMessage(
         recvClBuildWall(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
             onShouldBroadcastBuild: { x, y, terrain in
-                pending.append(.all(SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
@@ -668,7 +709,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -681,7 +722,7 @@ public func dispatchHostMessage(
         recvClBuildBoat(
             player: player, x: Int(msg.x), y: Int(msg.y), trees: Int(msg.trees), state: &state,
             onShouldBroadcastBuild: { x, y, terrain in
-                pending.append(.all(SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRBuild(x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
@@ -690,7 +731,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -712,7 +753,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -734,7 +775,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -750,7 +791,7 @@ public func dispatchHostMessage(
         recvClPlaceMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastPlaceMine: { p, x, y in
-                pending.append(.all(SRPlaceMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRPlaceMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
@@ -759,7 +800,7 @@ public func dispatchHostMessage(
                 ).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -775,7 +816,7 @@ public func dispatchHostMessage(
                 pending.append(.all(SRDamage(player: UInt8(p), x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -788,7 +829,7 @@ public func dispatchHostMessage(
         recvClSmallBoom(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastSmallBoom: { p, x, y in
-                pending.append(.all(SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
@@ -801,7 +842,7 @@ public func dispatchHostMessage(
         recvClSuperBoom(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastSuperBoom: { p, x, y in
-                pending.append(.all(SRSuperBoom(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRSuperBoom(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onMineExplosion: callbacks.onMineExplosion, onSuperboomTerrain: callbacks.onSuperboomTerrain,
             onShouldBroadcastDropPill: { pill, x, y in
