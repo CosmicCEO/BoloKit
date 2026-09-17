@@ -1,10 +1,10 @@
 # Status
 
-**Current drop:** `v1.2.3` (build 10). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.2.3). **`v1.2.2`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
+**Current drop:** `v1.4.0` (build 11). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.4.0). **`v1.2.3`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
 
-**Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard- and mouse-driven tank, click-to-command builder, 50 Hz tick over a live network session. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
+**Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard-, mouse-, and game-controller-driven tank, click-to-command builder, 50 Hz tick over a live network session, App Intents for Host/Join from Shortcuts and Spotlight, OSLog/`OSSignposter` instrumentation, and near-complete procedural sound. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
 
-**Tests (as of the `v1.2.3` pass):** 795 SwiftPM (575 BoloKitTests + 220 DifferentialTests) + 66 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check. Confirm with `swift test` at tag.
+**Tests (as of the `v1.4.0` pass):** 824 SwiftPM (230 BoloKitTests + 594 DifferentialTests) + 86 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check. Confirmed with `swift test` at tag (0 failures).
 
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
@@ -42,12 +42,12 @@ Current sprint target: **[v1.3.0 Find and share games](https://github.com/Cosmic
 | Milestone | Due | Issues |
 |-----------|-----|--------|
 | [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN environment-blocked), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://` **closed**, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look **closed** |
-| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD **closed** (early), [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog **closed** (early) |
+| ~~v1.4.0 Controls, HUD, sound~~ | shipped | **Closed and tagged `v1.4.0`.** [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog — all closed |
 | [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
 
-Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**.
+Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.4.0** (milestone 8).
 
 ## Decide — [project 2](https://github.com/users/CosmicCEO/projects/2)
 
@@ -70,9 +70,9 @@ Not coding work until a ruling or a release milestone says so.
 
 **Ruling (2026-09-16):** [#21](https://github.com/CosmicCEO/BoloKit/issues/21) (AWDL advertise/browse) and [#6](https://github.com/CosmicCEO/BoloKit/issues/6) (dedicated headless host, a listener) both require binding a `Network.framework` listener locally to write or verify — the same EINVAL block as #14. They stay parked in v1.3.0 until the environment issue lifts or a field Mac is available; do not grind on them in the meantime. [#24](https://github.com/CosmicCEO/BoloKit/issues/24) (tracker announce + UPnP NAT-PMP) is outbound-only — no local listener bind — and is the one v1.3.0 item that can be written and verified tonight. Milestone due 30 Oct 2026 (~6.5 weeks out); no schedule risk yet from the three parked issues.
 
-## Landed on `main` (v1.4.0, no tag)
+## Shipped (`v1.4.0` release)
 
-All 6 milestone issues landed, closed on `main`:
+All 6 milestone issues landed, closed, tagged `v1.4.0`:
 
 - [#16](https://github.com/CosmicCEO/BoloKit/issues/16) **closed**, PR [#48](https://github.com/CosmicCEO/BoloKit/pull/48) merged. OSLog / `OSSignposter` intervals on `runTick`, `GameRenderView.draw(_:)`, and host `clUpdate` send. Subsystem `com.cosmicceo.Bolo-2026`, categories `tick` / `render` / `net`. `DispatchSourceTimer` unchanged.
 - [#23](https://github.com/CosmicCEO/BoloKit/issues/23) **closed**, PR [#49](https://github.com/CosmicCEO/BoloKit/pull/49) merged. Observable HUD snapshot -- `HUDSnapshot`, a display-only `@MainActor @Observable` projection of `GameState` (the first `@Observable` type in this codebase), populated from `GameSession`'s tick path. `ResourceGaugesPanel`/`PlayerStatusGrid` read it directly instead of polling `session.state` on a `TimelineView`; `GameSession.state` itself is still not `ObservableObject`.
@@ -81,9 +81,9 @@ All 6 milestone issues landed, closed on `main`:
 - [#17](https://github.com/CosmicCEO/BoloKit/issues/17) **closed**, PR [#53](https://github.com/CosmicCEO/BoloKit/pull/53) merged. Game Controller mapping to InputFlags. `InputKeymap.swift` action-keyed `inputFlagsChange(forAction:isDown:)`. `GameControllerInput.swift` maps `GCExtendedGamepad` onto 10 of the 14 `InputAction`s. `GameRenderView.performViewAction(_:)` shared across keyboard and controller. `GCSupportsControllerUserInteraction` in `Info.plist`. 100/100 tests pass.
 - [#8](https://github.com/CosmicCEO/BoloKit/issues/8) **closed**, PR [#54](https://github.com/CosmicCEO/BoloKit/pull/54) merged. Wire remaining procedural sounds (`hittank`, `hitterrain`, `hittree`, `mine`, `pillshot`, `build`, `builderdeath`, `sink`, `bubbles`) via BoloKit callback threading (`RunTick`, `ShellTick`, `PillTick`, `BuilderTick`, `TankTick`) and connected to `SoundPlayer.shared.play(...)` in `GameSession.swift`. 824/824 SwiftPM tests (+19 new) + 86/86 app tests pass.
 
-No open v1.4.0 issues remain.
+No open v1.4.0 issues remain. Milestone closed, tag `v1.4.0` cut.
 
-## Landed (`v1.2.3` patch)
+## Previous (`v1.2.3` patch)
 
 [#46](https://github.com/CosmicCEO/BoloKit/issues/46) Pill-vs-pill combat cadence (`minTicksPerShot`) so a calm map turret returns fire.
 
