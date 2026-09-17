@@ -72,6 +72,10 @@ private enum JoinEvent: Sendable {
 public final class GameSession {
     public private(set) var state: GameState
     public let renderView: GameRenderView
+    /// v1.4.0 #23: display-only projection of `state`, updated from the tick path. See
+    /// `HUDSnapshot.swift`'s own header for why this exists instead of making `state` itself
+    /// `ObservableObject`.
+    public let hudSnapshot = HUDSnapshot()
 
     private let ticksSinceLastUpdate: [UInt64]
     private var timer: DispatchSourceTimer?
@@ -125,6 +129,7 @@ public final class GameSession {
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
         view.render(initialState)
+        hudSnapshot.update(from: initialState)
 
         view.onInputFlagsChange = { [weak self] change in
             guard let self else { return }
@@ -155,6 +160,7 @@ public final class GameSession {
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
         view.render(self.state)
+        hudSnapshot.update(from: self.state)
 
         view.onInputFlagsChange = { change in
             hostEngine.submitLocalInputChange(set: change.set, clear: change.clear)
@@ -170,8 +176,9 @@ public final class GameSession {
         view.onBuilderCommand = { command, target in
             hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
-        hostEngine.onTickRendered = { [weak view] renderedState in
+        hostEngine.onTickRendered = { [weak self, weak view] renderedState in
             view?.render(renderedState)
+            self?.hudSnapshot.update(from: renderedState)
         }
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)
@@ -219,6 +226,7 @@ public final class GameSession {
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
         view.render(initialState)
+        hudSnapshot.update(from: initialState)
 
         view.onInputFlagsChange = { [weak self] change in
             guard let self else { return }
@@ -502,6 +510,7 @@ public final class GameSession {
             appendGameMessage(text)
         }
         renderView.render(state)
+        hudSnapshot.update(from: state)
     }
 
     // MARK: - Join path (B.8)
@@ -668,6 +677,7 @@ public final class GameSession {
 
             sendLocalUpdateIfDue(udpSession)
             renderView.render(state)
+            hudSnapshot.update(from: state)
 
         case .tcpMessage(let message):
             // Snapshot player names before `dispatch` takes `&state` -- reading `self.state` from

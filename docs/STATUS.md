@@ -42,7 +42,7 @@ Current sprint target: **[v1.3.0 Find and share games](https://github.com/Cosmic
 | Milestone | Due | Issues |
 |-----------|-----|--------|
 | [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN environment-blocked), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://` **closed**, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look **closed** |
-| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog **closed** (early) |
+| [v1.4.0 Controls, HUD, sound](https://github.com/CosmicCEO/BoloKit/milestone/8) | 11 Dec 2026 | [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD **closed** (early), [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog **closed** (early) |
 | [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
@@ -73,6 +73,10 @@ Not coding work until a ruling or a release milestone says so.
 ## Landed early (v1.4.0, no tag)
 
 [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog / `OSSignposter` intervals on `runTick`, `GameRenderView.draw(_:)`, and host `clUpdate` send. Subsystem `com.cosmicceo.Bolo-2026`, categories `tick` / `render` / `net`. `DispatchSourceTimer` unchanged. Branch `issue-16-oslog`. Test counts confirmed 2026-09-16: SwiftPM 804 (575 + 229) + 82 `Bolo 2026Tests` (81 pass + 1 pre-existing skip); the 1 SwiftPM failure was `hostGameEngineSubmitPauseResumeServerTogglesPauseState`, the documented pre-existing timing flake — isolated rerun passed. Not a `v1.4.0` tag.
+
+## Landed early (v1.4.0, no tag)
+
+[#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD snapshot -- `HUDSnapshot`, a display-only `@MainActor @Observable` projection of `GameState` (the first `@Observable` type in this codebase), populated from `GameSession`'s tick path. `ResourceGaugesPanel`/`PlayerStatusGrid` read it directly instead of polling `session.state` on a `TimelineView`; `GameSession.state` itself is still not `ObservableObject`. Branch `issue-23-hud-snapshot`. Test counts on this branch: 82 `Bolo 2026Tests` (81 pass + 1 pre-existing skip); no `BoloKit`/`BoloNet` sources touched, SwiftPM suite unaffected. Not a `v1.4.0` tag.
 
 ## Landed (`v1.2.3` patch)
 
