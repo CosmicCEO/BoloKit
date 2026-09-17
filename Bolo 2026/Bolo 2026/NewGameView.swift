@@ -67,9 +67,25 @@ struct NewGameView: View {
                 .tag(Tab.join)
         }
         .frame(minWidth: 420, minHeight: 280)
-        .onAppear { if pendingJoinURL != nil { tab = .join } }
+        .onAppear {
+            if pendingJoinURL != nil { tab = .join }
+            switchTabForPendingIntent()
+        }
         .onChange(of: pendingJoinURL) { _, url in
             if url != nil { tab = .join }
+        }
+        .onChange(of: AppIntentRouter.shared.pendingAction) { _, _ in switchTabForPendingIntent() }
+    }
+
+    /// Issue #22: switches to the tab a pending `HostGameIntent`/`JoinLastHostIntent` targets
+    /// before that tab's own view consumes and clears it -- same reasoning as `pendingJoinURL`'s
+    /// own tab-switch above: a form that isn't on screen has no visible effect once it acts.
+    /// Doesn't clear `pendingAction` itself -- `HostGameView`/`JoinGameView` own that.
+    private func switchTabForPendingIntent() {
+        switch AppIntentRouter.shared.pendingAction {
+        case .hostGame: tab = .host
+        case .joinLastHost: tab = .join
+        case nil: break
         }
     }
 }

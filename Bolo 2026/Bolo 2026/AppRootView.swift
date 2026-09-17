@@ -76,16 +76,26 @@ struct AppRootView: View {
         case .playing(let tcpSession, let udpSession, let state):
             GameView(
                 tcpSession: tcpSession, udpSession: udpSession, initialState: state,
-                onQuitToMenu: { screen = .newGame }
+                onQuitToMenu: { returnToNewGame() }
             )
         case .hosting(let engine):
-            GameView(hostEngine: engine, onQuitToMenu: { screen = .newGame })
+            GameView(hostEngine: engine, onQuitToMenu: { returnToNewGame() })
         case .hostingFallback(let state):
             GameView(
-                initialState: state, onQuitToMenu: { screen = .newGame },
+                initialState: state, onQuitToMenu: { returnToNewGame() },
                 notice: "Running local-only -- hosting is unavailable on this system"
             )
         }
+    }
+
+    /// Issue #22: every "Quit to Menu" path clears any pending `HostGameIntent`/
+    /// `JoinLastHostIntent` hand-off before returning to `.newGame` -- otherwise a intent that
+    /// fired mid-game (with nothing mounted to consume it) would sit dangling and fire the moment
+    /// `NewGameView`/`HostGameView`/`JoinGameView` remount here, well after whatever Shortcuts/
+    /// Spotlight invocation set it.
+    private func returnToNewGame() {
+        AppIntentRouter.shared.pendingAction = nil
+        screen = .newGame
     }
 
     /// Preview-only fixture now (the B.1 "Play Demo" button that reached this in production is

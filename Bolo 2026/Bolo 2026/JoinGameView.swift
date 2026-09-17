@@ -153,9 +153,24 @@ struct JoinGameView: View {
         .onAppear {
             consumePendingJoin()
             startLANBrowse()
+            consumeJoinLastHostIntentIfPending()
         }
         .onChange(of: pendingJoinURL) { _, _ in consumePendingJoin() }
+        .onChange(of: AppIntentRouter.shared.pendingAction) { _, _ in consumeJoinLastHostIntentIfPending() }
         .onDisappear(perform: stopLANBrowse)
+    }
+
+    /// Issue #22: `JoinLastHostIntent`'s own hand-off -- same two-hook shape as
+    /// `consumePendingJoin()` above. Fills the same fields the tracker list's own `fill(from:)`
+    /// does, then submits immediately rather than waiting for a second "Join" click.
+    private func consumeJoinLastHostIntentIfPending() {
+        guard AppIntentRouter.shared.pendingAction == .joinLastHost else { return }
+        AppIntentRouter.shared.pendingAction = nil
+        guard !isJoining, let last = LastJoinedHostStore.load() else { return }
+        selectedLANGame = nil
+        addressText = last.host
+        portText = String(last.port)
+        startJoining()
     }
 
     private var progressLabel: String {
@@ -274,6 +289,11 @@ struct JoinGameView: View {
                     return
                 }
 
+                // Issue #22: resolved values, not `addressText`/`portText` -- correct for a LAN
+                // join too, where those text fields never held the LAN game's real address.
+                LastJoinedHostStore.record(
+                    LastJoinedHost(host: result.session.remoteHost, port: result.session.remotePort)
+                )
                 isJoining = false
                 onJoinedGame(result.session, udpSession, state)
             } catch let error as JoinClientError {

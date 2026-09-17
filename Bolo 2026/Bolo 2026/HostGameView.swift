@@ -169,10 +169,26 @@ struct HostGameView: View {
             } else if mapState == nil {
                 applyDecodedMap(bytes: defaultMapFileBytes)
             }
+            consumeHostIntentIfPending()
         }
         .onChange(of: pendingMapURL) { _, _ in
             consumePendingMap()
         }
+        .onChange(of: AppIntentRouter.shared.pendingAction) { _, _ in
+            consumeHostIntentIfPending()
+        }
+    }
+
+    /// Issue #22: `HostGameIntent`'s own hand-off, consumed once whether it arrived before this
+    /// view existed (`onAppear`, a cold launch via Shortcuts/Spotlight) or while it's already on
+    /// screen (`onChange`) -- same two-hook shape as `pendingMapURL`'s own `consumePendingMap()`
+    /// above. Only auto-submits once `mapState` is already populated -- the bundled default map,
+    /// applied earlier in this same `onAppear` -- matching what "Start Hosting" itself requires.
+    private func consumeHostIntentIfPending() {
+        guard AppIntentRouter.shared.pendingAction == .hostGame else { return }
+        AppIntentRouter.shared.pendingAction = nil
+        guard mapState != nil, !isStartingHost else { return }
+        Task { await startHosting() }
     }
 
     private func handleMapPickerResult(_ result: Result<URL, Error>) {
