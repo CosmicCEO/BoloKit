@@ -27,9 +27,15 @@ public func runHostAcceptLoop(
     table: HostSessionTable,
     onJoinOutcome: (HostJoinOutcome) -> Void = { _ in }
 ) async {
+    // v1.5.0 #1: this loop is superseded by `HostGameEngine.handle(.newConnection)` in the
+    // live hosting path (this file's own header) and has no caller that persists fog state
+    // across joins the way `HostGameEngine` does -- a local, loop-scoped dictionary is
+    // exactly as much state as this standalone accept loop already carries anywhere else.
+    var fogStates: [Int: FogState] = [:]
     for await connection in listener.connections {
         let outcome = await processJoinAttempt(
-            connection: connection, serializer: listener.serializer, state: &state, table: table
+            connection: connection, serializer: listener.serializer, state: &state, table: table,
+            fogStates: &fogStates
         )
         onJoinOutcome(outcome)
     }

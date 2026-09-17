@@ -182,19 +182,24 @@ public func forceIPv4(_ parameters: NWParameters, port: NWEndpoint.Port) {
 /// `sendToAll` -- before that broadcast fires, mirroring the C's own
 /// `cntlsock` assignment happening before the tail-end `sendsrplayerjoin`/
 /// `sendsrplayerrejoin` call).
+/// `fogStates` (v1.5.0 #1): the caller's (`HostGameEngine`) per-connected-player-slot fog
+/// state, `inout` since a successful join seeds a brand-new entry here (the initial spawn
+/// reveal, matching C's join-time `increasevis`) that the caller must retain -- same
+/// "value-type dictionary shared via `inout`" idiom this file already uses for `state`.
 @discardableResult
 public func processJoinAttempt(
-    connection: NWConnection, serializer: JoinAcceptSerializer, state: inout GameState, table: HostSessionTable
+    connection: NWConnection, serializer: JoinAcceptSerializer, state: inout GameState, table: HostSessionTable,
+    fogStates: inout [Int: FogState]
 ) async -> HostJoinOutcome {
     await serializer.acquire()
     defer { Task { await serializer.release() } }
 
-    let outcome = await runJoinHandshake(connection: connection, state: &state, table: table)
+    let outcome = await runJoinHandshake(connection: connection, state: &state, table: table, fogStates: &fogStates)
     return outcome
 }
 
 private func runJoinHandshake(
-    connection: NWConnection, state: inout GameState, table: HostSessionTable
+    connection: NWConnection, state: inout GameState, table: HostSessionTable, fogStates: inout [Int: FogState]
 ) async -> HostJoinOutcome {
     let joinBytes: [UInt8]
     do {
@@ -240,8 +245,26 @@ private func runJoinHandshake(
         // is `Optional` regardless) falls back to the zeroed sentinel.
         await table.setDgramAddress(peerAddress(from: connection) ?? DgramServerPeerAddress(family: 0, addr: 0, port: 0), for: player)
 
+        // v1.5.0 #1: the joining player's own initial `FogState`, seeded with a spawn reveal
+        // before anything encodes the map -- matches C's join-time `increasevis`
+        // (`client.c:748`) and must happen here, not after this function returns, so the
+        // very first map send is already redacted rather than sending full ground truth
+        // once and only starting to redact from the *next* broadcast onward.
+        var fogState = fogStates[player] ?? FogState()
+        if state.hiddenMines {
+            increaseVis(
+                tankVisionRect(around: state.players[player].tank), state: &fogState,
+                terrain: state.terrain, pills: state.pills, bases: state.bases,
+                hiddenMines: state.hiddenMines, observer: player, players: state.players
+            )
+        }
+        fogStates[player] = fogState
+
         let seq = await table.allSeqsAsUInt32()
-        let mapBytes = encodeBMap(state)
+        let redactedTerrain = redactedTerrainGrid(state.terrain, fogState: fogState, hiddenMines: state.hiddenMines)
+        var mapState = state
+        mapState.terrain = redactedTerrain
+        let mapBytes = encodeBMap(mapState)
         let preamble = assembleBoloPreamble(player: player, state: state, seq: seq, mapLength: UInt32(mapBytes.count))
 
         do {

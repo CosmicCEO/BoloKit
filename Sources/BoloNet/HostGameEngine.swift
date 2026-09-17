@@ -407,8 +407,13 @@ public final class HostGameEngine: @unchecked Sendable {
         case .newConnection(let connection):
             // Inlined from `runHostAcceptLoop` (B.5a) -- same call, just made from inside this
             // engine's single consumer instead of its own independent Task.
+            // v1.5.0 #1: `fogStates` is `inout` here -- `processJoinAttempt` seeds the
+            // joining player's initial spawn-reveal `FogState` *before* it encodes and sends
+            // the map (`HostListener.swift`'s own doc comment on that ordering), so the very
+            // first map send is already redacted.
             let outcome = await processJoinAttempt(
-                connection: connection, serializer: listener.serializer, state: &state, table: table
+                connection: connection, serializer: listener.serializer, state: &state, table: table,
+                fogStates: &fogStates
             )
             // B.5c: on a successful join, spawn this player's own dynamic producer `Task` --
             // I/O-only (just `receiveOneHostMessageBytes`, never touches `state`), matching the
@@ -418,20 +423,6 @@ public final class HostGameEngine: @unchecked Sendable {
                 if state.players.indices.contains(player) {
                     let name = state.players[player].name
                     await emitGameMessage(rejoin ? EventLogText.rejoined(name) : EventLogText.joined(name))
-                }
-                // v1.5.0 #1: initial spawn reveal, matching C's join-time increasevis
-                // (`client.c:748`). Runs after the map has already been sent to this
-                // connection (`processJoinAttempt`'s own `encodeBMap` call, above) -- Phase 4
-                // (wire redaction) will need this population to happen *before* that send
-                // instead, once the join accept path itself becomes per-recipient.
-                if state.hiddenMines, state.players.indices.contains(player) {
-                    var fogState = fogStates[player] ?? FogState()
-                    increaseVis(
-                        tankVisionRect(around: state.players[player].tank), state: &fogState,
-                        terrain: state.terrain, pills: state.pills, bases: state.bases,
-                        hiddenMines: state.hiddenMines, observer: player, players: state.players
-                    )
-                    fogStates[player] = fogState
                 }
                 let continuation = self.continuation
                 Task {
@@ -776,12 +767,6 @@ public final class HostGameEngine: @unchecked Sendable {
         BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
     }
 
-    /// v1.5.0 #1's tank-vision rect: 29×29 tiles centered on `pos`'s own tile, matching
-    /// every C call site's hardcoded literal (`client.c:459-460` et al.) -- no named
-    /// `bolo.h` macro exists for this (`docs/CONSTRAINTS.md`).
-    private func tankVisionRect(around pos: Vec2f) -> Recti {
-        makerect(Int32(pos.x) - 14, Int32(pos.y) - 14, 29, 29)
-    }
 
     /// v1.5.0 #1: recomputes every connected player slot's `FogState` for this tick.
     /// Called only when `state.hiddenMines` is true (zero-cost when off).
