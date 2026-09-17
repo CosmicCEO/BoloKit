@@ -67,6 +67,14 @@ struct GameSessionTests {
         #expect(session.messages[0].id != session.messages[1].id)
     }
 
+    @Test func tickRecordsIntervalAndDoesNotCrash() {
+        let session = makeSession()
+        session.tick()
+        session.tick()
+        #expect(session.recentTickIntervals.count == 1)
+        #expect(session.recentTickIntervals[0] > 0)
+    }
+
     @Test func canKickBanIsFalseWithoutAHostEngine() {
         let session = makeSession()
         #expect(session.canKickBan == false)
