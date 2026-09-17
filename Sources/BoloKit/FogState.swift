@@ -123,6 +123,16 @@ public func fogTileFor(
     hiddenMines: Bool, observer: Int, players: [PlayerState]
 ) -> Tile {
     let resolved = tileFor(x: x, y: y, terrain: terrain, pills: pills, bases: bases, localPlayer: observer, players: players)
+    return applyMineSubstitution(resolved: resolved, previousSeen: previousSeen, hiddenMines: hiddenMines)
+}
+
+/// The mine-substitution half of `fogTileFor`, factored out so a bulk whole-map resolver
+/// (`fogResolvedTileGrid`, used for rendering) can reuse it without paying `tileFor`'s
+/// per-cell pill/base linear-scan cost over all 65536 tiles — `displayTileGrid`'s own doc
+/// comment already measured that at ~120ms for a full map, far over a 50Hz tick's 20ms
+/// budget. `resolved` is whatever already-computed display tile (from `tileFor` or
+/// `displayTileGrid`) this observer would see with full visibility.
+public func applyMineSubstitution(resolved: Tile, previousSeen: Tile, hiddenMines: Bool) -> Tile {
     guard hiddenMines else { return resolved }
 
     let unminedEquivalent: Tile
@@ -138,6 +148,32 @@ public func fogTileFor(
         return resolved
     }
     return previousSeen == resolved ? resolved : unminedEquivalent
+}
+
+// MARK: - fogResolvedTileGrid
+
+/// Whole-map display grid for a fog-aware renderer, matching `displayTileGrid`'s own
+/// O(256×256 + overlays) performance discipline (reused directly for the ground-truth
+/// half of this computation, not a second per-cell `tileFor` scan). For each tile:
+/// currently visible (`fog > 0`) tiles resolve live every call (so a currently-watched
+/// pill capture or terrain change is never stale, compensating for the known gap that
+/// pill/base state transitions don't yet re-trigger their own vision-source resync —
+/// see `HostGameEngine.updateFogVision`'s own doc comment); fogged-but-previously-seen
+/// tiles use the frozen `seenTiles` snapshot; never-seen tiles are `.unknown`.
+public func fogResolvedTileGrid(for state: GameState, fogState: FogState) -> TileGrid {
+    let live = displayTileGrid(for: state)
+    var grid = TileGrid()
+    for key in grid.storage.indices {
+        if fogState.fog[key] > 0 {
+            let liveTile = Tile(rawValue: live.storage[key])!
+            grid.storage[key] = applyMineSubstitution(
+                resolved: liveTile, previousSeen: fogState.seenTiles[key], hiddenMines: state.hiddenMines
+            ).rawValue
+        } else {
+            grid.storage[key] = fogState.seenTiles[key].rawValue
+        }
+    }
+    return grid
 }
 
 // MARK: - revealNearbyHiddenMines

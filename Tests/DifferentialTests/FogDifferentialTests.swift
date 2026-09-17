@@ -162,6 +162,48 @@ import CXBolo
     }
 }
 
+@Suite struct FogResolvedTileGridTests {
+
+    @Test func testNeverSeenTileRendersUnknown() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.terrain[200, 200] = .grass0
+        let fogState = FogState() // nothing visible or ever seen anywhere
+
+        let grid = fogResolvedTileGrid(for: state, fogState: fogState)
+        #expect(Tile(rawValue: grid.storage[200 * 256 + 200]) == .unknown)
+    }
+
+    @Test func testCurrentlyVisibleMineIsResolvedLiveNotFromAPossiblyStaleSnapshot() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.terrain[100, 100] = .minedGrass
+        var fogState = FogState()
+        fogState.fog[100 * 256 + 100] = 1
+        // Stale/never-updated snapshot -- a real "currently visible" tile would normally
+        // have this populated by increaseVis, but this test deliberately leaves it at the
+        // default `.unknown` to prove the live branch doesn't depend on it being fresh.
+        fogState.seenTiles[100 * 256 + 100] = .unknown
+
+        let grid = fogResolvedTileGrid(for: state, fogState: fogState)
+        // Never seen before (previousSeen == .unknown, not .minedGrass) -- hidden, matches
+        // fogTileFor's own sticky-reveal rule, computed live off current ground truth.
+        #expect(Tile(rawValue: grid.storage[100 * 256 + 100]) == .grass)
+    }
+
+    @Test func testFoggedButPreviouslySeenTileUsesTheFrozenSnapshot() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.terrain[100, 100] = .minedGrass // ground truth changed after this tile was last seen
+        var fogState = FogState()
+        fogState.fog[100 * 256 + 100] = 0 // currently fogged
+        fogState.seenTiles[100 * 256 + 100] = .grass // what was actually observed while last visible
+
+        let grid = fogResolvedTileGrid(for: state, fogState: fogState)
+        #expect(Tile(rawValue: grid.storage[100 * 256 + 100]) == .grass, "must show the frozen snapshot, not re-derive from current ground truth")
+    }
+}
+
 @Suite struct IncreaseDecreaseVisTests {
 
     @Test func testIncreaseVisIncrementsFogAndSnapshotsNewlyVisibleTiles() {
