@@ -67,6 +67,26 @@ Not coding work until a ruling or a release milestone says so.
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
+## This sprint (v1.5.0 in progress, not tagged)
+
+[#1](https://github.com/CosmicCEO/BoloKit/issues/1) Hidden-mines fog-of-war — implemented on
+[PR #56](https://github.com/CosmicCEO/BoloKit/pull/56) (`issue-1-fog-of-war`), pending review.
+All four phases land: the fog algorithm (`FogState`/`increaseVis`/`decreaseVis`/`fogTileFor`/
+`revealNearbyHiddenMines`/`fogVis`/`calcVis`, differentially tested against `Reference/c`),
+host-side per-connected-player tracking, host-local rendering + sprite fade, and wire-protocol
+redaction of both the initial map send and subsequent terrain-affecting broadcasts. See
+`docs/CONSTRAINTS.md`'s "Fog-of-war" section for the host-authoritative deviation from the C
+oracle (deliberate, confirmed with the repo owner) and the two documented C-bug treatments.
+
+**Known gap, deliberately deferred:** pill/base state transitions (capture, build, deploy)
+don't yet act as their own 15×15 vision sources the way several C call sites do — a pill/base
+a player has never had a tank near still resolves correctly the moment any *other* vision
+source (tank movement) crosses its tile, so this is a completeness gap on the vision-source
+side, not a correctness gap. Track as a follow-up once #1 lands.
+
+`swift test`: 258 BoloKitTests + 595 DifferentialTests. `xcodebuild -only-testing:"Bolo
+2026Tests"`: 107/107. App builds clean.
+
 ## Shipped (`v1.3.0` release)
 
 [#20](https://github.com/CosmicCEO/BoloKit/issues/20) and [#26](https://github.com/CosmicCEO/BoloKit/issues/26) closed via PR #47 (merged to `main`).
