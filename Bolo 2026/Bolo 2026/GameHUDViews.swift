@@ -8,9 +8,13 @@
 //  Event-log bar landed in D154 Wave 3 / D163. Win/loss overlay (`MatchEndOverlay`) is display-
 //  only: it latches on the C catalog reached-strings already written to `GameSession.messages`.
 //
-//  Both panels poll `session.state` on a `TimelineView`, the same "poll, don't observe" shape
-//  `PlayerStatusView`/`GameRenderView` already use -- `GameSession` isn't `ObservableObject` by
-//  design (see that file's own header).
+//  `EventLogBar`/`MatchEndOverlay`/`HostAdminBar`/`BuilderToolStrip` poll `session.messages`/
+//  `session.renderView`/host-admin passthroughs on a `TimelineView` -- none of that is
+//  `GameState`, so it stays outside v1.4.0 #23's scope. `ResourceGaugesPanel` reads
+//  `session.hudSnapshot` (`HUDSnapshot.swift`) instead: a display-only `@Observable` projection
+//  of `GameState` updated from the tick path, since `GameSession` isn't `ObservableObject` by
+//  design (see that file's own header) and `state` itself must not become a SwiftUI source of
+//  truth.
 
 import BoloKit
 import BoloNet
@@ -224,31 +228,29 @@ struct ResourceGaugesPanel: View {
     let session: GameSession
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            let snapshot = session.state
-            let localPlayer = snapshot.localPlayer
-            // D148(B) (advisor-flagged): `mines`/`trees` live per-player (`state.players[localPlayer]`,
-            // not `state.local`, per D105/D106), and this panel polls from first frame -- including
-            // `#Preview`'s demo state and any moment `localPlayer` isn't a valid index yet. Guard
-            // it the same way `GameSession` itself does everywhere else, rather than trapping like
-            // D146's crash.
-            let mines = snapshot.players.indices.contains(localPlayer)
-                ? snapshot.players[localPlayer].mines : 0
-            let trees = snapshot.players.indices.contains(localPlayer)
-                ? snapshot.players[localPlayer].trees : 0
-            let base = Self.nearestBase(snapshot: snapshot)
-            VStack(alignment: .leading, spacing: 8) {
-                gauge(icon: "burst.fill", label: "Shells", value: Int(snapshot.local.shells), max: maxShells, color: .orange)
-                gauge(icon: "xmark.seal.fill", label: "Mines", value: mines, max: maxMines, color: .purple)
-                gauge(icon: "shield.fill", label: "Armor", value: Int(snapshot.local.armour), max: maxArmour, color: .green)
-                gauge(icon: "leaf.fill", label: "Trees", value: trees, max: maxTrees, color: .brown)
-                gauge(icon: "shield.fill", label: "Base Armor", value: Int(base?.armour ?? 0), max: maxBaseArmour, color: .green)
-                gauge(icon: "burst.fill", label: "Base Shells", value: Int(base?.shells ?? 0), max: maxBaseShells, color: .orange)
-                gauge(icon: "xmark.seal.fill", label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
-            }
-            .padding(8)
-            .hudPanelChrome()
+        let snapshot = session.hudSnapshot
+        let localPlayer = snapshot.localPlayer
+        // D148(B) (advisor-flagged): `mines`/`trees` live per-player (`state.players[localPlayer]`,
+        // not `state.local`, per D105/D106), and this panel reads from first frame -- including
+        // `#Preview`'s demo state and any moment `localPlayer` isn't a valid index yet. Guard
+        // it the same way `GameSession` itself does everywhere else, rather than trapping like
+        // D146's crash.
+        let mines = snapshot.players.indices.contains(localPlayer)
+            ? snapshot.players[localPlayer].mines : 0
+        let trees = snapshot.players.indices.contains(localPlayer)
+            ? snapshot.players[localPlayer].trees : 0
+        let base = Self.nearestBase(snapshot: snapshot)
+        VStack(alignment: .leading, spacing: 8) {
+            gauge(icon: "burst.fill", label: "Shells", value: snapshot.localShells, max: maxShells, color: .orange)
+            gauge(icon: "xmark.seal.fill", label: "Mines", value: mines, max: maxMines, color: .purple)
+            gauge(icon: "shield.fill", label: "Armor", value: snapshot.localArmour, max: maxArmour, color: .green)
+            gauge(icon: "leaf.fill", label: "Trees", value: trees, max: maxTrees, color: .brown)
+            gauge(icon: "shield.fill", label: "Base Armor", value: Int(base?.armour ?? 0), max: maxBaseArmour, color: .green)
+            gauge(icon: "burst.fill", label: "Base Shells", value: Int(base?.shells ?? 0), max: maxBaseShells, color: .orange)
+            gauge(icon: "xmark.seal.fill", label: "Base Mines", value: Int(base?.mines ?? 0), max: maxBaseMines, color: .purple)
         }
+        .padding(8)
+        .hudPanelChrome()
     }
 
     /// **D150(2):** ported from `GSXBoloController.m:2562-2563,2652-2669`'s `refresh:` timer --
@@ -256,13 +258,15 @@ struct ResourceGaugesPanel: View {
     /// not squared) owned by a player mutually allied with the local player, within 8 tiles of
     /// the local tank. `nil` (all-zero display, `:2675-2679`) when no such base exists, or the
     /// local player index isn't valid yet (same guard style as `mines`/`trees` above).
-    static func nearestBase(snapshot: GameState) -> Base? {
+    ///
+    /// v1.4.0 #23: ported from `GameState` to `HUDSnapshot` -- same body, reduced field set.
+    static func nearestBase(snapshot: HUDSnapshot) -> HUDSnapshot.BaseSummary? {
         guard snapshot.players.indices.contains(snapshot.localPlayer) else { return nil }
-        let tank = snapshot.players[snapshot.localPlayer].tank
-        var best: Base?
+        let tank = snapshot.localTank
+        var best: HUDSnapshot.BaseSummary?
         var bestDist: Float = 8.0
         for candidate in snapshot.bases where candidate.owner != playerNeutral {
-            guard testAlliance(snapshot.localPlayer, Int(candidate.owner), players: snapshot.players)
+            guard HUDSnapshot.testAlliance(snapshot.localPlayer, Int(candidate.owner), players: snapshot.players)
             else { continue }
             let d = mag2f(sub2f(tank, make2f(Float(candidate.x) + 0.5, Float(candidate.y) + 0.5)))
             if d < bestDist {

@@ -19,10 +19,11 @@
 //  to kick/ban anyone, matching the reference (only the server-role menu ever calls
 //  `kickplayer()`/`banplayer()`).
 //
-//  Not live-updating via SwiftUI observation (`GameSession` isn't `ObservableObject` -- its own
-//  header explains why: `state` is deliberately not a single source of truth on every path). A
-//  `TimelineView` forces a periodic re-render that re-reads `session.state` fresh each time
-//  instead, the same "poll, don't observe" shape `GameRenderView` itself already uses each tick.
+//  v1.4.0 #23: reads `session.hudSnapshot` (`HUDSnapshot.swift`), a display-only `@Observable`
+//  projection updated from the tick path, instead of polling `session.state` on a `TimelineView`
+//  -- `GameSession` itself stays deliberately not `ObservableObject` (its own header explains
+//  why `state` is not a single source of truth on every path); this view no longer touches
+//  `state` at all.
 //
 //  D148(B): the grid content used to live inline inside this file's own `NavigationStack`/
 //  `.toolbar` sheet chrome. Split into `PlayerStatusGrid` (just the `List` + row logic, no sheet
@@ -67,12 +68,10 @@ struct PlayerStatusGrid: View {
     let session: GameSession
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            list(snapshot: session.state)
-        }
+        list(snapshot: session.hudSnapshot)
     }
 
-    private func list(snapshot: GameState) -> some View {
+    private func list(snapshot: HUDSnapshot) -> some View {
         let connectedPlayerIndices = snapshot.players.indices.filter { snapshot.players[$0].connected }
         return List {
             Section {
@@ -132,9 +131,9 @@ struct PlayerStatusGrid: View {
         .scrollContentBackground(.hidden)
     }
 
-    private func status(forPlayer index: Int, snapshot: GameState) -> OwnershipStatus {
+    private func status(forPlayer index: Int, snapshot: HUDSnapshot) -> OwnershipStatus {
         if index == snapshot.localPlayer { return .friendly }
-        if testAlliance(snapshot.localPlayer, index, players: snapshot.players) { return .allied }
+        if HUDSnapshot.testAlliance(snapshot.localPlayer, index, players: snapshot.players) { return .allied }
         return .hostile
     }
 
@@ -169,7 +168,7 @@ struct PlayerStatusGrid: View {
     }
 
     @ViewBuilder
-    private func playerRow(_ index: Int, snapshot: GameState) -> some View {
+    private func playerRow(_ index: Int, snapshot: HUDSnapshot) -> some View {
         let player = snapshot.players[index]
         let status = status(forPlayer: index, snapshot: snapshot)
         let lag = staleness(forPlayer: index)
@@ -191,16 +190,16 @@ struct PlayerStatusGrid: View {
         .accessibilityLabel("\(player.name.isEmpty ? "Player \(index)" : player.name), \(status.label)")
     }
 
-    private func ownershipStatus(owner: UInt8, snapshot: GameState) -> OwnershipStatus {
+    private func ownershipStatus(owner: UInt8, snapshot: HUDSnapshot) -> OwnershipStatus {
         if owner == playerNeutral { return .neutral }
         let ownerIndex = Int(owner)
         if ownerIndex == snapshot.localPlayer { return .friendly }
-        if testAlliance(snapshot.localPlayer, ownerIndex, players: snapshot.players) { return .allied }
+        if HUDSnapshot.testAlliance(snapshot.localPlayer, ownerIndex, players: snapshot.players) { return .allied }
         return .hostile
     }
 
     @ViewBuilder
-    private func ownershipRow(name: String, owner: UInt8, snapshot: GameState) -> some View {
+    private func ownershipRow(name: String, owner: UInt8, snapshot: HUDSnapshot) -> some View {
         let status = ownershipStatus(owner: owner, snapshot: snapshot)
         HStack {
             Circle().fill(status.tint).frame(width: 10, height: 10)
