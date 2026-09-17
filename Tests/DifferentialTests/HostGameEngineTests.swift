@@ -1029,3 +1029,79 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         )
     }
 }
+
+// MARK: - v1.5.0 (issue #1): per-slot FogState driven by real gameplay
+
+@Suite struct HostGameEngineFogVisionTests {
+
+    @Test func testHiddenMinesOffNeverAllocatesAnyFogState() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = false
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await Task.sleep(nanoseconds: 100_000_000) // a handful of ticks
+        #expect(engine.fogState(for: 0) == nil)
+    }
+
+    @Test func testAlreadyConnectedPlayerGetsAnInitialSelfRevealWithoutMoving() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[105 * 256 + 105] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[105 * 256 + 105] ?? 0) > 0)
+        // A tile far away, never covered by any vision source, stays unknown.
+        #expect(engine.fogState(for: 0)?.seenTiles[200 * 256 + 200] == .unknown)
+    }
+
+    @Test func testAllianceFormingRevealsTheNewAllyImmediately() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+
+            state.players[1].connected = true
+            state.players[1].used = true
+            state.players[1].dead = false
+            state.players[1].tank = Vec2f(x: 150, y: 150) // far outside player 0's own 29x29 vision
+            // One-way: player 1 has already declared alliance with player 0 (SessionLogic's own
+            // documented asymmetry), but player 0 hasn't reciprocated yet -- testAlliance(0, 1)
+            // is still false until player 0's own request below completes the mutual condition.
+            state.players[1].alliance = (1 << 1) | (1 << 0)
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { engine.fogState(for: 0) != nil }
+        #expect(engine.fogState(for: 0)?.seenTiles[150 * 256 + 150] == .unknown, "not allied yet -- must not be visible")
+
+        // Host's own local player (slot 0) requests alliance with player 1, completing the
+        // mutual condition -- the only alliance-mutation path reachable from a test without a
+        // live network connection (recvClSetAlliance needs a real CL_SETALLIANCE message).
+        engine.submitRequestAlliance(players: 1 << 1)
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0, "alliance forming must immediately reveal the new ally's position")
+    }
+}
