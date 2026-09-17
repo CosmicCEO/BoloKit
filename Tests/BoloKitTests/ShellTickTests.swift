@@ -556,3 +556,87 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(reports.first?.1 == 50)
     #expect(reports.first?.2 == false)
 }
+
+// MARK: - Issue #8: onHitTank / onHitTerrain / onHitTree / onBuilderDeath
+
+/// `onHitTank` fires on `shellTick`'s own tank-hit test, mirroring `shelllogic()`'s
+/// unconditional `playsound(kHitTankSound)` at every hit (client.c:5451) — not gated to the
+/// local player, matching `SoundPlayer.swift`'s own header note that this one is map-wide.
+@Test func shellTickFiresOnHitTankCallbackOnAnyTankHit() {
+    var shooter = connectedPlayer()
+    shooter.shells = [
+        Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 1.0, range: 5, owner: 0, boat: false, pill: false)
+    ]
+    var target = connectedPlayer()
+    target.tank = Vec2f(x: 50.5, y: 50.5)
+    var state = makeState(players: [shooter, target], localPlayer: 0)
+    var fired = 0
+    shellTick(player: 1, state: &state, onHitTank: { fired += 1 })
+    #expect(fired == 1)
+}
+
+@Test func applyDamageFiresOnHitTreeForForestTerrain() {
+    var state = makeState(players: [connectedPlayer()])
+    state.terrain[50, 50] = .forest
+    var hitTree: [Pointi] = []
+    var hitTerrain: [Pointi] = []
+    applyDamage(
+        at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state,
+        onHitTerrain: { hitTerrain.append($0) }, onHitTree: { hitTree.append($0) }
+    )
+    #expect(hitTree.count == 1)
+    #expect(hitTerrain.isEmpty)
+}
+
+@Test func applyDamageFiresOnHitTerrainForNonForestTerrain() {
+    var state = makeState(players: [connectedPlayer()])
+    state.terrain[50, 50] = .wall
+    var hitTree: [Pointi] = []
+    var hitTerrain: [Pointi] = []
+    applyDamage(
+        at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state,
+        onHitTerrain: { hitTerrain.append($0) }, onHitTree: { hitTree.append($0) }
+    )
+    #expect(hitTerrain.count == 1)
+    #expect(hitTree.isEmpty)
+}
+
+/// A pill or base hit returns before this function's terrain switch -- neither hook should fire.
+/// `recvsrdamage()`'s own `/* play sound */` block (client.c:1586-1601) sits outside the
+/// pill/base `if`/`else if` chain, at function scope -- it fires based on the tile's terrain
+/// regardless of whether a pill, base, or bare terrain was hit. A pill sitting on non-forest
+/// terrain still plays "hitterrain".
+@Test func applyDamageFiresOnHitTerrainEvenForAPillHit() {
+    var state = makeState(players: [connectedPlayer()])
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 40, counter: 0)]
+    var hitTerrain = 0
+    var hitTree = 0
+    applyDamage(
+        at: Pointi(x: 50, y: 50), boat: false, player: 0, state: &state,
+        onHitTerrain: { _ in hitTerrain += 1 }, onHitTree: { _ in hitTree += 1 }
+    )
+    #expect(hitTerrain == 1)
+    #expect(hitTree == 0)
+}
+
+/// `onBuilderDeath` fires unconditionally on every builder kill, reached here via a mine
+/// detonation (`explosionAt`) killing another player's builder standing on the blast square --
+/// confirms the full `applyDamage` → `shellCollisionTest` → `explosionAt` → `killSquareBuilder`
+/// → `killBuilder` chain is threaded end to end, not just the leaf `killBuilder` call.
+/// `explosionAt`'s builder-kill branch is gated on `player != state.localPlayer` (it's the
+/// notify-everyone-else-of-a-remote-detonation branch), so the shooter (player 1) and the
+/// builder's owner (player 0, `localPlayer`) must differ.
+@Test func shellCollisionTestFiresOnBuilderDeathWhenMineKillsABuilder() {
+    var builderOwner = connectedPlayer()
+    builderOwner.builderStatus = .wait
+    builderOwner.builder = Vec2f(x: 50.5, y: 50.5)
+    let shooter = connectedPlayer()
+    var state = makeState(players: [builderOwner, shooter], localPlayer: 0)
+    state.starts = [Start(x: 20, y: 30, dir: 4)]
+    state.terrain[50, 50] = .minedForest
+    let shell = Shell(point: Vec2f(x: 50.5, y: 50.5), dir: 0, range: 5, owner: 1, boat: false, pill: false)
+    var fired = 0
+    _ = shellCollisionTest(shell: shell, player: 1, state: &state, onBuilderDeath: { fired += 1 })
+    #expect(fired == 1)
+    #expect(state.players[0].builderStatus == .parachute)
+}

@@ -434,6 +434,60 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0, local: Loca
     #expect(state.players[0].builderTrees == 1 - roadTrees)
 }
 
+/// Issue #8: `onBuild` fires on a builder's completed action -- exercised here via `buildRoad`'s
+/// success branch, threaded end to end through `builderTick` -> `gotoTick` -> `arriveAtTarget`.
+@Test func gotoArrivalOnBuildRoadFiresOnBuildCallback() {
+    var player = connectedPlayer()
+    player.builderTask = .buildRoad
+    player.builderTrees = roadTrees
+    player.builderTarget = Pointi(x: 50, y: 50)
+    player.builder = Vec2f(x: 50.5, y: 50.5)
+    player.builderStatus = .goto
+    var state = makeState(players: [player])
+    state.terrain[50, 50] = .grass0
+
+    var built: Pointi?
+    builderTick(player: 0, state: &state, onBuild: { built = $0 })
+
+    #expect(built == Pointi(x: 50, y: 50))
+}
+
+@Test func gotoArrivalOnBuildRoadBlockedByBoatedTankDoesNotFireOnBuild() {
+    var blocker = connectedPlayer(boat: true)
+    blocker.tank = Vec2f(x: 50.5, y: 50.5)
+    var player = connectedPlayer()
+    player.builderTask = .buildRoad
+    player.builderTrees = roadTrees
+    player.builderTarget = Pointi(x: 50, y: 50)
+    player.builder = Vec2f(x: 50.5, y: 50.5)
+    player.builderStatus = .goto
+    var state = makeState(players: [player, blocker])
+    state.terrain[50, 50] = .grass0
+
+    var fired = 0
+    builderTick(player: 0, state: &state, onBuild: { _ in fired += 1 })
+
+    #expect(fired == 0)
+}
+
+/// A builder placing its own mine (`.placeMine`) plays "build", not "mine" -- the "mine" sound is
+/// reserved for the tank's own manual mine-lay (`TankLocalTick.swift`'s `plantMine` call sites).
+@Test func placeMineArrivalFiresOnBuildNotOnMine() {
+    var player = connectedPlayer()
+    player.builderTask = .placeMine
+    player.builderTarget = Pointi(x: 50, y: 50)
+    player.builder = Vec2f(x: 50.5, y: 50.5)
+    player.builderStatus = .goto
+    var state = makeState(players: [player])
+    state.terrain[50, 50] = .grass0
+
+    var built: Pointi?
+    builderTick(player: 0, state: &state, onBuild: { built = $0 })
+
+    #expect(state.terrain[50, 50] == .minedGrass)
+    #expect(built == Pointi(x: 50, y: 50))
+}
+
 @Test func gotoArrivalOnBuildRoadBlockedByBoatedTankSkipsWorkWithoutRefund() {
     var blocker = connectedPlayer(boat: true)
     blocker.tank = Vec2f(x: 50.5, y: 50.5)

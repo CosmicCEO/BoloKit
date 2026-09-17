@@ -259,6 +259,24 @@ private func stationaryOldPositions(_ state: GameState) -> [Vec2f] {
     #expect(state.players[1].shells.count == 1)
 }
 
+/// `onPillShot` fires once per pill that actually fired this tick, not once per surviving shell
+/// -- a tied-target pill spawns two shells (one per target) but should only play one shot sound.
+@Test func pillTickTiedDistanceFiresOnPillShotOnlyOnce() {
+    var a = connectedPlayer()
+    a.tank = Vec2f(x: 51.5, y: 50.5)
+    var b = connectedPlayer()
+    b.tank = Vec2f(x: 49.5, y: 50.5)
+    var state = makeState(players: [a, b])
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 1, counter: 0)]
+
+    var fired = 0
+    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state), onPillShot: { fired += 1 })
+
+    #expect(state.players[0].shells.count == 1)
+    #expect(state.players[1].shells.count == 1)
+    #expect(fired == 1)
+}
+
 @Test func pillTickAlliedCompetitorDoesNotDisqualify() {
     // A closer player who is ALLIED with the pill's owner doesn't count
     // as a competing hostile target — the farther, genuinely hostile
@@ -353,6 +371,33 @@ private func stationaryOldPositions(_ state: GameState) -> [Vec2f] {
     #expect(shell.pill)
     #expect(!shell.boat)
     #expect(shell.owner == playerNeutral)
+}
+
+/// Issue #8: `onPillShot` fires whenever a pill actually fires, matching `pilllogic()`'s own
+/// unconditional `playsound(kPillShotSound)` right after the shot (client.c:5104) -- fired once
+/// per counter reset, not once per surviving shell in `closestSet`.
+@Test func pillTickFiresOnPillShotCallbackWhenPillFires() {
+    var player = connectedPlayer()
+    player.tank = Vec2f(x: 52.5, y: 50.5)
+    var state = makeState(players: [player])
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 1, counter: 0)]
+
+    var fired = 0
+    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state), onPillShot: { fired += 1 })
+
+    #expect(fired == 1)
+}
+
+@Test func pillTickDoesNotFireOnPillShotBelowSpeedThreshold() {
+    var player = connectedPlayer()
+    player.tank = Vec2f(x: 52.5, y: 50.5)
+    var state = makeState(players: [player])
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: playerNeutral, speed: 5, counter: 0)]
+
+    var fired = 0
+    pillTick(state: &state, oldTankPositions: stationaryOldPositions(state), onPillShot: { fired += 1 })
+
+    #expect(fired == 0)
 }
 
 @Test func pillTickFiredShellUsesOwnerNotTargetPlayer() {

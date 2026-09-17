@@ -50,13 +50,17 @@ import Darwin
 public func killPointBuilder(
     at point: Vec2f,
     state: inout GameState,
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    onBuilderDeath: () -> Void = {}
 ) {
     for player in state.players.indices where state.players[player].connected {
         switch state.players[player].builderStatus {
         case .goto, .work, .wait, .return:
             if mag2f(state.players[player].builder - point) < explosionRadius {
-                killBuilder(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                killBuilder(
+                    player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+                    onBuilderDeath: onBuilderDeath
+                )
             }
         case .ready, .parachute:
             break
@@ -71,7 +75,8 @@ public func killPointBuilder(
 public func killSquareBuilder(
     at point: Pointi,
     state: inout GameState,
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    onBuilderDeath: () -> Void = {}
 ) {
     for player in state.players.indices where state.players[player].connected {
         switch state.players[player].builderStatus {
@@ -80,7 +85,10 @@ public func killSquareBuilder(
                 x: Int32(state.players[player].builder.x), y: Int32(state.players[player].builder.y)
             )
             if builderTile == point {
-                killBuilder(player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                killBuilder(
+                    player: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+                    onBuilderDeath: onBuilderDeath
+                )
             }
         case .ready, .parachute:
             break
@@ -113,8 +121,12 @@ public func killSquareBuilder(
 public func killBuilder(
     player: Int,
     state: inout GameState,
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // D168: sound-only hook, fires unconditionally on every builder kill — matches
+    // `killbuilder()`'s own unconditional `playsound(kBuilderDeathSound)` (client.c:7072).
+    onBuilderDeath: () -> Void = {}
 ) {
+    onBuilderDeath()
     if state.players[player].builderPill != noPill {
         let builder = state.players[player].builder
         dropPills(
@@ -159,10 +171,16 @@ private func onboardPillMask(state: GameState) -> UInt16 {
 }
 
 /// Kills the local player by drowning: no explosion, no kick. Ported from
-/// `drown()` (client.c:5574). `playsound(kSinkSound)` is a UI hook, omitted.
+/// `drown()` (client.c:5574). `playsound(kSinkSound)` now wired via `onSink` (Issue #8).
 public func drown(
     state: inout GameState,
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // Issue #8: sound-only hook. C's own `playsound(kSinkSound)` was previously omitted here as
+    // a UI hook (see this function's own header, above) — now wired, matching `drown()`'s own
+    // call site exactly: INSIDE the first guard below, not at function scope (client.c:5581-5583
+    // — the sound only plays when this branch actually runs, same as the state mutation it sits
+    // next to; a tank already dead past `explodeTicks` re-entering water plays no sound).
+    onSink: () -> Void = {}
 ) {
     let player = state.localPlayer
 
@@ -170,6 +188,7 @@ public func drown(
         state.players[player].boat = false
         state.players[player].kickSpeed = 0.0
         state.local.respawnCounter = explodeTicks + 1
+        onSink()
     }
 
     if !state.players[player].dead {
@@ -195,6 +214,7 @@ public func drown(
 public func smallboom(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
@@ -223,7 +243,7 @@ public func smallboom(
     if let point = explosionPoint {
         explosionAt(
             player: UInt8(player), x: Int(point.x), y: Int(point.y), state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }
@@ -242,6 +262,7 @@ public func superboom(
     state: inout GameState,
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
     let player = state.localPlayer
@@ -276,7 +297,7 @@ public func superboom(
         ]
         for (point, square) in corners {
             state.players[player].explosions.append(Explosion(point: point, counter: 0))
-            killSquareBuilder(at: square, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            killSquareBuilder(at: square, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
         }
 
         let edges: [Vec2f] = [
@@ -288,7 +309,7 @@ public func superboom(
         ]
         for point in edges {
             state.players[player].explosions.append(Explosion(point: point, counter: 0))
-            killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
         }
     }
 
@@ -305,7 +326,7 @@ public func superboom(
     if let origin = boomOrigin {
         superboomAt(
             player: UInt8(player), x: Int(origin.x), y: Int(origin.y), state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
     }
@@ -330,6 +351,7 @@ public func grabTile(
     at point: Pointi,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
@@ -371,7 +393,7 @@ public func grabTile(
         onMineExplosion(point)
         explosionAt(
             player: UInt8(player), x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
 
@@ -442,7 +464,7 @@ private func plantMine(at point: Pointi, state: inout GameState) -> Bool {
 /// oracle spends nothing -- gating on `plantMine`'s own return value (does
 /// it match one of the same minable cases `enterTile`'s switch below
 /// checks) fixes that without duplicating the terrain list itself.
-public func layMineOnKeyDown(state: inout GameState) {
+public func layMineOnKeyDown(state: inout GameState, onMine: (Pointi) -> Void = { _ in }) {
     let player = state.localPlayer
     guard !state.players[player].dead else { return }
 
@@ -455,7 +477,9 @@ public func layMineOnKeyDown(state: inout GameState) {
         state.players[player].mines > 0
     else { return }
 
-    guard plantMine(at: Pointi(x: Int32(x), y: Int32(y)), state: &state) else { return }
+    let point = Pointi(x: Int32(x), y: Int32(y))
+    guard plantMine(at: point, state: &state) else { return }
+    onMine(point)
     state.players[player].mines -= 1
 }
 
@@ -472,7 +496,13 @@ public func enterTile(
     state: inout GameState,
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onBuilderDeath: () -> Void = {},
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // Issue #8: sound-only hooks. `onSink` threads to `drown`; `onMine` fires on the LMINE-key
+    // continuous-lay branch below (`plantMine`'s own success), mirroring `layMineOnKeyDown`'s
+    // identical hook for the discrete-keydown path.
+    onSink: () -> Void = {},
+    onMine: (Pointi) -> Void = { _ in }
 ) {
     let player = state.localPlayer
     let x = Int(new.x)
@@ -482,14 +512,14 @@ public func enterTile(
         if state.pills[pill].armour > 0 {
             superboom(
                 state: &state,
-                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
                 onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
         } else if !state.players[player].dead {
             if new != old {
                 grabTile(
                     at: new, state: &state,
-                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }
@@ -509,7 +539,7 @@ public func enterTile(
             if owner == playerNeutral || !testAlliance(Int(owner), player, players: state.players) {
                 grabTile(
                     at: new, state: &state,
-                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }
@@ -527,13 +557,13 @@ public func enterTile(
     case .wall, .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
         superboom(
             state: &state,
-            onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+            onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
 
     case .sea:
         if !state.players[player].boat {
-            drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onSink: onSink)
         }
 
     case .river:
@@ -544,7 +574,7 @@ public func enterTile(
             state.players[player].explosions.append(
                 Explosion(point: Vec2f(x: Float(new.x) + 0.5, y: Float(new.y) + 0.5), counter: 0)
             )
-            killSquareBuilder(at: new, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            killSquareBuilder(at: new, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
         }
         fallthrough
 
@@ -557,7 +587,9 @@ public func enterTile(
         if !state.players[player].dead, state.players[player].inputFlags.contains(.lmine),
             state.players[player].mines > 0, new != old {
             state.players[player].mines -= 1
-            plantMine(at: new, state: &state)
+            if plantMine(at: new, state: &state) {
+                onMine(new)
+            }
         }
 
     case .boat:
@@ -566,11 +598,11 @@ public func enterTile(
                 state.players[player].explosions.append(
                     Explosion(point: Vec2f(x: Float(new.x) + 0.5, y: Float(new.y) + 0.5), counter: 0)
                 )
-                killSquareBuilder(at: new, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                killSquareBuilder(at: new, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
             } else {
                 grabTile(
                     at: new, state: &state,
-                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }
@@ -580,20 +612,20 @@ public func enterTile(
         if new != old {
             grabTile(
                 at: new, state: &state,
-                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                 onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
         }
         // Unconditional, unlike plain `.sea` above: a mined-sea tile drowns
         // a boated tank too. C: both `sendclgrabtile` and `drown()` fire
         // regardless of `client.players[client.player].boat`.
-        drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+        drown(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onSink: onSink)
 
     case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         if new != old {
             grabTile(
                 at: new, state: &state,
-                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                 onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
         }
@@ -737,13 +769,20 @@ public func tankLocalTick(
     state: inout GameState,
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     // D148(A): new sound-only hook — fires on the local player's own shell fire, mirroring
     // `onExplosion`/`onSuperboom`'s shape (no payload needed, `SoundPlayer` just plays a fixed
     // name). No reference near/far split here (see this function's own header note pattern in
     // `SoundPlayer.swift`'s D125 header) — fog-of-war is out of v1 scope (D65), and this is
     // always the local player's own action.
-    onTankShot: () -> Void = {}
+    onTankShot: () -> Void = {},
+    // Issue #8: sound-only hooks. `onBubbles` fires on the river-drain branch below, mirroring
+    // `tanklocallogic()`'s own unconditional `playsound(kBubblesSound)` inside that branch
+    // (client.c:4304-4306). `onMine`/`onSink` pass straight through to `enterTile`.
+    onBubbles: () -> Void = {},
+    onMine: (Pointi) -> Void = { _ in },
+    onSink: () -> Void = {}
 ) {
     guard old.x >= 0, old.x < 256, old.y >= 0, old.y < 256 else { return }
 
@@ -775,8 +814,9 @@ public func tankLocalTick(
 
     enterTile(
         new: new, old: old, state: &state,
-        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
-        onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+        onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+        onSink: onSink, onMine: onMine
     )
 
     let inBounds = new.x >= 0 && new.x < 256 && new.y >= 0 && new.y < 256
@@ -789,6 +829,7 @@ public func tankLocalTick(
     if !state.players[player].boat, pill == nil, base == nil, inBounds,
         state.terrain[Int(new.x), Int(new.y)] == Terrain.river,
         state.players[player].speed <= rubbleMaxSpeed {
+        onBubbles()
         state.local.drainCounter += 1
         if state.local.drainCounter >= drainTicks {
             state.local.drainCounter = 0

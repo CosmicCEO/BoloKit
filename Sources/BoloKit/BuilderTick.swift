@@ -258,7 +258,10 @@ private func grabTrees(
 }
 
 /// Ported from `recvclbuildroad()` (server.c:2390).
-private func buildRoad(at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) -> Int {
+private func buildRoad(
+    at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
+) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let terrain = state.terrain[x, y] else { return trees }
@@ -271,6 +274,7 @@ private func buildRoad(at point: Pointi, trees: Int, state: inout GameState, onM
         // gates entry here); replicated verbatim per PLANNER's ruling.
         if trees >= trees {
             state.terrain[x, y] = .road
+            onBuild(point)
             return trees - roadTrees
         }
         return trees
@@ -284,7 +288,10 @@ private func buildRoad(at point: Pointi, trees: Int, state: inout GameState, onM
 
 /// Ported from `recvclbuildwall()` (server.c:2439). Unlike `buildRoad`,
 /// this sufficiency check is real (`trees >= wallTrees`, not a tautology).
-private func buildWall(at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) -> Int {
+private func buildWall(
+    at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
+) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let terrain = state.terrain[x, y] else { return trees }
@@ -294,6 +301,7 @@ private func buildWall(at point: Pointi, trees: Int, state: inout GameState, onM
         .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
         if trees >= wallTrees {
             state.terrain[x, y] = .wall
+            onBuild(point)
             return trees - wallTrees
         }
         return trees
@@ -309,13 +317,17 @@ private func buildWall(at point: Pointi, trees: Int, state: inout GameState, onM
 /// at all in C — the READY-state gate (`trees >= boatTrees`) already
 /// guarantees enough trees by the time this runs, so `trees - boatTrees`
 /// is always safe.
-private func buildBoat(at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) -> Int {
+private func buildBoat(
+    at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
+) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let terrain = state.terrain[x, y] else { return trees }
     switch terrain {
     case .river:
         state.terrain[x, y] = .boat
+        onBuild(point)
         return trees - boatTrees
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         onMineExplosion(point)
@@ -333,7 +345,8 @@ private func buildBoat(at point: Pointi, trees: Int, state: inout GameState, onM
 /// `recvSrBuildPill`, so a place cannot inherit speed 0 and machine-gun.
 private func buildPill(
     at point: Pointi, trees: Int, pillIndex: Int, owner: Int,
-    state: inout GameState, onMineExplosion: (Pointi) -> Void
+    state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
 ) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
@@ -349,6 +362,7 @@ private func buildPill(
         state.pills[pillIndex].y = UInt8(y)
         state.pills[pillIndex].owner = UInt8(owner)
         state.pills[pillIndex].speed = UInt8(maxTicksPerShot)
+        onBuild(point)
         let armour = trees * 4
         if armour > maxPillArmour {
             state.pills[pillIndex].armour = UInt8(maxPillArmour)
@@ -368,7 +382,10 @@ private func buildPill(
 /// Ported from `recvclrepairpill()` (server.c:2620). Adds `trees * 4`
 /// armour to the pill at `point`, clamped to `maxPillArmour` (excess trees
 /// refunded).
-private func repairPill(at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void) -> Int {
+private func repairPill(
+    at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
+) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let pillIndex = findPill(x: x, y: y, pills: state.pills), findBase(x: x, y: y, bases: state.bases) == nil else {
@@ -380,6 +397,7 @@ private func repairPill(at point: Pointi, trees: Int, state: inout GameState, on
         .rubble0, .rubble1, .rubble2, .rubble3, .grass0, .grass1, .grass2, .grass3,
         .damagedWall0, .damagedWall1, .damagedWall2, .damagedWall3:
         let armour = Int(state.pills[pillIndex].armour) + trees * 4
+        onBuild(point)
         if armour > maxPillArmour {
             state.pills[pillIndex].armour = UInt8(maxPillArmour)
             return (armour - maxPillArmour) / 4
@@ -401,23 +419,32 @@ private func repairPill(at point: Pointi, trees: Int, state: inout GameState, on
 /// function only mutates terrain, matching the duplicated (not shared —
 /// see file header) terrain-to-mined-variant mapping already ported for
 /// the tank's own mine-plant path in `TankLocalTick.swift`'s `plantMine`.
-private func placeMineWork(at point: Pointi, state: inout GameState, onMineExplosion: (Pointi) -> Void) {
+private func placeMineWork(
+    at point: Pointi, state: inout GameState, onMineExplosion: (Pointi) -> Void,
+    onBuild: (Pointi) -> Void = { _ in }
+) {
     let x = Int(point.x)
     let y = Int(point.y)
     guard let terrain = state.terrain[x, y] else { return }
     switch terrain {
     case .swamp0, .swamp1, .swamp2, .swamp3:
         state.terrain[x, y] = .minedSwamp
+        onBuild(point)
     case .crater:
         state.terrain[x, y] = .minedCrater
+        onBuild(point)
     case .road:
         state.terrain[x, y] = .minedRoad
+        onBuild(point)
     case .forest:
         state.terrain[x, y] = .minedForest
+        onBuild(point)
     case .rubble0, .rubble1, .rubble2, .rubble3:
         state.terrain[x, y] = .minedRubble
+        onBuild(point)
     case .grass0, .grass1, .grass2, .grass3:
         state.terrain[x, y] = .minedGrass
+        onBuild(point)
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         onMineExplosion(point)
     default:
@@ -588,6 +615,7 @@ private func readyTick(player: Int, state: inout GameState, onPrintMessage: (Str
 private func arriveAtTarget(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
     onTreeHarvest: (Pointi) -> Void = { _ in },
+    onBuild: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
@@ -612,21 +640,24 @@ private func arriveAtTarget(
     case .buildRoad:
         if !tankOnABoatTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = buildRoad(
-                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion,
+                onBuild: onBuild
             )
         }
 
     case .buildWall:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = buildWall(
-                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion,
+                onBuild: onBuild
             )
         }
 
     case .buildBoat:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = buildBoat(
-                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion,
+                onBuild: onBuild
             )
         }
 
@@ -634,19 +665,20 @@ private func arriveAtTarget(
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = buildPill(
                 at: target, trees: state.players[player].builderTrees, pillIndex: Int(state.players[player].builderPill),
-                owner: player, state: &state, onMineExplosion: onMineExplosion
+                owner: player, state: &state, onMineExplosion: onMineExplosion, onBuild: onBuild
             )
         }
 
     case .repairPill:
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = repairPill(
-                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion
+                at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion,
+                onBuild: onBuild
             )
         }
 
     case .placeMine:
-        placeMineWork(at: target, state: &state, onMineExplosion: onMineExplosion)
+        placeMineWork(at: target, state: &state, onMineExplosion: onMineExplosion, onBuild: onBuild)
         state.players[player].builderMines = 0
 
     case .doNothing:
@@ -673,6 +705,7 @@ private func arriveAtTarget(
 private func gotoTick(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
     onTreeHarvest: (Pointi) -> Void = { _ in },
+    onBuild: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
@@ -682,7 +715,7 @@ private func gotoTick(
     if mag2f(diff) < 0.00001 {
         return arriveAtTarget(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            joinArrive: joinArrive
+            onBuild: onBuild, joinArrive: joinArrive
         )
     }
 
@@ -849,6 +882,10 @@ public func builderTick(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
     onTreeHarvest: (Pointi) -> Void = { _ in },
+    // Issue #8: sound-only hook, fires on a builder's completed road/wall/boat/pill/repair/mine
+    // action (`arriveAtTarget`'s success branches) — matches `recvclbuild*()`'s own unconditional
+    // `playsound(kBuildSound)` at each of its call sites (client.c:1670/2213/2372).
+    onBuild: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil,
     onPrintMessage: (String) -> Void = { _ in }
 ) -> JoinOutboundBuilderCL? {
@@ -864,7 +901,7 @@ public func builderTick(
     case .goto:
         return gotoTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            joinArrive: joinArrive
+            onBuild: onBuild, joinArrive: joinArrive
         )
 
     case .work:

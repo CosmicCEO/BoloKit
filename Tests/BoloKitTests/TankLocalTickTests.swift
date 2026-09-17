@@ -158,11 +158,13 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     var state = makeState(player: player)
     state.terrain[5, 5] = .forest
     state.terrain[4, 5] = .river
-    enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: &state)
+    var planted: Pointi?
+    enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: &state, onMine: { planted = $0 })
     #expect(!state.players[0].boat)
     #expect(state.terrain[4, 5] == .boat)
     #expect(state.terrain[5, 5] == .minedForest)
     #expect(state.players[0].mines == 4)
+    #expect(planted == Pointi(x: 5, y: 5))
 }
 
 @Test func enterTileGrassPlantsMineOnlyWhenMoved() {
@@ -220,6 +222,28 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     layMineOnKeyDown(state: &state)
     #expect(state.terrain[5, 5] == .minedGrass)
     #expect(state.players[0].mines == 4)
+}
+
+/// Issue #8: `onMine` fires only on a successful plant, matching D89's own gating (a wasted mine
+/// on unminable terrain plants nothing and should stay silent).
+@Test func layMineOnKeyDownFiresOnMineCallbackOnSuccess() {
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .grass0
+    var planted: Pointi?
+    layMineOnKeyDown(state: &state, onMine: { planted = $0 })
+    #expect(planted == Pointi(x: 5, y: 5))
+}
+
+@Test func layMineOnKeyDownDoesNotFireOnMineOnUnminableTerrain() {
+    var state = makeState(player: connectedPlayer())
+    state.players[0].mines = 5
+    state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
+    state.terrain[5, 5] = .sea
+    var fired = 0
+    layMineOnKeyDown(state: &state, onMine: { _ in fired += 1 })
+    #expect(fired == 0)
 }
 
 @Test func layMineOnKeyDownNoopsWhenNoMinesAvailable() {
@@ -338,6 +362,36 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     #expect(state.local.respawnCounter == explodeTicks + 5)
 }
 
+/// Issue #8: `onSink` fires unconditionally, matching `drown()`'s own unconditional
+/// `playsound(kSinkSound)` (client.c:5582) -- not gated on the `dead`/`respawnCounter` checks
+/// that guard state mutation.
+@Test func drownFiresOnSinkCallbackWhenAliveTankSinks() {
+    var state = makeState(player: connectedPlayer(boat: true))
+    var fired = 0
+    drown(state: &state, onSink: { fired += 1 })
+    #expect(fired == 1)
+}
+
+/// `drown()`'s own `playsound(kSinkSound)` call site (client.c:5581-5583) sits INSIDE the first
+/// guard, next to the state mutation it accompanies -- a tank already dead past `explodeTicks`
+/// skips that whole branch and plays no sound (matches `drownAlreadyDeadPastExplodeTicksIsNoOp`'s
+/// existing no-mutation assertion above).
+@Test func drownDoesNotFireOnSinkWhenAlreadyDeadPastExplodeTicks() {
+    var state = makeState(player: connectedPlayer(dead: true), local: LocalPlayerState(respawnCounter: explodeTicks + 5))
+    var fired = 0
+    drown(state: &state, onSink: { fired += 1 })
+    #expect(fired == 0)
+}
+
+/// `enterTile`'s `.sea` branch threads `onSink` through to `drown` end to end.
+@Test func enterTileSeaFiresOnSinkCallback() {
+    var state = makeState(player: connectedPlayer(boat: false))
+    state.terrain[5, 5] = .sea
+    var fired = 0
+    enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: &state, onSink: { fired += 1 })
+    #expect(fired == 1)
+}
+
 @Test func smallboomFiresMineExplosionAtOwnTile() {
     var state = makeState(player: connectedPlayer())
     state.players[0].tank = Vec2f(x: 5.5, y: 5.5)
@@ -415,6 +469,16 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     #expect(broadcasts.count == 1)
     #expect(broadcasts.first?.0 == 2)
     #expect(state.pills[2].armour == 0)
+}
+
+/// Issue #8: `onBuilderDeath` fires unconditionally, matching `killbuilder()`'s own unconditional
+/// `playsound(kBuilderDeathSound)` (client.c:7072).
+@Test func killBuilderFiresOnBuilderDeathCallback() {
+    var state = makeState(player: connectedPlayer())
+    state.starts = [Start(x: 10, y: 20, dir: 0)]
+    var fired = 0
+    killBuilder(player: 0, state: &state, onBuilderDeath: { fired += 1 })
+    #expect(fired == 1)
 }
 
 @Test func killSquareBuilderIgnoresReadyAndParachuteStates() {
@@ -542,6 +606,31 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     state.terrain[5, 5] = .river
     tankLocalTick(old: Pointi(x: 5, y: 5), state: &state)
     #expect(state.local.drainCounter == 0)
+}
+
+/// Issue #8: `onBubbles` fires every tick the drain branch is entered, matching
+/// `tanklocallogic()`'s own unconditional `playsound(kBubblesSound)` inside that branch
+/// (client.c:4304-4306) -- not just on the tick the drain counter actually rolls over.
+@Test func tankLocalTickFiresOnBubblesCallbackWhileDrainingOnRiver() {
+    var player = connectedPlayer()
+    player.speed = 0.1
+    player.tank = Vec2f(x: 5.5, y: 5.5)
+    var state = makeState(player: player, local: LocalPlayerState(drainCounter: 0))
+    state.terrain[5, 5] = .river
+    var fired = 0
+    tankLocalTick(old: Pointi(x: 5, y: 5), state: &state, onBubbles: { fired += 1 })
+    #expect(fired == 1)
+}
+
+@Test func tankLocalTickDoesNotFireOnBubblesWhenFast() {
+    var player = connectedPlayer()
+    player.speed = rubbleMaxSpeed + 1.0
+    player.tank = Vec2f(x: 5.5, y: 5.5)
+    var state = makeState(player: player, local: LocalPlayerState(drainCounter: 5))
+    state.terrain[5, 5] = .river
+    var fired = 0
+    tankLocalTick(old: Pointi(x: 5, y: 5), state: &state, onBubbles: { fired += 1 })
+    #expect(fired == 0)
 }
 
 // MARK: - tankLocalTick: refuel

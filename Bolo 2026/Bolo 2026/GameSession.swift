@@ -144,7 +144,7 @@ public final class GameSession {
         }
         view.onLayMineKeyDown = { [weak self] in
             guard let self else { return }
-            layMineOnKeyDown(state: &self.state)
+            layMineOnKeyDown(state: &self.state, onMine: { _ in SoundPlayer.shared.play("mine") })
         }
         // D137: single-process path -- no other real players to inform, mutate `state` directly,
         // same reasoning as `sendMessage`'s single-process branch.
@@ -497,9 +497,8 @@ public final class GameSession {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
-        // D125/D148(A): sound-effect triggers -- see SoundPlayer.swift's own header for exactly
-        // which names are wired, and why the rest (hittank/build/etc., which still need new
-        // BoloKit callback threading) aren't yet.
+        // D125/D148(A)/Issue #8: sound-effect triggers -- see SoundPlayer.swift's own header for
+        // exactly which names are wired.
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
@@ -512,7 +511,16 @@ public final class GameSession {
             onSmallboom: { SoundPlayer.shared.play("explosion") },
             onTankShot: { SoundPlayer.shared.play("tankshot") },
             onTreeHarvest: { _ in SoundPlayer.shared.play("tree") },
-            onPrintMessage: { pendingGameMessages.append($0) }
+            onPrintMessage: { pendingGameMessages.append($0) },
+            onHitTank: { SoundPlayer.shared.play("hittank") },
+            onHitTerrain: { _ in SoundPlayer.shared.play("hitterrain") },
+            onHitTree: { _ in SoundPlayer.shared.play("hittree") },
+            onMine: { _ in SoundPlayer.shared.play("mine") },
+            onBuild: { _ in SoundPlayer.shared.play("build") },
+            onBuilderDeath: { SoundPlayer.shared.play("builderdeath") },
+            onSink: { SoundPlayer.shared.play("sink") },
+            onBubbles: { SoundPlayer.shared.play("bubbles") },
+            onPillShot: { SoundPlayer.shared.play("pillshot") }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(

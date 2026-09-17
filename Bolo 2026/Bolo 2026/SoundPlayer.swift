@@ -15,24 +15,41 @@
 //  **v1 scope, time-boxed (D125): only the sounds reachable from this port's already-existing**
 //  **callback hooks are wired here** -- `onExplosion`/`onSuperboom`/`onSmallboom` (`RunTick.swift`,
 //  already threaded through, previously always defaulted to no-ops) and `onMineExplosion`/
-//  `onSuperboomTerrain` (same file, already broadcasting to the network host-side). Threading
-//  *new* callback parameters through `TankLocalTick.swift`'s shoot-handling (`tankshot`) or
-//  `ShellTick.swift`'s `killTank` (`hittank`) for the remaining named-priority sounds is real
-//  `BoloKit` surgery, not attempted in this pass -- disclosed, not silently dropped.
+//  `onSuperboomTerrain` (same file, already broadcasting to the network host-side).
 //
-//  **D148(A) follow-up:** `tankshot` (cannon fire) and `tree` (harvest-complete) are now wired
-//  too, via new `onTankShot`/`onTreeHarvest` callbacks threaded through `TankLocalTick.swift`'s
-//  shell-fire branch and `BuilderTick.swift`'s `grabTrees`/`arriveAtTarget` `.getTree` completion
-//  respectively (see those files' own doc comments at the fire sites). `hittank`'s `ShellTick.
-//  swift`/`killTank` wiring is still not attempted -- out of D148(A)'s scope.
+//  **D148(A) follow-up:** `tankshot` (cannon fire) and `tree` (harvest-complete) are wired via
+//  `onTankShot`/`onTreeHarvest` callbacks threaded through `TankLocalTick.swift`'s shell-fire
+//  branch and `BuilderTick.swift`'s `grabTrees`/`arriveAtTarget` `.getTree` completion.
 //
-//  **`far*` variants and remote-player-triggered sounds are explicitly NOT wired.** The
-//  reference's own near/far choice is a `client.fog[y][x] > 0` check (`client.c:1368` and
-//  elsewhere) -- fog-of-war/seen-tiles is out of v1 scope entirely (D65: "treat every tile as
-//  fully visible"), so there is no real signal to compute near-vs-far from yet. Every sound
-//  wired here is inherently "near" regardless -- it's always the local player's own on-screen
-//  action, never a remote player's relayed event (this port's join-mode client doesn't run the
-//  callback-bearing `runTick` at all, D116 -- see `GameSession.swift`'s own B.8 header).
+//  **Issue #8: the remaining 9 designed sounds are now wired too**, via new `RunTick.swift`
+//  callback parameters (all defaulting to no-ops, so every pre-existing call site is unaffected):
+//  `onHitTank`/`onHitTerrain`/`onHitTree` (`ShellTick.swift`'s `shellTick`/`applyDamage`),
+//  `onMine` (`TankLocalTick.swift`'s `plantMine` call sites -- LMINE keydown and the continuous
+//  lay-while-moving branch), `onBuild` (`BuilderTick.swift`'s `arriveAtTarget` success branches --
+//  road/wall/boat/pill/repair/mine), `onBuilderDeath` (`TankLocalTick.swift`'s `killBuilder`,
+//  fired unconditionally, reached from every mine-detonation/splash-damage/shell-collision path
+//  that can kill a builder), `onSink` (`drown`), `onBubbles` (`tankLocalTick`'s river-drain
+//  branch), and `onPillShot` (`PillTick.swift`'s `emitPillShell`). Fog-dependent `far*` variants
+//  remain out of scope (see below) -- these are all "near" names.
+//
+//  **`far*` variants are explicitly NOT wired.** The reference's own near/far choice is a
+//  `client.fog[y][x] > 0` check (`client.c:1368` and elsewhere) -- fog-of-war/seen-tiles is out
+//  of v1 scope entirely (D65: "treat every tile as fully visible"), so there is no real signal to
+//  compute near-vs-far from yet.
+//
+//  **Not every sound wired here is the local player's own action.** `onTankShot`/`onTreeHarvest`/
+//  `onMine` are local-player-only (`TankLocalTick.swift` only ever runs for `state.localPlayer`).
+//  But `onHitTank`/`onBuild`/`onBuilderDeath`/`onSink`/`onPillShot` fire for *any* connected
+//  player's shells/builder/tank/pillbox -- `shellTick`'s tank-hit loop, `builderTick`'s per-player
+//  call, and the mine-detonation/splash-damage chain (`explosionAt`/`superboomAt`) all run once
+//  per player, not just the local one. With fog out of scope (D65: every tile fully visible),
+//  there's no near/far signal to gate these on, so the local player now hears every player's hit/
+//  build/death/sink/pill-shot map-wide, not just their own -- a real behavior change from the
+//  four sounds wired before this pass, all of which happened to be local-player-only. Remote-
+//  player-triggered sounds are still not wired for the *join* client specifically: this port's
+//  join-mode client doesn't run the callback-bearing `runTick` at all (D116 -- see
+//  `GameSession.swift`'s own B.8 header), so a join client only ever hears its own locally-
+//  predicted actions regardless of this pass.
 //
 
 import AppKit
