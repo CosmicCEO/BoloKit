@@ -268,6 +268,7 @@ public final class TCPSession: @unchecked Sendable {
         case .timeLimit: return RawMessage(opcode: opcode, bytes: try await rest(SRTimeLimit.wireSize))
         case .baseControl: return RawMessage(opcode: opcode, bytes: try await rest(SRBaseControl.wireSize))
         case .pause: return RawMessage(opcode: opcode, bytes: try await rest(SRPause.wireSize))
+        case .revealTerrain: return RawMessage(opcode: opcode, bytes: try await rest(SRRevealTerrain.wireSize))
         }
     }
 
@@ -475,6 +476,11 @@ public final class TCPSession: @unchecked Sendable {
         case .pause:
             guard let msg = SRPause.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrPause(pause: msg.pause, state: &state)
+        case .revealTerrain:
+            guard let msg = SRRevealTerrain.decode(bytes), let terrain = Terrain(rawValue: Int32(msg.terrain)) else {
+                throw TCPSessionError.malformedMessage
+            }
+            recvSrRevealTerrain(x: Int(msg.x), y: Int(msg.y), terrain: terrain, state: &state)
         }
     }
 

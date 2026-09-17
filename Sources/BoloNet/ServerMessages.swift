@@ -49,6 +49,11 @@ public enum ServerOpcode: UInt8, Sendable {
     case timeLimit = 31
     case baseControl = 32
     case pause = 33
+    /// v1.5.0 #1: this port's own extension, no C counterpart -- static terrain newly
+    /// entering a fog-redacted player's vision (`docs/CONSTRAINTS.md`'s "Fog-of-war"
+    /// section). Applies to `state.terrain` only, no side effects -- unlike `SRBuild`,
+    /// which can't be reused for this since it carries its own gameplay consequences.
+    case revealTerrain = 34
 }
 
 private func decodeOpcode(_ r: inout WireReader, expect: ServerOpcode) -> Bool {
@@ -638,5 +643,32 @@ public struct SRPause: Sendable, Hashable {
         guard decodeOpcode(&r, expect: .pause) else { return nil }
         guard let pause = r.getU8() else { return nil }
         return SRPause(pause: pause)
+    }
+}
+
+/// v1.5.0 #1 (issue #1): a single tile of static ground truth newly entering a
+/// fog-redacted player's vision -- see `ServerOpcode.revealTerrain`'s own doc comment.
+/// One tile per message, matching `SRGrow`/`SRPlaceMine`/`SRDropMine`'s own existing
+/// single-tile-per-message convention (and this transport's fixed-size-per-opcode framing,
+/// `TCPSession.receiveOneRawMessage`'s `rest(wireSize)` pattern -- a batched/variable-length
+/// message would need new framing support this port doesn't have).
+public struct SRRevealTerrain: Sendable, Hashable {
+    public var x: UInt8
+    public var y: UInt8
+    /// `Terrain.rawValue`, truncated to `UInt8` -- every case fits (`Terrain.swift`'s
+    /// highest raw value, `minedGrass`, is 24).
+    public var terrain: UInt8
+    public init(x: UInt8, y: UInt8, terrain: UInt8) { self.x = x; self.y = y; self.terrain = terrain }
+    public static let wireSize = 4
+    public func encode() -> [UInt8] {
+        var w = WireWriter()
+        w.putU8(ServerOpcode.revealTerrain.rawValue); w.putU8(x); w.putU8(y); w.putU8(terrain)
+        return w.bytes
+    }
+    public static func decode(_ bytes: [UInt8]) -> SRRevealTerrain? {
+        var r = WireReader(bytes)
+        guard decodeOpcode(&r, expect: .revealTerrain) else { return nil }
+        guard let x = r.getU8(), let y = r.getU8(), let terrain = r.getU8() else { return nil }
+        return SRRevealTerrain(x: x, y: y, terrain: terrain)
     }
 }
