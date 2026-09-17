@@ -1,10 +1,12 @@
 # Status
 
-**Current drop:** `v1.4.0` (build 11). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.4.0). **`v1.2.3`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
+**Current drop:** `v1.3.0` (build 12). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.3.0). **`v1.4.0`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
 
-**Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard-, mouse-, and game-controller-driven tank, click-to-command builder, 50 Hz tick over a live network session, App Intents for Host/Join from Shortcuts and Spotlight, OSLog/`OSSignposter` instrumentation, and near-complete procedural sound. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
+**Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard-, mouse-, and game-controller-driven tank, click-to-command builder, 50 Hz tick over a live network session, `bolo://` join URLs, host tracker announce + UPnP port mapping, App Intents for Host/Join from Shortcuts and Spotlight, OSLog/`OSSignposter` instrumentation, and near-complete procedural sound. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
 
-**Tests (as of the `v1.4.0` pass):** 824 SwiftPM (230 BoloKitTests + 594 DifferentialTests) + 86 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check. Confirmed with `swift test` at tag (0 failures).
+**Tests (as of the `v1.3.0` pass):** 826 SwiftPM (232 BoloKitTests + 594 DifferentialTests) + 107 `Bolo 2026Tests`. One pre-existing flaky timing test is documented; isolated rerun is the check. Confirmed with `swift test` at tag (0 failures).
+
+**CI:** a `.github/workflows/test.yml` (GitHub Actions, `swift build`/`swift test` on `macos-15`) exists on a not-yet-merged branch. `Package.swift`'s `swift-tools-version` is `6.2` on `main`, matching what `macos-15`'s `latest-stable` (currently Xcode 26.3 / Swift 6.2.4) actually ships -- do not bump past that without checking the runner image first.
 
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
@@ -37,17 +39,18 @@ New v1.* work: **issue** → release or patch **milestone** → add to [project 
 
 ## Path to 2.0.0 — [project 1](https://github.com/users/CosmicCEO/projects/1)
 
-Current sprint target: **[v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2)** (due 30 Oct 2026). Milestone stays open — do not tag `v1.3.0` until every issue closes.
+Current sprint target: **[v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3)** (due 5 Feb 2027).
 
 | Milestone | Due | Issues |
 |-----------|-----|--------|
-| [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) | 30 Oct 2026 | [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN environment-blocked), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://` **closed**, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look **closed** |
+| ~~v1.3.0 Find and share games~~ | shipped | **Closed and tagged `v1.3.0`.** [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://`, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look — all closed |
 | ~~v1.4.0 Controls, HUD, sound~~ | shipped | **Closed and tagged `v1.4.0`.** [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog — all closed |
 | [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
+| [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) | none | Deferred from v1.3.0 (2026-09-17), all blocked on the same `NWListener` EINVAL environment issue: [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. Revisit once the environment issue lifts or a field Mac is available — do not grind on them in the meantime. |
 
-Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.4.0** (milestone 8).
+Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.3.0**/**v1.4.0** (milestones 2/8).
 
 ## Decide — [project 2](https://github.com/users/CosmicCEO/projects/2)
 
@@ -64,11 +67,15 @@ Not coding work until a ruling or a release milestone says so.
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
-## This sprint (v1.3.0 in progress, not tagged)
+## Shipped (`v1.3.0` release)
 
-[#20](https://github.com/CosmicCEO/BoloKit/issues/20) and [#26](https://github.com/CosmicCEO/BoloKit/issues/26) closed via PR #47 (merged to `main`). [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour advertise/browse/join-via-endpoint — **open**, code landed, live two-peer LAN unverifiable: `NWListener` EINVAL on the physical Mac and Parallels guest, including a bare `swiftc` bind. Do not reopen that investigation.
+[#20](https://github.com/CosmicCEO/BoloKit/issues/20) and [#26](https://github.com/CosmicCEO/BoloKit/issues/26) closed via PR #47 (merged to `main`).
 
-**Ruling (2026-09-16):** [#21](https://github.com/CosmicCEO/BoloKit/issues/21) (AWDL advertise/browse) and [#6](https://github.com/CosmicCEO/BoloKit/issues/6) (dedicated headless host, a listener) both require binding a `Network.framework` listener locally to write or verify — the same EINVAL block as #14. They stay parked in v1.3.0 until the environment issue lifts or a field Mac is available; do not grind on them in the meantime. [#24](https://github.com/CosmicCEO/BoloKit/issues/24) (tracker announce + UPnP NAT-PMP) is outbound-only — no local listener bind — and is the one v1.3.0 item that can be written and verified tonight. Milestone due 30 Oct 2026 (~6.5 weeks out); no schedule risk yet from the three parked issues.
+- [#24](https://github.com/CosmicCEO/BoloKit/issues/24) **closed**, PR [#55](https://github.com/CosmicCEO/BoloKit/pull/55) merged. Wire host tracker announce + UPnP — `HostGameEngine.startNetworkDiscovery` calls the already-shipped `registerWithTracker`/`PortMapping` (Wave 6.5) right after `engine.start()`, both best-effort (never blocks hosting). Tracker heartbeats every `TRACKERUPDATESECONDS` (60s) with a freshly rebuilt `TrackerHost`; UPnP drains `PortMapping`'s updates into the existing `com.cosmicceo.Bolo-2026`/`net` `Logger`. `HostGameView`'s "Announce on Tracker"/"UPnP" toggles now have live effect. 826/826 SwiftPM tests (+2 new) + 107/107 app tests pass.
+
+**Ruling (2026-09-17):** [#14](https://github.com/CosmicCEO/BoloKit/issues/14) (Bonjour, code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) (AWDL), and [#6](https://github.com/CosmicCEO/BoloKit/issues/6) (dedicated headless host) all require binding a `Network.framework` listener locally to write or verify — the same `NWListener` EINVAL block. Rather than leave v1.3.0 open indefinitely, moved all three to the new [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) milestone (no due date) and closed/tagged v1.3.0 with just #20/#24/#26. Do not grind on the three deferred issues until the environment issue lifts or a field Mac is available.
+
+No open v1.3.0 issues remain. Milestone closed, tag `v1.3.0` cut.
 
 ## Shipped (`v1.4.0` release)
 
