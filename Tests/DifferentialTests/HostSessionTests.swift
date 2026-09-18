@@ -667,3 +667,71 @@ private func makeState(playerCount: Int) -> GameState {
     await hostBanPlayer(player: 0, state: &state, table: table)
     #expect(state.bannedPlayers.isEmpty)
 }
+
+// MARK: - v1.5.0 #1 (fix pass, `/code-review max` on PR #56): SRDamage/SRGrabBoat masking
+
+/// The review found `onShouldBroadcastDamage` still used unmasked `.all(...)`, unlike every
+/// sibling terrain-affecting callback in the same function -- a live redaction hole. Player 2
+/// has no vision of the affected tile; player 0 does. Only player 0 (and the sender, player 1,
+/// via the same mask) should receive the broadcast.
+@Test func dispatchDamageOnlyReachesPlayersWithFogVisibilityOfTheTile() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    state.hiddenMines = true
+    state.pills = [Pill(x: 50, y: 50, armour: 10, owner: 0, speed: 40, counter: 0)]
+
+    var visiblePlayerFog = FogState()
+    visiblePlayerFog.fog[50 * 256 + 50] = 1
+    let fogStates: [Int: FogState] = [0: visiblePlayerFog, 1: FogState(), 2: FogState()]
+
+    try await sendBytes(links[1].clientEnd, CLDamage(x: 50, y: 50, boat: 0).encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: 1, state: &state, table: table, fogStates: fogStates)
+
+    let expected = SRDamage(player: UInt8(1), x: 50, y: 50, terrain: UInt8((state.terrain[50, 50] ?? .sea).rawValue)).encode()
+    let received0 = try await receiveExactly(links[0].clientEnd, expected.count)
+    #expect(received0 == expected, "player 0 has fog visibility of the tile and must receive it")
+
+    // Player 2 has no fog visibility of the tile: rather than block on an absent read (which
+    // would hang since nothing ever arrives -- there's no bounded-wait primitive here safe
+    // against a stuck `NWConnection.receive` continuation), send a distinct sentinel directly
+    // afterward and confirm it, not the `SRDamage` payload, is what actually arrives first.
+    let sentinel = SRPause(pause: 7).encode()
+    await table.send(sentinel, to: 2)
+    let received2 = try await receiveExactly(links[2].clientEnd, sentinel.count)
+    #expect(received2 == sentinel, "player 2 must receive only the sentinel, never the SRDamage payload ahead of it")
+
+}
+
+/// Same fix, same pattern, for `onShouldBroadcastGrabBoat` -- previously the only other
+/// terrain-affecting callback in `dispatchHostMessage` still using unmasked `.all(...)`.
+/// Fired from `recvClGrabTile` (the `.grabTile` opcode) when the grabbed tile's terrain is
+/// `.boat` -- there is no separate `CLGrabBoat` client message.
+@Test func dispatchGrabBoatOnlyReachesPlayersWithFogVisibilityOfTheTile() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    state.hiddenMines = true
+    state.terrain[50, 50] = .boat
+
+    var visiblePlayerFog = FogState()
+    visiblePlayerFog.fog[50 * 256 + 50] = 1
+    let fogStates: [Int: FogState] = [0: visiblePlayerFog, 1: FogState(), 2: FogState()]
+
+    try await sendBytes(links[1].clientEnd, CLGrabTile(x: 50, y: 50).encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: 1, state: &state, table: table, fogStates: fogStates)
+
+    let expected = SRGrabBoat(player: UInt8(1), x: 50, y: 50).encode()
+    let received0 = try await receiveExactly(links[0].clientEnd, expected.count)
+    #expect(received0 == expected, "player 0 has fog visibility of the tile and must receive it")
+
+    let sentinel = SRPause(pause: 7).encode()
+    await table.send(sentinel, to: 2)
+    let received2 = try await receiveExactly(links[2].clientEnd, sentinel.count)
+    #expect(received2 == sentinel, "player 2 must receive only the sentinel, never the SRGrabBoat payload ahead of it")
+
+}

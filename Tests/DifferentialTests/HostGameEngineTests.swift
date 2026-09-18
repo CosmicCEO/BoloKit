@@ -1029,3 +1029,213 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         )
     }
 }
+
+// MARK: - v1.5.0 (issue #1): per-slot FogState driven by real gameplay
+
+@Suite struct HostGameEngineFogVisionTests {
+
+    @Test func testHiddenMinesOffNeverAllocatesAnyFogState() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = false
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await Task.sleep(nanoseconds: 100_000_000) // a handful of ticks
+        #expect(engine.fogState(for: 0) == nil)
+    }
+
+    @Test func testAlreadyConnectedPlayerGetsAnInitialSelfRevealWithoutMoving() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[105 * 256 + 105] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[105 * 256 + 105] ?? 0) > 0)
+        // A tile far away, never covered by any vision source, stays unknown.
+        #expect(engine.fogState(for: 0)?.seenTiles[200 * 256 + 200] == .unknown)
+    }
+
+    @Test func testAllianceFormingRevealsTheNewAllyImmediately() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+
+            state.players[1].connected = true
+            state.players[1].used = true
+            state.players[1].dead = false
+            state.players[1].tank = Vec2f(x: 150, y: 150) // far outside player 0's own 29x29 vision
+            // One-way: player 1 has already declared alliance with player 0 (SessionLogic's own
+            // documented asymmetry), but player 0 hasn't reciprocated yet -- testAlliance(0, 1)
+            // is still false until player 0's own request below completes the mutual condition.
+            state.players[1].alliance = (1 << 1) | (1 << 0)
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { engine.fogState(for: 0) != nil }
+        #expect(engine.fogState(for: 0)?.seenTiles[150 * 256 + 150] == .unknown, "not allied yet -- must not be visible")
+
+        // Host's own local player (slot 0) requests alliance with player 1, completing the
+        // mutual condition -- the only alliance-mutation path reachable from a test without a
+        // live network connection (recvClSetAlliance needs a real CL_SETALLIANCE message).
+        engine.submitRequestAlliance(players: 1 << 1)
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0, "alliance forming must immediately reveal the new ally's position")
+    }
+
+    // MARK: - v1.5.0 #1 (fix pass, `/code-review max` on PR #56): vision-source symmetry
+
+    /// Regression test for the review's most severe finding: `FogState.fog` is a reference
+    /// count needing symmetric increment/decrement, but the original `updateFogVision` could
+    /// never reach its own `decreaseVis` call for a broken alliance (a `guard isAllied else {
+    /// continue }` sat before it). Two allied players explore together; breaking the alliance
+    /// must re-fog the tile the (now-former) ally was the only source for.
+    @Test func testAllianceBreakingDecrementsTheVisionItWasContributing() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = (1 << 0) | (1 << 1)
+
+            state.players[1].connected = true
+            state.players[1].used = true
+            state.players[1].dead = false
+            state.players[1].tank = Vec2f(x: 150, y: 150) // far outside player 0's own vision
+            state.players[1].alliance = (1 << 1) | (1 << 0) // mutually allied from tick 1
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { (engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0 }
+        #expect((engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0, "ally's position must be visible while allied")
+
+        engine.submitLeaveAlliance(players: 1 << 1)
+
+        try await waitForCondition(timeout: 2) { (engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) <= 0 }
+        #expect((engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) <= 0, "breaking the alliance must decrement the vision the ex-ally was the only source for")
+    }
+
+    /// Same regression, the other confirmed-unreachable half: a mover simply disappearing
+    /// from the loop's own `where connected` filter (disconnect/kick/ban) never decremented
+    /// anything either, since only an alliance-status *change* was even attempted.
+    @Test func testKickingAPlayerDecrementsTheVisionTheyWereContributing() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = (1 << 0) | (1 << 1)
+
+            state.players[1].connected = true
+            state.players[1].used = true
+            state.players[1].dead = false
+            state.players[1].tank = Vec2f(x: 160, y: 160)
+            state.players[1].alliance = (1 << 1) | (1 << 0)
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { (engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) > 0 }
+        #expect((engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) > 0, "kicked player's position must be visible while connected and allied")
+
+        engine.submitKickPlayer(1)
+
+        try await waitForCondition(timeout: 2) { (engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) <= 0 }
+        #expect((engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) <= 0, "kicking the player must decrement the vision they were the only source for")
+    }
+
+    /// Regression test for the negative-fog double-count bug: the original bootstrap branch
+    /// seeded `increaseVis` at the *post-tick* position, then the same tick's movement-diff
+    /// logic (pre-tick vs. post-tick) fired again for the identical self pair, netting an
+    /// extra `+1` on the new tile and an unmatched `-1` on the old tile's fringe. A player
+    /// whose tank is already moving (via input) on the very first tracked tick must never
+    /// produce a negative count anywhere.
+    @Test func testFirstTrackedTickWithMovementNeverProducesNegativeFog() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+            // Moving right at a speed that guarantees a tile change within the first tick.
+            state.players[0].speed = 3.0
+            state.players[0].dir = 0 // C's own dir=0 convention is +x, matching TankTick's port
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { engine.fogState(for: 0) != nil }
+        // Give it a couple more ticks to guarantee the tank has actually moved a tile.
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        guard let fog = engine.fogState(for: 0)?.fog else {
+            Issue.record("expected a FogState for player 0")
+            return
+        }
+        #expect(fog.allSatisfy { $0 >= 0 }, "fog count must never go negative")
+    }
+
+    /// Regression test for the review's other headline finding: `SRRevealTerrain` was fully
+    /// encoded/decoded/dispatched but never constructed and sent by any production code path
+    /// -- a real, network-joined player's own client never learned about newly-revealed
+    /// terrain at all. This joins a real remote connection into a live engine and confirms a
+    /// `SRRevealTerrain` message actually arrives on it (fired by `updateFogVision`'s own
+    /// per-tick self-vision bootstrap, the same mechanism that will later report their real
+    /// spawn and any territory they explore).
+    @Test func hostGameEngineSendsRevealTerrainToARemoteJoinedPlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].used = true
+            state.players[0].connected = true
+            state.players[0].dead = false
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+        joinClient.start(queue: .main)
+        defer { joinClient.cancel() }
+        try await sendDatagram(joinClient, JoinPreamble(name: "Ally", pass: "").encode())
+        try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+
+        // Consume the join handshake's own status byte + preamble + redacted map + join
+        // broadcast (which reaches the joiner too, T-9's own ordering) before the reveal.
+        _ = try await receiveExactly(joinClient, 1)
+        let preambleBytes = try await receiveExactly(joinClient, BoloPreamble.wireSize)
+        guard let mapLength = BoloPreamble.decode(preambleBytes)?.mapLength, mapLength > 0 else {
+            Issue.record("expected a preamble with a nonzero map length")
+            return
+        }
+        _ = try await receiveExactly(joinClient, Int(mapLength))
+        _ = try await receiveExactly(joinClient, SRPlayerJoin.wireSize)
+
+        let revealBytes = try await receiveExactly(joinClient, SRRevealTerrain.wireSize)
+        #expect(SRRevealTerrain.decode(revealBytes) != nil, "a remote player must receive SRRevealTerrain as their own vision reveals tiles")
+    }
+}

@@ -165,7 +165,7 @@ public final class GameSession {
         self.udpSession = nil
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
-        view.render(self.state)
+        view.render(self.state, fogState: hostEngine.fogState(for: self.state.localPlayer))
         hudSnapshot.update(from: self.state)
 
         view.onInputFlagsChange = { change in
@@ -182,8 +182,8 @@ public final class GameSession {
         view.onBuilderCommand = { command, target in
             hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
-        hostEngine.onTickRendered = { [weak self, weak view] renderedState in
-            view?.render(renderedState)
+        hostEngine.onTickRendered = { [weak self, weak view, weak hostEngine] renderedState in
+            view?.render(renderedState, fogState: hostEngine?.fogState(for: renderedState.localPlayer))
             self?.hudSnapshot.update(from: renderedState)
         }
         hostEngine.onMessageReceived = { [weak self] message in

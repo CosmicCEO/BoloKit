@@ -187,7 +187,8 @@ private func makeState() -> GameState {
     let serializer = JoinAcceptSerializer()
 
     try await sendBytes(link.clientEnd, JoinPreamble(version: 99, name: "Bob", pass: "").encode())
-    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table)
+    var fogStates: [Int: FogState] = [:]
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
     #expect(outcome == .rejected(.badVersion))
 
     let statusByte = try await receiveExactly(link.clientEnd, 1)
@@ -232,7 +233,8 @@ private let loopbackIPv4AsUInt32: UInt32 = {
     let serializer = JoinAcceptSerializer()
 
     try await sendBytes(link.clientEnd, JoinPreamble(name: "Alice", pass: "").encode())
-    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table)
+    var fogStates: [Int: FogState] = [:]
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
     #expect(outcome == .accepted(player: 0, rejoin: false))
     #expect(state.players[0].used)
     #expect(state.players[0].connected)
@@ -271,6 +273,116 @@ private let loopbackIPv4AsUInt32: UInt32 = {
     #expect(SRPlayerJoin.decode(joinBroadcast) == SRPlayerJoin(player: 0, name: "Alice", host: ""))
 }
 
+/// v1.5.0 #1: the core security property the host-authoritative fog deviation exists for --
+/// a joining player's own map send never contains true ground truth for a mine outside
+/// their initial spawn reveal, and does substitute (not omit) a mine inside it, matching
+/// `fogTileFor`'s own never-seen-before substitution rule.
+/// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): the original version of this test
+/// asserted a mine near `state.players[0].tank` got a spawn-reveal at join time -- exactly
+/// the bug the review caught: `applyJoin` never sets `tank` (spawn is `runTick`'s job, later),
+/// so that reveal was always centered on the `(0, 0)` placeholder, not wherever the test
+/// (or production) actually cared about. The fix removes the join-time reveal entirely, so
+/// this test now asserts the correct replacement behavior: nothing is revealed at join at
+/// all, and every mine -- regardless of proximity to the placeholder tank position --
+/// crosses the wire as its never-seen default, never as real ground truth.
+@Test func processJoinAttemptRevealsNothingAtJoinTime() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel(); link.clientEnd.cancel() }
+
+    var state = makeState()
+    state.hiddenMines = true
+    // Deliberately NOT set -- `state.players[0].tank` stays at its `(0, 0)` default, matching
+    // what `applyJoin` actually leaves it at. A reveal computed "around the tank" here would
+    // be a regression back to the bug being fixed.
+    state.terrain[5, 5] = .minedGrass // near the (0,0) placeholder, if a reveal were wrongly computed there
+    state.terrain[200, 200] = .minedGrass // far from anything
+    let table = HostSessionTable()
+    let serializer = JoinAcceptSerializer()
+
+    try await sendBytes(link.clientEnd, JoinPreamble(name: "Eve", pass: "").encode())
+    var fogStates: [Int: FogState] = [:]
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
+    #expect(outcome == .accepted(player: 0, rejoin: false))
+
+    _ = try await receiveExactly(link.clientEnd, 1) // status byte
+    let preambleBytes = try await receiveExactly(link.clientEnd, BoloPreamble.wireSize)
+    guard let mapLength = BoloPreamble.decode(preambleBytes)?.mapLength, mapLength > 0 else {
+        Issue.record("expected a nonzero map length")
+        return
+    }
+    let mapBytes = try await receiveExactly(link.clientEnd, Int(mapLength))
+
+    var decoded = GameState()
+    #expect(decodeBMap(mapBytes, into: &decoded))
+    // Neither mine crosses the wire as real ground truth -- nothing was revealed at join.
+    // (5, 5) is in the mined-sea border ring (mine zone is [10, 245]) -- its never-seen
+    // default is `.minedSea` (static, always-known map geometry, `docs/CONSTRAINTS.md`), not
+    // plain `.sea`; (200, 200) is in the interior, whose default *is* plain `.sea`.
+    #expect(decoded.terrain[5, 5] != .minedGrass)
+    #expect(decoded.terrain[200, 200] != .minedGrass)
+    #expect(decoded.terrain[5, 5] == .minedSea)
+    #expect(decoded.terrain[200, 200] == .sea)
+
+    #expect(fogStates[0] != nil, "the join accept path must seed the joiner's own FogState")
+    #expect(fogStates[0]?.fog.allSatisfy { $0 == 0 } == true, "nothing should be marked visible yet at join time")
+}
+
+/// Regression test for the review's stale-`FogState`-reuse finding: a slot's prior occupant
+/// (or the same identity rejoining) must never carry forward into a fresh join. Player A
+/// explores and reveals a mine while occupying slot 0; player B then joins into the same slot
+/// (matching the real scenario -- a freed slot getting reused, or a straightforward rejoin)
+/// and must start with zero prior vision, not inherit A's.
+@Test func processJoinAttemptNeverReusesAPriorOccupantsFogState() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel(); link.clientEnd.cancel() }
+
+    var state = makeState()
+    state.hiddenMines = true
+    var fogStates: [Int: FogState] = [:]
+
+    // Simulate player A having previously explored and revealed a mine at (50, 50).
+    var priorOccupantFog = FogState()
+    priorOccupantFog.fog[50 * 256 + 50] = 3
+    priorOccupantFog.seenTiles[50 * 256 + 50] = .minedGrass
+    fogStates[0] = priorOccupantFog
+
+    let table = HostSessionTable()
+    let serializer = JoinAcceptSerializer()
+    try await sendBytes(link.clientEnd, JoinPreamble(name: "B", pass: "").encode())
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
+    #expect(outcome == .accepted(player: 0, rejoin: false))
+
+    #expect(fogStates[0]?.fog[50 * 256 + 50] == 0, "a fresh join must never inherit a prior occupant's fog count")
+    #expect(fogStates[0]?.seenTiles[50 * 256 + 50] == .unknown, "a fresh join must never inherit a prior occupant's revealed tiles")
+}
+
+@Test func processJoinAttemptSendsFullGroundTruthWhenHiddenMinesIsOff() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel(); link.clientEnd.cancel() }
+
+    var state = makeState()
+    state.hiddenMines = false
+    state.terrain[200, 200] = .minedGrass
+    let table = HostSessionTable()
+    let serializer = JoinAcceptSerializer()
+
+    try await sendBytes(link.clientEnd, JoinPreamble(name: "Frank", pass: "").encode())
+    var fogStates: [Int: FogState] = [:]
+    _ = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
+
+    _ = try await receiveExactly(link.clientEnd, 1)
+    let preambleBytes = try await receiveExactly(link.clientEnd, BoloPreamble.wireSize)
+    guard let mapLength = BoloPreamble.decode(preambleBytes)?.mapLength, mapLength > 0 else {
+        Issue.record("expected a nonzero map length")
+        return
+    }
+    let mapBytes = try await receiveExactly(link.clientEnd, Int(mapLength))
+
+    var decoded = GameState()
+    #expect(decodeBMap(mapBytes, into: &decoded))
+    #expect(decoded.terrain[200, 200] == .minedGrass, "D65 default must be unchanged: full ground truth when hiddenMines is off")
+}
+
 @Test func processJoinAttemptRejoinPreservesAllianceAndBroadcastsRejoin() async throws {
     let link = try await makeConnectedPair()
     defer { link.listener.cancel(); link.clientEnd.cancel() }
@@ -289,7 +401,8 @@ private let loopbackIPv4AsUInt32: UInt32 = {
     let serializer = JoinAcceptSerializer()
 
     try await sendBytes(link.clientEnd, JoinPreamble(name: "Carol", pass: "").encode())
-    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table)
+    var fogStates: [Int: FogState] = [:]
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
     #expect(outcome == .accepted(player: 0, rejoin: true))
     #expect(state.players[0].alliance == 0b1010)  // untouched, not reset to self-only
     #expect(await table.seq(for: 0) == 42)  // T-1: survives the rejoin, untouched
@@ -333,8 +446,9 @@ private let loopbackIPv4AsUInt32: UInt32 = {
     try await sendBytes(linkA.clientEnd, JoinPreamble(name: "A", pass: "").encode())
     try await sendBytes(linkB.clientEnd, JoinPreamble(name: "B", pass: "").encode())
 
-    let outcomeA = await processJoinAttempt(connection: linkA.serverEnd, serializer: serializer, state: &state, table: table)
-    let outcomeB = await processJoinAttempt(connection: linkB.serverEnd, serializer: serializer, state: &state, table: table)
+    var fogStates: [Int: FogState] = [:]
+    let outcomeA = await processJoinAttempt(connection: linkA.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
+    let outcomeB = await processJoinAttempt(connection: linkB.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
 
     guard case .accepted(let playerA, _) = outcomeA, case .accepted(let playerB, _) = outcomeB else {
         Issue.record("expected both joins to be accepted, got \(outcomeA) and \(outcomeB)")
@@ -372,7 +486,8 @@ private let loopbackIPv4AsUInt32: UInt32 = {
         link.clientEnd.cancel()
     }
 
-    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table)
+    var fogStates: [Int: FogState] = [:]
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
     #expect(outcome == .malformedOrClosed)
 
     // The real bug (found via B.5c's own dynamic producer exposing it, not previously reachable):

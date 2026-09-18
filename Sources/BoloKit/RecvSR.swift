@@ -192,6 +192,15 @@ public func recvSrBuild(x: Int, y: Int, terrain: Terrain, state: inout GameState
     state.terrain[x, y] = terrain
 }
 
+/// v1.5.0 #1 (issue #1): no C counterpart -- applies a single tile of static ground truth
+/// the host has decided this player may now see (`ServerOpcode.revealTerrain`'s own doc
+/// comment). Applies the value directly, same shape as `recvSrBuild`, and deliberately has
+/// no other side effect (no sound, no message) -- it's purely a fog-visibility disclosure,
+/// not a gameplay event.
+public func recvSrRevealTerrain(x: Int, y: Int, terrain: Terrain, state: inout GameState) {
+    state.terrain[x, y] = terrain
+}
+
 /// Ported from `recvsrgrow()` (`client.c:1686-1730`).
 public func recvSrGrow(x: Int, y: Int, state: inout GameState) {
     switch state.terrain[x, y] {

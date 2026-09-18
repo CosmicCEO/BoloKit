@@ -337,11 +337,35 @@ public final class GameRenderView: NSView {
         NSSize(width: mapPixelSize, height: mapPixelSize)
     }
 
+    /// v1.5.0 #1: the host's own player-slot `FogState` for the current `state.localPlayer`,
+    /// supplied by whichever `GameSession` init actually has one (the host path, via
+    /// `HostGameEngine.fogState(for:)`) -- `nil` for the join/single-process paths, which
+    /// render `state.terrain` as received/simulated with no fog logic of their own (the
+    /// host-authoritative deviation, `docs/CONSTRAINTS.md`, moves fog entirely onto the
+    /// host side; a join client's data is already redacted by the time it arrives, once
+    /// Phase 4 wires that up).
+    private var fogState: FogState?
+
     /// 7.3 calls this after each `runTick()`; this view schedules no redraw of its own (D82) --
-    /// it only reacts to being handed a new snapshot.
-    public func render(_ newState: GameState) {
+    /// it only reacts to being handed a new snapshot. `fogState` is the rendering
+    /// observer's own fog view (see this property's own doc comment above) -- `nil` unless
+    /// `state.hiddenMines` is true and the host path supplies one.
+    public func render(_ newState: GameState, fogState: FogState? = nil) {
         state = newState
-        tileGrid = displayTileGrid(for: newState)
+        self.fogState = fogState
+        if newState.hiddenMines {
+            // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): fail closed, not open. A
+            // `nil` `fogState` here used to fall through to full-visibility `displayTileGrid`
+            // -- reachable in production during `GameSession`'s host-path init, which calls
+            // `render(_:)` once before `HostGameEngine`'s first tick has ever populated
+            // `fogStates`, so the very first frame of a hidden-mines game could show every
+            // mine. An all-fogged default `FogState()` renders `.unknown` everywhere instead,
+            // which is the correct state of the world at that instant anyway (nothing has
+            // been revealed yet).
+            tileGrid = fogResolvedTileGrid(for: newState, fogState: fogState ?? FogState())
+        } else {
+            tileGrid = displayTileGrid(for: newState)
+        }
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
             remoteTankSmoothers[i, default: RemotePositionSmoother()]
@@ -653,7 +677,17 @@ public final class GameRenderView: NSView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
-    // MARK: - Terrain (D65: every tile visible, straight `mapimage()` call)
+    // MARK: - Terrain (D65 superseded by v1.5.0 #1 when `state.hiddenMines` is on -- see
+    // `render(_:fogState:)`'s own doc comment)
+    //
+    // v1.5.0 #1: this function's own logic is unchanged from D65 -- `tileGrid` itself now
+    // carries the fog-resolved values (`fogResolvedTileGrid`) whenever `state.hiddenMines`
+    // is true and a `fogState` was supplied, so `mapimage`/`isMinedTile` below naturally
+    // draw the unknown-tile glyph for never-seen tiles and skip the mine overlay for a
+    // hidden (substituted-to-unmined) mine with no changes needed here. D148(C)'s own
+    // rejection of per-observer mine visibility no longer applies -- that state is now
+    // modeled (`FogState`/`fogTileFor`), just resolved before it reaches this function
+    // rather than inside it.
 
     private func drawTerrain(_ ctx: CGContext, dirtyRect: NSRect) {
         let minX = max(0, Int(dirtyRect.minX) / tileSize)
@@ -667,8 +701,8 @@ public final class GameRenderView: NSView {
                 let dst = CGRect(x: x * tileSize, y: y * tileSize, width: tileSize, height: tileSize)
                 let index = mapimage(tileGrid, Int32(x), Int32(y))
                 guard index >= 0 else {
-                    // mapimage()'s "tile unseen" sentinel (D64) -- unreachable under D65's full
-                    // visibility, painted black defensively rather than left undrawn.
+                    // mapimage()'s "tile unseen" sentinel (D64) -- reachable now under fog
+                    // (a never-seen tile's `Tile.unknown` resolves here), painted black.
                     ctx.setFillColor(gray: 0, alpha: 1)
                     ctx.fill(dst)
                     continue
@@ -676,14 +710,12 @@ public final class GameRenderView: NSView {
                 if let cell = tilesImage.cropping(to: sheetSrcRect(forIndex: index)) {
                     blit(cell, in: dst, ctx)
                 }
-                // D148(C): mines were pure terrain state with no glyph ever drawn over the
-                // base tile (`mapimage()` intentionally returns the *unmined* image for every
-                // `minedX` terrain variant, matching autotiling's own neighbor-matching needs --
-                // see D148(C) pre-brief in AGENT_NOTES.md for why per-owner visibility was
-                // rejected: the C reference's `hiddenmines` option/per-observer reveal state
-                // isn't modeled anywhere in this port, so the correct default (matching the
-                // reference's `hiddenmines == false` behavior, which is this port's only
-                // modeled mode) is every mine visible to every player, not owner-only).
+                // `mapimage()` intentionally returns the *unmined* image for every `minedX`
+                // terrain variant (autotiling's own neighbor-matching needs), so the mine
+                // glyph is a separate overlay blit, gated on `isMinedTile(tileGrid, ...)` --
+                // which `fogResolvedTileGrid` has already substituted to the unmined `Tile`
+                // for a hidden mine, so this naturally draws nothing for one this observer
+                // hasn't (stickily) revealed.
                 if isMinedTile(tileGrid, Int32(x), Int32(y)) != 0,
                    let mineCell = tilesImage.cropping(to: sheetSrcRect(forIndex: MINE00IMAGE)) {
                     blit(mineCell, in: dst, ctx)
@@ -708,7 +740,8 @@ public final class GameRenderView: NSView {
     // an oversight.
     private func drawSprites(_ ctx: CGContext) {
         for explosion in state.explosions {
-            drawExplosion(explosion, ctx)
+            // `GSBoloView.m:363`: fogvis for the global explosion list.
+            drawExplosion(explosion, ctx, visFraction: visFraction(at: explosion.point, useForestTerm: false))
         }
 
         for i in state.players.indices where state.players[i].connected {
@@ -734,10 +767,15 @@ public final class GameRenderView: NSView {
             // Falls back to the raw position only if `render(_:)` hasn't run yet for this index,
             // which shouldn't happen since it always runs immediately before `draw(_:)`.
             let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
-            drawSprite(base + headingColumn(other.dir), at: smoothed, ctx)
-            // `GSBoloView.m:328-330`'s `vis > 0.90` label case, unconditionally true under D65's
-            // full-visibility v1 scope (B.9 disclosed remainder, Phase 2 cleanup).
-            drawLabel(other.name, at: smoothed, ctx)
+            // `GSBoloView.m:315,322,325`: calcvis for a remote tank's own sprite.
+            let vis = visFraction(at: smoothed, useForestTerm: true)
+            drawSprite(base + headingColumn(other.dir), at: smoothed, ctx, fraction: vis)
+            // `GSBoloView.m:328-330`'s `vis > 0.90` label case -- unconditionally true under
+            // D65's full-visibility v1 scope (`visFraction` returns 1.0 there), real once
+            // `state.hiddenMines` is on and a `fogState` was supplied.
+            if vis > 0.90 {
+                drawLabel(other.name, at: smoothed, ctx)
+            }
         }
 
         if state.players.indices.contains(state.localPlayer) {
@@ -750,10 +788,15 @@ public final class GameRenderView: NSView {
 
         for player in state.players where player.connected {
             for shell in player.shells {
-                drawSprite(SHELL0IMAGE + headingColumn(shell.dir), at: shell.point, ctx)
+                // `GSBoloView.m:349`: fogvis for a shell.
+                drawSprite(
+                    SHELL0IMAGE + headingColumn(shell.dir), at: shell.point, ctx,
+                    fraction: visFraction(at: shell.point, useForestTerm: false)
+                )
             }
             for explosion in player.explosions {
-                drawExplosion(explosion, ctx)
+                // `GSBoloView.m:378`: fogvis for a per-player explosion.
+                drawExplosion(explosion, ctx, visFraction: visFraction(at: explosion.point, useForestTerm: false))
             }
         }
     }
@@ -766,9 +809,12 @@ public final class GameRenderView: NSView {
             // equivalent field for -- substituting `GameState.ticks` (always available,
             // monotonic), which drives the same cosmetic alternation with no gameplay effect.
             let frame = (state.ticks / 5) % 2 == 0 ? BUILD1IMAGE : BUILD0IMAGE
-            drawSprite(frame, at: position, ctx)
+            // `GSBoloView.m:301`: calcvis, not fogvis, for a working builder.
+            drawSprite(frame, at: position, ctx, fraction: visFraction(at: position, useForestTerm: true))
         case .parachute:
-            drawSprite(BUILD2IMAGE, at: position, ctx)
+            // `GSBoloView.m:389`: fogvis (a separate loop from the goto/work/wait/return one
+            // above), not calcvis, for a parachuting builder.
+            drawSprite(BUILD2IMAGE, at: position, ctx, fraction: visFraction(at: position, useForestTerm: false))
         case .ready:
             break
         }
@@ -800,22 +846,42 @@ public final class GameRenderView: NSView {
         string.draw(at: CGPoint(x: x, y: y))
     }
 
-    private func drawExplosion(_ explosion: Explosion, _ ctx: CGContext) {
-        let fraction = Float(explosion.counter) / Float(explosionTicks)
-        let frame = EXPLO0IMAGE + Int32(Float(EXPLO5IMAGE - EXPLO0IMAGE) * fraction)
-        drawSprite(frame, at: explosion.point, ctx)
+    private func drawExplosion(_ explosion: Explosion, _ ctx: CGContext, visFraction: Float = 1.0) {
+        let animationFraction = Float(explosion.counter) / Float(explosionTicks)
+        let frame = EXPLO0IMAGE + Int32(Float(EXPLO5IMAGE - EXPLO0IMAGE) * animationFraction)
+        drawSprite(frame, at: explosion.point, ctx, fraction: visFraction)
     }
 
-    /// Mirrors `drawSprite:at:fraction:` (`GSBoloView.m:441-451`) at `fraction = 1.0` --
-    /// D65 means no fog-driven partial visibility in v1, so the fraction term is dropped
-    /// rather than ported as dead always-1.0 code.
-    private func drawSprite(_ index: Int32, at point: Vec2f, _ ctx: CGContext) {
+    /// Mirrors `drawSprite:at:fraction:` (`GSBoloView.m:441-451`). `fraction` was dropped as
+    /// dead always-1.0 code under D65's full-visibility v1 scope (this function's own prior
+    /// doc comment said so) -- v1.5.0 #1 revives it: `fraction <= 0.00001` skips the draw
+    /// entirely (matching the reference's own guard), otherwise blits at that alpha.
+    private func drawSprite(_ index: Int32, at point: Vec2f, _ ctx: CGContext, fraction: Float = 1.0) {
+        guard fraction > 0.00001 else { return }
         guard let cell = spritesImage.cropping(to: sheetSrcRect(forIndex: index)) else { return }
         let size = CGFloat(tileSize)
         let originX: CGFloat = (CGFloat(point.x) * size - 8).rounded(.down)
         let originY: CGFloat = (CGFloat(point.y) * size - 8).rounded(.down)
         let dst = CGRect(x: originX, y: originY, width: size, height: size)
-        blit(cell, in: dst, ctx)
+        if fraction < 1.0 {
+            ctx.saveGState()
+            ctx.setAlpha(CGFloat(fraction))
+            blit(cell, in: dst, ctx)
+            ctx.restoreGState()
+        } else {
+            blit(cell, in: dst, ctx)
+        }
+    }
+
+    /// `calcVis`/`fogVis` fraction at `point` for the current render's observer, matching
+    /// `GSBoloView.m:301,315,349,363,378,389`'s own per-sprite-kind choice of which of the
+    /// two to call. `1.0` (fully visible, no fade) when `state.hiddenMines` is off or no
+    /// `fogState` was supplied -- the D65 default this feature must not change.
+    private func visFraction(at point: Vec2f, useForestTerm: Bool) -> Float {
+        guard state.hiddenMines, let fogState else { return 1.0 }
+        return useForestTerm
+            ? calcVis(point, state: state, fogState: fogState, observer: state.localPlayer)
+            : fogVis(point, fogState: fogState)
     }
 
     /// `CGContext.draw(_:in:)` draws a `CGImage`'s row 0 at the *high-Y* edge of the destination

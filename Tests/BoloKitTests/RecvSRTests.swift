@@ -142,6 +142,13 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(state.terrain[20, 20] == .wall)
 }
 
+@Test func recvSrRevealTerrainAppliesGivenTerrainDirectly() {
+    var state = makeState(players: [])
+    state.terrain[20, 20] = .sea
+    recvSrRevealTerrain(x: 20, y: 20, terrain: .minedGrass, state: &state)
+    #expect(state.terrain[20, 20] == .minedGrass)
+}
+
 @Test func recvSrGrowTurnsGrowableTerrainToForestOrMinedForest() {
     var state = makeState(players: [])
     state.terrain[20, 20] = .rubble2

@@ -144,6 +144,32 @@ public final class HostGameEngine: @unchecked Sendable {
     private var portMappingTask: Task<Void, Never>?
     private static let discoveryLogger = Logger(subsystem: BoloSignposts.subsystem, category: BoloSignposts.netCategory)
 
+    /// **v1.5.0 #1:** one `FogState` per connected player slot -- see `docs/CONSTRAINTS.md`'s
+    /// "Fog-of-war" section for why this lives per-slot on the host rather than per-running-
+    /// process as in the C oracle. Empty (and untouched) whenever `state.hiddenMines` is
+    /// false, matching the issue's "fully visible remains default" requirement at zero added
+    /// cost. Keyed by player slot rather than a `[FogState]` sized `maxPlayers` so an
+    /// unconnected slot never allocates a grid it doesn't need.
+    private var fogStates: [Int: FogState] = [:]
+
+    /// Read-only access to a connected player slot's current `FogState`, for rendering
+    /// (Phase 3) and testing. `nil` when `state.hiddenMines` is false or the slot has no
+    /// tracked fog state yet.
+    public func fogState(for player: Int) -> FogState? {
+        fogStates[player]
+    }
+    /// The vision rect `mover` is *currently* contributing to `observer`'s `FogState`, keyed
+    /// `observer * maxPlayers + mover` -- present only while `mover` is both connected and
+    /// mutually allied with `observer`. Diffed each tick (`updateFogVision`) against the
+    /// current `shouldContribute` status to detect every kind of "started/stopped
+    /// contributing vision" transition -- bootstrap, movement, alliance forming/breaking, and
+    /// disconnect/kick/ban -- through one generic mechanism, rather than hooking each of
+    /// those mutation call sites individually. See `updateFogVision`'s own header for why a
+    /// cached *rect* (not just a bool) is required: it's what lets a mover who stops
+    /// contributing (disconnected, alliance broken) be correctly `decreaseVis`'d using
+    /// wherever they last actually revealed from, not a value re-derived after the fact.
+    private var visionSourceRect: [Int: Recti] = [:]
+
     /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
     /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
     /// only the consumer `Task` may ever touch). Hopped onto the main actor here, at the single
@@ -386,8 +412,13 @@ public final class HostGameEngine: @unchecked Sendable {
         case .newConnection(let connection):
             // Inlined from `runHostAcceptLoop` (B.5a) -- same call, just made from inside this
             // engine's single consumer instead of its own independent Task.
+            // v1.5.0 #1: `fogStates` is `inout` here -- `processJoinAttempt` seeds the
+            // joining player's initial spawn-reveal `FogState` *before* it encodes and sends
+            // the map (`HostListener.swift`'s own doc comment on that ordering), so the very
+            // first map send is already redacted.
             let outcome = await processJoinAttempt(
-                connection: connection, serializer: listener.serializer, state: &state, table: table
+                connection: connection, serializer: listener.serializer, state: &state, table: table,
+                fogStates: &fogStates
             )
             // B.5c: on a successful join, spawn this player's own dynamic producer `Task` --
             // I/O-only (just `receiveOneHostMessageBytes`, never touches `state`), matching the
@@ -450,7 +481,8 @@ public final class HostGameEngine: @unchecked Sendable {
                         if let onMessageReceived = self.onMessageReceived {
                             Task { await onMessageReceived(message) }
                         }
-                    })
+                    }),
+                    fogStates: fogStates
                 )
             } catch {
                 let name = player < playerNames.count ? playerNames[player] : ""
@@ -567,6 +599,14 @@ public final class HostGameEngine: @unchecked Sendable {
 
     private func tick() async {
         var pending: [[UInt8]] = []
+        // v1.5.0 #1: terrain-affecting tick-driven broadcasts (regrowth, flood, mine-chain
+        // detonations) get masked instead of sent to everyone -- flushed separately below,
+        // after `runTick` returns. Snapshotted before `runTick(state: &state, ...)` takes
+        // exclusive access to `state`, since these callbacks fire *during* that call
+        // (matches `dispatchHostMessage`'s own identical fix, `HostSession.swift`) --
+        // `fogStates` itself is a different property, safe to read live.
+        var maskedPending: [(mask: UInt16, bytes: [UInt8])] = []
+        let hiddenMinesSnapshot = state.hiddenMines
         // B.5c: `RunTick.swift`'s own step 4 already drops onboard pills (via `onShouldBroadcastDropPill`,
         // already wired above) and sets `connected = false` for a lag-timed-out player BEFORE
         // firing `onPlayerDisconnected` -- this callback's only remaining job is the network-side
@@ -621,17 +661,29 @@ public final class HostGameEngine: @unchecked Sendable {
             },
             onCoolPill: { pill in pending.append(SRCoolPill(pill: UInt8(pill)).encode()) },
             onReplenishBase: { base in pending.append(SRReplenishBase(base: UInt8(base)).encode()) },
-            onGrow: { x, y in pending.append(SRGrow(x: UInt8(x), y: UInt8(y)).encode()) },
+            onGrow: { [weak self] x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRGrow(x: UInt8(x), y: UInt8(y)).encode()))
+            },
             onShouldBroadcastDropPill: { pill, x, y in
                 pending.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
             },
-            onShouldBroadcastSmallBoom: { player, x, y in
-                pending.append(SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode())
+            onShouldBroadcastSmallBoom: { [weak self] player, x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRSmallBoom(player: player, x: UInt8(x), y: UInt8(y)).encode()))
             },
-            onShouldBroadcastFlood: { x, y in pending.append(SRFlood(x: UInt8(x), y: UInt8(y)).encode()) },
+            onShouldBroadcastFlood: { [weak self] x, y in
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
+                maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
+            },
             onPrintMessage: { pendingGameMessages.append($0) }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
+
+        var fogReveals: [(player: Int, bytes: [UInt8])] = []
+        if state.hiddenMines {
+            fogReveals = updateFogVision()
+        }
 
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
             previousPillOwners: oldPillOwners, pills: state.pills,
@@ -647,6 +699,12 @@ public final class HostGameEngine: @unchecked Sendable {
 
         for bytes in pending {
             await table.sendToAll(bytes)
+        }
+        for (mask, bytes) in maskedPending {
+            await table.sendToMask(mask, bytes)
+        }
+        for (player, bytes) in fogReveals {
+            await table.send(bytes, to: player)
         }
 
         for player in disconnectedPlayers {
@@ -713,5 +771,174 @@ public final class HostGameEngine: @unchecked Sendable {
             await table.sendDgram(bytes, to: player)
         }
         BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
+    }
+
+
+    /// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): recomputes every connected player
+    /// slot's `FogState` for this tick and returns the unicast `SRRevealTerrain` sends this
+    /// tick's reveals require (`HostGameEngine.tick()` flushes them after `runTick` returns,
+    /// same "queue synchronously, flush after" shape as `pending`/`maskedPending`). Called
+    /// only when `state.hiddenMines` is true (zero-cost when off).
+    ///
+    /// **`visionSourceRect` replaces the original design's separate bootstrap/movement-diff
+    /// branches and pre-tick `oldTankPositions` snapshot**, which a `/code-review max` review
+    /// found could double-apply a reveal (a bootstrap tick where the tank also moves nets an
+    /// extra `+1` on the new tile and an unmatched `-1` on the old tile's fringe -- an
+    /// unclamped `Int16` going negative) and, separately, never decremented a mover who
+    /// stopped contributing via disconnect/kick/ban (only alliance-breaking was even
+    /// *attempted*, and a `guard isAllied else { continue }` placed before the only
+    /// `decreaseVis` call made that unreachable too). This version tracks, per (observer,
+    /// mover) pair, the exact rect currently contributing vision (`nil` when not
+    /// contributing) and diffs `shouldContribute` against that cached presence every tick --
+    /// one generic transition (`newly contributing` / `moved` / `stopped contributing`)
+    /// covers bootstrap, alliance forming, alliance breaking, movement, and disconnect/kick/
+    /// ban uniformly, with exactly one `increaseVis`/`decreaseVis` call per real transition.
+    /// This also resolves the `isFog` (`fog == 0`)-vs-redaction-paths (`fog > 0`)
+    /// inconsistency the same review flagged: `fog` can no longer go negative, so the two
+    /// predicates can no longer disagree.
+    ///
+    /// Combines C's two separate mechanisms into one tick-driven pass, as before: C hooks
+    /// `increasevis`/`decreasevis` both at (a) every tick, per-mover, gated on
+    /// `testalliance(observer, mover)` (`client.c:458-460`), and (b) immediately at the exact
+    /// moment an alliance forms/breaks (`recvsrsetalliance`, `client.c:2905-3013`) or a player
+    /// disconnects/is kicked/banned (`client.c:2060-2061,2097-2098,2134-2135,2171-2172`) --
+    /// four separate call sites in C, one generic diff here. Can lag a transition by up to one
+    /// tick (20ms at 50Hz) versus C's same-event reveal/hide -- a deliberate, documented
+    /// simplification, negligible in practice.
+    private func updateFogVision() -> [(player: Int, bytes: [UInt8])] {
+        var revealsToSend: [(player: Int, bytes: [UInt8])] = []
+
+        // The host's own slot renders directly from `fogState(for:)` (Phase 3) -- no wire
+        // round-trip needed, matching the existing "host has no socket to itself" precedent
+        // this file already establishes for chat (`emitGameMessage`'s own doc comment).
+        func queueReveals(_ points: [Pointi], to observer: Int) {
+            guard observer != state.localPlayer else { return }
+            for point in points {
+                let index = Int(point.y) * 256 + Int(point.x)
+                let real = Terrain(rawValue: state.terrain.storage[index]) ?? .sea
+                let substituted = unminedTerrain(real)
+                let bytes = SRRevealTerrain(x: UInt8(point.x), y: UInt8(point.y), terrain: UInt8(substituted.rawValue)).encode()
+                revealsToSend.append((observer, bytes))
+            }
+        }
+
+        for observer in state.players.indices where state.players[observer].connected {
+            var fogState = fogStates[observer] ?? FogState()
+
+            for mover in state.players.indices {
+                let shouldContribute = state.players[mover].connected
+                    && testAlliance(observer, mover, players: state.players)
+                let key = observer * maxPlayers + mover
+                let previousRect = visionSourceRect[key]
+
+                if shouldContribute {
+                    let currentRect = tankVisionRect(around: state.players[mover].tank)
+                    if let previousRect, previousRect.origin != currentRect.origin {
+                        let before = fogState
+                        increaseVis(
+                            currentRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                            bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                            players: state.players
+                        )
+                        decreaseVis(previousRect, state: &fogState)
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        visionSourceRect[key] = currentRect
+                    } else if previousRect == nil {
+                        // Newly contributing -- covers bootstrap (never tracked before),
+                        // alliance just forming, and a mover reconnecting, all uniformly.
+                        let before = fogState
+                        increaseVis(
+                            currentRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                            bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                            players: state.players
+                        )
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        visionSourceRect[key] = currentRect
+                    }
+                    // previousRect == currentRect (same tile): unchanged, no-op.
+                } else if let previousRect {
+                    // Stopped contributing -- alliance broke, or `mover` disconnected/was
+                    // kicked/was banned. Decrements using the rect they last actually
+                    // revealed from, not a value re-derived from their (possibly stale,
+                    // possibly already-reset) current state.
+                    decreaseVis(previousRect, state: &fogState)
+                    visionSourceRect[key] = nil
+                }
+            }
+
+            // Every connected slot gets its own proximity reveal around its own tank, not
+            // just the host's `state.localPlayer` -- C only ever does this for "the local
+            // player" because each C client is its own single-player process; this port's
+            // per-slot `FogState` makes every connected player equally "local" from their
+            // own observer's perspective. Diffed against `seenTiles`, not `fog` -- a
+            // proximity reveal can sticky-reveal a mine on a tile that's already otherwise
+            // visible (fog already > 0), which never touches the fog count at all.
+            let beforeProximity = fogState
+            revealNearbyHiddenMines(
+                tankPos: state.players[observer].tank, state: &fogState, terrain: state.terrain,
+                pills: state.pills, bases: state.bases, hiddenMines: state.hiddenMines,
+                observer: observer, players: state.players
+            )
+            queueReveals(
+                changedSeenTiles(around: state.players[observer].tank, before: beforeProximity, after: fogState),
+                to: observer
+            )
+
+            fogStates[observer] = fogState
+        }
+
+        // v1.5.0 #1 known gap, deliberately deferred (not skipped, matching this file's own
+        // `MineChain.swift`-precedent convention for flagging incomplete-but-tracked work):
+        // pill/base state transitions (capture, build, deploy/onboard) do not yet act as
+        // their own 15×15 vision sources the way C's own pill/base-related call sites do
+        // (`client.c:1549,2013,2205,2383,2954,2993,6359,6436`). A pill/base a player has
+        // never had a tank near still gets its own tile revealed via `fogTileFor`'s live
+        // pill/base occupancy branch the moment ANY vision source (tank movement above)
+        // crosses that tile, so this is a completeness gap on the *vision source* side
+        // (structures projecting their own vision), not a correctness gap on the
+        // *resolution* side (what a tile displays once seen).
+        return revealsToSend
+    }
+
+    /// Tiles within `rect` whose `fog` count just crossed from "not visible" to "visible" --
+    /// i.e. what `increaseVis` actually made newly visible this call, for reporting to
+    /// `updateFogVision`'s reveal-sending caller without threading a return value through
+    /// `FogState.swift`'s own (already-tested) algorithm layer.
+    private func newlyVisibleTiles(in rect: Recti, before: FogState, after: FogState) -> [Pointi] {
+        let clipped = intersectionrect(worldRect, rect)
+        guard clipped.size.width > 0, clipped.size.height > 0 else { return [] }
+        var points: [Pointi] = []
+        let minX = clipped.origin.x, minY = clipped.origin.y
+        let maxX = minX + clipped.size.width, maxY = minY + clipped.size.height
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                let index = Int(y) * 256 + Int(x)
+                if before.fog[index] <= 0, after.fog[index] > 0 {
+                    points.append(Pointi(x: x, y: y))
+                }
+            }
+        }
+        return points
+    }
+
+    /// The 3×3 block `revealNearbyHiddenMines` scans, tiles whose `seenTiles` snapshot
+    /// changed -- unlike `newlyVisibleTiles` above, a proximity reveal doesn't necessarily
+    /// touch `fog` at all (the tile can already be otherwise visible), so this diffs the
+    /// actual display value instead.
+    private func changedSeenTiles(around tankPos: Vec2f, before: FogState, after: FogState) -> [Pointi] {
+        let originX = Int32(tankPos.x) - 1
+        let originY = Int32(tankPos.y) - 1
+        var points: [Pointi] = []
+        for dy in Int32(0)..<3 {
+            for dx in Int32(0)..<3 {
+                let x = originX + dx, y = originY + dy
+                guard x >= 0, x < 256, y >= 0, y < 256 else { continue }
+                let index = Int(y) * 256 + Int(x)
+                if before.seenTiles[index] != after.seenTiles[index] {
+                    points.append(Pointi(x: x, y: y))
+                }
+            }
+        }
+        return points
     }
 }

@@ -182,19 +182,24 @@ public func forceIPv4(_ parameters: NWParameters, port: NWEndpoint.Port) {
 /// `sendToAll` -- before that broadcast fires, mirroring the C's own
 /// `cntlsock` assignment happening before the tail-end `sendsrplayerjoin`/
 /// `sendsrplayerrejoin` call).
+/// `fogStates` (v1.5.0 #1): the caller's (`HostGameEngine`) per-connected-player-slot fog
+/// state, `inout` since a successful join seeds a brand-new entry here (the initial spawn
+/// reveal, matching C's join-time `increasevis`) that the caller must retain -- same
+/// "value-type dictionary shared via `inout`" idiom this file already uses for `state`.
 @discardableResult
 public func processJoinAttempt(
-    connection: NWConnection, serializer: JoinAcceptSerializer, state: inout GameState, table: HostSessionTable
+    connection: NWConnection, serializer: JoinAcceptSerializer, state: inout GameState, table: HostSessionTable,
+    fogStates: inout [Int: FogState]
 ) async -> HostJoinOutcome {
     await serializer.acquire()
     defer { Task { await serializer.release() } }
 
-    let outcome = await runJoinHandshake(connection: connection, state: &state, table: table)
+    let outcome = await runJoinHandshake(connection: connection, state: &state, table: table, fogStates: &fogStates)
     return outcome
 }
 
 private func runJoinHandshake(
-    connection: NWConnection, state: inout GameState, table: HostSessionTable
+    connection: NWConnection, state: inout GameState, table: HostSessionTable, fogStates: inout [Int: FogState]
 ) async -> HostJoinOutcome {
     let joinBytes: [UInt8]
     do {
@@ -240,8 +245,31 @@ private func runJoinHandshake(
         // is `Optional` regardless) falls back to the zeroed sentinel.
         await table.setDgramAddress(peerAddress(from: connection) ?? DgramServerPeerAddress(family: 0, addr: 0, port: 0), for: player)
 
+        // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): always start this player's
+        // `FogState` completely fresh -- never `fogStates[player] ?? FogState()`. Reusing
+        // whatever was keyed at this slot let a new occupant (a different identity taking
+        // over a freed slot, or the same identity rejoining) inherit a prior occupant's
+        // entire revealed-tiles history, including mines only that prior occupant ever
+        // actually found -- a real leak the review caught, and a genuine divergence from C,
+        // where a rejoining client is a fresh process with fresh globals.
+        //
+        // Also no longer attempts an initial spawn-position reveal here: `applyJoin` (above)
+        // never sets `tank` -- spawn placement is `runTick`'s job, later, once
+        // `local.respawnCounter` crosses its threshold -- so `state.players[player].tank` is
+        // still the `(0, 0)` default at this exact point. The review's own repro (this file's
+        // now-updated test) confirmed a reveal computed here always centers on that
+        // placeholder position, not the player's real spawn. The player's real position gets
+        // its own correct reveal (and, unlike before, a real `SRRevealTerrain` delivery)
+        // automatically once they actually spawn and `HostGameEngine.updateFogVision`'s
+        // per-tick diff sees their real tank position for the first time.
+        let fogState = FogState()
+        fogStates[player] = fogState
+
         let seq = await table.allSeqsAsUInt32()
-        let mapBytes = encodeBMap(state)
+        let redactedTerrain = redactedTerrainGrid(state.terrain, fogState: fogState, hiddenMines: state.hiddenMines)
+        var mapState = state
+        mapState.terrain = redactedTerrain
+        let mapBytes = encodeBMap(mapState)
         let preamble = assembleBoloPreamble(player: player, state: state, seq: seq, mapLength: UInt32(mapBytes.count))
 
         do {

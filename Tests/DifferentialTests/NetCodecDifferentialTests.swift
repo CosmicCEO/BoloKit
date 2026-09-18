@@ -501,6 +501,8 @@ import CXBolo
         #expect(SRTimeLimit.decode(SRTimeLimit(timeRemaining: 600).encode()) == SRTimeLimit(timeRemaining: 600))
         #expect(SRBaseControl.decode(SRBaseControl(timeLeft: 60).encode()) == SRBaseControl(timeLeft: 60))
         #expect(SRPause.decode(SRPause(pause: 1).encode()) == SRPause(pause: 1))
+        #expect(SRRevealTerrain.decode(SRRevealTerrain(x: 1, y: 2, terrain: 3).encode())
+            == SRRevealTerrain(x: 1, y: 2, terrain: 3))
     }
 
     // MARK: - Brad encoding: full 256-value sweep against the oracle
