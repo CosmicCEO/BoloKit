@@ -45,9 +45,10 @@ Mac A: New Game, Host tab. Hidden Mines **off**, tracker and UPnP **off**, port 
 | Mac B: `nc -vz <MacA-IP> 50000` | Succeeds. |
 | Mac B: `dns-sd -B _bolo2026._tcp` | Lists the game (Bonjour is optional; manual IP is enough). |
 
-**Fail** (banner, or `nc` refused) = the known `NWListener` EINVAL (`docs/STATUS.md`). It is silent: the app
-quietly falls back to a solo local game and logs nothing. Quit, swap roles (Mac B hosts, Mac A joins), and
-repeat this step. If neither Mac binds, stop and record it in the results table. Do not investigate further.
+**Fail** (banner, or `nc` refused) = the listener could not bind. The failure is silent: the app quietly
+falls back to a solo local game and logs nothing. Builds before the `fix-listener-einval` change always fail
+here (a code bug, not macOS: the port was set twice), so confirm both Macs run a build that includes it. If a
+fixed build still fails, quit, swap roles (Mac B hosts, Mac A joins) and repeat. If neither binds, stop and record it.
 
 ## 2. Control run: Hidden Mines OFF (default unchanged)
 

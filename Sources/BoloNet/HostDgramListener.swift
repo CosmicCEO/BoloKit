@@ -49,7 +49,7 @@ public final class HostDgramListener: @unchecked Sendable {
         let parameters = NWParameters(dtls: nil, udp: udpOptions)
         let boundPort = NWEndpoint.Port(rawValue: port)!
         forceIPv4(parameters, port: boundPort)
-        listener = try NWListener(using: parameters, on: boundPort)
+        listener = try NWListener(using: parameters)
 
         var continuationBox: AsyncStream<(bytes: [UInt8], connection: NWConnection)>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }

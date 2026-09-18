@@ -167,6 +167,13 @@ public func peerAddress(from connection: NWConnection) -> DgramServerPeerAddress
 /// anywhere) rather than leaving it to default dual-stack behavior.
 /// Shared by `HostListener` (TCP) and `HostDgramListener.swift` (UDP) so
 /// both listeners agree on the same restriction.
+///
+/// This is the **only** place the listen port is set: callers must build the listener with
+/// `NWListener(using:)`, never `NWListener(using:on:)`. Passing the same port to `on:` as well as
+/// to `requiredLocalEndpoint` throws `EINVAL` for every non-zero port (`port: 0` slips through
+/// because 0 means "any"). That was the "environment issue" recorded in `HostGameView.swift`
+/// and `docs/STATUS.md` through v1.5.0; a bare `NWListener` reproduction confirmed it, on
+/// macOS 26 as well as 27. `HostListenerFixedPortTests` guards it.
 public func forceIPv4(_ parameters: NWParameters, port: NWEndpoint.Port) {
     parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port: port)
 }
@@ -336,7 +343,7 @@ public final class HostListener: @unchecked Sendable {
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         let boundPort = NWEndpoint.Port(rawValue: port)!
         forceIPv4(parameters, port: boundPort)
-        listener = try NWListener(using: parameters, on: boundPort)
+        listener = try NWListener(using: parameters)
         listener.service = NWListener.Service(name: bonjourName, type: bolo2026BonjourServiceType)
         var continuationBox: AsyncStream<NWConnection>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }

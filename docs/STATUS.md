@@ -10,7 +10,7 @@
 
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
-**Known environment issue:** on some machines `NWListener` EINVAL. The app falls back to local-only play with an on-screen notice. Do not reopen an unbounded investigation.
+**Former "environment issue" (fixed):** hosting on any fixed port failed with `NWListener` EINVAL and the app fell back to local-only play with an on-screen notice. It was a bug in this port, not macOS: the listeners set the port twice (`requiredLocalEndpoint` and `NWListener(using:on:)`). Fixed on `fix-listener-einval`; regression test `HostListenerFixedPortTests`. The v1.8.0 issues below were blocked on it and can be picked up again.
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
@@ -48,7 +48,7 @@ Current sprint target: **[v1.6.0 Metal renderer](https://github.com/CosmicCEO/Bo
 | ~~v1.5.0 Hidden-mines fog~~ | shipped | **Closed and tagged `v1.5.0`.** [#1](https://github.com/CosmicCEO/BoloKit/issues/1) fog-of-war — closed |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
-| [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) | none | Deferred from v1.3.0 (2026-09-17), all blocked on the same `NWListener` EINVAL environment issue: [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. Revisit once the environment issue lifts or a field Mac is available — do not grind on them in the meantime. |
+| [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) | none | Deferred from v1.3.0 (2026-09-17), all previously blocked on the `NWListener` EINVAL bug (now fixed, see the top of this file; live LAN verification still needs two Macs): [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. Revisit now that hosting binds. |
 
 Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.3.0**/**v1.4.0**/**v1.5.0** (milestones 2/8/3).
 
