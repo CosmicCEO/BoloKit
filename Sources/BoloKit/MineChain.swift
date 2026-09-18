@@ -243,6 +243,7 @@ public func floodTest(x: Int, y: Int, state: inout GameState) {
 public func floodAt(
     x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
@@ -253,7 +254,7 @@ public func floodAt(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: playerNeutral, x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
     case .crater:
@@ -271,6 +272,7 @@ public func floodAt(
 public func flood(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in },
@@ -283,10 +285,10 @@ public func flood(
     for point in scheduled {
         let x = Int(point.x)
         let y = Int(point.y)
-        floodAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
-        floodAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
-        floodAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
-        floodAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
+        floodAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom, onShouldBroadcastFlood: onShouldBroadcastFlood)
     }
 }
 
@@ -300,6 +302,7 @@ public func flood(
 public func chainAt(
     x: Int, y: Int, state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
@@ -309,7 +312,7 @@ public func chainAt(
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(
             player: playerNeutral, x: x, y: y, state: &state,
-            onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
         )
         onShouldBroadcastSmallBoom(playerNeutral, x, y)
     default:
@@ -324,6 +327,7 @@ public func chainAt(
 public func chain(
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onShouldBroadcastSmallBoom: (UInt8, Int, Int) -> Void = { _, _, _ in }
@@ -335,10 +339,10 @@ public func chain(
     for point in scheduled {
         let x = Int(point.x)
         let y = Int(point.y)
-        chainAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        chainAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        chainAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
-        chainAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
+        chainAt(x: x, y: y - 1, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
+        chainAt(x: x - 1, y: y, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
+        chainAt(x: x + 1, y: y, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
+        chainAt(x: x, y: y + 1, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onShouldBroadcastSmallBoom: onShouldBroadcastSmallBoom)
     }
 }
 
@@ -357,6 +361,7 @@ private func applySplashDamage(
     point: Vec2f,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void,
+    onBuilderDeath: () -> Void,
     onSuperboomTerrain: (Pointi) -> Void,
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void
 ) {
@@ -371,12 +376,12 @@ private func applySplashDamage(
         if state.players[player].mines > 32 {
             superboom(
                 state: &state,
-                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
         } else if state.players[player].mines > 0 || state.local.shells > 0 {
             smallboom(
                 state: &state,
-                onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
             )
         } else {
             killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
@@ -401,6 +406,7 @@ public func explosionAt(
     y: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
@@ -434,12 +440,15 @@ public func explosionAt(
 
     if player != UInt8(state.localPlayer) {
         state.explosions.append(Explosion(point: point))
-        killSquareBuilder(at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+        killSquareBuilder(
+            at: Pointi(x: Int32(x), y: Int32(y)), state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+            onBuilderDeath: onBuilderDeath
+        )
     }
 
     applySplashDamage(
         radius: smallboomRadius, damage: smallboomDamage, point: point, state: &state,
-        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
     )
 }
 
@@ -460,6 +469,7 @@ public func superboomAt(
     y: Int,
     state: inout GameState,
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
@@ -498,7 +508,7 @@ public func superboomAt(
     ]
     for (point, square) in corners {
         state.explosions.append(Explosion(point: point))
-        killSquareBuilder(at: square, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+        killSquareBuilder(at: square, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
     }
 
     let edges: [Vec2f] = [
@@ -510,11 +520,11 @@ public func superboomAt(
     ]
     for point in edges {
         state.explosions.append(Explosion(point: point))
-        killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+        killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
     }
 
     applySplashDamage(
         radius: superboomRadius, damage: superboomDamage, point: Vec2f(x: fx + 1.0, y: fy + 1.0), state: &state,
-        onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+        onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
     )
 }

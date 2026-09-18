@@ -147,7 +147,11 @@ public func pillTick(
     state: inout GameState,
     oldTankPositions: [Vec2f],
     onMineExplosion: (Pointi) -> Void = { _ in },
-    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    // Issue #8: sound-only hook, fires whenever a pillbox actually fires — matches `pilllogic()`'s
+    // own unconditional `playsound(kPillShotSound)` right after the shot (client.c:5104),
+    // regardless of whether the shell is immediately consumed by `shellcollisiontest`.
+    onPillShot: () -> Void = {}
 ) {
     for i in state.pills.indices {
         guard state.pills[i].armour != pillOnboard, state.pills[i].armour > 0 else {
@@ -247,6 +251,11 @@ public func pillTick(
             )
         }
 
+        // Issue #8: fires once per counter reset (i.e. once per pill that actually fired this
+        // tick), not once per surviving shell in `closestSet` -- matches `pilllogic()`'s own
+        // single `playsound(kPillShotSound)` call, which sits next to this same counter reset
+        // (client.c:5104), not inside the per-target shell-construction loop above.
+        onPillShot()
         state.pills[i].counter = 0
     }
 }

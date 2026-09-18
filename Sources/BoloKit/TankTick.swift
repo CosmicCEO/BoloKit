@@ -93,6 +93,7 @@ public func tankMoveTick(
     onSmallboom: () -> Void = {},
     onSpawn: () -> Void = {},
     onMineExplosion: (Pointi) -> Void = { _ in },
+    onBuilderDeath: () -> Void = {},
     onSuperboomTerrain: (Pointi) -> Void = { _ in },
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in }
 ) {
@@ -127,7 +128,7 @@ public func tankMoveTick(
                 if terrainValue != 16 && terrainValue != 17 {
                     state.players[player].explosions.append(Explosion(point: point, counter: 0))
                     onExplosion(point)
-                    killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                    killPointBuilder(at: point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
                 }
             }
         } else if state.local.respawnCounter == explodeTicks {
@@ -135,14 +136,14 @@ public func tankMoveTick(
                 onSuperboom()
                 superboom(
                     state: &state,
-                    onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                    onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             } else if state.players[player].mines > 0 || state.local.shells > 0 {
                 onSmallboom()
                 smallboom(
                     state: &state,
-                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }

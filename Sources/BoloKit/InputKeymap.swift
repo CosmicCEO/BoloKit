@@ -159,9 +159,21 @@ public struct KeyBindings: Equatable, Sendable {
 
 /// Translates one key-down/key-up transition into the `InputFlags` change it causes under
 /// `bindings`, or `nil` if `keyCode` resolves to no action, or to a view action (no `InputFlags`
-/// effect — see `nonMaskAction(forKeyCode:bindings:)` for those).
+/// effect — see `nonMaskAction(forKeyCode:bindings:)` for those). Thin keycode-resolution
+/// wrapper around `inputFlagsChange(forAction:isDown:)` — kept separate (Issue #17) so a second
+/// input source with no keycodes of its own (the game-controller mapping,
+/// `Bolo 2026/GameControllerInput.swift`) can call the action-keyed function directly.
 public func inputFlagsChange(forKeyCode keyCode: UInt16, isDown: Bool, bindings: KeyBindings) -> KeyInputChange? {
-    guard let action = bindings.resolve(keyCode: keyCode), action.isMaskAction else { return nil }
+    guard let action = bindings.resolve(keyCode: keyCode) else { return nil }
+    return inputFlagsChange(forAction: action, isDown: isDown)
+}
+
+/// The `InputFlags` change one `action` transition causes, independent of any keycode/binding —
+/// `nil` for a view action (`isMaskAction == false`) or for `.brake` (dead under the shipped
+/// `autoSlowdownBool == true` default, see file header). Exhaustive `switch` over every
+/// `InputAction` case already returns `nil` for the 6 view actions and `.brake`, so no separate
+/// `isMaskAction` guard is needed above this.
+public func inputFlagsChange(forAction action: InputAction, isDown: Bool) -> KeyInputChange? {
     switch action {
     case .turnLeft:
         return isDown ? KeyInputChange(set: .turnL) : KeyInputChange(clear: .turnL)

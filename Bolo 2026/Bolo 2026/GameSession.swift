@@ -84,6 +84,11 @@ public final class GameSession {
     private let udpSession: UDPSession?
     private var joinContinuation: AsyncStream<JoinEvent>.Continuation?
     private var joinConsumerTask: Task<Void, Never>?
+    /// **Issue #17:** drives `renderView`'s existing `onInputFlagsChange`/`onLayMineKeyDown`/
+    /// `performViewAction` surface off a connected `GCExtendedGamepad`, same as the keyboard path
+    /// -- created once per session, after `renderView`'s own per-path closures are wired, so it
+    /// works identically on all three paths with no path-specific code here.
+    private var controllerInput: GameControllerInputHandler?
     /// Mirrors `HostGameEngine.localSeq`'s identical role -- this client's own outgoing per-tick
     /// counter, `assembleClUpdate`'s own broadcast cadence gate (`% 5 == 0`, ~10Hz).
     private var localSeq: Int32 = 0
@@ -139,7 +144,7 @@ public final class GameSession {
         }
         view.onLayMineKeyDown = { [weak self] in
             guard let self else { return }
-            layMineOnKeyDown(state: &self.state)
+            layMineOnKeyDown(state: &self.state, onMine: { _ in SoundPlayer.shared.play("mine") })
         }
         // D137: single-process path -- no other real players to inform, mutate `state` directly,
         // same reasoning as `sendMessage`'s single-process branch.
@@ -147,6 +152,7 @@ public final class GameSession {
             guard let self else { return }
             queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// B.7 (D108): the host path -- renders live off `hostEngine`'s own running state instead of
@@ -183,6 +189,7 @@ public final class GameSession {
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// **B.8 (D113/D114/D116):** the join path -- `tcpSession`/`udpSession` are already-live,
@@ -254,6 +261,7 @@ public final class GameSession {
             guard let self else { return }
             queueBuilderCommand(command: command, target: target, player: self.state.localPlayer, state: &self.state)
         }
+        controllerInput = GameControllerInputHandler(renderView: view)
     }
 
     /// **C.0 (D119):** true only on the host path -- a join-side or single-process client has no
@@ -489,9 +497,8 @@ public final class GameSession {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
-        // D125/D148(A): sound-effect triggers -- see SoundPlayer.swift's own header for exactly
-        // which names are wired, and why the rest (hittank/build/etc., which still need new
-        // BoloKit callback threading) aren't yet.
+        // D125/D148(A)/Issue #8: sound-effect triggers -- see SoundPlayer.swift's own header for
+        // exactly which names are wired.
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state, ticksSinceLastUpdate: ticksSinceLastUpdate,
@@ -504,7 +511,16 @@ public final class GameSession {
             onSmallboom: { SoundPlayer.shared.play("explosion") },
             onTankShot: { SoundPlayer.shared.play("tankshot") },
             onTreeHarvest: { _ in SoundPlayer.shared.play("tree") },
-            onPrintMessage: { pendingGameMessages.append($0) }
+            onPrintMessage: { pendingGameMessages.append($0) },
+            onHitTank: { SoundPlayer.shared.play("hittank") },
+            onHitTerrain: { _ in SoundPlayer.shared.play("hitterrain") },
+            onHitTree: { _ in SoundPlayer.shared.play("hittree") },
+            onMine: { _ in SoundPlayer.shared.play("mine") },
+            onBuild: { _ in SoundPlayer.shared.play("build") },
+            onBuilderDeath: { SoundPlayer.shared.play("builderdeath") },
+            onSink: { SoundPlayer.shared.play("sink") },
+            onBubbles: { SoundPlayer.shared.play("bubbles") },
+            onPillShot: { SoundPlayer.shared.play("pillshot") }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(

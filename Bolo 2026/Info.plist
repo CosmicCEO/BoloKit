@@ -33,6 +33,8 @@
 	</array>
 	<key>LSSupportsGameMode</key>
 	<true/>
+	<key>GCSupportsControllerUserInteraction</key>
+	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_bolo2026._tcp</string>

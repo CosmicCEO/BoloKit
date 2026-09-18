@@ -20,6 +20,10 @@ struct AppInfoPlistTests {
         #expect(info["GCSupportsGameMode"] as? Bool == true)
     }
 
+    @Test func supportsControllerUserInteractionIsTrue() {
+        #expect(info["GCSupportsControllerUserInteraction"] as? Bool == true)
+    }
+
     @Test func humanReadableCopyrightIsNonEmpty() {
         let copyright = info["NSHumanReadableCopyright"] as? String ?? ""
         #expect(!copyright.isEmpty)
