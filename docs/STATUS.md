@@ -1,6 +1,6 @@
 # Status
 
-**Current drop:** `v1.3.0` (build 12). [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.3.0). **`v1.4.0`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
+**Current drop:** `v1.5.0`. [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.5.0). **`v1.4.0`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.**
 
 **Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard-, mouse-, and game-controller-driven tank, click-to-command builder, 50 Hz tick over a live network session, `bolo://` join URLs, host tracker announce + UPnP port mapping, App Intents for Host/Join from Shortcuts and Spotlight, OSLog/`OSSignposter` instrumentation, and near-complete procedural sound. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
 
@@ -39,18 +39,18 @@ New v1.* work: **issue** → release or patch **milestone** → add to [project 
 
 ## Path to 2.0.0 — [project 1](https://github.com/users/CosmicCEO/projects/1)
 
-Current sprint target: **[v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3)** (due 5 Feb 2027).
+Current sprint target: **[v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4)** (due 5 Mar 2027).
 
 | Milestone | Due | Issues |
 |-----------|-----|--------|
 | ~~v1.3.0 Find and share games~~ | shipped | **Closed and tagged `v1.3.0`.** [#20](https://github.com/CosmicCEO/BoloKit/issues/20) `bolo://`, [#24](https://github.com/CosmicCEO/BoloKit/issues/24) tracker+UPnP, [#26](https://github.com/CosmicCEO/BoloKit/issues/26) Quick Look — all closed |
 | ~~v1.4.0 Controls, HUD, sound~~ | shipped | **Closed and tagged `v1.4.0`.** [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog — all closed |
-| [v1.5.0 Hidden-mines fog](https://github.com/CosmicCEO/BoloKit/milestone/3) | 5 Feb 2027 | [#1](https://github.com/CosmicCEO/BoloKit/issues/1) |
+| ~~v1.5.0 Hidden-mines fog~~ | shipped | **Closed and tagged `v1.5.0`.** [#1](https://github.com/CosmicCEO/BoloKit/issues/1) fog-of-war — closed |
 | [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4) | 5 Mar 2027 | [#25](https://github.com/CosmicCEO/BoloKit/issues/25) |
 | [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
 | [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) | none | Deferred from v1.3.0 (2026-09-17), all blocked on the same `NWListener` EINVAL environment issue: [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. Revisit once the environment issue lifts or a field Mac is available — do not grind on them in the meantime. |
 
-Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.3.0**/**v1.4.0** (milestones 2/8).
+Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.3.0**/**v1.4.0**/**v1.5.0** (milestones 2/8/3).
 
 ## Decide — [project 2](https://github.com/users/CosmicCEO/projects/2)
 
@@ -67,25 +67,17 @@ Not coding work until a ruling or a release milestone says so.
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
-## This sprint (v1.5.0 in progress, not tagged)
+## Shipped (`v1.5.0` release)
 
-[#1](https://github.com/CosmicCEO/BoloKit/issues/1) Hidden-mines fog-of-war — implemented on
-[PR #56](https://github.com/CosmicCEO/BoloKit/pull/56) (`issue-1-fog-of-war`), pending review.
-All four phases land: the fog algorithm (`FogState`/`increaseVis`/`decreaseVis`/`fogTileFor`/
-`revealNearbyHiddenMines`/`fogVis`/`calcVis`, differentially tested against `Reference/c`),
-host-side per-connected-player tracking, host-local rendering + sprite fade, and wire-protocol
-redaction of both the initial map send and subsequent terrain-affecting broadcasts. See
-`docs/CONSTRAINTS.md`'s "Fog-of-war" section for the host-authoritative deviation from the C
-oracle (deliberate, confirmed with the repo owner) and the two documented C-bug treatments.
+[#1](https://github.com/CosmicCEO/BoloKit/issues/1) **closed**, PR [#56](https://github.com/CosmicCEO/BoloKit/pull/56) merged. Hidden-mines fog-of-war, opt-in (fully visible stays the default). Fog algorithm (`FogState`, `fogVis`/`calcVis`) differentially tested against `Reference/c`; host-authoritative per-slot tracking, fog rendering + sprite fade, and wire redaction (initial map, terrain broadcasts, new `SRRevealTerrain`). Host-authoritative redaction is a deliberate deviation from the C oracle's client-side filter: see `docs/CONSTRAINTS.md` "Fog-of-war".
 
-**Known gap, deliberately deferred:** pill/base state transitions (capture, build, deploy)
-don't yet act as their own 15×15 vision sources the way several C call sites do — a pill/base
-a player has never had a tank near still resolves correctly the moment any *other* vision
-source (tank movement) crosses its tile, so this is a completeness gap on the vision-source
-side, not a correctness gap. Track as a follow-up once #1 lands.
+**Known gap, deferred:** pill/base state transitions (capture, build, deploy) don't yet act as their own 15×15 vision sources. Completeness gap only; tiles still resolve once any other vision source crosses them.
 
-`swift test`: 258 BoloKitTests + 595 DifferentialTests. `xcodebuild -only-testing:"Bolo
-2026Tests"`: 107/107. App builds clean.
+**Not verified:** manual two-peer hidden-mines session (needs a second Mac; same environment limit as the v1.8.0 issues).
+
+**Tests (as of the `v1.5.0` pass):** 268 BoloKitTests + 595 DifferentialTests + 107 `Bolo 2026Tests`. Two `HostGameEngineTests` timing tests (`hostGameEngineSubmitPauseResumeServerTogglesPauseState`, `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`) flake under the full parallel run, on `main` as well; both pass in isolation.
+
+No open v1.5.0 issues remain. Milestone closed, tag `v1.5.0` cut.
 
 ## Shipped (`v1.3.0` release)
 
