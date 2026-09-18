@@ -89,6 +89,14 @@ public func evaluateJoinRequest(
     return .rejected(.serverFull)
 }
 
+/// The full `maxPlayers`-slot player table a fresh host starts from: the hosting player in slot 0
+/// and every other slot unused, matching `server.c`'s fixed `players[MAXPLAYERS]`.
+/// `evaluateJoinRequest` searches this table for a free slot, so a table shorter than `maxPlayers`
+/// (the app used to start hosting with `[hostPlayer]`) rejects every joiner as `.serverFull`.
+public func hostPlayerSlots(hostPlayer: PlayerState) -> [PlayerState] {
+    [hostPlayer] + (1..<maxPlayers).map { _ in PlayerState() }
+}
+
 /// `NET_GAME_VERSION` (`bolo.h:27`) restated here rather than imported
 /// from `BoloNet` — `BoloKit` has no dependency on `BoloNet` (the
 /// dependency runs the other way), and this pure decision logic belongs
