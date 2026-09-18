@@ -135,19 +135,35 @@ public func fogTileFor(
 public func applyMineSubstitution(resolved: Tile, previousSeen: Tile, hiddenMines: Bool) -> Tile {
     guard hiddenMines else { return resolved }
 
-    let unminedEquivalent: Tile
     switch resolved {
-    case .minedSea: unminedEquivalent = .sea
-    case .minedSwamp: unminedEquivalent = .swamp
-    case .minedCrater: unminedEquivalent = .crater
-    case .minedRoad: unminedEquivalent = .road
-    case .minedForest: unminedEquivalent = .forest
-    case .minedRubble: unminedEquivalent = .rubble
-    case .minedGrass: unminedEquivalent = .grass
+    // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): `fogtilefor`'s real
+    // `kMinedSeaTerrain` case (`client.c:6172-6173`) returns `kMinedSeaTile`
+    // *unconditionally* -- it never even checks `hiddenmines`. Mined sea is never hidden,
+    // matching its role as static, always-known border-ring geometry (`docs/CONSTRAINTS.md`'s
+    // "Fog-of-war" section already treats it this way for the join-time redacted map; this
+    // was the one place still substituting it like an ordinary hideable mine, a real parity
+    // bug the review's `.minedSea`-in-`revealNearbyHiddenMines` finding pointed at without
+    // catching this half of it).
+    case .minedSea:
+        return resolved
+    // `fogtilefor`'s `kMinedForestTerrain`/`kMinedGrassTerrain` cases each check for
+    // *either* tile as "already seen" (`client.c:6221-6227,6249-6255`) -- tree growth/
+    // chopping toggles a mine's terrain between forest and grass without un-discovering it.
+    case .minedForest:
+        return (previousSeen == .minedForest || previousSeen == .minedGrass) ? resolved : .forest
+    case .minedGrass:
+        return (previousSeen == .minedForest || previousSeen == .minedGrass) ? resolved : .grass
+    case .minedSwamp:
+        return previousSeen == resolved ? resolved : .swamp
+    case .minedCrater:
+        return previousSeen == resolved ? resolved : .crater
+    case .minedRoad:
+        return previousSeen == resolved ? resolved : .road
+    case .minedRubble:
+        return previousSeen == resolved ? resolved : .rubble
     default:
         return resolved
     }
-    return previousSeen == resolved ? resolved : unminedEquivalent
 }
 
 // MARK: - fogResolvedTileGrid
@@ -208,7 +224,12 @@ public func revealNearbyHiddenMines(
             guard mag2f(sub2f(tileCenter, tankPos)) <= 2.0 else { continue }
 
             switch rawTerrain {
-            case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
+            // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): C's real `testhiddenmine`
+            // (`client.c:4462-4498`) has no `kMinedSeaTerrain` case in its own switch --
+            // matches `fogtilefor`'s own unconditional non-hiding of mined sea
+            // (`applyMineSubstitution`'s identical fix, `FogState.swift`); this port's switch
+            // previously included it, a real parity deviation the review caught.
+            case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
                 let index = Int(y) * 256 + Int(x)
                 state.seenTiles[index] = fogTileFor(
                     x: x, y: y, previousSeen: state.seenTiles[index], terrain: terrain,

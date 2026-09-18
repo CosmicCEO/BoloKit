@@ -98,18 +98,94 @@ import CXBolo
 
 @Suite struct FogTileForDifferentialTests {
 
+    // `.minedSea` deliberately excluded -- C's real `fogtilefor` never hides mined sea at all
+    // (unconditional `return kMinedSeaTile`, no `hiddenmines` check), unlike every other mined
+    // terrain case. Covered by its own dedicated test below, not this shared table.
     private static let minedCases: [(Terrain, Tile)] = [
-        (.minedSea, .sea), (.minedSwamp, .swamp), (.minedCrater, .crater),
+        (.minedSwamp, .swamp), (.minedCrater, .crater),
         (.minedRoad, .road), (.minedForest, .forest), (.minedRubble, .rubble), (.minedGrass, .grass),
     ]
 
-    @Test func testFogTileForHidesMineMatchesOracleFuzzed() {
-        for _ in 0..<500 {
-            let hiddenMines = Bool.random()
-            let tileMatchesPrevious = Bool.random()
-            let swiftShouldHide = hiddenMines && !tileMatchesPrevious
-            let cShouldHide = CXBolo.fogtilefor_hides_mine_oracle(hiddenMines ? 1 : 0, tileMatchesPrevious ? 1 : 0) != 0
-            #expect(swiftShouldHide == cShouldHide)
+    @Test func testFogTileForNeverHidesMinedSeaRegardlessOfHiddenMinesOrPreviousSeen() {
+        var state = GameState()
+        state.terrain[100, 100] = .minedSea
+        for hiddenMines in [true, false] {
+            for previousSeen: Tile in [.unknown, .sea, .minedSea] {
+                let result = fogTileFor(
+                    x: 100, y: 100, previousSeen: previousSeen, terrain: state.terrain,
+                    pills: [], bases: [], hiddenMines: hiddenMines, observer: 0, players: state.players
+                )
+                #expect(result == .minedSea, "mined sea must never be hidden (hiddenMines=\(hiddenMines), previousSeen=\(previousSeen))")
+            }
+        }
+    }
+
+    @Test func testFogTileForCrossRevealsMinedForestAndMinedGrass() {
+        var state = GameState()
+        for (mined, otherPreviouslySeen) in [(Terrain.minedForest, Tile.minedGrass), (Terrain.minedGrass, Tile.minedForest)] {
+            state.terrain[100, 100] = mined
+            let result = fogTileFor(
+                x: 100, y: 100, previousSeen: otherPreviouslySeen, terrain: state.terrain,
+                pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+            )
+            #expect(result == terrainToTile(mined), "\(mined) must stay revealed when previously seen as the other mined-tree variant")
+        }
+    }
+
+    // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): the original version of this test
+    // recomputed `hiddenMines && !tileMatchesPrevious` in Swift and compared it to a C oracle
+    // computing the identical expression -- a tautology that could never fail regardless of
+    // what `fogTileFor`/`applyMineSubstitution` actually did, and did in fact ship two real
+    // parity bugs undetected (`.minedSea` wrongly hideable; the minedForest/minedGrass
+    // cross-check missing). This version calls the real `fogTileFor` directly and compares
+    // against `fogtilefor_mined_result_oracle`, a verbatim transcription of the real C switch
+    // (`Sources/CXBolo/fog.c`'s own comment), across every mined terrain type, both
+    // `hiddenMines` values, and a spread of `previousSeen` values including the
+    // forest/grass cross-case.
+    @Test func testFogTileForMinedResultMatchesOracleFuzzed() {
+        let minedCases: [(Terrain, Tile)] = [
+            (.minedSea, .minedSea), (.minedSwamp, .swamp), (.minedCrater, .crater),
+            (.minedRoad, .road), (.minedForest, .forest), (.minedRubble, .rubble), (.minedGrass, .grass),
+        ]
+        let previousTileOptions: [Tile] = [.unknown, .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass]
+        var state = GameState()
+        for (mined, _) in minedCases {
+            state.terrain[100, 100] = mined
+            for hiddenMines in [true, false] {
+                for previousTile in previousTileOptions {
+                    let swiftResult = fogTileFor(
+                        x: 100, y: 100, previousSeen: previousTile, terrain: state.terrain,
+                        pills: [], bases: [], hiddenMines: hiddenMines, observer: 0, players: state.players
+                    )
+                    let cResult = CXBolo.fogtilefor_mined_result_oracle(
+                        mined.rawValue, hiddenMines ? 1 : 0, previousTile.rawValue
+                    )
+                    #expect(
+                        Int32(swiftResult.rawValue) == cResult,
+                        "\(mined) hiddenMines=\(hiddenMines) previousTile=\(previousTile): swift=\(swiftResult) oracle=\(cResult)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Verbatim companion to the above: `testhiddenmine()`'s real terrain-type switch has no
+    /// `kMinedSeaTerrain` case (`revealNearbyHiddenMines`'s own Fix-7 change, this same PR).
+    @Test func testRevealNearbyHiddenMinesTerrainListMatchesOracle() {
+        let allMinedTerrains: [Terrain] = [
+            .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass,
+        ]
+        for terrain in allMinedTerrains {
+            var state = GameState()
+            state.terrain[100, 100] = terrain
+            var fogState = FogState()
+            revealNearbyHiddenMines(
+                tankPos: BoloKit.Vec2f(x: 100.5, y: 100.5), state: &fogState, terrain: state.terrain,
+                pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+            )
+            let swiftRevealed = fogState.seenTiles[100 * 256 + 100] != .unknown
+            let oracleRevealed = CXBolo.testhiddenmine_reveals_terrain_oracle(terrain.rawValue) != 0
+            #expect(swiftRevealed == oracleRevealed, "\(terrain): swift revealed=\(swiftRevealed) oracle says=\(oracleRevealed)")
         }
     }
 
@@ -325,9 +401,11 @@ import CXBolo
             pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
         )
         // (0,0) is in the mined-sea border ring by default (`TerrainGrid.mapDefault()`,
-        // mine zone is [10, 245]) -- correctly revealed as substituted `.sea` (never seen
-        // before, hiddenMines on), not left `.unknown`. The real assertion here is just
-        // "did not trap" on the out-of-bounds (-1, -1) neighbor.
-        #expect(fogState.seenTiles[0] == .sea)
+        // mine zone is [10, 245]) -- `revealNearbyHiddenMines` no longer force-reveals mined
+        // sea at all (matches C's real `testhiddenmine`, which has no `kMinedSeaTerrain`
+        // case), so this stays `.unknown` here (nothing else in this isolated unit test
+        // calls `increaseVis` to reveal it some other way). The real assertion is just "did
+        // not trap" on the out-of-bounds (-1, -1) neighbor.
+        #expect(fogState.seenTiles[0] == .unknown)
     }
 }

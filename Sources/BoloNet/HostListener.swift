@@ -245,19 +245,24 @@ private func runJoinHandshake(
         // is `Optional` regardless) falls back to the zeroed sentinel.
         await table.setDgramAddress(peerAddress(from: connection) ?? DgramServerPeerAddress(family: 0, addr: 0, port: 0), for: player)
 
-        // v1.5.0 #1: the joining player's own initial `FogState`, seeded with a spawn reveal
-        // before anything encodes the map -- matches C's join-time `increasevis`
-        // (`client.c:748`) and must happen here, not after this function returns, so the
-        // very first map send is already redacted rather than sending full ground truth
-        // once and only starting to redact from the *next* broadcast onward.
-        var fogState = fogStates[player] ?? FogState()
-        if state.hiddenMines {
-            increaseVis(
-                tankVisionRect(around: state.players[player].tank), state: &fogState,
-                terrain: state.terrain, pills: state.pills, bases: state.bases,
-                hiddenMines: state.hiddenMines, observer: player, players: state.players
-            )
-        }
+        // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): always start this player's
+        // `FogState` completely fresh -- never `fogStates[player] ?? FogState()`. Reusing
+        // whatever was keyed at this slot let a new occupant (a different identity taking
+        // over a freed slot, or the same identity rejoining) inherit a prior occupant's
+        // entire revealed-tiles history, including mines only that prior occupant ever
+        // actually found -- a real leak the review caught, and a genuine divergence from C,
+        // where a rejoining client is a fresh process with fresh globals.
+        //
+        // Also no longer attempts an initial spawn-position reveal here: `applyJoin` (above)
+        // never sets `tank` -- spawn placement is `runTick`'s job, later, once
+        // `local.respawnCounter` crosses its threshold -- so `state.players[player].tank` is
+        // still the `(0, 0)` default at this exact point. The review's own repro (this file's
+        // now-updated test) confirmed a reveal computed here always centers on that
+        // placeholder position, not the player's real spawn. The player's real position gets
+        // its own correct reveal (and, unlike before, a real `SRRevealTerrain` delivery)
+        // automatically once they actually spawn and `HostGameEngine.updateFogVision`'s
+        // per-tick diff sees their real tank position for the first time.
+        let fogState = FogState()
         fogStates[player] = fogState
 
         let seq = await table.allSeqsAsUInt32()

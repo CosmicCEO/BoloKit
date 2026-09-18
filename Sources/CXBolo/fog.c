@@ -75,10 +75,71 @@ float calcvis_blend_oracle(float forestvis, float fogvis, float dist) {
   return vis;
 }
 
-/* fogtilefor()'s (client.c:6143-6270) mine-substitution decision, the one
-   piece tileFor() (this port's already-tested non-fog variant of the same
-   C function) deliberately omits. Verbatim condition:
-   `if (hiddenmines && tile != mined) return unmined; else return mined;` */
-int fogtilefor_hides_mine_oracle(int hiddenmines, int tileMatchesPrevious) {
-  return hiddenmines && !tileMatchesPrevious;
+/* v1.5.0 #1 (fix pass, `/code-review max` on PR #56): a `/code-review max` review found the
+   original `fogtilefor_hides_mine_oracle` above was tautological -- it recomputed the same
+   boolean expression the Swift test already assumed, rather than deriving from the real C
+   switch, so it could never have caught `applyMineSubstitution` diverging from the actual
+   oracle. Two real parity bugs slipped through as a result: `kMinedSeaTerrain` being hidden
+   like any other mine (the real switch never even checks `hiddenmines` for it -- unconditional
+   `return kMinedSeaTile`), and the `kMinedForestTerrain`/`kMinedGrassTerrain` cases missing
+   their cross-check (each treats *either* tile as "already seen", not just an exact match --
+   tree growth/chopping toggles a mine's terrain between the two without un-discovering it).
+
+   This function is a verbatim transcription of `fogtilefor()`'s real mined-terrain switch
+   (`client.c:6172-6255`) for exactly the 7 mined cases -- the pill/base/plain-terrain
+   branches are already covered by `tileFor()`'s own existing oracle-tested port and are not
+   duplicated here. `terrainCase` is one of the 7 real `kMinedXTerrain` constants;
+   `previousTile` is a real `kXTile`/`kMinedXTile` constant (the prior `seentiles` entry).
+   Returns the real `kXTile`/`kMinedXTile` result. */
+int fogtilefor_mined_result_oracle(int terrainCase, int hiddenmines, int previousTile) {
+  switch (terrainCase) {
+  case kMinedSeaTerrain:
+    return kMinedSeaTile;
+
+  case kMinedSwampTerrain:
+    if (hiddenmines && previousTile != kMinedSwampTile) return kSwampTile;
+    else return kMinedSwampTile;
+
+  case kMinedCraterTerrain:
+    if (hiddenmines && previousTile != kMinedCraterTile) return kCraterTile;
+    else return kMinedCraterTile;
+
+  case kMinedRoadTerrain:
+    if (hiddenmines && previousTile != kMinedRoadTile) return kRoadTile;
+    else return kMinedRoadTile;
+
+  case kMinedForestTerrain:
+    if (hiddenmines && previousTile != kMinedForestTile && previousTile != kMinedGrassTile) return kForestTile;
+    else return kMinedForestTile;
+
+  case kMinedRubbleTerrain:
+    if (hiddenmines && previousTile != kMinedRubbleTile) return kRubbleTile;
+    else return kMinedRubbleTile;
+
+  case kMinedGrassTerrain:
+    if (hiddenmines && previousTile != kMinedGrassTile && previousTile != kMinedForestTile) return kGrassTile;
+    else return kMinedGrassTile;
+
+  default:
+    return -1;
+  }
+}
+
+/* Verbatim transcription of `testhiddenmine()`'s own terrain-type switch (`client.c:4464-
+   4490`), minus the distance check and `refresh()` side effect (already covered elsewhere --
+   `revealNearbyHiddenMines`'s own `mag2f`/bounds-clamp tests). Real C has no
+   `kMinedSeaTerrain` case at all; returns 1 for exactly the 6 terrain types the real switch's
+   non-default cases list, 0 otherwise (including for `kMinedSeaTerrain`). */
+int testhiddenmine_reveals_terrain_oracle(int terrainCase) {
+  switch (terrainCase) {
+  case kMinedSwampTerrain:
+  case kMinedCraterTerrain:
+  case kMinedRoadTerrain:
+  case kMinedForestTerrain:
+  case kMinedRubbleTerrain:
+  case kMinedGrassTerrain:
+    return 1;
+  default:
+    return 0;
+  }
 }

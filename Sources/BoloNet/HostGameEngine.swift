@@ -158,12 +158,17 @@ public final class HostGameEngine: @unchecked Sendable {
     public func fogState(for player: Int) -> FogState? {
         fogStates[player]
     }
-    /// Last tick's mutual-alliance status for every (observer, mover) pair this engine is
-    /// tracking fog for, keyed `observer * maxPlayers + mover`. Diffed each tick against the
-    /// current status to detect alliance formation/breaking -- see `updateFogVision()`'s own
-    /// header for why this tick-driven diff replaces hooking every C alliance-mutation call
-    /// site (`requestAlliance`/`leaveAlliance`/`recvClSetAlliance`) individually.
-    private var previousAllianceStatus: [Bool] = Array(repeating: false, count: maxPlayers * maxPlayers)
+    /// The vision rect `mover` is *currently* contributing to `observer`'s `FogState`, keyed
+    /// `observer * maxPlayers + mover` -- present only while `mover` is both connected and
+    /// mutually allied with `observer`. Diffed each tick (`updateFogVision`) against the
+    /// current `shouldContribute` status to detect every kind of "started/stopped
+    /// contributing vision" transition -- bootstrap, movement, alliance forming/breaking, and
+    /// disconnect/kick/ban -- through one generic mechanism, rather than hooking each of
+    /// those mutation call sites individually. See `updateFogVision`'s own header for why a
+    /// cached *rect* (not just a bool) is required: it's what lets a mover who stops
+    /// contributing (disconnected, alliance broken) be correctly `decreaseVis`'d using
+    /// wherever they last actually revealed from, not a value re-derived after the fact.
+    private var visionSourceRect: [Int: Recti] = [:]
 
     /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
     /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
@@ -639,9 +644,6 @@ public final class HostGameEngine: @unchecked Sendable {
         let oldBaseOwners = state.bases.map(\.owner)
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
-        // v1.5.0 #1: captured before `runTick` mutates positions -- `updateFogVision` diffs
-        // this against post-tick positions to detect tile crossings.
-        let oldTankPositions = state.players.map(\.tank)
 
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
@@ -678,8 +680,9 @@ public final class HostGameEngine: @unchecked Sendable {
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
 
+        var fogReveals: [(player: Int, bytes: [UInt8])] = []
         if state.hiddenMines {
-            updateFogVision(oldTankPositions: oldTankPositions)
+            fogReveals = updateFogVision()
         }
 
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
@@ -699,6 +702,9 @@ public final class HostGameEngine: @unchecked Sendable {
         }
         for (mask, bytes) in maskedPending {
             await table.sendToMask(mask, bytes)
+        }
+        for (player, bytes) in fogReveals {
+            await table.send(bytes, to: player)
         }
 
         for player in disconnectedPlayers {
@@ -768,95 +774,114 @@ public final class HostGameEngine: @unchecked Sendable {
     }
 
 
-    /// v1.5.0 #1: recomputes every connected player slot's `FogState` for this tick.
-    /// Called only when `state.hiddenMines` is true (zero-cost when off).
+    /// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): recomputes every connected player
+    /// slot's `FogState` for this tick and returns the unicast `SRRevealTerrain` sends this
+    /// tick's reveals require (`HostGameEngine.tick()` flushes them after `runTick` returns,
+    /// same "queue synchronously, flush after" shape as `pending`/`maskedPending`). Called
+    /// only when `state.hiddenMines` is true (zero-cost when off).
     ///
-    /// **Combines two of C's separate mechanisms into one tick-driven pass, deliberately:**
-    /// C hooks `increasevis`/`decreasevis` both at (a) every tick, per-mover, gated on
-    /// `testalliance(observer, mover)` (`client.c:458-460`), and (b) immediately at the
-    /// exact moment an alliance forms/breaks (`recvsrsetalliance`, `client.c:2905-3013`),
-    /// a separate call site from (a). This port has *three* places an alliance bitmask can
-    /// change (`requestAlliance`/`leaveAlliance`'s own handle cases above, plus
-    /// `recvClSetAlliance` for a remote player's own `SRSetAlliance`) -- rather than hook
-    /// all three individually, this diffs each (observer, mover) pair's mutual-alliance
-    /// status against last tick's cached value once per tick, and treats any change as the
-    /// transition C's dedicated alliance hook handles immediately. This can lag an alliance
-    /// change by up to one tick (20ms at 50Hz) versus C's same-event reveal -- a deliberate,
-    /// documented simplification favoring one robust call site over three fragile ones,
-    /// negligible in practice.
-    private func updateFogVision(oldTankPositions: [Vec2f]) {
-        for observer in state.players.indices where state.players[observer].connected {
-            // First time this tick loop has ever seen `observer` connected: a player who
-            // joined via `.newConnection` already got this from the join hook (its own
-            // `fogStates[player]` entry already exists by the time this runs, so this
-            // branch naturally skips them, avoiding a double-counted vision source) --
-            // this covers the single-process/host's-own-slot case, which never goes
-            // through that hook and would otherwise never get an initial reveal if its
-            // tank happens not to change tiles on the very first tick.
-            var fogState: FogState
-            if let existing = fogStates[observer] {
-                fogState = existing
-            } else {
-                fogState = FogState()
-                increaseVis(
-                    tankVisionRect(around: state.players[observer].tank), state: &fogState,
-                    terrain: state.terrain, pills: state.pills, bases: state.bases,
-                    hiddenMines: state.hiddenMines, observer: observer, players: state.players
-                )
-                // Suppress the mover-loop below from treating the self pair as an alliance
-                // just now "forming" and double-revealing the same position a second time --
-                // self-alliance already existed, it just wasn't tracked yet.
-                previousAllianceStatus[observer * maxPlayers + observer] = true
+    /// **`visionSourceRect` replaces the original design's separate bootstrap/movement-diff
+    /// branches and pre-tick `oldTankPositions` snapshot**, which a `/code-review max` review
+    /// found could double-apply a reveal (a bootstrap tick where the tank also moves nets an
+    /// extra `+1` on the new tile and an unmatched `-1` on the old tile's fringe -- an
+    /// unclamped `Int16` going negative) and, separately, never decremented a mover who
+    /// stopped contributing via disconnect/kick/ban (only alliance-breaking was even
+    /// *attempted*, and a `guard isAllied else { continue }` placed before the only
+    /// `decreaseVis` call made that unreachable too). This version tracks, per (observer,
+    /// mover) pair, the exact rect currently contributing vision (`nil` when not
+    /// contributing) and diffs `shouldContribute` against that cached presence every tick --
+    /// one generic transition (`newly contributing` / `moved` / `stopped contributing`)
+    /// covers bootstrap, alliance forming, alliance breaking, movement, and disconnect/kick/
+    /// ban uniformly, with exactly one `increaseVis`/`decreaseVis` call per real transition.
+    /// This also resolves the `isFog` (`fog == 0`)-vs-redaction-paths (`fog > 0`)
+    /// inconsistency the same review flagged: `fog` can no longer go negative, so the two
+    /// predicates can no longer disagree.
+    ///
+    /// Combines C's two separate mechanisms into one tick-driven pass, as before: C hooks
+    /// `increasevis`/`decreasevis` both at (a) every tick, per-mover, gated on
+    /// `testalliance(observer, mover)` (`client.c:458-460`), and (b) immediately at the exact
+    /// moment an alliance forms/breaks (`recvsrsetalliance`, `client.c:2905-3013`) or a player
+    /// disconnects/is kicked/banned (`client.c:2060-2061,2097-2098,2134-2135,2171-2172`) --
+    /// four separate call sites in C, one generic diff here. Can lag a transition by up to one
+    /// tick (20ms at 50Hz) versus C's same-event reveal/hide -- a deliberate, documented
+    /// simplification, negligible in practice.
+    private func updateFogVision() -> [(player: Int, bytes: [UInt8])] {
+        var revealsToSend: [(player: Int, bytes: [UInt8])] = []
+
+        // The host's own slot renders directly from `fogState(for:)` (Phase 3) -- no wire
+        // round-trip needed, matching the existing "host has no socket to itself" precedent
+        // this file already establishes for chat (`emitGameMessage`'s own doc comment).
+        func queueReveals(_ points: [Pointi], to observer: Int) {
+            guard observer != state.localPlayer else { return }
+            for point in points {
+                let index = Int(point.y) * 256 + Int(point.x)
+                let real = Terrain(rawValue: state.terrain.storage[index]) ?? .sea
+                let substituted = unminedTerrain(real)
+                let bytes = SRRevealTerrain(x: UInt8(point.x), y: UInt8(point.y), terrain: UInt8(substituted.rawValue)).encode()
+                revealsToSend.append((observer, bytes))
             }
+        }
 
-            for mover in state.players.indices where state.players[mover].connected {
-                let isAllied = testAlliance(observer, mover, players: state.players)
-                let wasAllied = previousAllianceStatus[observer * maxPlayers + mover]
-                previousAllianceStatus[observer * maxPlayers + mover] = isAllied
-                guard isAllied else { continue }
+        for observer in state.players.indices where state.players[observer].connected {
+            var fogState = fogStates[observer] ?? FogState()
 
-                if isAllied != wasAllied {
-                    // Alliance just formed -- one-time immediate reveal around the mover's
-                    // current position, matching `recvsrsetalliance`'s own immediate
-                    // `increasevis` (C never fires this for a *breaking* alliance's fog
-                    // side -- the `guard isAllied` above already excludes that case; the
-                    // mover simply stops contributing vision from here on, matching C's
-                    // `decreasevis` on break, which this tick-driven diff produces
-                    // naturally on the *next* tick where `isAllied` is now false and the
-                    // `guard` skips the reveal but the mover's vision source is gone).
-                    increaseVis(
-                        tankVisionRect(around: state.players[mover].tank), state: &fogState,
-                        terrain: state.terrain, pills: state.pills, bases: state.bases,
-                        hiddenMines: state.hiddenMines, observer: observer, players: state.players
-                    )
-                    continue
+            for mover in state.players.indices {
+                let shouldContribute = state.players[mover].connected
+                    && testAlliance(observer, mover, players: state.players)
+                let key = observer * maxPlayers + mover
+                let previousRect = visionSourceRect[key]
+
+                if shouldContribute {
+                    let currentRect = tankVisionRect(around: state.players[mover].tank)
+                    if let previousRect, previousRect.origin != currentRect.origin {
+                        let before = fogState
+                        increaseVis(
+                            currentRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                            bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                            players: state.players
+                        )
+                        decreaseVis(previousRect, state: &fogState)
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        visionSourceRect[key] = currentRect
+                    } else if previousRect == nil {
+                        // Newly contributing -- covers bootstrap (never tracked before),
+                        // alliance just forming, and a mover reconnecting, all uniformly.
+                        let before = fogState
+                        increaseVis(
+                            currentRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                            bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                            players: state.players
+                        )
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        visionSourceRect[key] = currentRect
+                    }
+                    // previousRect == currentRect (same tile): unchanged, no-op.
+                } else if let previousRect {
+                    // Stopped contributing -- alliance broke, or `mover` disconnected/was
+                    // kicked/was banned. Decrements using the rect they last actually
+                    // revealed from, not a value re-derived from their (possibly stale,
+                    // possibly already-reset) current state.
+                    decreaseVis(previousRect, state: &fogState)
+                    visionSourceRect[key] = nil
                 }
-
-                let oldTile = Pointi(x: Int32(oldTankPositions[mover].x), y: Int32(oldTankPositions[mover].y))
-                let newPos = state.players[mover].tank
-                let newTile = Pointi(x: Int32(newPos.x), y: Int32(newPos.y))
-                guard oldTile.x != newTile.x || oldTile.y != newTile.y else { continue }
-
-                increaseVis(
-                    tankVisionRect(around: newPos), state: &fogState, terrain: state.terrain,
-                    pills: state.pills, bases: state.bases, hiddenMines: state.hiddenMines,
-                    observer: observer, players: state.players
-                )
-                decreaseVis(
-                    tankVisionRect(around: Vec2f(x: Float(oldTile.x) + 0.5, y: Float(oldTile.y) + 0.5)),
-                    state: &fogState
-                )
             }
 
             // Every connected slot gets its own proximity reveal around its own tank, not
             // just the host's `state.localPlayer` -- C only ever does this for "the local
             // player" because each C client is its own single-player process; this port's
             // per-slot `FogState` makes every connected player equally "local" from their
-            // own observer's perspective.
+            // own observer's perspective. Diffed against `seenTiles`, not `fog` -- a
+            // proximity reveal can sticky-reveal a mine on a tile that's already otherwise
+            // visible (fog already > 0), which never touches the fog count at all.
+            let beforeProximity = fogState
             revealNearbyHiddenMines(
                 tankPos: state.players[observer].tank, state: &fogState, terrain: state.terrain,
                 pills: state.pills, bases: state.bases, hiddenMines: state.hiddenMines,
                 observer: observer, players: state.players
+            )
+            queueReveals(
+                changedSeenTiles(around: state.players[observer].tank, before: beforeProximity, after: fogState),
+                to: observer
             )
 
             fogStates[observer] = fogState
@@ -872,5 +897,48 @@ public final class HostGameEngine: @unchecked Sendable {
         // crosses that tile, so this is a completeness gap on the *vision source* side
         // (structures projecting their own vision), not a correctness gap on the
         // *resolution* side (what a tile displays once seen).
+        return revealsToSend
+    }
+
+    /// Tiles within `rect` whose `fog` count just crossed from "not visible" to "visible" --
+    /// i.e. what `increaseVis` actually made newly visible this call, for reporting to
+    /// `updateFogVision`'s reveal-sending caller without threading a return value through
+    /// `FogState.swift`'s own (already-tested) algorithm layer.
+    private func newlyVisibleTiles(in rect: Recti, before: FogState, after: FogState) -> [Pointi] {
+        let clipped = intersectionrect(worldRect, rect)
+        guard clipped.size.width > 0, clipped.size.height > 0 else { return [] }
+        var points: [Pointi] = []
+        let minX = clipped.origin.x, minY = clipped.origin.y
+        let maxX = minX + clipped.size.width, maxY = minY + clipped.size.height
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                let index = Int(y) * 256 + Int(x)
+                if before.fog[index] <= 0, after.fog[index] > 0 {
+                    points.append(Pointi(x: x, y: y))
+                }
+            }
+        }
+        return points
+    }
+
+    /// The 3×3 block `revealNearbyHiddenMines` scans, tiles whose `seenTiles` snapshot
+    /// changed -- unlike `newlyVisibleTiles` above, a proximity reveal doesn't necessarily
+    /// touch `fog` at all (the tile can already be otherwise visible), so this diffs the
+    /// actual display value instead.
+    private func changedSeenTiles(around tankPos: Vec2f, before: FogState, after: FogState) -> [Pointi] {
+        let originX = Int32(tankPos.x) - 1
+        let originY = Int32(tankPos.y) - 1
+        var points: [Pointi] = []
+        for dy in Int32(0)..<3 {
+            for dx in Int32(0)..<3 {
+                let x = originX + dx, y = originY + dy
+                guard x >= 0, x < 256, y >= 0, y < 256 else { continue }
+                let index = Int(y) * 256 + Int(x)
+                if before.seenTiles[index] != after.seenTiles[index] {
+                    points.append(Pointi(x: x, y: y))
+                }
+            }
+        }
+        return points
     }
 }

@@ -106,7 +106,11 @@ float fogvis_oracle(
 
 float calcvis_blend_oracle(float forestvis, float fogvis, float dist);
 
-int fogtilefor_hides_mine_oracle(int hiddenmines, int tileMatchesPrevious);
+// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): replaces the retired, tautological
+// fogtilefor_hides_mine_oracle -- verbatim transcriptions of the real C switches, see fog.c's
+// own comments on each.
+int fogtilefor_mined_result_oracle(int terrainCase, int hiddenmines, int previousTile);
+int testhiddenmine_reveals_terrain_oracle(int terrainCase);
 
 // Wave 6.0 wire-codec oracle extracts (netops.c) of sendclupdate()/
 // dgramclient()'s pure encode/decode transforms, plus struct-layout ground

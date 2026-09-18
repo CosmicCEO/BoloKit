@@ -353,8 +353,16 @@ public final class GameRenderView: NSView {
     public func render(_ newState: GameState, fogState: FogState? = nil) {
         state = newState
         self.fogState = fogState
-        if newState.hiddenMines, let fogState {
-            tileGrid = fogResolvedTileGrid(for: newState, fogState: fogState)
+        if newState.hiddenMines {
+            // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): fail closed, not open. A
+            // `nil` `fogState` here used to fall through to full-visibility `displayTileGrid`
+            // -- reachable in production during `GameSession`'s host-path init, which calls
+            // `render(_:)` once before `HostGameEngine`'s first tick has ever populated
+            // `fogStates`, so the very first frame of a hidden-mines game could show every
+            // mine. An all-fogged default `FogState()` renders `.unknown` everywhere instead,
+            // which is the correct state of the world at that instant anyway (nothing has
+            // been revealed yet).
+            tileGrid = fogResolvedTileGrid(for: newState, fogState: fogState ?? FogState())
         } else {
             tileGrid = displayTileGrid(for: newState)
         }

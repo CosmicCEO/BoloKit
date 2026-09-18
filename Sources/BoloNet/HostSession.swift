@@ -511,7 +511,10 @@ func tankVisionRect(around pos: Vec2f) -> Recti {
 /// is on -- every tile in their initial spawn reveal is being seen for the first time.
 func unminedTerrain(_ terrain: Terrain) -> Terrain {
     switch terrain {
-    case .minedSea: return .sea
+    // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): matches `applyMineSubstitution`'s
+    // own identical fix -- `fogtilefor`'s real `kMinedSeaTerrain` case never hides mined sea,
+    // regardless of `hiddenmines` (`client.c:6172-6173`). Never substitute it here either.
+    case .minedSea: return terrain
     case .minedSwamp: return .swamp0
     case .minedCrater: return .crater
     case .minedRoad: return .road
@@ -698,7 +701,7 @@ public func dispatchHostMessage(
                 )
             },
             onShouldBroadcastGrabBoat: { p, x, y in
-                pending.append(.all(SRGrabBoat(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRGrabBoat(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
                 pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))
@@ -871,7 +874,7 @@ public func dispatchHostMessage(
         recvClDamage(
             player: player, x: Int(msg.x), y: Int(msg.y), boat: msg.boat != 0, state: &state,
             onShouldBroadcastDamage: { p, x, y, terrain in
-                pending.append(.all(SRDamage(player: UInt8(p), x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
+                pending.append(.mask(terrainMask(x: x, y: y), SRDamage(player: UInt8(p), x: UInt8(x), y: UInt8(y), terrain: terrain).encode()))
             },
             onShouldBroadcastSmallBoom: { p, x, y in
                 pending.append(.mask(terrainMask(x: x, y: y), SRSmallBoom(player: p, x: UInt8(x), y: UInt8(y)).encode()))

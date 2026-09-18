@@ -81,6 +81,11 @@ struct AppRootView: View {
         case .hosting(let engine):
             GameView(hostEngine: engine, onQuitToMenu: { returnToNewGame() })
         case .hostingFallback(let state):
+            // v1.5.0 #1: this path has no `HostGameEngine`/`FogState` at all (D109's own
+            // local-only single-process fallback, predating fog-of-war) -- `state.hiddenMines`
+            // has no rendering effect here regardless of the toggle. Solo/single-process fog
+            // was out of scope for this feature from the start (Phase 2/3's own scoping
+            // decision); this is a deliberate, named boundary, not an oversight.
             GameView(
                 initialState: state, onQuitToMenu: { returnToNewGame() },
                 notice: "Running local-only -- hosting is unavailable on this system"

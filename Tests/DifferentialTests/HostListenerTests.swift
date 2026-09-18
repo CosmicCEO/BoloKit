@@ -277,20 +277,25 @@ private let loopbackIPv4AsUInt32: UInt32 = {
 /// a joining player's own map send never contains true ground truth for a mine outside
 /// their initial spawn reveal, and does substitute (not omit) a mine inside it, matching
 /// `fogTileFor`'s own never-seen-before substitution rule.
-@Test func processJoinAttemptRedactsUnseenMinesWhenHiddenMinesIsOn() async throws {
+/// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): the original version of this test
+/// asserted a mine near `state.players[0].tank` got a spawn-reveal at join time -- exactly
+/// the bug the review caught: `applyJoin` never sets `tank` (spawn is `runTick`'s job, later),
+/// so that reveal was always centered on the `(0, 0)` placeholder, not wherever the test
+/// (or production) actually cared about. The fix removes the join-time reveal entirely, so
+/// this test now asserts the correct replacement behavior: nothing is revealed at join at
+/// all, and every mine -- regardless of proximity to the placeholder tank position --
+/// crosses the wire as its never-seen default, never as real ground truth.
+@Test func processJoinAttemptRevealsNothingAtJoinTime() async throws {
     let link = try await makeConnectedPair()
     defer { link.listener.cancel(); link.clientEnd.cancel() }
 
     var state = makeState()
     state.hiddenMines = true
-    // `applyJoin` never touches tank position (spawning is `runTick`'s job, not the accept
-    // path's) -- set explicitly here, inside the real placeable mine zone
-    // (`mineZoneMin...mineZoneMax`), so the spawn-reveal rect around it is realistic.
-    state.players[0].tank = Vec2f(x: 100, y: 100)
-    // Within the 29x29 spawn-reveal rect around (100, 100).
-    state.terrain[105, 105] = .minedGrass
-    // Well outside that rect.
-    state.terrain[200, 200] = .minedGrass
+    // Deliberately NOT set -- `state.players[0].tank` stays at its `(0, 0)` default, matching
+    // what `applyJoin` actually leaves it at. A reveal computed "around the tank" here would
+    // be a regression back to the bug being fixed.
+    state.terrain[5, 5] = .minedGrass // near the (0,0) placeholder, if a reveal were wrongly computed there
+    state.terrain[200, 200] = .minedGrass // far from anything
     let table = HostSessionTable()
     let serializer = JoinAcceptSerializer()
 
@@ -309,18 +314,46 @@ private let loopbackIPv4AsUInt32: UInt32 = {
 
     var decoded = GameState()
     #expect(decodeBMap(mapBytes, into: &decoded))
-    // Inside the spawn reveal, never seen before -- substituted to unmined, not omitted.
-    // grass0-3 are cosmetically interchangeable variants (`Terrain.swift`'s own doc comment);
-    // the RLE codec doesn't necessarily preserve which one was written, just that it's grass.
-    switch decoded.terrain[105, 105] {
-    case .grass0, .grass1, .grass2, .grass3: break
-    default: Issue.record("expected some grass variant, got \(String(describing: decoded.terrain[105, 105]))")
-    }
-    // Outside the spawn reveal -- never-seen default, not real ground truth.
+    // Neither mine crosses the wire as real ground truth -- nothing was revealed at join.
+    // (5, 5) is in the mined-sea border ring (mine zone is [10, 245]) -- its never-seen
+    // default is `.minedSea` (static, always-known map geometry, `docs/CONSTRAINTS.md`), not
+    // plain `.sea`; (200, 200) is in the interior, whose default *is* plain `.sea`.
+    #expect(decoded.terrain[5, 5] != .minedGrass)
     #expect(decoded.terrain[200, 200] != .minedGrass)
+    #expect(decoded.terrain[5, 5] == .minedSea)
     #expect(decoded.terrain[200, 200] == .sea)
 
     #expect(fogStates[0] != nil, "the join accept path must seed the joiner's own FogState")
+    #expect(fogStates[0]?.fog.allSatisfy { $0 == 0 } == true, "nothing should be marked visible yet at join time")
+}
+
+/// Regression test for the review's stale-`FogState`-reuse finding: a slot's prior occupant
+/// (or the same identity rejoining) must never carry forward into a fresh join. Player A
+/// explores and reveals a mine while occupying slot 0; player B then joins into the same slot
+/// (matching the real scenario -- a freed slot getting reused, or a straightforward rejoin)
+/// and must start with zero prior vision, not inherit A's.
+@Test func processJoinAttemptNeverReusesAPriorOccupantsFogState() async throws {
+    let link = try await makeConnectedPair()
+    defer { link.listener.cancel(); link.clientEnd.cancel() }
+
+    var state = makeState()
+    state.hiddenMines = true
+    var fogStates: [Int: FogState] = [:]
+
+    // Simulate player A having previously explored and revealed a mine at (50, 50).
+    var priorOccupantFog = FogState()
+    priorOccupantFog.fog[50 * 256 + 50] = 3
+    priorOccupantFog.seenTiles[50 * 256 + 50] = .minedGrass
+    fogStates[0] = priorOccupantFog
+
+    let table = HostSessionTable()
+    let serializer = JoinAcceptSerializer()
+    try await sendBytes(link.clientEnd, JoinPreamble(name: "B", pass: "").encode())
+    let outcome = await processJoinAttempt(connection: link.serverEnd, serializer: serializer, state: &state, table: table, fogStates: &fogStates)
+    #expect(outcome == .accepted(player: 0, rejoin: false))
+
+    #expect(fogStates[0]?.fog[50 * 256 + 50] == 0, "a fresh join must never inherit a prior occupant's fog count")
+    #expect(fogStates[0]?.seenTiles[50 * 256 + 50] == .unknown, "a fresh join must never inherit a prior occupant's revealed tiles")
 }
 
 @Test func processJoinAttemptSendsFullGroundTruthWhenHiddenMinesIsOff() async throws {
