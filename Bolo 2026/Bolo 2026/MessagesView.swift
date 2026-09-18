@@ -28,7 +28,7 @@ struct MessagesView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            content(snapshot: session.state, messages: session.messages)
+            content(snapshot: session.liveState, messages: session.messages)
         }
     }
 

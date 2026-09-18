@@ -92,6 +92,12 @@ public final class GameSession {
     /// Mirrors `HostGameEngine.localSeq`'s identical role -- this client's own outgoing per-tick
     /// counter, `assembleClUpdate`'s own broadcast cadence gate (`% 5 == 0`, ~10Hz).
     private var localSeq: Int32 = 0
+    /// Diagnostics for the join path's datagram channel (category `net`): the host evicts a guest
+    /// whose datagrams it never accepts, and every guest-side failure here used to be silent.
+    private static let netLogger = Logger(subsystem: BoloSignposts.subsystem, category: BoloSignposts.netCategory)
+    private var loggedUDPSendFailure = false
+    private var loggedFirstHostUpdate = false
+    private var loggedFirstRejectedUpdate = false
 
     /// Measured tick-to-tick interval, most recent first, capped to a rolling window -- surfaced
     /// so the completion report can state real jitter instead of asserting the nominal 20ms holds
@@ -290,6 +296,11 @@ public final class GameSession {
 
     /// Live host `GameState` when hosting; otherwise this session's own copy.
     private var adminState: GameState { hostEngine?.state ?? state }
+
+    /// The state panels should display: the engine's live state on the host path, `state` otherwise.
+    /// On the host path `state` is a frozen one-time snapshot (see this file's header), so a panel
+    /// reading it directly never sees a guest join, leave or ally.
+    public var liveState: GameState { hostEngine?.state ?? state }
 
     public var isServerPaused: Bool {
         adminState.serverPauseTicks != 0 || adminState.clientPauseDisplaySeconds != 0
@@ -577,6 +588,7 @@ public final class GameSession {
                     let data = try await udpSession.receiveOneRawDatagram()
                     continuation.yield(.udpDatagram(data))
                 } catch {
+                    Self.netLogger.error("UDP receive loop ended: \(String(describing: error), privacy: .public)")
                     continuation.yield(.udpEnded)
                     break
                 }
@@ -732,10 +744,19 @@ public final class GameSession {
         case .udpDatagram(let data):
             let playerNames = state.players.map(\.name)
             var builderDied = false
-            if let result = udpSession.apply(
+            let result = udpSession.apply(
                 data, myOwnSeq: localSeq, state: &state,
                 onBuilderDeathSound: { builderDied = true }
-            ), builderDied {
+            )
+            if result == nil, !loggedFirstRejectedUpdate {
+                loggedFirstRejectedUpdate = true
+                Self.netLogger.error("first UDP datagram rejected by the client apply (\(data.count) bytes): malformed, self-echo, stale seq, or sender slot not connected")
+            }
+            if let result, !loggedFirstHostUpdate {
+                loggedFirstHostUpdate = true
+                Self.netLogger.notice("first UDP update applied from slot \(result.player)")
+            }
+            if let result, builderDied {
                 let name = result.player < playerNames.count ? playerNames[result.player] : ""
                 appendGameMessage(EventLogText.lostBuilder(name))
             }
@@ -760,6 +781,15 @@ public final class GameSession {
         seq[state.localPlayer] = UInt32(bitPattern: localSeq)
         let update = assembleClUpdate(player: state.localPlayer, state: state, seq: seq)
         let bytes = update.encode()
-        Task { try? await udpSession.sendLocalUpdate(bytes) }
+        Task { @MainActor [weak self] in
+            do {
+                try await udpSession.sendLocalUpdate(bytes)
+            } catch {
+                if let self, !self.loggedUDPSendFailure {
+                    self.loggedUDPSendFailure = true
+                    Self.netLogger.error("UDP send failed: \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
     }
 }

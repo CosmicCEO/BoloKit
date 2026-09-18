@@ -147,12 +147,13 @@ private func receiveMatchingCLUpdate(
 
 @Test func hostGameEngineRelaysADgramPacketBetweenTwoRegisteredPlayers() async throws {
     let (engine, _, dgramPort) = try await makeEngine { state in
-        state.players[0].used = true
-        state.players[0].connected = true
-        state.players[0].dead = false
-        state.players[1].used = true
-        state.players[1].connected = true
-        state.players[1].dead = false
+        // Slots 1 and 2 are the guests. Slot 0 is the host's own (`localPlayer`): the engine
+        // writes its own seq there, so it can never also be a datagram sender.
+        for slot in [1, 2] {
+            state.players[slot].used = true
+            state.players[slot].connected = true
+            state.players[slot].dead = false
+        }
     }
     defer { engine.stop() }
 
@@ -176,10 +177,10 @@ private func receiveMatchingCLUpdate(
         Issue.record("expected a real loopback address")
         return
     }
-    await engine.table.setConnection(fakeTCP, for: 0)
     await engine.table.setConnection(fakeTCP, for: 1)
-    await engine.table.setDgramAddress(fakeAddress, for: 0)
+    await engine.table.setConnection(fakeTCP, for: 2)
     await engine.table.setDgramAddress(fakeAddress, for: 1)
+    await engine.table.setDgramAddress(fakeAddress, for: 2)
 
     engine.start()
 
@@ -190,17 +191,17 @@ private func receiveMatchingCLUpdate(
     // Each peer's first `CLUpdate` registers its own dgram connection in the table, through the
     // engine's real dgram-processing path (`processDgramPacket`'s `.applied` case) -- exactly
     // what a real client's first datagram produces, not manually seeded.
-    try await sendCLUpdate(senderClient, player: 0, seq: 1, tank: Vec2f(x: 101, y: 101))
-    try await sendCLUpdate(peerClient, player: 1, seq: 1, tank: Vec2f(x: 102, y: 102))
-    try await waitForCondition(timeout: 2) { await engine.table.dgramConnection(for: 1) != nil }
+    try await sendCLUpdate(senderClient, player: 1, seq: 1, tank: Vec2f(x: 101, y: 101))
+    try await sendCLUpdate(peerClient, player: 2, seq: 1, tank: Vec2f(x: 102, y: 102))
+    try await waitForCondition(timeout: 2) { await engine.table.dgramConnection(for: 2) != nil }
 
     let expectedTank = Vec2f(x: 112, y: 114)
-    try await sendCLUpdate(senderClient, player: 0, seq: 2, tank: expectedTank)
+    try await sendCLUpdate(senderClient, player: 1, seq: 2, tank: expectedTank)
     let decoded = try await receiveMatchingCLUpdate(peerClient, expectedTank: expectedTank)
-    #expect(decoded.header.player == 0)
+    #expect(decoded.header.player == 1)
 
-    try await waitForCondition(timeout: 2) { engine.state.players[0].tank == expectedTank }
-    #expect(engine.state.players[0].tank == expectedTank)
+    try await waitForCondition(timeout: 2) { engine.state.players[1].tank == expectedTank }
+    #expect(engine.state.players[1].tank == expectedTank)
 }
 
 @Test func hostGameEngineBroadcastsItsOwnCLUpdateOnTheTickTimer() async throws {

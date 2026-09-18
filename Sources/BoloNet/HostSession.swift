@@ -167,6 +167,10 @@ public actor HostSessionTable {
     public func seq(for player: Int) -> Int32 { slots[player].seq }
     public func setSeq(_ seq: Int32, for player: Int) { slots[player].seq = seq }
     public func lastUpdate(for player: Int) -> UInt64 { slots[player].lastUpdate }
+    /// `true` only the first time `key` is seen. Lets per-packet diagnostics (a datagram drop that
+    /// repeats 10x/s) log once per cause instead of flooding the log.
+    public func firstTime(_ key: String) -> Bool { loggedOnce.insert(key).inserted }
+    private var loggedOnce = Set<String>()
     public func setLastUpdate(_ tick: UInt64, for player: Int) { slots[player].lastUpdate = tick }
 
     /// `evaluateJoinRequest`'s own `ticksSinceLastUpdate` parameter --
