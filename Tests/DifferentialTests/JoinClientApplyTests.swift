@@ -7,9 +7,10 @@ import BoloNet
 // flagged.
 
 private func samplePlayerEntries() -> [BoloPreamble.PlayerEntry] {
-    (0..<maxPlayers).map { i in
-        BoloPreamble.PlayerEntry(
-            used: i < 2, connected: i < 2, seq: 0, name: i < 2 ? "Player\(i)" : "", host: "", alliance: UInt16(i)
+    (0..<maxPlayers).map { (i: Int) -> BoloPreamble.PlayerEntry in
+        let used = i < 2
+        return BoloPreamble.PlayerEntry(
+            used: used, connected: used, seq: 0, name: used ? "Player\(i)" : "", host: "", alliance: UInt16(i)
         )
     }
 }
