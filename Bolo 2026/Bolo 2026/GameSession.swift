@@ -715,6 +715,13 @@ public final class GameSession {
                 }
             }
 
+            // Age every explosion (global list and each connected player's own) once per tick, as
+            // `client.c`'s per-tick `explosionlogic()` calls do. Without this the join path never
+            // expired an explosion: they sat on screen, and this client's own list rides out in
+            // every `CLUpdate`, so the host (which applies a guest's explosions) re-showed each one
+            // at a fresh counter every update, forever.
+            explosionTick(state: &state)
+
             sendLocalUpdateIfDue(udpSession)
             renderView.render(state)
             hudSnapshot.update(from: state)
