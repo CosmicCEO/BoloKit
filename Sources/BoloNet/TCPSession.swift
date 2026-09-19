@@ -99,7 +99,9 @@ public final class TCPSession: @unchecked Sendable {
     public let remotePort: UInt16
 
     public init(host: String, port: UInt16) async throws {
-        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+        let parameters = NWParameters.tcp
+        ipv4Only(parameters)
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: parameters)
         self.connection = connection
         self.remoteHost = host
         self.remotePort = port
@@ -107,7 +109,11 @@ public final class TCPSession: @unchecked Sendable {
     }
 
     public init(to endpoint: NWEndpoint) async throws {
-        let connection = NWConnection(to: endpoint, using: .tcp)
+        // IPv4 only: a Bonjour `.service` endpoint otherwise resolves to the host's IPv6
+        // link-local address, which the IPv4-only wire protocol cannot track (`ipv4Only`).
+        let parameters = NWParameters.tcp
+        ipv4Only(parameters)
+        let connection = NWConnection(to: endpoint, using: parameters)
         self.connection = connection
         try await Self.waitUntilReady(connection)
         guard let resolved = Self.hostPort(from: connection.currentPath?.remoteEndpoint)
