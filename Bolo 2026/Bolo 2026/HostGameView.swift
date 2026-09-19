@@ -29,11 +29,14 @@
 //  not this one -- registering with a tracker/mapping a port needs a reachable public address,
 //  which this milestone doesn't add).
 //
-//  Milestone B.7 (D109): root-caused live -- `HostListener`/`HostDgramListener` construction fails
-//  on *every* fixed port on Jerod's current machine (confirmed: a bare, zero-dependency `NWListener`
-//  call outside this project entirely reproduces the identical `EINVAL`, while `port: 0` succeeds).
-//  A macOS 27 beta Network.framework issue, not a bug in this port's own code, and nothing here can
-//  fix it. Jerod confirmed solo play must still work regardless, so a failed listener construction
+//  Milestone B.7 (D109): `HostListener`/`HostDgramListener` construction failed with `EINVAL` on
+//  *every* fixed port (`port: 0` succeeded). This was first written up as a macOS 27 beta
+//  Network.framework issue; it was not. Root cause (found after the v1.5.0 two-Mac test showed it
+//  on macOS 26 too): the listeners passed the port both via `requiredLocalEndpoint` (`forceIPv4`)
+//  and via `NWListener(using:on:)`, and that combination is rejected for any non-zero port. Fixed
+//  by building with `NWListener(using:)` alone; see `forceIPv4` and
+//  `HostListenerFixedPortTests`. The solo-play fallback stays: Jerod confirmed solo play must still
+//  work regardless, so a failed listener construction
 //  now falls back to `onStartHostingLocalOnly` -- the same local-only simulation
 //  `JoinGameView`'s post-handshake flow already runs -- with a visible in-game notice, rather than
 //  a dead-end form error. Real multi-human-one-machine networked play stays unscoped for now.
@@ -306,7 +309,7 @@ struct HostGameView: View {
         player.dead = true
         player.alliance = UInt16(1 << 0)
         state.local.respawnCounter = respawnTicks - 1  // spawn() fires on the very first tick
-        state.players = [player]
+        state.players = hostPlayerSlots(hostPlayer: player)
         state.localPlayer = 0
 
         hostErrorMessage = nil

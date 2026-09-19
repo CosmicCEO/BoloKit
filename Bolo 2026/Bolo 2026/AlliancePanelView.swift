@@ -29,7 +29,7 @@ struct AlliancePanelView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            panel(snapshot: session.state)
+            panel(snapshot: session.liveState)
         }
     }
 

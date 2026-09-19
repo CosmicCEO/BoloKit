@@ -497,6 +497,14 @@ public final class HostGameEngine: @unchecked Sendable {
             }
 
         case .clConnectionEnded(let player):
+            // A lag eviction (`RunTick` step 4) already marked the player disconnected, reported
+            // it, and closed their TCP itself; that close lands here as a second "connection
+            // ended". Report a departure once.
+            guard state.players.indices.contains(player), state.players[player].connected else {
+                Self.discoveryLogger.notice("TCP ended for slot \(player), already disconnected")
+                return
+            }
+            Self.discoveryLogger.notice("TCP ended for slot \(player): disconnecting")
             let name = state.players.indices.contains(player) ? state.players[player].name : ""
             await handlePlayerDisconnect(player: player, reason: .abnormal, state: &state, table: table)
             await emitGameMessage(EventLogText.disconnected(name))
@@ -711,6 +719,8 @@ public final class HostGameEngine: @unchecked Sendable {
             // Mirrors `handlePlayerDisconnect`'s own `.abnormal` broadcast + table cleanup
             // (`HostSession.swift:310,312`) -- NOT a call to that function itself, see above.
             let name = player < playerNames.count ? playerNames[player] : ""
+            let silentTicks = player < ticksSinceLastUpdate.count ? ticksSinceLastUpdate[player] : 0
+            Self.discoveryLogger.error("lag eviction: slot \(player) sent no accepted UDP update for \(silentTicks) ticks")
             await table.sendToAllExcept(player, SRPlayerDisc(player: UInt8(player)).encode())
             await table.disconnect(player)
             pendingGameMessages.append(EventLogText.disconnected(name))
@@ -764,6 +774,10 @@ public final class HostGameEngine: @unchecked Sendable {
         guard localSeq % 5 == 0 else { return }
         guard state.players.indices.contains(state.localPlayer) else { return }
         let netSignpost = BoloSignposts.net.beginInterval(BoloSignposts.clUpdateName)
+        // The host's own seq must ride in its own slot of the header: nothing else ever writes
+        // it (`setSeq` is otherwise only called for guests that send), so it stayed 0 and every
+        // guest dropped every host update as not newer (`isNewerSeq(0, than: 0)`).
+        await table.setSeq(localSeq, for: state.localPlayer)
         let seqSnapshot = await table.allSeqsAsUInt32()
         let update = assembleClUpdate(player: state.localPlayer, state: state, seq: seqSnapshot)
         let bytes = update.encode()

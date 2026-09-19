@@ -41,7 +41,9 @@ public final class UDPSession: @unchecked Sendable {
     private var remoteLastUpdates = [Int32](repeating: 0, count: maxPlayers)
 
     public init(host: String, port: UInt16) async throws {
-        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: .udp)
+        let parameters = NWParameters.udp
+        ipv4Only(parameters)
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: parameters)
         self.connection = connection
         try await Self.waitUntilReady(connection)
     }

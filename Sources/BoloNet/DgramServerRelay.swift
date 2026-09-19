@@ -8,14 +8,16 @@ import BoloKit
 // only the decision made about one already-received datagram, given the
 // server's already-known per-player session state.
 //
-// **T-2, load-bearing:** the real `dgramserver()` applies only
-// `tank.x`/`tank.y` from the decoded header (`server.c:670-672`) --
-// nothing else. Do NOT reuse `applyRemotePlayerUpdate`
-// (`DgramClientApply.swift`, Wave 6.4a), which applies ~15 fields plus
-// shells/explosions/dead-reckoning; that function ports the *client's*
-// `dgramclient()`, a materially different, much richer role. The C
-// server's own player record (`server.h:100-116`) doesn't even have most
-// of those fields to apply to.
+// **T-2:** the real `dgramserver()` applies only `tank.x`/`tank.y` from
+// the decoded header (`server.c:670-672`) -- nothing else, because the C
+// server is a relay and its own player record (`server.h:100-116`)
+// doesn't have most of those fields. **This decision core still models
+// that** (`.applied` carries only `tank`), but `processDgramPacket`
+// deliberately does NOT stop there any more: this port's host process is
+// also a client whose `GameState` is the view, so it additionally applies
+// the sender's full state via `applyRemotePlayerUpdate`. Applying only
+// tank x/y left every guest `dead == true` on the host (never drawn,
+// moved or hit). See `docs/CONSTRAINTS.md`, "Host is also a client".
 
 /// The three fields of a UDP peer's `sockaddr_in` the real comparison
 /// actually reads (`sin_family`, `sin_addr.s_addr`, `sin_port`) --

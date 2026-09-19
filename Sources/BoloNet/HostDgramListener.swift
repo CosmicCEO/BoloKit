@@ -1,6 +1,7 @@
 import Network
 import Foundation
 import BoloKit
+import os
 
 // MARK: - Wave 6.4c (D50/D51) — live UDP listener driving DgramServerRelay.swift
 //
@@ -49,7 +50,7 @@ public final class HostDgramListener: @unchecked Sendable {
         let parameters = NWParameters(dtls: nil, udp: udpOptions)
         let boundPort = NWEndpoint.Port(rawValue: port)!
         forceIPv4(parameters, port: boundPort)
-        listener = try NWListener(using: parameters, on: boundPort)
+        listener = try NWListener(using: parameters)
 
         var continuationBox: AsyncStream<(bytes: [UInt8], connection: NWConnection)>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }
@@ -150,8 +151,9 @@ private func sendBytes(_ bytes: [UInt8], over connection: NWConnection) async th
 /// `.trackerEcho` replies with the exact same bytes over the same
 /// connection (T-4, `server.c:637-645` -- never zeroed, unlike
 /// `registerserver()`'s own tracker echo, deferred to Wave 6.5 per D43);
-/// `.malformed`/`.dropped` are no-ops; `.applied` writes `tank` into
-/// `GameState` (T-2: only tank x/y), advances `table`'s `seq`, refreshes
+/// `.malformed`/`.dropped` are logged once per cause and otherwise no-ops; `.applied` applies the
+/// sender's full client-role state to `GameState` (a deliberate deviation from the C server's T-2,
+/// which applied only tank x/y -- see the comment in the `.applied` branch), advances `table`'s `seq`, refreshes
 /// `dgramAddress` (T-3's port-refresh), records this connection as the
 /// player's live UDP flow (D52's cancel-and-replace lives inside
 /// `setDgramConnection` itself), and relays the original bytes verbatim
@@ -160,21 +162,63 @@ private func sendBytes(_ bytes: [UInt8], over connection: NWConnection) async th
 /// limitation matching the C's own practical one: a `sendto()` to a
 /// not-yet-port-corrected `dgramaddr` also goes nowhere useful until that
 /// player's own first packet arrives).
+private let dgramLogger = Logger(subsystem: BoloSignposts.subsystem, category: BoloSignposts.netCategory)
+
 public func processDgramPacket(
     bytes: [UInt8], from connection: NWConnection, state: inout GameState, table: HostSessionTable
 ) async {
-    guard let senderAddress = peerAddress(from: connection) else { return }
+    guard let senderAddress = peerAddress(from: connection) else {
+        if await table.firstTime("dgram.nopeer") {
+            dgramLogger.error("UDP datagram dropped: sender endpoint is not an IPv4 hostPort: \(String(describing: connection.endpoint), privacy: .public)")
+        }
+        return
+    }
     let players = await table.dgramSessionSnapshot(usedFlags: state.players.map(\.used))
 
     switch decodeDgramServerRelay(bytes, from: senderAddress, players: players) {
     case .trackerEcho:
         try? await sendBytes(bytes, over: connection)
 
-    case .malformed, .dropped:
-        break
+    case .malformed:
+        if await table.firstTime("dgram.malformed") {
+            dgramLogger.error("UDP datagram dropped: malformed (\(bytes.count) bytes)")
+        }
+
+    case .dropped:
+        // Names the cause: the packet's claimed slot, that slot's address seeded from the TCP
+        // join next to this datagram's UDP source address, and the last accepted seq.
+        let claimed = bytes.count > 1 ? Int(bytes[1]) : -1
+        if players.indices.contains(claimed), await table.firstTime("dgram.dropped.\(claimed)") {
+            let slot = players[claimed]
+            dgramLogger.error("UDP datagram dropped for slot \(claimed): used=\(slot.used) connected=\(slot.connected) seededAddr=\(slot.dgramAddress.addr) seededFamily=\(slot.dgramAddress.family) udpSourceAddr=\(senderAddress.addr) udpSourceFamily=\(senderAddress.family) udpSourcePort=\(senderAddress.port) lastSeq=\(slot.seq)")
+        }
 
     case .applied(let player, let tank, let newSeq, let portUpdate, let relayTo):
-        state.players[player].tank = tank
+        if await table.firstTime("dgram.accepted.\(player)") {
+            dgramLogger.notice("first UDP datagram accepted from slot \(player) (seq \(newSeq))")
+        }
+        // The host process is also a client whose `GameState` is the view: apply the sender's full
+        // state (dead/dir/boat/shells/...), exactly as a C client's `dgramclient()` does. Applying
+        // only `tank` (the pure C server's T-2 rule) left every guest permanently `dead == true`
+        // here, so it was never drawn, moved or hit. See `docs/CONSTRAINTS.md`, "Host is also a
+        // client". Terrain and sound callbacks stay no-ops: terrain events reach the host through
+        // the TCP CL messages.
+        // If the full apply declines the packet (undecodable, a sender in the host's own slot, or
+        // the sender's `GameState` slot not yet connected) fall back to the server-only T-2
+        // behavior the relay already validated: store tank x/y.
+        var appliedInFull = false
+        if let update = CLUpdate.decode(bytes) {
+            let hostSeq = await table.seq(for: state.localPlayer)
+            appliedInFull = applyRemotePlayerUpdate(
+                header: update.header, shells: update.shells, explosions: update.explosions,
+                previousRemoteSeq: players[player].seq,
+                previousRemoteLastUpdate: Int32(truncatingIfNeeded: await table.lastUpdate(for: player)),
+                myOwnSeq: hostSeq, state: &state
+            ) != nil
+        }
+        if !appliedInFull {
+            state.players[player].tank = tank
+        }
         await table.setSeq(newSeq, for: player)
         // D150(3) discovered-defect fix: `server.c:672`'s `dgramserver()` sets
         // `lastupdate = server.ticks` exactly here, on every accepted CLUpdate/tank packet.

@@ -95,6 +95,27 @@ XBolo must match original Bolo 0.99.7, **not** WinBolo:
   (`pos ± 7`), hidden-mine proximity 2.0 world units, `calcVis` self-visibility floor 3.0
   world units.
 
+## Host is also a client (v1.5.0 live-hosting fixes)
+
+The C server is a relay: `dgramserver()` stores only a sender's `tank.x`/`tank.y` (`server.c:670-672`)
+and forwards the packet. In XBolo the human host is also a *client* that connects to its own server,
+so it applies every guest's full update via `dgramclient()`. This port merges the two roles into one
+process with one authoritative `GameState` (`HostGameEngine`), so the merged host must do both jobs.
+
+- `processDgramPacket` still decides accept/drop/relay exactly like `dgramserver()` (T-2..T-8), but on
+  accept it also applies the sender's full state with `applyRemotePlayerUpdate` (dead, dir, boat, speed,
+  builder, input flags, shells, explosions). Tank-only application left every guest `dead == true`
+  (`PlayerState.dead` defaults to true), so the host never drew, moved or hit it.
+- Terrain and sound callbacks stay no-ops on that path. Terrain events reach the host through the TCP CL
+  messages, so applying them from UDP as well would double-apply. Host-side sounds for guest actions are
+  not wired (follow-up).
+- The host's own outbound `CLUpdate` carries its own `localSeq` in its own slot of `header.seq`. The C
+  host-client did this implicitly by being a real client; without it every guest rejected every host update
+  as not newer.
+- The 9-second lag eviction (`RunTick` step 4, `server.c:1188-1204`) is unchanged: a guest whose datagrams
+  the host never accepts is evicted. That eviction closes the guest's TCP, so the resulting
+  "connection ended" is ignored for a player already marked disconnected (one departure, one message).
+
 ## Physics constants
 
 From `bolo.h`. Live values belong in `Physics.swift`; do not re-derive.

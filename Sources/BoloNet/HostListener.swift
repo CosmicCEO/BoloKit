@@ -159,16 +159,39 @@ public func peerAddress(from connection: NWConnection) -> DgramServerPeerAddress
     return DgramServerPeerAddress(family: 2, addr: addr, port: port.rawValue)
 }
 
-/// `parameters.requiredLocalEndpoint` forces IPv4 -- confirmed by direct
-/// API research, not assumed: with default parameters, an IPv4 peer can
+/// Forces IPv4 (see the body: `requiredLocalEndpoint` alone was not enough) -- with default
+/// parameters, an IPv4 peer can
 /// arrive as an IPv6 IPv4-mapped address, which `peerAddress(from:)`
 /// above would then reject (`.ipv6`, not `.ipv4`). Matches the C's own
 /// AF_INET-only design (`sockaddr_in` throughout `server.c`, no IPv6
 /// anywhere) rather than leaving it to default dual-stack behavior.
 /// Shared by `HostListener` (TCP) and `HostDgramListener.swift` (UDP) so
 /// both listeners agree on the same restriction.
+///
+/// This is the **only** place the listen port is set: callers must build the listener with
+/// `NWListener(using:)`, never `NWListener(using:on:)`. Passing the same port to `on:` as well as
+/// to `requiredLocalEndpoint` throws `EINVAL` for every non-zero port (`port: 0` slips through
+/// because 0 means "any"). That was the "environment issue" recorded in `HostGameView.swift`
+/// and `docs/STATUS.md` through v1.5.0; a bare `NWListener` reproduction confirmed it, on
+/// macOS 26 as well as 27. `HostListenerFixedPortTests` guards it.
 public func forceIPv4(_ parameters: NWParameters, port: NWEndpoint.Port) {
     parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.any), port: port)
+    // `requiredLocalEndpoint(.ipv4(.any))` alone does NOT restrict the listener to IPv4: a client
+    // reaching the host over IPv6 (a Bonjour-resolved `fe80::...%en0` link-local address, the usual
+    // LAN join) is still accepted, TCP and UDP both. `peerAddress(from:)` then returns nil for that
+    // peer, and every datagram is dropped, so the guest is evicted after 9 s (found by the v1.5.0
+    // two-Mac run; reproduced with a bare `NWListener` client to `::1`). Pinning the IP version is
+    // what actually makes this listener IPv4-only.
+    ipv4Only(parameters)
+}
+
+/// Pins `parameters` to IPv4. The wire protocol is IPv4-only (`DgramServerPeerAddress` is a
+/// `sockaddr_in`), so an IPv6 peer can never be tracked; both the host listeners and the guest's
+/// outgoing connections must stay on IPv4.
+public func ipv4Only(_ parameters: NWParameters) {
+    if let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+        ip.version = .v4
+    }
 }
 
 /// One full join handshake for one already-accepted `connection`, run
@@ -336,7 +359,7 @@ public final class HostListener: @unchecked Sendable {
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         let boundPort = NWEndpoint.Port(rawValue: port)!
         forceIPv4(parameters, port: boundPort)
-        listener = try NWListener(using: parameters, on: boundPort)
+        listener = try NWListener(using: parameters)
         listener.service = NWListener.Service(name: bonjourName, type: bolo2026BonjourServiceType)
         var continuationBox: AsyncStream<NWConnection>.Continuation?
         stream = AsyncStream { continuation in continuationBox = continuation }
