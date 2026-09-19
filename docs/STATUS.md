@@ -14,6 +14,18 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
+## In flight (as of 2026-09-19)
+
+**[PR #58](https://github.com/CosmicCEO/BoloKit/pull/58)** (`fix-listener-einval`, open, tests green): live-hosting fixes found by the two-Mac test. Fixed-port `NWListener` EINVAL (port set twice, not a macOS bug), one-slot player table ("server is full"), host dropping the guest's UDP (Bonjour joins arrive over IPv6 link-local; both ends now pinned to IPv4), host and guest never seeing each other alive (host applied only tank x/y; host seq stuck at 0), guest explosions never expiring. Adds the first real host+guest tests and `net`-category logging (`log show --predicate 'subsystem == "com.cosmicceo.Bolo-2026" AND category == "net"'`).
+
+**Proven live (two Macs, macOS 26 and 27):** host and guest connect, stay connected and see each other; the guest can drive and lay mines.
+
+**Guest is a partial client (filed, not fixed):** it cannot fire, Q/E range keys do nothing, deep water does not drown it, leaving water drops a barge. Ruling first: [#59](https://github.com/CosmicCEO/BoloKit/issues/59) (Decide: guest client model), then [#62](https://github.com/CosmicCEO/BoloKit/issues/62). Other follow-ups (host name field, smoother lag, host-side sounds, an unexplained Mac B freeze): [#61](https://github.com/CosmicCEO/BoloKit/issues/61). The v1.8.0 issues [#14](https://github.com/CosmicCEO/BoloKit/issues/14)/[#21](https://github.com/CosmicCEO/BoloKit/issues/21)/[#6](https://github.com/CosmicCEO/BoloKit/issues/6) are unblocked (listener fix).
+
+**Still not verified:** the hidden-mines fog session itself (`docs/TEST_TWO_MAC_FOG.md` Step 3, Hidden Mines on).
+
+**Next step:** merge PR #58, then run the fog session and record results here. No new fixes unless it hits a blocker.
+
 ## How we track work
 
 Source of truth: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43) and skill `.grok/skills/bolokit-github-boards/`. Do not invent a wave/GO protocol. Do not restore a Planner / Implementer / Parity split.
