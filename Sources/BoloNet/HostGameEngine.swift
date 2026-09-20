@@ -514,7 +514,12 @@ public final class HostGameEngine: @unchecked Sendable {
             state.players[state.localPlayer].inputFlags.subtract(clear)
 
         case .localLayMineKeyDown:
-            layMineOnKeyDown(state: &state)
+            var planted: Pointi?
+            layMineOnKeyDown(state: &state, onMine: { planted = $0 })
+            // A hidden mine is never announced: remote players learn of it by proximity reveal.
+            if let planted, !state.hiddenMines {
+                await table.sendToAll(SRDropMine(player: UInt8(state.localPlayer), x: UInt8(planted.x), y: UInt8(planted.y)).encode())
+            }
 
         case .localBuilderCommand(let command, let target):
             queueBuilderCommand(command: command, target: target, player: state.localPlayer, state: &state)
@@ -615,6 +620,7 @@ public final class HostGameEngine: @unchecked Sendable {
         // `fogStates` itself is a different property, safe to read live.
         var maskedPending: [(mask: UInt16, bytes: [UInt8])] = []
         let hiddenMinesSnapshot = state.hiddenMines
+        let localPlayerSnapshot = state.localPlayer
         // B.5c: `RunTick.swift`'s own step 4 already drops onboard pills (via `onShouldBroadcastDropPill`,
         // already wired above) and sets `connected = false` for a lag-timed-out player BEFORE
         // firing `onPlayerDisconnected` -- this callback's only remaining job is the network-side
@@ -684,7 +690,12 @@ public final class HostGameEngine: @unchecked Sendable {
                 let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
                 maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
             },
-            onPrintMessage: { pendingGameMessages.append($0) }
+            onPrintMessage: { pendingGameMessages.append($0) },
+            onMine: { point in
+                // Same rule as `.localLayMineKeyDown`: a hidden mine is never announced.
+                guard !hiddenMinesSnapshot else { return }
+                pending.append(SRDropMine(player: UInt8(localPlayerSnapshot), x: UInt8(point.x), y: UInt8(point.y)).encode())
+            }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
 
