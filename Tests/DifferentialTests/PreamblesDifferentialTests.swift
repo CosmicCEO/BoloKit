@@ -76,7 +76,7 @@ import CXBolo
     }
 
     private func samplePlayerEntries() -> [BoloPreamble.PlayerEntry] {
-        (0..<maxPlayers).map { i in
+        (0..<maxPlayers).map { (i: Int) -> BoloPreamble.PlayerEntry in
             BoloPreamble.PlayerEntry(
                 used: i % 2 == 0, connected: i % 3 == 0, seq: UInt32(i * 7),
                 name: "Player\(i)", host: "host\(i)", alliance: UInt16(i)

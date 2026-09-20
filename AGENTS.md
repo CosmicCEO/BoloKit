@@ -51,4 +51,5 @@ Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week 
 - `docs/ORACLE_COVERAGE.md` — C-function coverage snapshot (verify against `Sources/` before treating a row as still open)
 - `docs/notes/HOSTMODELS.md` — in-process host vs dedicated server research
 - Wave history and the old four-role process: `git show legacy-agent-process:docs/PLAN.md`
-- GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43, skill `.grok/skills/bolokit-github-boards/`
+- GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43, `docs/GITHUB_BOARDS.md`
+- Harness routing (which of Claude/Gemini/Grok, director vs. plain-agent, for a given task): skill `harness-routing`
