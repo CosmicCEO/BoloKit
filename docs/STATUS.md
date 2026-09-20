@@ -24,7 +24,7 @@ Wave-by-wave history and the retired four-role process live at git tag `legacy-a
 
 **Guest is a partial client (filed, not fixed):** it cannot fire, Q/E range keys do nothing, deep water does not drown it, leaving water drops a barge. Ruling first: [#59](https://github.com/CosmicCEO/BoloKit/issues/59) (Decide: guest client model), then [#62](https://github.com/CosmicCEO/BoloKit/issues/62). Other follow-ups (host name field, smoother lag, host-side sounds, an unexplained Mac B freeze): [#61](https://github.com/CosmicCEO/BoloKit/issues/61). The v1.8.0 issues [#14](https://github.com/CosmicCEO/BoloKit/issues/14)/[#21](https://github.com/CosmicCEO/BoloKit/issues/21)/[#6](https://github.com/CosmicCEO/BoloKit/issues/6) are unblocked (listener fix).
 
-**Still not verified:** the manual hidden-mines fog session itself (`docs/TEST_TWO_MAC_FOG.md` Step 3, Hidden Mines on) -- PR #74 covers the mine-reveal mechanics with an automated loopback test, but the Bonjour/Local-Network-permission/visual-fog-rendering parts still need two real Macs.
+**Two-Mac fog session run (2026-09-20, both Macs on `6745bbb`, guest = Parallel VM macOS 26):** preflight passed (host binds, `nc` connects), join works, host fog draws correctly outside ~29x29 (3.1, 3.2), guest terrain edits reach the host (3.9). **Failed:** guest map all black with Hidden Mines on ([#75](https://github.com/CosmicCEO/BoloKit/issues/75)); with Hidden Mines *off* the guest never sees the host's mines and is blocked on the tile ([#76](https://github.com/CosmicCEO/BoloKit/issues/76)); host mine visibility wrong at range and for builder-laid mines ([#77](https://github.com/CosmicCEO/BoloKit/issues/77)); guest has no toolbar/menu so alliances (3.7, 3.8) and quit-to-menu could not be exercised ([#78](https://github.com/CosmicCEO/BoloKit/issues/78)); remote name label always visible ([#79](https://github.com/CosmicCEO/BoloKit/issues/79)). Fog is **not yet verified working** on a real guest. Still open for fog: alliance vision (3.7/3.8) not run.
 
 **Next step:** run `swift test` for PR #74 in Xcode and merge it, then merge PR #58, then run the manual fog session and record results here. No new fixes unless either hits a blocker.
 
@@ -87,7 +87,7 @@ Not coding work until a ruling or a release milestone says so.
 
 **Known gap, deferred:** pill/base state transitions (capture, build, deploy) don't yet act as their own 15×15 vision sources. Completeness gap only; tiles still resolve once any other vision source crosses them.
 
-**Not verified:** manual two-peer hidden-mines session (needs a second Mac; same environment limit as the v1.8.0 issues).
+**Manual two-peer session run 2026-09-20:** mixed result, see the top of this file; failures filed as [#75](https://github.com/CosmicCEO/BoloKit/issues/75)-[#79](https://github.com/CosmicCEO/BoloKit/issues/79) (v1.5.1).
 
 **Tests (as of the `v1.5.0` pass):** 268 BoloKitTests + 595 DifferentialTests + 107 `Bolo 2026Tests`. Two `HostGameEngineTests` timing tests (`hostGameEngineSubmitPauseResumeServerTogglesPauseState`, `hostGameEngineBroadcastsExactlyAtTheTimeLimitBoundaryTickThenNeverAgain`) flake under the full parallel run, on `main` as well; both pass in isolation.
 
