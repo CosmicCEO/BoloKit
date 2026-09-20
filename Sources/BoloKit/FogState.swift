@@ -202,6 +202,14 @@ public func fogResolvedTileGrid(for state: GameState, fogState: FogState) -> Til
 /// of alliance or current fog state. Called every tick for the local/observing player's
 /// own tank only (`client.c:4273-4280`).
 ///
+/// **Discovered-defect fix:** this previously called `fogTileFor` (the substituting,
+/// sticky-reveal variant), which on a never-before-seen mine returns the *unmined*
+/// substitute — the opposite of "reveal". C's own `testhiddenmine` calls `refresh(x, y)`
+/// (`client.c:4462-4498`), which computes `seentile = tilefor(x, y)` — the ground-truth,
+/// non-substituting resolver (`client.c:6272-6303`) — and stores that unconditionally.
+/// This function now does the same: `tileFor`, never `fogTileFor`. `docs/CONSTRAINTS.md`'s
+/// "Fog-of-war" section previously (incorrectly) claimed this stayed bit-for-bit ported.
+///
 /// **Deviation (`docs/CONSTRAINTS.md`):** C indexes `client.terrain[y][x]` with no bounds
 /// check near map edges, silently wrapping to an adjacent row (row-major memory layout).
 /// This port relies on `TerrainGrid`'s own bounds-checked subscript (`nil` off-map) — a
@@ -209,7 +217,7 @@ public func fogResolvedTileGrid(for state: GameState, fogState: FogState) -> Til
 /// trap instead of silently reading wrong-but-harmless data.
 public func revealNearbyHiddenMines(
     tankPos: Vec2f, state: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
-    hiddenMines: Bool, observer: Int, players: [PlayerState]
+    observer: Int, players: [PlayerState]
 ) {
     let originX = Int32(tankPos.x) - 1
     let originY = Int32(tankPos.y) - 1
@@ -231,9 +239,9 @@ public func revealNearbyHiddenMines(
             // previously included it, a real parity deviation the review caught.
             case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
                 let index = Int(y) * 256 + Int(x)
-                state.seenTiles[index] = fogTileFor(
-                    x: x, y: y, previousSeen: state.seenTiles[index], terrain: terrain,
-                    pills: pills, bases: bases, hiddenMines: hiddenMines, observer: observer, players: players
+                state.seenTiles[index] = tileFor(
+                    x: x, y: y, terrain: terrain, pills: pills, bases: bases,
+                    localPlayer: observer, players: players
                 )
             default:
                 break

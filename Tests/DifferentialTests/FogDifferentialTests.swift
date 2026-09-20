@@ -181,7 +181,7 @@ import CXBolo
             var fogState = FogState()
             revealNearbyHiddenMines(
                 tankPos: BoloKit.Vec2f(x: 100.5, y: 100.5), state: &fogState, terrain: state.terrain,
-                pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+                pills: [], bases: [], observer: 0, players: state.players
             )
             let swiftRevealed = fogState.seenTiles[100 * 256 + 100] != .unknown
             let oracleRevealed = CXBolo.testhiddenmine_reveals_terrain_oracle(terrain.rawValue) != 0
@@ -371,10 +371,13 @@ import CXBolo
 
         revealNearbyHiddenMines(
             tankPos: BoloKit.Vec2f(x: 100.5, y: 100.5), state: &fogState, terrain: state.terrain,
-            pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+            pills: [], bases: [], observer: 0, players: state.players
         )
 
-        #expect(fogState.seenTiles[101 * 256 + 100] == .grass, "mine within 2.0 units substitutes to unmined when never seen")
+        // Discovered-defect fix: C's `testhiddenmine` calls `refresh(x, y)`, which stores
+        // `tilefor(x, y)` (ground truth) unconditionally -- a proximity reveal shows the
+        // *real* mined tile, not a substituted unmined one, even the first time it's seen.
+        #expect(fogState.seenTiles[101 * 256 + 100] == .minedGrass, "mine within 2.0 units reveals its true mined tile")
     }
 
     @Test func testDoesNotRevealAMineBeyondTheTwoUnitRadius() {
@@ -384,7 +387,7 @@ import CXBolo
 
         revealNearbyHiddenMines(
             tankPos: BoloKit.Vec2f(x: 100.5, y: 100.5), state: &fogState, terrain: state.terrain,
-            pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+            pills: [], bases: [], observer: 0, players: state.players
         )
 
         #expect(fogState.seenTiles[105 * 256 + 100] == .unknown)
@@ -398,7 +401,7 @@ import CXBolo
         var fogState = FogState()
         revealNearbyHiddenMines(
             tankPos: BoloKit.Vec2f(x: 0.5, y: 0.5), state: &fogState, terrain: state.terrain,
-            pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+            pills: [], bases: [], observer: 0, players: state.players
         )
         // (0,0) is in the mined-sea border ring by default (`TerrainGrid.mapDefault()`,
         // mine zone is [10, 245]) -- `revealNearbyHiddenMines` no longer force-reveals mined
