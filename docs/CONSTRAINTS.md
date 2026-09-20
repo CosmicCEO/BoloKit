@@ -57,6 +57,16 @@ XBolo must match original Bolo 0.99.7, **not** WinBolo:
   `fogTileFor`/`revealNearbyHiddenMines`) stays bit-for-bit ported and differentially
   tested against `Reference/c`; only *where the state lives* and *what crosses the wire*
   differs.
+- **Discovered-defect fix (loopback host+guest fog-reveal test):** `revealNearbyHiddenMines`
+  previously called `fogTileFor` (the substituting, sticky-reveal-only-if-already-known
+  variant) instead of C's real `testhiddenmine`→`refresh`→`tilefor()` path (ground truth,
+  no substitution, `client.c:4462-4498,6272-6303`) — a mine within 2.0 units was never
+  actually force-revealed, contradicting this section's own "bit-for-bit ported" claim
+  above. Separately, `HostGameEngine.updateFogVision`'s `queueReveals` always sent
+  `unminedTerrain(real)` over the wire regardless of what the host's own `FogState` had
+  just decided, so even a correct local reveal never reached the guest. Both fixed; a mine
+  within 2.0 units of an observer's tank (host or guest) now crosses the wire as its real
+  mined terrain and stays that way (sticky), matching `docs/TEST_TWO_MAC_FOG.md` step 3.4.
 - **`hiddenMines` gates the entire fog system**, not just mine-substitution as in C (where
   `fog`/`seentiles` tracking is always on and `hiddenmines` only gates `fogtilefor`'s
   mined-terrain substitution branch). Matches the issue's "fully visible remains default"

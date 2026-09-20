@@ -825,13 +825,22 @@ public final class HostGameEngine: @unchecked Sendable {
         // The host's own slot renders directly from `fogState(for:)` (Phase 3) -- no wire
         // round-trip needed, matching the existing "host has no socket to itself" precedent
         // this file already establishes for chat (`emitGameMessage`'s own doc comment).
-        func queueReveals(_ points: [Pointi], to observer: Int) {
+        //
+        // **Discovered-defect fix:** this previously always sent `unminedTerrain(real)`,
+        // unconditionally hiding every mine regardless of what `fogState.seenTiles` had
+        // just decided for this exact observer (sticky reveal, proximity reveal via
+        // `revealNearbyHiddenMines`) -- a guest could never actually receive a mine as
+        // mined over the wire. `fogState.seenTiles[index]` already carries the correct,
+        // already-computed decision for this tick; this now forwards it (mined terrain
+        // when the seen tile is the mined one, else the unmined substitute) instead of
+        // re-deriving and force-hiding it a second time.
+        func queueReveals(_ points: [Pointi], to observer: Int, fogState: FogState) {
             guard observer != state.localPlayer else { return }
             for point in points {
                 let index = Int(point.y) * 256 + Int(point.x)
                 let real = Terrain(rawValue: state.terrain.storage[index]) ?? .sea
-                let substituted = unminedTerrain(real)
-                let bytes = SRRevealTerrain(x: UInt8(point.x), y: UInt8(point.y), terrain: UInt8(substituted.rawValue)).encode()
+                let revealed = fogState.seenTiles[index] == terrainToTile(real) ? real : unminedTerrain(real)
+                let bytes = SRRevealTerrain(x: UInt8(point.x), y: UInt8(point.y), terrain: UInt8(revealed.rawValue)).encode()
                 revealsToSend.append((observer, bytes))
             }
         }
@@ -855,7 +864,7 @@ public final class HostGameEngine: @unchecked Sendable {
                             players: state.players
                         )
                         decreaseVis(previousRect, state: &fogState)
-                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer, fogState: fogState)
                         visionSourceRect[key] = currentRect
                     } else if previousRect == nil {
                         // Newly contributing -- covers bootstrap (never tracked before),
@@ -866,7 +875,7 @@ public final class HostGameEngine: @unchecked Sendable {
                             bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
                             players: state.players
                         )
-                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer)
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer, fogState: fogState)
                         visionSourceRect[key] = currentRect
                     }
                     // previousRect == currentRect (same tile): unchanged, no-op.
@@ -890,12 +899,11 @@ public final class HostGameEngine: @unchecked Sendable {
             let beforeProximity = fogState
             revealNearbyHiddenMines(
                 tankPos: state.players[observer].tank, state: &fogState, terrain: state.terrain,
-                pills: state.pills, bases: state.bases, hiddenMines: state.hiddenMines,
-                observer: observer, players: state.players
+                pills: state.pills, bases: state.bases, observer: observer, players: state.players
             )
             queueReveals(
                 changedSeenTiles(around: state.players[observer].tank, before: beforeProximity, after: fogState),
-                to: observer
+                to: observer, fogState: fogState
             )
 
             fogStates[observer] = fogState
