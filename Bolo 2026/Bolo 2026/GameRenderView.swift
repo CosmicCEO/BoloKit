@@ -747,14 +747,10 @@ public final class GameRenderView: NSView {
         for y in minY...maxY {
             for x in minX...maxX {
                 let dst = CGRect(x: x * tileSize, y: y * tileSize, width: tileSize, height: tileSize)
-                let index = mapimage(tileGrid, Int32(x), Int32(y))
-                guard index >= 0 else {
-                    // mapimage()'s "tile unseen" sentinel (D64) -- reachable now under fog
-                    // (a never-seen tile's `Tile.unknown` resolves here), painted black.
-                    ctx.setFillColor(gray: 0, alpha: 1)
-                    ctx.fill(dst)
-                    continue
-                }
+                // mapimage()'s "tile unseen" sentinel (D64) -- reachable now under fog (a
+                // never-seen tile's `Tile.unknown` resolves here) -- is drawn as plain sea, the
+                // same look a guest shows outside its view, rather than black.
+                let index = unseenTileAsSeaImage(mapimage(tileGrid, Int32(x), Int32(y)))
                 if let cell = tilesImage.cropping(to: sheetSrcRect(forIndex: index)) {
                     blit(cell, in: dst, ctx)
                 }
