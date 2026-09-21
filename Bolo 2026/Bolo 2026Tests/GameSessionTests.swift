@@ -214,6 +214,17 @@ struct JoinTickThinningTests {
     }
 }
 
+/// #62 S4: only a real network host simulates guest tanks; solo/local-only play never does.
+struct NetworkHostStateTests {
+    @Test func networkHostingTurnsOnHostSimulationOnACopy() {
+        let solo = GameState()
+        #expect(!solo.hostSimulatesRemotePlayers)
+        let hosted = networkHostState(from: solo)
+        #expect(hosted.hostSimulatesRemotePlayers)
+        #expect(!solo.hostSimulatesRemotePlayers, "the original (used for the local-only fallback) stays off")
+    }
+}
+
 struct HostPlayerNameTests {
     @Test func storedNameIsUsedWhenNonEmpty() {
         #expect(hostPlayerDisplayName(stored: "Ace") == "Ace")
