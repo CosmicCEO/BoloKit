@@ -157,6 +157,10 @@ public final class HostGameEngine: @unchecked Sendable {
     /// teleport on the dead -> alive transition.
     private var lastTankStatus: [Int: SRTankStatus] = [:]
     private var lastTankDead: [Int: Bool] = [:]
+    /// #62 S5: the last `SRTankShots` sent to each remote slot (its own shells and explosions),
+    /// so `tankShotsSends()` sends only on change -- including one final empty list when the last
+    /// shell lands or the last explosion ends, which is what clears the guest's copy.
+    private var lastTankShots: [Int: SRTankShots] = [:]
 
     /// Read-only access to a connected player slot's current `FogState`, for rendering
     /// (Phase 3) and testing. `nil` when `state.hiddenMines` is false or the slot has no
@@ -725,7 +729,7 @@ public final class HostGameEngine: @unchecked Sendable {
 
         var statusSends: [(player: Int, bytes: [UInt8])] = []
         if state.hostSimulatesRemotePlayers {
-            statusSends = tankStatusSends()
+            statusSends = tankStatusSends() + tankShotsSends()
         }
 
         var fogReveals: [(player: Int, bytes: [UInt8])] = []
@@ -857,6 +861,34 @@ public final class HostGameEngine: @unchecked Sendable {
             if lastTankStatus[player] != status {
                 lastTankStatus[player] = status
                 sends.append((player, status.encode()))
+            }
+        }
+        return sends
+    }
+
+    /// #62 S5: each connected remote's own in-flight shells and explosions as `SRTankShots`, sent
+    /// only when they differ from the last list sent to that slot. The host is the only simulator
+    /// of these, so the guest just applies what arrives (a shell moves every tick, so a flying
+    /// shell means one small message per tick; nothing is sent while there are none).
+    private func tankShotsSends() -> [(player: Int, bytes: [UInt8])] {
+        var sends: [(player: Int, bytes: [UInt8])] = []
+        for player in state.players.indices where player != state.localPlayer {
+            guard state.players[player].connected else {
+                lastTankShots[player] = nil
+                continue
+            }
+            let p = state.players[player]
+            let shots = SRTankShots(
+                shells: p.shells.map {
+                    SRTankShots.ShellEntry(x: $0.point.x, y: $0.point.y, dir: $0.dir, range: $0.range, boat: $0.boat, pill: $0.pill)
+                },
+                explosions: p.explosions.map {
+                    SRTankShots.ExplosionEntry(x: $0.point.x, y: $0.point.y, counter: UInt8(clamping: max($0.counter, 0)))
+                }
+            )
+            if (lastTankShots[player] ?? SRTankShots(shells: [], explosions: [])) != shots {
+                lastTankShots[player] = shots
+                sends.append((player, shots.encode()))
             }
         }
         return sends

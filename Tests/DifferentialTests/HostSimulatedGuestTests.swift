@@ -153,3 +153,42 @@ private func withHostedGuest(
         #expect(engine.state.terrain[108, 105] != .minedGrass, "the host detonated the mine")
     }
 }
+
+// #62 S5 -- the guest sees its OWN shells and its own death explosion. Both live only on the host
+// (it simulates the guest's tank); the host sends them as `SRTankShots` and the guest just
+// applies them (this harness runs no `shellTick`/`explosionTick` of its own, like the thinned
+// guest).
+
+@Test(.timeLimit(.minutes(1))) func aSimulatedGuestSeesItsOwnShellInFlightAndThenSeesItGone() async throws {
+    try await withHostedGuest { engine, guest, guestIndex in
+        try await waitFor(timeout: 10) { !engine.state.players[guestIndex].dead && guest.state.local.shells == maxShells }
+        #expect(guest.state.local.shells == maxShells)
+        guest.mutate { $0.players[guestIndex].inputFlags = [.shoot] }
+        try await waitFor(timeout: 5) { !guest.state.players[guestIndex].shells.isEmpty }
+        #expect(!guest.state.players[guestIndex].shells.isEmpty, "the host's shell for this guest must reach it")
+        #expect(guest.state.players[guestIndex].shells.allSatisfy { $0.owner == UInt8(guestIndex) })
+
+        // Stop firing: once the last shell lands the host sends an empty list, clearing the guest's.
+        guest.mutate { $0.players[guestIndex].inputFlags = [] }
+        try await waitFor(timeout: 5) { guest.state.players[guestIndex].shells.isEmpty }
+        #expect(guest.state.players[guestIndex].shells.isEmpty, "a landed shell must disappear from the guest too")
+    }
+}
+
+@Test(.timeLimit(.minutes(1))) func aSimulatedGuestSeesItsOwnDeathExplosion() async throws {
+    // A line of mines two tiles apart: each step east detonates one on its own (adjacent mines
+    // would chain into a single explosion), and enough separate detonations kill the guest.
+    try await withHostedGuest(configure: { state in
+        for x in stride(from: 108, through: 118, by: 2) { state.terrain[x, 105] = .minedGrass }
+    }) { engine, guest, guestIndex in
+        try await waitFor(timeout: 10) { !engine.state.players[guestIndex].dead && guest.state.local.armour == maxArmour }
+        guest.mutate {
+            $0.players[guestIndex].tank = Vec2f(x: 105.5, y: 105.5)
+            $0.players[guestIndex].dir = 0
+            $0.players[guestIndex].inputFlags = [.accel]
+        }
+        try await waitFor(timeout: 8) { !guest.state.players[guestIndex].explosions.isEmpty }
+        #expect(guest.state.players[guestIndex].dead, "the host killed the guest")
+        #expect(!guest.state.players[guestIndex].explosions.isEmpty, "the guest's own death explosion must reach it")
+    }
+}
