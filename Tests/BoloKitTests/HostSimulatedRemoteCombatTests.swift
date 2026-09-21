@@ -146,3 +146,66 @@ private func shellAt(_ point: Vec2f, owner: UInt8) -> Shell {
     tick(&state)
     #expect(state.localStats[1].armour == maxArmour, "gate off: today's behaviour, no remote armour pool")
 }
+
+// MARK: (e) multi-victim explosion damage
+
+@Test func oneExplosionDamagesEveryTankInRadiusIncludingRemotes() {
+    var state = twoPlayerState()
+    state.players[0].tank = Vec2f(x: 31.2, y: 30.5)
+    state.players[1].tank = Vec2f(x: 31.9, y: 30.5)
+    state.terrain[31, 30] = .minedGrass
+    explosionAt(player: UInt8(playerNeutral), x: 31, y: 30, state: &state)
+    #expect(state.localStats[0].armour == maxArmour - smallboomDamage)
+    #expect(state.localStats[1].armour == maxArmour - smallboomDamage, "the remote in the blast radius takes damage too")
+}
+
+@Test func explosionDoesNotDamageARemoteOutsideTheRadius() {
+    var state = twoPlayerState()
+    state.players[0].tank = Vec2f(x: 31.2, y: 30.5)
+    state.terrain[31, 30] = .minedGrass
+    explosionAt(player: UInt8(playerNeutral), x: 31, y: 30, state: &state)
+    #expect(state.localStats[0].armour == maxArmour - smallboomDamage)
+    #expect(state.localStats[1].armour == maxArmour, "the remote is 20 tiles away")
+}
+
+@Test func explosionLeavesARemoteAloneWhenTheGateIsOff() {
+    var state = twoPlayerState()
+    state.hostSimulatesRemotePlayers = false
+    state.players[0].tank = Vec2f(x: 31.2, y: 30.5)
+    state.players[1].tank = Vec2f(x: 31.9, y: 30.5)
+    state.terrain[31, 30] = .minedGrass
+    explosionAt(player: UInt8(playerNeutral), x: 31, y: 30, state: &state)
+    #expect(state.localStats[1].armour == maxArmour)
+}
+
+// MARK: (f) respawn, and speed caps from the player's own tile
+
+@Test func deadRemoteRespawnsAtAStartWithFullStatsAndTheHostIsUntouched() {
+    var state = twoPlayerState()
+    state.players[1].dead = true
+    state.localStats[1].armour = 0
+    state.localStats[1].respawnCounter = respawnTicks - 1
+    tick(&state)
+    #expect(state.players[1].dead == false, "the remote must respawn on the host")
+    #expect(state.players[1].tank == Vec2f(x: 40.5, y: 40.5))
+    #expect(state.localStats[1].armour == maxArmour)
+    #expect(state.localStats[0].armour == maxArmour)
+    #expect(state.players[0].dead == false)
+    #expect(state.players[0].tank == Vec2f(x: 30.5, y: 30.5), "the host tank must not move")
+}
+
+@Test func deadRemoteStaysDeadWhenTheGateIsOff() {
+    var state = twoPlayerState()
+    state.hostSimulatesRemotePlayers = false
+    state.players[1].dead = true
+    state.localStats[1].respawnCounter = respawnTicks - 1
+    tick(&state)
+    #expect(state.players[1].dead, "gate off: only the local player's death/respawn machinery runs")
+}
+
+@Test func remoteSpeedCapComesFromTheRemotesOwnTileNotTheHostsTile() {
+    var state = twoPlayerState()
+    state.terrain[30, 30] = .swamp0  // under the (stationary) host tank: slow terrain
+    driveRemoteEast(&state, maxTicks: 80) { $0.players[1].speed > rubbleMaxSpeed + 0.5 }
+    #expect(state.players[1].speed > rubbleMaxSpeed, "the remote is on grass; the host's swamp must not cap it")
+}

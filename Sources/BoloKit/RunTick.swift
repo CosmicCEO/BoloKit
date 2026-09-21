@@ -284,12 +284,24 @@ public func runTick(
     let oldTankPositions = state.players.map { $0.tank }
 
     for player in state.players.indices {
-        tankMoveTick(
-            player: player, state: &state,
-            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
-            onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
-            onShouldBroadcastDropPill: onShouldBroadcastDropPill
-        )
+        if state.hostSimulatesRemotePlayers, player != state.localPlayer {
+            // #62 S2: run as the remote so its dead/respawn branch runs and its speed cap reads its
+            // own tile (both are gated on `localPlayer` in the oracle's single-client model).
+            withSimulatedPlayer(player, &state) { simulated in
+                tankMoveTick(
+                    player: player, state: &simulated,
+                    onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
+            }
+        } else {
+            tankMoveTick(
+                player: player, state: &state,
+                onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
+                onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath, onSuperboomTerrain: onSuperboomTerrain,
+                onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
+        }
     }
 
     let localOld = oldTankPositions[state.localPlayer]
