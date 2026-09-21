@@ -386,12 +386,10 @@ public final class GameSession {
     ///
     /// - Host path: routes through `HostGameEngine`'s merged stream (`submitRequestAlliance`),
     ///   same reasoning as `kickPlayer` above.
-    /// - Join path: mutates only a scratch copy of `state` to compute the outgoing mask, then
-    ///   sends `CLSetAlliance` directly -- `self.state` is NOT mutated here; the host's own
-    ///   eventual `SRSetAlliance` broadcast (`recvSrSetAlliance`, already wired in
-    ///   `TCPSession.dispatch`) is what actually updates `state`, matching this path's existing
-    ///   "local input is advisory, the host's broadcast is truth" discipline (see this class's
-    ///   B.8 header).
+    /// - Join path: updates `state`'s own alliance mask and sends `CLSetAlliance`, as the C client
+    ///   does (`requestalliance()`). The host's `SRSetAlliance` goes to everyone *except* the
+    ///   requester (`server.c` `sendsrsetalliance` uses `sendtoallex`), so there is no echo to wait
+    ///   for; an earlier scratch-copy version never recorded the guest's own request (#92).
     /// - Single-process path: no other real players to inform, so mutate `state` directly.
     public func requestAlliance(_ players: UInt16) {
         if let hostEngine {
@@ -400,8 +398,7 @@ public final class GameSession {
         }
         appendLocalAllianceRequest(players)
         if let tcpSession {
-            var scratch = state
-            BoloKit.requestAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+            BoloKit.requestAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 let message = CLSetAlliance(alliance: alliance)
                 Task { try? await tcpSession.send(message.encode()) }
             })
@@ -418,8 +415,7 @@ public final class GameSession {
         }
         appendLocalAllianceLeave(players)
         if let tcpSession {
-            var scratch = state
-            BoloKit.leaveAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+            BoloKit.leaveAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 let message = CLSetAlliance(alliance: alliance)
                 Task { try? await tcpSession.send(message.encode()) }
             })
