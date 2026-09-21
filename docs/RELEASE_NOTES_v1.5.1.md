@@ -14,13 +14,12 @@ mines, so combat is host-authoritative. A guest that leaves and rejoins is the o
 - Host simulates guest tanks (#59/#62): firing, shells, explosions, mine triggers and a host-owned mine count.
 - Hidden Mines no longer announces a remote-laid mine at range (#106).
 - Host draws never-seen tiles as plain sea, matching the guest, instead of black.
-- Tile grid is cached between ticks (#89).
 
 ## Known limitations
 - **Leaving and rejoining a hosted game breaks the rejoined guest** (#113, fix planned for v1.5.2). After a guest
   quits to the menu and rejoins, its screen does not refresh and its tank stops responding about 2 tiles from spawn.
-  A rejoin under a new player name worked in testing; restarting the host also clears it. Everything else in a
-  two-player game is unaffected as long as nobody leaves.
+  A rejoin under a new player name worked in testing. Everything else in a two-player game was fine in testing as
+  long as nobody left.
 - The guest is not fogged for tanks or pillboxes/bases: it can see the host tank and other structures outside its own
   vision (#86/#90, closed as not planned for this release).
 - A first join can fail once and succeed on the second try, and a real Mac joining a VM host was refused once (#93).
