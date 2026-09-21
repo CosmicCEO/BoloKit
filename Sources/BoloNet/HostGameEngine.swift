@@ -659,6 +659,7 @@ public final class HostGameEngine: @unchecked Sendable {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
+        let terrainBeforeTick = state.terrain.storage
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state,
@@ -698,6 +699,23 @@ public final class HostGameEngine: @unchecked Sendable {
             }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
+
+        // Terrain the host's own simulation changed this tick (mine detonations, builder work,
+        // shells): `runTick`'s terrain hooks are sound-only or unwired (the documented B.5d gap), so
+        // remote players were never told. Send each changed tile as an absolute update to whoever can
+        // see it, redacting mines when Hidden Mines is on. Only this tick's own changes appear here:
+        // remote players' actions are applied by `dispatchHostMessage` outside this window and
+        // broadcast themselves.
+        if state.terrain.storage != terrainBeforeTick {
+            for index in state.terrain.storage.indices where state.terrain.storage[index] != terrainBeforeTick[index] {
+                let x = index % 256
+                let y = index / 256
+                let real = Terrain(rawValue: state.terrain.storage[index]) ?? .sea
+                let sent = hiddenMinesSnapshot ? unminedTerrain(real) : real
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: fogStates)
+                maskedPending.append((mask, SRRevealTerrain(x: UInt8(x), y: UInt8(y), terrain: UInt8(sent.rawValue)).encode()))
+            }
+        }
 
         var fogReveals: [(player: Int, bytes: [UInt8])] = []
         if state.hiddenMines {
