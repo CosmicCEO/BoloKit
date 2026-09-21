@@ -71,6 +71,10 @@ XBolo must match original Bolo 0.99.7, **not** WinBolo:
   `fog`/`seentiles` tracking is always on and `hiddenmines` only gates `fogtilefor`'s
   mined-terrain substitution branch). Matches the issue's "fully visible remains default"
   requirement; zero added cost when the host doesn't enable it.
+- **A never-seen tile is drawn as plain sea, not black** (port-original look). `mapimage`
+  still returns -1 for `Tile.unknown` (oracle-exact); only the host's `drawTerrain` paints it
+  as sea (`unseenTileAsSeaImage`), so a host's unexplored area matches the blue a guest shows
+  outside its view. Render-only: the grid and wire keep `.unknown`.
 - **Pill/base ownership is never fog-redacted**, matching the oracle: `fogtilefor`'s
   pill/base branch reads live ownership unconditionally regardless of `hiddenmines`; only
   the mined-terrain branch is gated. `SRCapturePill`/`SRCaptureBase`/etc. stay
