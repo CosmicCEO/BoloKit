@@ -653,7 +653,10 @@ public func dispatchHostMessage(
         recvClDropMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastDropMine: { p, x, y in
-                pending.append(.mask(terrainMask(x: x, y: y), SRDropMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                // Under Hidden Mines nobody is told (proximity reveal only); a vision mask would
+                // show the mine to anyone whose 29x29 window covers the tile (#106).
+                guard !hiddenMinesSnapshot else { return }
+                pending.append(.all(SRDropMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastMineAck: { p, success in
                 pending.append(.one(p, SRMineAck(success: success ? 1 : 0).encode()))
@@ -856,7 +859,8 @@ public func dispatchHostMessage(
         recvClPlaceMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastPlaceMine: { p, x, y in
-                pending.append(.mask(terrainMask(x: x, y: y), SRPlaceMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
+                guard !hiddenMinesSnapshot else { return }
+                pending.append(.all(SRPlaceMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastBuilderAck: { p, mines, trees, pill in
                 pending.append(.one(p, SRBuilderAck(
