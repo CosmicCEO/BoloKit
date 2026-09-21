@@ -300,6 +300,22 @@ public func runTick(
         onBubbles: onBubbles, onMine: onMine, onSink: onSink
     )
 
+    // #62 S2: host-simulated remote tanks. Same local-player code, run once per connected remote
+    // with that player swapped in as `localPlayer`; sound/UI hooks stay no-ops (they belong to
+    // the host's own tank).
+    if state.hostSimulatesRemotePlayers {
+        for player in state.players.indices where player != state.localPlayer && state.players[player].connected {
+            let old = oldTankPositions[player]
+            withSimulatedPlayer(player, &state) { simulated in
+                tankLocalTick(
+                    old: Pointi(x: Int32(old.x), y: Int32(old.y)), state: &simulated,
+                    onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                )
+            }
+        }
+    }
+
     for player in state.players.indices {
         builderTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
