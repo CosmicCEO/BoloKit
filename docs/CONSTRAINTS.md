@@ -148,9 +148,15 @@ combat state. Enabled by `GameState.hostSimulatesRemotePlayers`, set only for re
   `SRRevealTerrain`, an older build would not understand it; the guest keeps its old behaviour until the
   first status arrives (`GameSession.hostSimulatesMe`), so a newer guest against an older host degrades to
   the previous partial client.
-- **Guest thinning.** Once told it is simulated, the guest stops sending tile-entry reports, `CLDamage` and
-  running its own dead-tank respawn (`JoinTickThinning`). Movement, builder round trips, chat, alliances
-  and the discrete key-down `CLDropMine` stay the guest's.
+- **`SRTankShots` (opcode 36, host -> guest, port-only, S5).** The guest's own in-flight shells and
+  explosions (its death animation) also live on the host, and the host's relayed `CLUpdate`s skip the
+  receiver's own slot, so this carries them: fixed size, up to 8 shells and 8 explosions (overflow truncated),
+  sent over TCP only when the list changes (one small message per tick while a shell flies, plus one empty
+  list when the last one ends, which clears the guest's copy). The guest applies it to its own slot and, once
+  simulated, no longer runs `shellTick` for its own shells (`JoinTickThinning.runsOwnShellTick`).
+- **Guest thinning.** Once told it is simulated, the guest stops sending tile-entry reports, `CLDamage`,
+  running its own dead-tank respawn and its own shell simulation (`JoinTickThinning`). Movement, builder round
+  trips, chat, alliances and the discrete key-down `CLDropMine` stay the guest's.
 - **Tile entry uses the last evaluated tile.** A remote's position arrives as jumps between host ticks, so
   `runTick` compares the tile it last evaluated (`GameState.remoteLastTankPosition`) with the current one,
   not the tile at the start of the tick (which already includes the jump). Found by the loopback test; a
