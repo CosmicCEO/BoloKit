@@ -47,6 +47,7 @@ Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week 
 ## Further reading
 
 - `docs/STATUS.md` — current state and open backlog
+- `docs/WIRING.md` — mermaid wiring: packages, host/join paths, 50 Hz tick
 - `docs/CONSTRAINTS.md` — fidelity benchmarks and physics constants
 - `docs/ORACLE_COVERAGE.md` — C-function coverage snapshot (verify against `Sources/` before treating a row as still open)
 - `docs/notes/HOSTMODELS.md` — in-process host vs dedicated server research
