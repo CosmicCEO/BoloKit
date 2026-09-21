@@ -26,7 +26,7 @@ listener (Step 1), swap roles and note it.
 | Fog look (host) | Never-seen tile = plain sea (same blue a guest shows off the map). Hidden mine = plain terrain. Remote tanks/shells fade near the fog edge. Your own tank is always opaque. |
 | Fog look (guest) | Terrain the host has revealed to it, blue elsewhere. Tanks and pills/bases are drawn even outside vision (accepted, above). |
 | Vision | 29x29 tiles around a tank. A hidden mine within 2.0 tiles of your tank is revealed and **stays** revealed. |
-| Own mines | A mine you laid is hidden from **you** too until you come back within 2.0 tiles. |
+| Mines | A mine within 2.0 tiles of a player's own tank is revealed to that player at once and **stays** revealed. So a mine you lay is always visible to you, and another player sees it only once their tank has come within 2.0 tiles. |
 | Build id | `MARKETING_VERSION` still says 1.2.3. Use the git SHA (or the Desktop app name). |
 
 ## 0. Setup (both Macs)
@@ -51,8 +51,8 @@ Mac A: New Game, Host tab. Hidden Mines **off**, tracker and UPnP **off**, port 
 | Mac A: `lsof -nP -iTCP:50000 -sTCP:LISTEN` | Shows the app listening. |
 | Mac B: `nc -vz <MacA-IP> 50000` | Succeeds. |
 
-Fail = the listener could not bind and the app fell back to a solo local game. Swap roles and repeat. If neither
-binds, stop and record it.
+Fail = the listener could not bind and the app fell back to a solo local game. Swap roles and repeat, and record
+whether the other Mac can join (a VM host may refuse a real Mac; #93). If neither binds, stop and record it.
 
 ## 2. Control run: Hidden Mines OFF
 
@@ -77,20 +77,21 @@ Host: turn **Hidden Mines on**, Start Hosting again. Guest: rejoin. Screenshot b
 | 1 | Both join. Drive them at least 20 tiles apart (host north-west, guest east). | Join succeeds. Both tanks move on both screens. Record whether the first W press from rest moves each tank at once (#105 is open and not reproduced: note if Mac A was parked on the spawn tile and whether Mac B started from rest). |
 | 2 | Host looks at the whole map. | Plain sea outside roughly a 29x29 area around the host tank. Nothing revealed elsewhere. Same blue as the guest's off-map area. |
 | 3 | Guest looks at its screen. | Terrain the host has revealed to it, blue elsewhere. **The host tank and other pills/bases are visible outside the guest's vision: accepted (#86/#90).** Record anything else that differs. |
-| 4 | Host presses Shift, drives about 10 tiles away, then returns to within 2 tiles of the spot. | Mine is not visible at range. It appears within 2 tiles and **stays** after the tank leaves (sticky). |
-| 5 | Host lays a mine, both move away. Guest, without approaching it, drives onto that tile. | The mine detonates (explosion, guest damage on the guest HUD, event log). The guest never displays that mine beforehand. |
-| 6 | Guest lays a mine (Shift) and drives away. | The guest's mine count drops by one. The host does not see that mine at range, and no "mine laid" message or glyph gives it away (#106). |
+| 4 | Host presses Shift, then drives about 10 tiles away. Look at both screens. | The host still sees its own mine (revealed when laid, sticky). The guest, far away, does not see it. |
+| 5 | Host lays a mine, both move away. Guest drives onto that tile. | The guest does not see the mine until its tank is within 2 tiles. It then detonates (explosion, guest damage on the guest HUD, event log). Record whether it detonated. |
+| 6 | Guest lays a mine (Shift) and drives away. | The guest's mine count drops by one. The host sees that mine only once its own tank is within 2 tiles, and no "mine laid" message or glyph gives it away at range (#106). |
 | 7 | Guest fires at the host tank, then the host fires at the guest. | Both shots fire and hit. Damage and armour update on the right HUD. Ammo drops on the shooter's HUD. |
 | 8 | Host tank is destroyed and respawns while the guest watches. | The guest draws the host tank at its new spot as soon as it respawns, not at the old death spot (#61). |
 | 9 | Host watches the guest tank approach the edge of host vision. | Guest tank fades in with distance on the host. Its name label appears only when close. |
 | 10 | Both request an alliance with each other (Alliances button). Then break it. | Both screens agree on allied/enemy (#92); either side can leave. On forming, host fog opens around the guest within about 1 tick. On breaking, that extra vision recedes to sea. |
-| 11 | Allied again, guest quits to menu. Host looks where the guest was. Guest rejoins. | Vision from the guest recedes after it leaves. On rejoin the guest starts from fresh fog and inherits none of its previous reveals. |
+| 11 | Allied again, guest quits to menu. Host looks where the guest was. Guest rejoins. | Vision from the guest recedes after it leaves. On rejoin the guest starts from fresh fog and inherits none of its previous reveals. The rejoined guest's screen updates, and its tank responds to controls well past 2 tiles from spawn (#113). Try one rejoin with a new name and one with the same name. |
 | 12 | Guest changes terrain far outside host vision (trees, build). Host later drives there. | Host does not see the change until it arrives, then shows current terrain. Mark N/A if not observable. |
 | 13 | Host quits to menu while the guest is in the game. | Guest stays in the game view. Open Messages on the guest: a "disconnected" line appears (#107). |
 | 14 | Both quit to menu. | No crash, no stuck connection, both return to the menu cleanly. |
 
 Reading the results:
 - Check 3 showing terrain is the expected v1.5.1 behaviour (the v1.5.0 script predicted all black; #75 fixed that).
+- Mines: the rule is "revealed to a player within 2.0 tiles of their own tank, and sticky". A mine you lay is visible to you at once; the other player must be within 2.0 tiles to see it. To test hiding, look from the OTHER player's screen.
 - The known deferred gap (pill and base capture, build and deploy are not vision sources) is not part of this run.
 - A guest that sees the host tank far away is the accepted leak, not a Fail. Say so in the notes if it bothers you;
   reopening it is a ruling change, not a bug.
