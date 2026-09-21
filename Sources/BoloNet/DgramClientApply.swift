@@ -79,14 +79,23 @@ public func applyRemotePlayerUpdate(
         onPlayerLagStatusChanged(player)
     }
 
-    state.players[player].dead = header.dead
-    state.players[player].boat = header.boat
+    // #62 S3: when the host simulates remote players, combat state (dead, boat, kick, shells,
+    // explosions) is host-owned -- `runTick` already computes it -- so a guest's claim about it is
+    // ignored. Movement and builder fields stay guest-authoritative, as in the C original.
+    let hostOwnsCombat = state.hostSimulatesRemotePlayers
+
+    if !hostOwnsCombat {
+        state.players[player].dead = header.dead
+        state.players[player].boat = header.boat
+    }
     state.players[player].dir = header.dir
     state.players[player].tank = header.tank
     state.players[player].speed = header.speed
     state.players[player].turnSpeed = header.turnSpeed
-    state.players[player].kickDir = header.kickDir
-    state.players[player].kickSpeed = header.kickSpeed
+    if !hostOwnsCombat {
+        state.players[player].kickDir = header.kickDir
+        state.players[player].kickSpeed = header.kickSpeed
+    }
     // A malformed/adversarial peer's raw byte may not be a valid
     // BuilderStatus case (0-5) -- C just stores whatever int value; Swift
     // has no such "invalid but stored" state for a closed enum. Leaving
@@ -105,6 +114,11 @@ public func applyRemotePlayerUpdate(
     if header.pillShotSound { onPillShotSound() }
     if header.sinkSound { onSinkSound() }
     if header.builderDeathSound { onBuilderDeathSound() }
+
+    // Host-simulated players keep the host's own shells/explosions and skip dead-reckoning: the
+    // host's `runTick` already advances them, so applying and extrapolating a guest's copy too
+    // would wipe or double-simulate them.
+    if hostOwnsCombat { return (header.seq[player], myOwnSeq) }
 
     state.players[player].shells = shells.map {
         Shell(point: $0.point, dir: $0.dir, range: $0.range, owner: $0.owner, boat: $0.boat, pill: $0.pill)
