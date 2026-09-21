@@ -365,6 +365,36 @@ private func applySplashDamage(
     onSuperboomTerrain: (Pointi) -> Void,
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void
 ) {
+    applySplashDamageToLocalPlayer(
+        radius: radius, damage: damage, point: point, state: &state,
+        onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+        onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+    )
+
+    // #62 S2: one explosion can hit several tanks; with host-simulated remotes, each connected
+    // remote takes the same damage (and escalation) as the local tank, run as that player.
+    guard state.hostSimulatesRemotePlayers else { return }
+    for victim in state.players.indices where victim != state.localPlayer && state.players[victim].connected {
+        withSimulatedPlayer(victim, &state) { simulated in
+            applySplashDamageToLocalPlayer(
+                radius: radius, damage: damage, point: point, state: &simulated,
+                onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
+                onSuperboomTerrain: onSuperboomTerrain, onShouldBroadcastDropPill: onShouldBroadcastDropPill
+            )
+        }
+    }
+}
+
+private func applySplashDamageToLocalPlayer(
+    radius: Float,
+    damage: Int,
+    point: Vec2f,
+    state: inout GameState,
+    onMineExplosion: (Pointi) -> Void,
+    onBuilderDeath: () -> Void,
+    onSuperboomTerrain: (Pointi) -> Void,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void
+) {
     let player = state.localPlayer
     guard !state.players[player].dead, mag2f(state.players[player].tank - point) <= radius else { return }
 

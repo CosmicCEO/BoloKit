@@ -17,6 +17,11 @@ public struct GameState: Sendable {
     /// `localPlayer`'s slot, so the local-player code runs unchanged for any player swapped in via
     /// `withSimulatedPlayer`.
     public var localStats: [LocalPlayerState]
+    /// When true, `runTick` runs the local-player combat code for every connected remote player
+    /// (host-simulated guest tanks, #62). Off by default: the host still overwrites remote combat
+    /// fields from guest updates until the authority split lands, so turning this on early would
+    /// double-apply combat.
+    public var hostSimulatesRemotePlayers: Bool = false
     public var local: LocalPlayerState {
         get { localStats[localPlayer] }
         set { localStats[localPlayer] = newValue }
