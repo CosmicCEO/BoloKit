@@ -791,3 +791,73 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(received2 == sentinel, "player 2 must receive only the sentinel, never the SRGrabBoat payload ahead of it")
 
 }
+
+// MARK: - Issue #106: remote-laid mines must stay hidden when Hidden Mines is on
+
+/// A remote player's builder mine used to be announced to every player with fog vision of the
+/// tile (a 29x29 window), so an observer outside the 2.0-tile reveal radius -- including the
+/// placer -- received the real mine. Under Hidden Mines nobody is told; players learn of a mine by
+/// proximity reveal (`updateFogVision`), exactly like host-laid mines.
+@Test func dispatchPlaceMineIsNotBroadcastWhenHiddenMinesIsOn() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    state.hiddenMines = true
+    state.terrain[50, 50] = .grass0
+
+    var visiblePlayerFog = FogState()
+    visiblePlayerFog.fog[50 * 256 + 50] = 1
+    let fogStates: [Int: FogState] = [0: visiblePlayerFog, 1: visiblePlayerFog, 2: FogState()]
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: 1, state: &state, table: table, fogStates: fogStates)
+
+    #expect(state.terrain[50, 50] == .minedGrass, "the host stays authoritative and records the mine")
+
+    let sentinel = SRPause(pause: 7).encode()
+    await table.send(sentinel, to: 0)
+    let received0 = try await receiveExactly(links[0].clientEnd, sentinel.count)
+    #expect(received0 == sentinel, "player 0 sees the tile but must not be told about a hidden mine")
+}
+
+@Test func dispatchPlaceMineReachesEveryoneWhenHiddenMinesIsOff() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    state.hiddenMines = false
+    state.terrain[50, 50] = .grass0
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: 1, state: &state, table: table)
+
+    let expected = SRPlaceMine(player: UInt8(1), x: 50, y: 50).encode()
+    let received0 = try await receiveExactly(links[0].clientEnd, expected.count)
+    #expect(received0 == expected, "with Hidden Mines off every player is told, as before")
+}
+
+@Test func dispatchDropMineIsNotBroadcastWhenHiddenMinesIsOn() async throws {
+    let (table, links) = try await makeTableWithPlayers(3)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 3)
+    state.hiddenMines = true
+    state.terrain[50, 50] = .grass0
+    state.players[1].mines = 5
+
+    var visiblePlayerFog = FogState()
+    visiblePlayerFog.fog[50 * 256 + 50] = 1
+    let fogStates: [Int: FogState] = [0: visiblePlayerFog, 1: visiblePlayerFog, 2: FogState()]
+
+    try await sendBytes(links[1].clientEnd, CLDropMine(x: 50, y: 50).encode())
+    let (opcode, bytes) = try await receiveOneHostMessageBytes(from: links[1].serverEnd)
+    try await dispatchHostMessage(opcode: opcode, bytes: bytes, player: 1, state: &state, table: table, fogStates: fogStates)
+
+    let sentinel = SRPause(pause: 7).encode()
+    await table.send(sentinel, to: 0)
+    let received0 = try await receiveExactly(links[0].clientEnd, sentinel.count)
+    #expect(received0 == sentinel, "player 0 sees the tile but must not be told about a hidden mine")
+}
