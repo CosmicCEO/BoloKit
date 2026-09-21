@@ -68,6 +68,21 @@ private enum JoinEvent: Sendable {
     case udpEnded
 }
 
+/// #62 S4: what the join-path tick still does for itself once the host simulates this guest's
+/// tank (the host has sent an `SRTankStatus`). The host runs tile entry (pill/base capture,
+/// mines, boat drops), shell-damage reporting, and death/respawn for it, so doing them here too
+/// would double-apply. Movement, builder round trips and input flags stay the guest's.
+nonisolated struct JoinTickThinning: Equatable {
+    var sendsTileEntry: Bool
+    var sendsShellDamage: Bool
+    var runsOwnMovementWhileDead: Bool
+    init(hostSimulatesMe: Bool) {
+        sendsTileEntry = !hostSimulatesMe
+        sendsShellDamage = !hostSimulatesMe
+        runsOwnMovementWhileDead = !hostSimulatesMe
+    }
+}
+
 @MainActor
 public final class GameSession {
     public private(set) var state: GameState
@@ -106,6 +121,11 @@ public final class GameSession {
     /// own tick timer, not this class's, so there is nothing of this class's own to measure there.
     public private(set) var recentTickIntervals: [TimeInterval] = []
     private var lastTickTime: DispatchTime?
+    /// Set on the first `SRTankStatus` from the host (see `JoinTickThinning`). Deliberately not
+    /// `GameState.hostSimulatesRemotePlayers`: that flag also gates how *relayed* updates of other
+    /// players are applied, which must stay unchanged on a guest. Stays false against an older
+    /// host that never sends the message, so the old behaviour is kept there.
+    private var hostSimulatesMe = false
 
     /// **1.1 backlog C.4:** the messages panel's own scrollback -- kept here, not on `GameState`,
     /// matching the reference's own design: `printmessage`/`messagesTextView` is a pure display
@@ -620,7 +640,12 @@ public final class GameSession {
             let oldTank = state.players[localPlayer].tank
             let old = Pointi(x: Int32(oldTank.x), y: Int32(oldTank.y))
 
-            tankMoveTick(player: localPlayer, state: &state)
+            // #62 S4: a dead, host-simulated guest is respawned by the host (`SRTankStatus`
+            // teleport), so its own dead-tank branch (respawn counter, `spawn`) must not run.
+            let thinning = JoinTickThinning(hostSimulatesMe: hostSimulatesMe)
+            if thinning.runsOwnMovementWhileDead || !state.players[localPlayer].dead {
+                tankMoveTick(player: localPlayer, state: &state)
+            }
 
             // B.10 (D127): read-only detect-and-send analogue of `enter()`'s pill/base/
             // mined-terrain branches (`detectJoinTileEntry`, TankLocalTick.swift) — never
@@ -628,7 +653,7 @@ public final class GameSession {
             // broadcast (`.tcpMessage` case below), same protocol latency the reference has.
             let newTank = state.players[localPlayer].tank
             let new = Pointi(x: Int32(newTank.x), y: Int32(newTank.y))
-            let outbound = detectJoinTileEntry(new: new, old: old, state: state)
+            let outbound = thinning.sendsTileEntry ? detectJoinTileEntry(new: new, old: old, state: state) : []
             if !outbound.isEmpty, let tcpSession {
                 let bytes = outbound.map { message -> [UInt8] in
                     switch message {
@@ -704,7 +729,7 @@ public final class GameSession {
                 player: localPlayer, state: &state,
                 onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
             )
-            if !shellDamageOutbound.isEmpty, let tcpSession {
+            if thinning.sendsShellDamage, !shellDamageOutbound.isEmpty, let tcpSession {
                 let bytes = shellDamageOutbound.map { hit in
                     CLDamage(x: UInt8(hit.x), y: UInt8(hit.y), boat: hit.boat ? 1 : 0).encode()
                 }
@@ -727,6 +752,7 @@ public final class GameSession {
             hudSnapshot.update(from: state)
 
         case .tcpMessage(let message):
+            if message.opcode == .tankStatus { hostSimulatesMe = true }
             // Snapshot player names before `dispatch` takes `&state` -- reading `self.state` from
             // inside `onSendMesg` below, while this same call already holds `state` as an
             // exclusive `inout` binding, would be a nested-access violation (same reasoning as

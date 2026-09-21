@@ -291,3 +291,14 @@ private func makeState() -> GameState {
     )
     #expect(printed == ["1 Minute and 1 Second Remaining!"])
 }
+
+@Test func tcpSessionDispatchesTankStatusToTheLocalPlayersSlot() throws {
+    var state = makeState()
+    let status = SRTankStatus(
+        armour: 30, shells: 20, mines: 9, trees: 4, range: 5.5, dead: false, boat: false,
+        kickDir: 0, kickSpeed: 0, teleport: nil
+    )
+    try TCPSession.dispatch(TCPSession.RawMessage(opcode: .tankStatus, bytes: status.encode()), state: &state)
+    #expect(state.local.armour == 30 && state.local.shells == 20)
+    #expect(state.players[state.localPlayer].mines == 9)
+}
