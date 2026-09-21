@@ -289,3 +289,130 @@ private func makeHeader(
     )
     #expect(state.players[1].explosions.isEmpty)  // aged well past explosionTicks within the bounded run
 }
+
+// MARK: - #62 S3: authority split when the host simulates remote players
+
+/// Host state with remote player 1 holding host-owned combat state (dead, boat, kick, a shell and an
+/// explosion) that a guest update must not be able to overwrite.
+private func hostSimulatedState(flag: Bool) -> GameState {
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()], localPlayer: 0)
+    for y in 40..<70 { for x in 40..<70 { state.terrain[x, y] = .grass0 } }
+    state.hostSimulatesRemotePlayers = flag
+    state.players[1].dead = true
+    state.players[1].boat = true
+    state.players[1].kickDir = 1
+    state.players[1].kickSpeed = 2
+    state.players[1].shells = [Shell(point: Vec2f(x: 51, y: 51), dir: 0, range: 3, owner: 1, boat: false, pill: false)]
+    state.players[1].explosions = [Explosion(point: Vec2f(x: 52, y: 52), counter: 1)]
+    return state
+}
+
+private func guestClaimHeader(seq: Int32, tank: Vec2f = Vec2f(x: 60.5, y: 61.5), speed: Float = 2, beliefOfHostSeq: Int32 = 0) -> CLUpdateHeader {
+    var seqs = Array(repeating: Int32(0), count: maxPlayers)
+    seqs[1] = seq
+    seqs[0] = beliefOfHostSeq
+    return makeHeader(
+        player: 1, seq: seqs, dead: false, boat: false, dir: 1.5, tank: tank, speed: speed, turnSpeed: 3,
+        kickDir: 0, kickSpeed: 0, inputFlags: Int32(bitPattern: InputFlags.shoot.rawValue)
+    )
+}
+
+@Test func hostSimulatedUpdateKeepsHostOwnedFieldsAndTakesGuestOwnedOnes() {
+    var state = hostSimulatedState(flag: true)
+    let result = applyRemotePlayerUpdate(
+        header: guestClaimHeader(seq: 5), shells: [], explosions: [],
+        previousRemoteSeq: 0, previousRemoteLastUpdate: 0, myOwnSeq: 0, state: &state
+    )
+    #expect(result?.seq == 5)
+    let p = state.players[1]
+    #expect(p.dead, "the guest cannot revive itself")
+    #expect(p.boat)
+    #expect(p.kickDir == 1)
+    #expect(p.kickSpeed == 2)
+    #expect(p.shells.count == 1, "the host's shell list must survive a guest update")
+    #expect(p.explosions.count == 1)
+    #expect(p.dir == 1.5)
+    #expect(p.tank == Vec2f(x: 60.5, y: 61.5))
+    #expect(p.speed == 2)
+    #expect(p.turnSpeed == 3)
+    #expect(p.inputFlags == [.shoot])
+}
+
+@Test func withoutHostSimulationAGuestUpdateStillOverwritesEverything() {
+    var state = hostSimulatedState(flag: false)
+    applyRemotePlayerUpdate(
+        header: guestClaimHeader(seq: 5), shells: [], explosions: [],
+        previousRemoteSeq: 0, previousRemoteLastUpdate: 0, myOwnSeq: 0, state: &state
+    )
+    let p = state.players[1]
+    #expect(!p.dead)
+    #expect(!p.boat)
+    #expect(p.kickSpeed == 0)
+    #expect(p.shells.isEmpty)
+    #expect(p.explosions.isEmpty)
+}
+
+@Test func hostSimulatedUpdateSkipsDeadReckoningExtrapolation() {
+    // The guest believes the host is 40 ticks ahead of it, so an unsimulated apply extrapolates 20 ticks.
+    let claimed = Vec2f(x: 55.5, y: 50.5)
+    var extrapolated = hostSimulatedState(flag: false)
+    applyRemotePlayerUpdate(
+        header: guestClaimHeader(seq: 5, tank: claimed, speed: 3, beliefOfHostSeq: 1), shells: [], explosions: [],
+        previousRemoteSeq: 0, previousRemoteLastUpdate: 0, myOwnSeq: 41, state: &extrapolated
+    )
+    #expect(extrapolated.players[1].tank != claimed, "control: without the gate the tank is extrapolated forward")
+
+    var simulated = hostSimulatedState(flag: true)
+    applyRemotePlayerUpdate(
+        header: guestClaimHeader(seq: 5, tank: claimed, speed: 3, beliefOfHostSeq: 1), shells: [], explosions: [],
+        previousRemoteSeq: 0, previousRemoteLastUpdate: 0, myOwnSeq: 41, state: &simulated
+    )
+    #expect(simulated.players[1].tank == claimed, "the host's own runTick moves host-simulated tanks; extrapolating too would double-simulate")
+}
+
+@Test func hostSimulatedRemoteShellIsNotWipedByFollowingGuestUpdates() {
+    var state = hostSimulatedState(flag: true)
+    state.players[1].dead = false
+    state.players[1].boat = false
+    state.players[1].shells = []
+    state.players[1].explosions = []
+    state.players[1].tank = Vec2f(x: 50.5, y: 50.5)
+    state.starts = [Start(x: 45, y: 45, dir: 0)]
+    for p in 0..<2 {
+        state.localStats[p].shells = 20
+        state.localStats[p].armour = maxArmour
+        state.localStats[p].range = 5.0
+        state.localStats[p].shellCounter = shellFireThresholdTicks + 10
+    }
+    for n in 1...4 {
+        // Each guest update claims no shells (its own copy has none) while holding the shoot key.
+        applyRemotePlayerUpdate(
+            header: guestClaimHeader(seq: Int32(n), tank: state.players[1].tank, speed: 0), shells: [], explosions: [],
+            previousRemoteSeq: Int32(n - 1), previousRemoteLastUpdate: 0, myOwnSeq: 0, state: &state
+        )
+        runTick(state: &state, ticksSinceLastUpdate: [0, 0])
+    }
+    #expect(state.players[1].shells.count == 1, "exactly one shell fired by the host simulation, not wiped by guest updates")
+    #expect(state.localStats[1].shells == 19, "exactly one shell spent")
+}
+
+@Test func hostSimulatedJoinedRemoteRespawnsAliveAtAStart() {
+    var state = GameState()
+    for y in 20..<70 { for x in 20..<70 { state.terrain[x, y] = .grass0 } }
+    state.players = (0..<maxPlayers).map { _ in PlayerState() }
+    state.players[0] = connectedPlayer()
+    state.players[0].dead = false
+    state.players[0].tank = Vec2f(x: 30.5, y: 30.5)
+    state.localPlayer = 0
+    state.starts = [Start(x: 45, y: 45, dir: 0)]
+    state.hostSimulatesRemotePlayers = true
+    applyJoin(player: 1, name: "Guest", address: "127.0.0.1", rejoin: false, state: &state)
+
+    var ticks = 0
+    while state.players[1].dead, ticks < 1000 {
+        runTick(state: &state, ticksSinceLastUpdate: Array(repeating: 0, count: maxPlayers))
+        ticks += 1
+    }
+    #expect(!state.players[1].dead, "a joined remote must respawn through the host's own respawn branch")
+    #expect(Int(state.players[1].tank.x) == 45 && Int(state.players[1].tank.y) == 45)
+}

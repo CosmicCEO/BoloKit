@@ -344,3 +344,47 @@ private func connectedPlayer() -> PlayerState {
         #expect(await table.dgramConnection(for: i) == nil)
     }
 }
+
+// MARK: - #62 S3: the relay carries the host's authoritative combat state
+
+@Test func processDgramPacketRelaysHostAssembledUpdateWhenHostSimulatesRemotePlayers() async throws {
+    let senderLink = try await makeUDPLink()
+    let peerLink = try await makeUDPLink()
+    defer {
+        senderLink.listener.cancel(); senderLink.clientEnd.cancel()
+        peerLink.listener.cancel(); peerLink.clientEnd.cancel()
+    }
+
+    let table = HostSessionTable()
+    guard let senderAddress = peerAddress(from: senderLink.serverEnd) else {
+        Issue.record("expected a real loopback address")
+        return
+    }
+    await table.setDgramAddress(senderAddress, for: 0)
+    await table.setConnection(senderLink.serverEnd, for: 0)
+    await table.setConnection(peerLink.serverEnd, for: 1)
+    await table.setDgramConnection(peerLink.serverEnd, for: 1)
+
+    var state = makeState()
+    state.localPlayer = 3  // the host is a different slot, so player 0 is a genuine remote
+    state.hostSimulatesRemotePlayers = true
+    state.players[0] = connectedPlayer()
+    state.players[0].dead = true  // the host's own view of the sender's combat state
+    state.players[1] = connectedPlayer()
+
+    var seq = [Int32](repeating: 0, count: maxPlayers)
+    seq[0] = 1
+    // The guest claims to be alive at (5, 5).
+    let header = sampleHeader(player: 0, seq: seq, tank: BoloKit.Vec2f(x: 5, y: 5))
+    let bytes = CLUpdate(header: header, shells: [], explosions: []).encode()
+
+    await processDgramPacket(bytes: bytes, from: senderLink.serverEnd, state: &state, table: table)
+
+    let relayed = try await receiveOneDatagram(peerLink.clientEnd)
+    #expect(relayed != bytes, "the host must relay its own assembled update, not the guest's claim verbatim")
+    let decoded = CLUpdate.decode(relayed)
+    #expect(decoded?.header.player == 0)
+    #expect(decoded?.header.dead == true, "other peers must see the host's authoritative dead flag")
+    #expect(decoded?.header.tank == BoloKit.Vec2f(x: 5, y: 5), "the guest-owned position still comes through")
+    #expect(state.players[0].dead, "the host's own state was not overwritten by the guest's claim")
+}
