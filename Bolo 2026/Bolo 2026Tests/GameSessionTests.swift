@@ -197,3 +197,16 @@ struct GameSessionTests {
         #expect(session.messages[0].displayText == "disconnected")
     }
 }
+
+// MARK: - Issue #85: the host's own player name
+
+struct HostPlayerNameTests {
+    @Test func storedNameIsUsedWhenNonEmpty() {
+        #expect(hostPlayerDisplayName(stored: "Ace") == "Ace")
+    }
+
+    @Test func missingOrEmptyStoredNameFallsBackToTheShippedDefault() {
+        #expect(hostPlayerDisplayName(stored: nil) == "Newbie")
+        #expect(hostPlayerDisplayName(stored: "") == "Newbie")
+    }
+}

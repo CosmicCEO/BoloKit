@@ -304,6 +304,7 @@ struct HostGameView: View {
         state.baseControlThreshold = Int(baseControlSeconds)
 
         var player = PlayerState()
+        player.name = hostPlayerDisplayName(stored: UserDefaults.standard.string(forKey: "GSPlayerNameString"))
         player.connected = true
         player.used = true
         player.dead = true
@@ -342,6 +343,13 @@ struct HostGameView: View {
             onStartHostingLocalOnly(state)
         }
     }
+}
+
+/// The host's own display name: the stored `GSPlayerNameString`, or its shipped default. Without
+/// this the host's `PlayerState.name` stayed empty, so guests (whose preamble carries it) saw the
+/// host as "Player 0" and drew no name label for it (#85).
+nonisolated func hostPlayerDisplayName(stored: String?) -> String {
+    stored.flatMap { $0.isEmpty ? nil : $0 } ?? "Newbie"
 }
 
 #Preview {
