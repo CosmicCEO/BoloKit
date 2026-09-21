@@ -54,6 +54,10 @@ public enum ServerOpcode: UInt8, Sendable {
     /// section). Applies to `state.terrain` only, no side effects -- unlike `SRBuild`,
     /// which can't be reused for this since it carries its own gameplay consequences.
     case revealTerrain = 34
+    /// #62 S4: this port's own extension, no C counterpart -- the host's authoritative combat
+    /// state for the receiving player's OWN tank (armour, shells, ...), because the host now
+    /// simulates guest tanks (`docs/CONSTRAINTS.md`, "Host-simulated guest tanks").
+    case tankStatus = 35
 }
 
 private func decodeOpcode(_ r: inout WireReader, expect: ServerOpcode) -> Bool {
@@ -670,5 +674,60 @@ public struct SRRevealTerrain: Sendable, Hashable {
         guard decodeOpcode(&r, expect: .revealTerrain) else { return nil }
         guard let x = r.getU8(), let y = r.getU8(), let terrain = r.getU8() else { return nil }
         return SRRevealTerrain(x: x, y: y, terrain: terrain)
+    }
+}
+
+/// #62 S4: see `ServerOpcode.tankStatus`. Fixed size (this transport frames by
+/// `wireSize` per opcode). `teleport` is set on respawn so the guest, which owns its own
+/// movement, jumps to the host-chosen spawn point atomically.
+public struct SRTankStatus: Sendable, Hashable {
+    public struct Teleport: Sendable, Hashable {
+        public var x: Float
+        public var y: Float
+        public var dir: Float
+        public init(x: Float, y: Float, dir: Float) { self.x = x; self.y = y; self.dir = dir }
+    }
+    public var armour: UInt8
+    public var shells: UInt8
+    public var mines: UInt8
+    public var trees: UInt8
+    public var range: Float
+    public var dead: Bool
+    public var boat: Bool
+    public var kickDir: Float
+    public var kickSpeed: Float
+    public var teleport: Teleport?
+    public init(
+        armour: UInt8, shells: UInt8, mines: UInt8, trees: UInt8, range: Float, dead: Bool, boat: Bool,
+        kickDir: Float, kickSpeed: Float, teleport: Teleport?
+    ) {
+        self.armour = armour; self.shells = shells; self.mines = mines; self.trees = trees
+        self.range = range; self.dead = dead; self.boat = boat
+        self.kickDir = kickDir; self.kickSpeed = kickSpeed; self.teleport = teleport
+    }
+    /// opcode + 4 counts + flags + range/kickDir/kickSpeed + teleport x/y/dir (4 bytes each).
+    public static let wireSize = 1 + 4 + 1 + 4 * 6
+    public func encode() -> [UInt8] {
+        var w = WireWriter()
+        w.putU8(ServerOpcode.tankStatus.rawValue)
+        w.putU8(armour); w.putU8(shells); w.putU8(mines); w.putU8(trees)
+        w.putU8((dead ? 1 : 0) | (boat ? 2 : 0) | (teleport != nil ? 4 : 0))
+        w.putRawFloat(range); w.putRawFloat(kickDir); w.putRawFloat(kickSpeed)
+        w.putRawFloat(teleport?.x ?? 0); w.putRawFloat(teleport?.y ?? 0); w.putRawFloat(teleport?.dir ?? 0)
+        return w.bytes
+    }
+    public static func decode(_ bytes: [UInt8]) -> SRTankStatus? {
+        var r = WireReader(bytes)
+        guard decodeOpcode(&r, expect: .tankStatus) else { return nil }
+        guard let armour = r.getU8(), let shells = r.getU8(), let mines = r.getU8(), let trees = r.getU8(),
+            let flags = r.getU8(), let range = r.getRawFloat(), let kickDir = r.getRawFloat(),
+            let kickSpeed = r.getRawFloat(), let tx = r.getRawFloat(), let ty = r.getRawFloat(),
+            let tdir = r.getRawFloat()
+        else { return nil }
+        return SRTankStatus(
+            armour: armour, shells: shells, mines: mines, trees: trees, range: range,
+            dead: flags & 1 != 0, boat: flags & 2 != 0, kickDir: kickDir, kickSpeed: kickSpeed,
+            teleport: flags & 4 != 0 ? Teleport(x: tx, y: ty, dir: tdir) : nil
+        )
     }
 }

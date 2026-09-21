@@ -149,6 +149,34 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
     #expect(state.terrain[20, 20] == .minedGrass)
 }
 
+@Test func recvSrTankStatusAppliesHostCombatStateToTheLocalSlotOnly() {
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()], localPlayer: 1)
+    state.localStats[0].armour = 11
+    recvSrTankStatus(
+        armour: 30, shells: 25, mines: 9, trees: 4, range: 5.5, dead: true, boat: true,
+        kickDir: 2, kickSpeed: 1.5, teleport: nil, state: &state
+    )
+    #expect(state.local.armour == 30 && state.local.shells == 25 && state.local.range == 5.5)
+    #expect(state.players[1].mines == 9 && state.players[1].trees == 4)
+    #expect(state.players[1].dead && state.players[1].boat)
+    #expect(state.players[1].kickDir == 2 && state.players[1].kickSpeed == 1.5)
+    #expect(state.localStats[0].armour == 11, "another slot's stats must be untouched")
+}
+
+@Test func recvSrTankStatusTeleportMovesTheTankAndStopsIt() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.players[0].tank = Vec2f(x: 3, y: 3)
+    state.players[0].speed = 2
+    state.players[0].turnSpeed = 1
+    recvSrTankStatus(
+        armour: 40, shells: 40, mines: 40, trees: 40, range: 7, dead: false, boat: false,
+        kickDir: 0, kickSpeed: 0, teleport: (x: 105.5, y: 106.5, dir: 4.0), state: &state
+    )
+    #expect(state.players[0].tank == Vec2f(x: 105.5, y: 106.5))
+    #expect(state.players[0].dir == 4.0)
+    #expect(state.players[0].speed == 0 && state.players[0].turnSpeed == 0)
+}
+
 @Test func recvSrGrowTurnsGrowableTerrainToForestOrMinedForest() {
     var state = makeState(players: [])
     state.terrain[20, 20] = .rubble2
