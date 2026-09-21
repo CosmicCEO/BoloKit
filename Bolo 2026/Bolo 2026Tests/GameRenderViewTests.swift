@@ -149,4 +149,35 @@ struct GameRenderViewTests {
         // Negative control: far from the expected location, in open unpainted terrain, no white.
         #expect(!isWhite(expectedX + 200 * scale, expectedY + 200 * scale))
     }
+
+    // MARK: - Issue #75: hidden-mines render (guest must not go all-black)
+
+    /// A join client (and the solo path) never has a `FogState` -- the host already redacted what
+    /// it was sent -- so with Hidden Mines on it must draw the received terrain, not fail closed.
+    @Test @MainActor func hiddenMinesWithNoFogStateRendersReceivedTerrainNotAllUnknown() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.terrain[12, 12] = .forest
+        let grid = GameRenderView.resolvedTileGrid(for: state, fogState: nil)
+        #expect(grid.storage == displayTileGrid(for: state).storage)
+        #expect(grid[12, 12] != Tile.unknown.rawValue)
+    }
+
+    /// The host's first frame renders before `HostGameEngine` has populated any `FogState`; the
+    /// host call sites hand in an empty `FogState()` so that frame stays fully fogged.
+    @Test @MainActor func hiddenMinesWithAnEmptyFogStateStaysAllUnknown() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.terrain[12, 12] = .minedGrass
+        let grid = GameRenderView.resolvedTileGrid(for: state, fogState: FogState())
+        #expect(grid[12, 12] == Tile.unknown.rawValue)
+    }
+
+    @Test @MainActor func hiddenMinesOffIgnoresAnyFogState() {
+        var state = GameState()
+        state.hiddenMines = false
+        state.terrain[12, 12] = .minedGrass
+        let grid = GameRenderView.resolvedTileGrid(for: state, fogState: FogState())
+        #expect(grid.storage == displayTileGrid(for: state).storage)
+    }
 }

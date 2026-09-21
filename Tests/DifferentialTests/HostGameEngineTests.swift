@@ -1239,4 +1239,100 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         let revealBytes = try await receiveExactly(joinClient, SRRevealTerrain.wireSize)
         #expect(SRRevealTerrain.decode(revealBytes) != nil, "a remote player must receive SRRevealTerrain as their own vision reveals tiles")
     }
+
+    // MARK: - Issue #76: host-laid mines must reach remote players
+
+    /// Joins a remote connection into `engine` and consumes the join handshake (status byte,
+    /// preamble, map, join broadcast), leaving the stream at the first post-join message.
+    private func joinRemote(_ engine: HostGameEngine, tcpPort: UInt16) async throws -> NWConnection {
+        let joinClient = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: tcpPort)!, using: .tcp)
+        joinClient.start(queue: .main)
+        try await sendDatagram(joinClient, JoinPreamble(name: "Ally", pass: "").encode())
+        try await waitForCondition(timeout: 3) { await engine.table.isConnected(1) }
+        _ = try await receiveExactly(joinClient, 1)
+        let preambleBytes = try await receiveExactly(joinClient, BoloPreamble.wireSize)
+        guard let mapLength = BoloPreamble.decode(preambleBytes)?.mapLength, mapLength > 0 else {
+            throw HarnessError.shortRead
+        }
+        _ = try await receiveExactly(joinClient, Int(mapLength))
+        _ = try await receiveExactly(joinClient, SRPlayerJoin.wireSize)
+        return joinClient
+    }
+
+    /// Reads server->client TCP messages until the `SRPause` sentinel (queued by the caller after
+    /// the action under test, so the engine's ordered event stream guarantees anything the action
+    /// broadcast arrives first) and returns every `SRDropMine` seen. Never waits for silence.
+    private func drainUntilPause(_ connection: NWConnection) async throws -> [SRDropMine] {
+        var mines: [SRDropMine] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return mines
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.dropMine.rawValue:
+                let rest = try await receiveExactly(connection, SRDropMine.wireSize - 1)
+                if let mine = SRDropMine.decode([opcode] + rest) { mines.append(mine) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    private func configureHostWithMines(_ state: inout GameState, hiddenMines: Bool) {
+        state.hiddenMines = hiddenMines
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = false
+        state.players[0].tank = Vec2f(x: 105.5, y: 105.5)
+        state.players[0].mines = 5
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostLaidMineKeyDownReachesARemotePlayerWhenHiddenMinesIsOff() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: false) }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalLayMineKeyDown()
+        engine.submitPauseResumeServer()
+
+        let mines = try await drainUntilPause(remote)
+        #expect(mines.count == 1)
+        #expect(mines.first.map { Int($0.x) } == 105 && mines.first.map { Int($0.y) } == 105)
+        #expect(mines.first?.player == 0)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostLaidMineKeyDownIsNotSentToARemotePlayerWhenHiddenMinesIsOn() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: true) }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalLayMineKeyDown()
+        engine.submitPauseResumeServer()
+
+        let mines = try await drainUntilPause(remote)
+        #expect(mines.isEmpty, "a hidden mine must not be announced to remote players; they learn of it by proximity reveal")
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostLaidContinuousMinesReachARemotePlayerWhenHiddenMinesIsOff() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: false) }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalInputChange(set: [.accel, .lmine], clear: [])
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        engine.submitPauseResumeServer()
+
+        let mines = try await drainUntilPause(remote)
+        #expect(!mines.isEmpty, "driving with the lay-mine key held must announce each planted mine")
+        #expect(mines.allSatisfy { $0.player == 0 })
+    }
 }

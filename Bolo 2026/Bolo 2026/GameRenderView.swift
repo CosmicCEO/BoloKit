@@ -346,6 +346,17 @@ public final class GameRenderView: NSView {
     /// Phase 4 wires that up).
     private var fogState: FogState?
 
+    /// `fogState == nil` means this path has no fog logic (join client, solo): it draws the terrain
+    /// it holds as-is, because the host already redacted what a join client receives. The host path
+    /// always passes a `FogState` (an empty one before its first tick), so it stays fail-closed.
+    static func resolvedTileGrid(for state: GameState, fogState: FogState?) -> TileGrid {
+        if state.hiddenMines, let fogState {
+            return fogResolvedTileGrid(for: state, fogState: fogState)
+        } else {
+            return displayTileGrid(for: state)
+        }
+    }
+
     /// 7.3 calls this after each `runTick()`; this view schedules no redraw of its own (D82) --
     /// it only reacts to being handed a new snapshot. `fogState` is the rendering
     /// observer's own fog view (see this property's own doc comment above) -- `nil` unless
@@ -353,19 +364,7 @@ public final class GameRenderView: NSView {
     public func render(_ newState: GameState, fogState: FogState? = nil) {
         state = newState
         self.fogState = fogState
-        if newState.hiddenMines {
-            // v1.5.0 #1 (fix pass, `/code-review max` on PR #56): fail closed, not open. A
-            // `nil` `fogState` here used to fall through to full-visibility `displayTileGrid`
-            // -- reachable in production during `GameSession`'s host-path init, which calls
-            // `render(_:)` once before `HostGameEngine`'s first tick has ever populated
-            // `fogStates`, so the very first frame of a hidden-mines game could show every
-            // mine. An all-fogged default `FogState()` renders `.unknown` everywhere instead,
-            // which is the correct state of the world at that instant anyway (nothing has
-            // been revealed yet).
-            tileGrid = fogResolvedTileGrid(for: newState, fogState: fogState ?? FogState())
-        } else {
-            tileGrid = displayTileGrid(for: newState)
-        }
+        tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
             remoteTankSmoothers[i, default: RemotePositionSmoother()]
