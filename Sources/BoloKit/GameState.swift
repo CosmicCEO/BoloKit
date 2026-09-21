@@ -13,7 +13,14 @@ public struct GameState: Sendable {
     public var ticks: UInt64
     /// Index into `players` for the locally simulated player.
     public var localPlayer: Int
-    public var local: LocalPlayerState
+    /// Per-player combat/bookkeeping stats (`maxPlayers` slots). `local` is a view of
+    /// `localPlayer`'s slot, so the local-player code runs unchanged for any player swapped in via
+    /// `withSimulatedPlayer`.
+    public var localStats: [LocalPlayerState]
+    public var local: LocalPlayerState {
+        get { localStats[localPlayer] }
+        set { localStats[localPlayer] = newValue }
+    }
     public var grow: GrowState
     /// Global explosions not attached to any specific player (e.g. mine chains).
     public var explosions: [Explosion]
@@ -119,7 +126,7 @@ public struct GameState: Sendable {
         self.players = players
         self.ticks = ticks
         self.localPlayer = localPlayer
-        self.local = local
+        self.localStats = Array(repeating: LocalPlayerState(), count: maxPlayers)
         self.grow = grow
         self.explosions = explosions
         self.chains = chains
@@ -136,5 +143,17 @@ public struct GameState: Sendable {
         self.passwordRequired = passwordRequired
         self.serverPassword = serverPassword
         self.bannedPlayers = bannedPlayers
+        if self.localStats.indices.contains(localPlayer) {
+            self.localStats[localPlayer] = local
+        }
     }
+}
+
+/// Runs `body` with `p` as the local player, so every local-player function (which reads
+/// `localPlayer` and `local`) acts on player `p`'s stats, then restores `localPlayer`.
+public func withSimulatedPlayer<T>(_ p: Int, _ state: inout GameState, _ body: (inout GameState) -> T) -> T {
+    let saved = state.localPlayer
+    state.localPlayer = p
+    defer { state.localPlayer = saved }
+    return body(&state)
 }
