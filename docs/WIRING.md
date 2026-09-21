@@ -88,31 +88,31 @@ Host path: session keeps a **snapshot** of state at init for bookkeeping; render
 
 ```mermaid
 sequenceDiagram
-  participant UI as HostGameView / GameView
+  participant UI as HostGameView
   participant GS as GameSession
   participant HGE as HostGameEngine
-  participant TCP as HostListener / TCPSession
-  participant UDP as HostDgramListener / UDPSession
-  participant TK as Tracker / PortMapping
-  participant Sim as runTick / GameState
-  participant Out as GameRenderView / HUD / SoundPlayer
+  participant TCP as Host TCP
+  participant UDP as Host UDP
+  participant TK as Tracker and UPnP
+  participant Sim as runTick
+  participant Out as Render HUD Sound
 
-  UI->>GS: init(hostEngine:)
-  UI->>GS: start()
-  GS->>HGE: start()
+  UI->>GS: init with hostEngine
+  UI->>GS: start
+  GS->>HGE: start
   HGE->>TCP: accept joins
-  HGE->>UDP: relay CL / broadcast SR*
+  HGE->>UDP: relay CL and broadcast SR
   opt discovery
-    HGE->>TK: startNetworkDiscovery tracker + UPnP
+    HGE->>TK: startNetworkDiscovery
   end
-  loop 50 Hz
-    HGE->>Sim: runTick + apply CL*
-    HGE->>UDP: SR* / dgram relay
+  loop every 50 Hz tick
+    HGE->>Sim: runTick and apply CL
+    HGE->>UDP: SR and dgram relay
     HGE-->>GS: onTickRendered
-    GS->>Out: render + HUD + sounds
+    GS->>Out: render HUD sounds
   end
-  UI->>GS: submitLocalInput / builder / chat
-  GS->>HGE: submitLocal*
+  UI->>GS: local input builder chat
+  GS->>HGE: submitLocal
 ```
 
 Key types (`Sources/BoloNet/`):
@@ -125,26 +125,48 @@ Key types (`Sources/BoloNet/`):
 ## 4. Join path
 
 ```mermaid
+flowchart TB
+  JV["JoinGameView"] --> JC["JoinClient<br/>TCPSession.join"]
+  JC -->|"TCP + UDP live<br/>initial GameState"| GS["GameSession"]
+  GS --> CONS["startJoinConsumer<br/>merged JoinEvent stream"]
+
+  subgraph producers["Producers"]
+    TCP["TCPSession<br/>SR messages"]
+    UDP["UDPSession<br/>relayed CLUpdate"]
+    TMR["DispatchSourceTimer<br/>tick"]
+  end
+
+  TCP --> CONS
+  UDP --> CONS
+  TMR --> CONS
+
+  CONS --> APPLY["apply SR / CL<br/>runTick locally"]
+  APPLY --> SEND["sendLocalUpdateIfDue<br/>about 10 Hz"]
+  SEND --> UDP
+  APPLY --> OUT["GameRenderView<br/>HUDSnapshot"]
+```
+
+```mermaid
 sequenceDiagram
   participant UI as JoinGameView
-  participant JC as JoinClient / TCPSession.join
+  participant JC as JoinClient
   participant GS as GameSession
   participant TCP as TCPSession
   participant UDP as UDPSession
-  participant Sim as GameState + RecvSR / apply
-  participant Out as GameRenderView / HUD
+  participant Sim as GameState
+  participant Out as Render and HUD
 
   UI->>JC: connect host
-  JC-->>UI: TCP + UDP live + initial GameState
-  UI->>GS: init(tcpSession:udpSession:initialState:)
+  JC-->>UI: hand off TCP UDP and initial state
+  UI->>GS: init join sessions
   GS->>GS: startJoinConsumer
-  loop
-    TCP-->>GS: SR* RawMessage
-    UDP-->>GS: relayed CLUpdate datagrams
-    GS->>GS: tick JoinEvent
-    GS->>Sim: apply SR* / CL*; runTick locally
-    GS->>UDP: sendLocalUpdateIfDue (~10 Hz)
-    GS->>Out: render + HUD
+  loop join consumer
+    TCP-->>GS: SR RawMessage
+    UDP-->>GS: relayed CLUpdate
+    GS->>GS: JoinEvent tick
+    GS->>Sim: apply SR CL then runTick
+    GS->>UDP: sendLocalUpdateIfDue
+    GS->>Out: render and HUD
   end
 ```
 
@@ -164,12 +186,12 @@ Guest is still a **partial client** for some gameplay (fire, range, drown/barge)
 
 ```mermaid
 flowchart TB
-  START["runTick"] --> PAUSE{"serverPauseTicks /<br/>clientPauseDisplaySeconds?"}
+  START["runTick"] --> PAUSE{"serverPauseTicks or<br/>clientPauseDisplaySeconds?"}
   PAUSE -->|paused| RET1["return"]
   PAUSE -->|running| TL["time-limit / base-control checks"]
   TL --> INC["state.ticks += 1"]
   INC --> LAG["stale-player disconnect + dropPills"]
-  LAG --> WORLD["coolPills → replenishBases → growTrees → chain → flood"]
+  LAG --> WORLD["coolPills then replenishBases<br/>then growTrees then chain then flood"]
   WORLD --> MOVE["tankMoveTick all players"]
   MOVE --> LOCAL["tankLocalTick local player"]
   LOCAL --> BLD["builderTick all"]
@@ -194,10 +216,10 @@ flowchart TB
   JOINV --> GV
   GV --> GS["GameSession"]
   GS --> GRV["GameRenderView"]
-  GS --> HUD["HUDSnapshot → gauges / player grid"]
+  GS --> HUD["HUDSnapshot to gauges and player grid"]
   GS --> MSG["MessagesView / chat"]
   GS --> SP["SoundPlayer"]
-  INPUT["keyboard / mouse / GameControllerInput"] --> GS
+  INPUT["keyboard mouse GameControllerInput"] --> GS
 ```
 
 Also: `bolo://` (`BoloJoinURL`), App Intents (`HostGameIntent` / `JoinLastHostIntent`), preferences / key bindings.
