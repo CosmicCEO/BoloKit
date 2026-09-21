@@ -76,10 +76,14 @@ nonisolated struct JoinTickThinning: Equatable {
     var sendsTileEntry: Bool
     var sendsShellDamage: Bool
     var runsOwnMovementWhileDead: Bool
+    /// #62 S5: the host simulates this guest's shells and sends them (`SRTankShots`), so the guest
+    /// only applies them; an older host never does, so its guest keeps predicting its own.
+    var runsOwnShellTick: Bool
     init(hostSimulatesMe: Bool) {
         sendsTileEntry = !hostSimulatesMe
         sendsShellDamage = !hostSimulatesMe
         runsOwnMovementWhileDead = !hostSimulatesMe
+        runsOwnShellTick = !hostSimulatesMe
     }
 }
 
@@ -730,10 +734,12 @@ public final class GameSession {
             // doc comment). `CLTouch`/`CLSmallBoom`/`CLSuperBoom` do not apply to
             // `shellcollisiontest()` and are out of scope here (see D142 pre-brief).
             var shellDamageOutbound: [(x: Int, y: Int, boat: Bool)] = []
-            shellTick(
-                player: localPlayer, state: &state,
-                onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
-            )
+            if thinning.runsOwnShellTick {
+                shellTick(
+                    player: localPlayer, state: &state,
+                    onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
+                )
+            }
             if thinning.sendsShellDamage, !shellDamageOutbound.isEmpty, let tcpSession {
                 let bytes = shellDamageOutbound.map { hit in
                     CLDamage(x: UInt8(hit.x), y: UInt8(hit.y), boat: hit.boat ? 1 : 0).encode()

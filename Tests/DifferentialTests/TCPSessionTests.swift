@@ -302,3 +302,16 @@ private func makeState() -> GameState {
     #expect(state.local.armour == 30 && state.local.shells == 20)
     #expect(state.players[state.localPlayer].mines == 9)
 }
+
+@Test func tcpSessionDispatchesTankShotsToTheLocalPlayersOwnShellsAndExplosions() throws {
+    var state = makeState()
+    let shots = SRTankShots(
+        shells: [SRTankShots.ShellEntry(x: 105.5, y: 106.5, dir: 1.5, range: 6.75, boat: false, pill: false)],
+        explosions: [SRTankShots.ExplosionEntry(x: 105.5, y: 105.5, counter: 4)]
+    )
+    try TCPSession.dispatch(TCPSession.RawMessage(opcode: .tankShots, bytes: shots.encode()), state: &state)
+    let me = state.localPlayer
+    #expect(state.players[me].shells.count == 1 && state.players[me].shells[0].range == 6.75)
+    #expect(state.players[me].shells[0].owner == UInt8(me))
+    #expect(state.players[me].explosions == [Explosion(point: Vec2f(x: 105.5, y: 105.5), counter: 4)])
+}
