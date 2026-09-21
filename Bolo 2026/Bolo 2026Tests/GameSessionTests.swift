@@ -210,3 +210,24 @@ struct HostPlayerNameTests {
         #expect(hostPlayerDisplayName(stored: "") == "Newbie")
     }
 }
+
+// MARK: - PR #95 nit: no per-tick FogState allocation when Hidden Mines is off
+
+struct HostRenderFogStateTests {
+    @Test func noEngineFogAndHiddenMinesOnFailsClosedWithAnEmptyFogState() {
+        let fog = hostRenderFogState(engineFog: nil, hiddenMines: true)
+        #expect(fog != nil)
+        #expect(fog?.fog.allSatisfy { $0 == 0 } == true)
+    }
+
+    @Test func noEngineFogAndHiddenMinesOffPassesNilSoNothingIsAllocated() {
+        #expect(hostRenderFogState(engineFog: nil, hiddenMines: false) == nil)
+    }
+
+    @Test func engineFogIsPassedThroughEitherWay() {
+        var engine = FogState()
+        engine.fog[7] = 1
+        #expect(hostRenderFogState(engineFog: engine, hiddenMines: true)?.fog[7] == 1)
+        #expect(hostRenderFogState(engineFog: engine, hiddenMines: false)?.fog[7] == 1)
+    }
+}

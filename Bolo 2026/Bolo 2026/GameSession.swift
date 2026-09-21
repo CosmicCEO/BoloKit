@@ -68,6 +68,13 @@ private enum JoinEvent: Sendable {
     case udpEnded
 }
 
+/// The fog state the host hands its renderer. Before the engine's first tick it has none, so with
+/// Hidden Mines on an empty one keeps that frame fully fogged (fail closed); with it off nothing
+/// reads it, so `nil` avoids allocating ~384 KB of `FogState` every tick.
+nonisolated func hostRenderFogState(engineFog: FogState?, hiddenMines: Bool) -> FogState? {
+    engineFog ?? (hiddenMines ? FogState() : nil)
+}
+
 @MainActor
 public final class GameSession {
     public private(set) var state: GameState
@@ -171,7 +178,8 @@ public final class GameSession {
         self.udpSession = nil
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
-        view.render(self.state, fogState: hostEngine.fogState(for: self.state.localPlayer) ?? FogState())
+        view.render(self.state, fogState: hostRenderFogState(
+            engineFog: hostEngine.fogState(for: self.state.localPlayer), hiddenMines: self.state.hiddenMines))
         hudSnapshot.update(from: self.state)
 
         view.onInputFlagsChange = { change in
@@ -189,7 +197,8 @@ public final class GameSession {
             hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
         hostEngine.onTickRendered = { [weak self, weak view, weak hostEngine] renderedState in
-            view?.render(renderedState, fogState: hostEngine?.fogState(for: renderedState.localPlayer) ?? FogState())
+            view?.render(renderedState, fogState: hostRenderFogState(
+                engineFog: hostEngine?.fogState(for: renderedState.localPlayer), hiddenMines: renderedState.hiddenMines))
             self?.hudSnapshot.update(from: renderedState)
         }
         hostEngine.onMessageReceived = { [weak self] message in
