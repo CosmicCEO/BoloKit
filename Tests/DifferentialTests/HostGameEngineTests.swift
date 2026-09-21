@@ -1369,4 +1369,82 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         #expect(update != nil, "the detonated tile's new terrain must be sent to the remote")
         #expect(update.map { !Self.minedRawValues.contains($0.terrain) } == true)
     }
+
+    // MARK: - #62 S4: the host sends each remote its authoritative combat state
+
+    /// Like `drainUntilPause`, returning every `SRTankStatus` seen (the sentinel is `SRPause`).
+    private func drainStatusesUntilPause(_ connection: NWConnection) async throws -> [SRTankStatus] {
+        var statuses: [SRTankStatus] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return statuses
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.dropMine.rawValue:
+                _ = try await receiveExactly(connection, SRDropMine.wireSize - 1)
+            case ServerOpcode.tankStatus.rawValue:
+                let rest = try await receiveExactly(connection, SRTankStatus.wireSize - 1)
+                if let status = SRTankStatus.decode([opcode] + rest) { statuses.append(status) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostSendsAJoinedRemoteItsOwnTankStatusWhenHostSimulationIsOn() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.hostSimulatesRemotePlayers = true
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 500_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        #expect(!statuses.isEmpty, "a host-simulated remote must be told its own combat state")
+    }
+
+    /// A joined remote starts dead on the host; when the host respawns it, the status that reports
+    /// it alive carries the spawn point as a teleport (the guest owns its own movement).
+    @Test(.timeLimit(.minutes(1))) func hostRespawnOfAJoinedRemoteArrivesAsATeleportStatus() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.hostSimulatesRemotePlayers = true
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        let respawn = statuses.first { $0.teleport != nil }
+        #expect(respawn != nil, "the respawn must reach the guest as a teleport")
+        #expect(respawn?.dead == false)
+        #expect(respawn?.teleport.map { Int($0.x) == 105 && Int($0.y) == 105 } == true, "spawns at state.starts[0]")
+        #expect(statuses.first?.dead == true, "the first status reports the still-dead joined remote")
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostSendsNoTankStatusWhenHostSimulationIsOff() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: false) }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        #expect(statuses.isEmpty)
+    }
 }
