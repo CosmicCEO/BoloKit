@@ -1263,15 +1263,22 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
     /// the action under test, so the engine's ordered event stream guarantees anything the action
     /// broadcast arrives first) and returns every `SRDropMine` seen. Never waits for silence.
     private func drainUntilPause(_ connection: NWConnection) async throws -> [SRDropMine] {
+        try await drainAllUntilPause(connection).mines
+    }
+
+    /// Same as `drainUntilPause`, also returning every `SRRevealTerrain` seen.
+    private func drainAllUntilPause(_ connection: NWConnection) async throws -> (mines: [SRDropMine], reveals: [SRRevealTerrain]) {
         var mines: [SRDropMine] = []
+        var reveals: [SRRevealTerrain] = []
         while true {
             let opcode = try await receiveExactly(connection, 1)[0]
             switch opcode {
             case ServerOpcode.pause.rawValue:
                 _ = try await receiveExactly(connection, SRPause.wireSize - 1)
-                return mines
+                return (mines, reveals)
             case ServerOpcode.revealTerrain.rawValue:
-                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+                let rest = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+                if let reveal = SRRevealTerrain.decode([opcode] + rest) { reveals.append(reveal) }
             case ServerOpcode.dropMine.rawValue:
                 let rest = try await receiveExactly(connection, SRDropMine.wireSize - 1)
                 if let mine = SRDropMine.decode([opcode] + rest) { mines.append(mine) }
@@ -1334,5 +1341,32 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         let mines = try await drainUntilPause(remote)
         #expect(!mines.isEmpty, "driving with the lay-mine key held must announce each planted mine")
         #expect(mines.allSatisfy { $0.player == 0 })
+    }
+
+    // MARK: - Issue #84 / #81: terrain the host's own simulation changes must reach remote players
+
+    private static let minedRawValues: Set<UInt8> = Set(
+        [Terrain.minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass].map { UInt8($0.rawValue) }
+    )
+
+    /// The host tank drives east onto a mine; the remote must be told the tile is no longer a mine.
+    @Test(.timeLimit(.minutes(1))) func hostTankDetonatingAMineTellsARemotePlayerTheTileChanged() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.terrain[108, 105] = .minedGrass
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalInputChange(set: [.accel], clear: [])
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let reveals = try await drainAllUntilPause(remote).reveals
+        let update = reveals.last { $0.x == 108 && $0.y == 105 }
+        #expect(update != nil, "the detonated tile's new terrain must be sent to the remote")
+        #expect(update.map { !Self.minedRawValues.contains($0.terrain) } == true)
     }
 }
