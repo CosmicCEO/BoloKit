@@ -206,11 +206,13 @@ struct JoinTickThinningTests {
     @Test func aGuestNotYetSimulatedByItsHostKeepsTheOldBehaviour() {
         let policy = JoinTickThinning(hostSimulatesMe: false)
         #expect(policy.sendsTileEntry && policy.sendsShellDamage && policy.runsOwnMovementWhileDead)
+        #expect(policy.runsOwnShellTick, "an older host never sends the guest its shells, so it keeps simulating them")
     }
 
     @Test func aGuestSimulatedByItsHostStopsReportingAndRespawningItself() {
         let policy = JoinTickThinning(hostSimulatesMe: true)
         #expect(!policy.sendsTileEntry && !policy.sendsShellDamage && !policy.runsOwnMovementWhileDead)
+        #expect(!policy.runsOwnShellTick, "the host simulates the guest's shells and sends them; the guest only applies them")
     }
 }
 
