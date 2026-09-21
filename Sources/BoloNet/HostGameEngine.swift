@@ -152,6 +152,12 @@ public final class HostGameEngine: @unchecked Sendable {
     /// unconnected slot never allocates a grid it doesn't need.
     private var fogStates: [Int: FogState] = [:]
 
+    /// #62 S4: the last `SRTankStatus` sent to each remote slot, and whether that slot was dead
+    /// when it was sent, so `tankStatusSends()` only sends on change and can attach a respawn
+    /// teleport on the dead -> alive transition.
+    private var lastTankStatus: [Int: SRTankStatus] = [:]
+    private var lastTankDead: [Int: Bool] = [:]
+
     /// Read-only access to a connected player slot's current `FogState`, for rendering
     /// (Phase 3) and testing. `nil` when `state.hiddenMines` is false or the slot has no
     /// tracked fog state yet.
@@ -717,6 +723,11 @@ public final class HostGameEngine: @unchecked Sendable {
             }
         }
 
+        var statusSends: [(player: Int, bytes: [UInt8])] = []
+        if state.hostSimulatesRemotePlayers {
+            statusSends = tankStatusSends()
+        }
+
         var fogReveals: [(player: Int, bytes: [UInt8])] = []
         if state.hiddenMines {
             fogReveals = updateFogVision()
@@ -739,6 +750,9 @@ public final class HostGameEngine: @unchecked Sendable {
         }
         for (mask, bytes) in maskedPending {
             await table.sendToMask(mask, bytes)
+        }
+        for (player, bytes) in statusSends {
+            await table.send(bytes, to: player)
         }
         for (player, bytes) in fogReveals {
             await table.send(bytes, to: player)
@@ -816,6 +830,37 @@ public final class HostGameEngine: @unchecked Sendable {
         BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
     }
 
+
+    /// #62 S4: each connected remote's own authoritative combat state, as `SRTankStatus`, sent
+    /// only when it differs from the last one sent to that slot (so death, damage, firing, kick
+    /// and refuel all go out immediately, and an idle tank costs nothing). A dead -> alive
+    /// transition (host-side respawn) attaches the new position as a teleport, since the guest
+    /// owns its own movement and would otherwise never learn where the host respawned it.
+    private func tankStatusSends() -> [(player: Int, bytes: [UInt8])] {
+        var sends: [(player: Int, bytes: [UInt8])] = []
+        for player in state.players.indices where player != state.localPlayer {
+            guard state.players[player].connected else {
+                lastTankStatus[player] = nil
+                lastTankDead[player] = nil
+                continue
+            }
+            let p = state.players[player]
+            let stats = state.localStats[player]
+            let respawned = lastTankDead[player] == true && !p.dead
+            let status = SRTankStatus(
+                armour: UInt8(clamping: max(stats.armour, 0)), shells: UInt8(clamping: max(stats.shells, 0)),
+                mines: UInt8(clamping: max(p.mines, 0)), trees: UInt8(clamping: max(p.trees, 0)),
+                range: stats.range, dead: p.dead, boat: p.boat, kickDir: p.kickDir, kickSpeed: p.kickSpeed,
+                teleport: respawned ? SRTankStatus.Teleport(x: p.tank.x, y: p.tank.y, dir: p.dir) : nil
+            )
+            lastTankDead[player] = p.dead
+            if lastTankStatus[player] != status {
+                lastTankStatus[player] = status
+                sends.append((player, status.encode()))
+            }
+        }
+        return sends
+    }
 
     /// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): recomputes every connected player
     /// slot's `FogState` for this tick and returns the unicast `SRRevealTerrain` sends this

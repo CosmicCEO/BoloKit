@@ -200,6 +200,31 @@ struct GameSessionTests {
 
 // MARK: - Issue #85: the host's own player name
 
+/// #62 S4: once the host has told a guest its combat state (`SRTankStatus`), the host simulates
+/// that guest's tank, so the guest must stop simulating/reporting the same things itself.
+struct JoinTickThinningTests {
+    @Test func aGuestNotYetSimulatedByItsHostKeepsTheOldBehaviour() {
+        let policy = JoinTickThinning(hostSimulatesMe: false)
+        #expect(policy.sendsTileEntry && policy.sendsShellDamage && policy.runsOwnMovementWhileDead)
+    }
+
+    @Test func aGuestSimulatedByItsHostStopsReportingAndRespawningItself() {
+        let policy = JoinTickThinning(hostSimulatesMe: true)
+        #expect(!policy.sendsTileEntry && !policy.sendsShellDamage && !policy.runsOwnMovementWhileDead)
+    }
+}
+
+/// #62 S4: only a real network host simulates guest tanks; solo/local-only play never does.
+struct NetworkHostStateTests {
+    @Test func networkHostingTurnsOnHostSimulationOnACopy() {
+        let solo = GameState()
+        #expect(!solo.hostSimulatesRemotePlayers)
+        let hosted = networkHostState(from: solo)
+        #expect(hosted.hostSimulatesRemotePlayers)
+        #expect(!solo.hostSimulatesRemotePlayers, "the original (used for the local-only fallback) stays off")
+    }
+}
+
 struct HostPlayerNameTests {
     @Test func storedNameIsUsedWhenNonEmpty() {
         #expect(hostPlayerDisplayName(stored: "Ace") == "Ace")

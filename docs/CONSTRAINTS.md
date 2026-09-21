@@ -126,6 +126,38 @@ process with one authoritative `GameState` (`HostGameEngine`), so the merged hos
   the host never accepts is evicted. That eviction closes the guest's TCP, so the resulting
   "connection ended" is ignored for a player already marked disconnected (one departure, one message).
 
+## Host-simulated guest tanks (#59/#62)
+
+A deliberate deviation from the C oracle, ruled by the owner on 2026-09-21 (#59). In C every client
+simulates its own tank fully (`tankLocalTick`/`enter()`), then reports tile entries, mine detonations and
+damage to the server (`CLGrabTile`, `CLDropBoat`, `CLTouch`, `CLDamage`, ...). The port's join-path guest is a
+deliberately partial client (`GameSession`, D116/D139): it never ran that code, so a guest could not fire,
+adjust range, drown, trigger mines or take damage. Rather than port the whole client protocol, the host now
+runs that code for each remote player, from the player's input flags, and is the single source of truth for
+combat state. Enabled by `GameState.hostSimulatesRemotePlayers`, set only for real network hosting
+(`networkHostState(from:)`); solo/local-only play never sets it.
+
+- **Authority split.** The guest owns its movement (`tank`, `dir`, `speed`, `turnSpeed`, `inputFlags`,
+  builder fields), exactly as in C, so steering never waits on a round trip. The host owns `dead`, `boat`,
+  shells, explosions, kick, that player's `localStats` (armour, shells, range, respawn) and its
+  mines/trees counts; `applyRemotePlayerUpdate` does not overwrite them and the dead-reckoning extrapolation
+  is skipped for simulated players (S3).
+- **`SRTankStatus` (opcode 35, host -> guest, port-only, no C counterpart).** Carries the receiver's own
+  armour, shells, mines, trees, range, dead, boat, kick and an optional respawn teleport. Sent on change
+  (death, damage, firing, kick, refuel), never as a stream, and applied to the guest's own slot. Like
+  `SRRevealTerrain`, an older build would not understand it; the guest keeps its old behaviour until the
+  first status arrives (`GameSession.hostSimulatesMe`), so a newer guest against an older host degrades to
+  the previous partial client.
+- **Guest thinning.** Once told it is simulated, the guest stops sending tile-entry reports, `CLDamage` and
+  running its own dead-tank respawn (`JoinTickThinning`). Movement, builder round trips, chat, alliances
+  and the discrete key-down `CLDropMine` stay the guest's.
+- **Tile entry uses the last evaluated tile.** A remote's position arrives as jumps between host ticks, so
+  `runTick` compares the tile it last evaluated (`GameState.remoteLastTankPosition`) with the current one,
+  not the tile at the start of the tick (which already includes the jump). Found by the loopback test; a
+  jump across a boundary otherwise skipped the mine under it.
+- **Not covered.** The guest still does not see its own shells (S5), and it does not see its own death
+  explosion animation (the host keeps it in that player's `explosions`).
+
 ## Physics constants
 
 From `bolo.h`. Live values belong in `Physics.swift`; do not re-derive.

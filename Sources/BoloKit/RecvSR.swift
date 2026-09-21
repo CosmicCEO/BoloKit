@@ -201,6 +201,33 @@ public func recvSrRevealTerrain(x: Int, y: Int, terrain: Terrain, state: inout G
     state.terrain[x, y] = terrain
 }
 
+/// #62 S4, no C counterpart: applies the host's authoritative combat state to the local
+/// player's own slot (the host simulates guest tanks, `docs/CONSTRAINTS.md`). A respawn
+/// `teleport` moves the tank and stops it, so the guest (which owns its movement) jumps to the
+/// host-chosen spawn point atomically.
+public func recvSrTankStatus(
+    armour: Int, shells: Int, mines: Int, trees: Int, range: Float, dead: Bool, boat: Bool,
+    kickDir: Float, kickSpeed: Float, teleport: (x: Float, y: Float, dir: Float)?, state: inout GameState
+) {
+    let player = state.localPlayer
+    guard state.players.indices.contains(player) else { return }
+    state.local.armour = armour
+    state.local.shells = shells
+    state.local.range = range
+    state.players[player].mines = mines
+    state.players[player].trees = trees
+    state.players[player].dead = dead
+    state.players[player].boat = boat
+    state.players[player].kickDir = kickDir
+    state.players[player].kickSpeed = kickSpeed
+    if let teleport {
+        state.players[player].tank = Vec2f(x: teleport.x, y: teleport.y)
+        state.players[player].dir = teleport.dir
+        state.players[player].speed = 0
+        state.players[player].turnSpeed = 0
+    }
+}
+
 /// Ported from `recvsrgrow()` (`client.c:1686-1730`).
 public func recvSrGrow(x: Int, y: Int, state: inout GameState) {
     switch state.terrain[x, y] {

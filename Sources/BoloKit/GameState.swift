@@ -22,6 +22,11 @@ public struct GameState: Sendable {
     /// fields from guest updates until the authority split lands, so turning this on early would
     /// double-apply combat.
     public var hostSimulatesRemotePlayers: Bool = false
+    /// Where each host-simulated remote tank was when `runTick` last evaluated its tile entry
+    /// (`nil` when unknown or dead). A remote's position arrives as guest-authoritative jumps
+    /// between host ticks, so the "old tile" must be the last one evaluated, not the tile at the
+    /// start of the current tick (which already includes the jump).
+    public var remoteLastTankPosition: [Vec2f?] = Array(repeating: nil, count: maxPlayers)
     public var local: LocalPlayerState {
         get { localStats[localPlayer] }
         set { localStats[localPlayer] = newValue }

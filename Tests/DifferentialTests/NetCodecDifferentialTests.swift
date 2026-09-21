@@ -505,6 +505,23 @@ import CXBolo
             == SRRevealTerrain(x: 1, y: 2, terrain: 3))
     }
 
+    /// Port-only (no C counterpart, like `SRRevealTerrain`): host -> guest combat state for the
+    /// receiver's own slot (#62 S4).
+    @Test func srTankStatusRoundTripsWithAndWithoutTeleport() {
+        let plain = SRTankStatus(
+            armour: 40, shells: 39, mines: 12, trees: 7, range: 6.5, dead: false, boat: true,
+            kickDir: 1.25, kickSpeed: 3.5, teleport: nil
+        )
+        #expect(SRTankStatus.decode(plain.encode()) == plain)
+        #expect(plain.encode().count == SRTankStatus.wireSize)
+        let respawn = SRTankStatus(
+            armour: 40, shells: 40, mines: 40, trees: 40, range: 7, dead: false, boat: false,
+            kickDir: 0, kickSpeed: 0, teleport: SRTankStatus.Teleport(x: 105.5, y: 105.5, dir: 3.0)
+        )
+        #expect(SRTankStatus.decode(respawn.encode()) == respawn)
+        #expect(SRTankStatus.decode([ServerOpcode.tankStatus.rawValue]) == nil)
+    }
+
     // MARK: - Brad encoding: full 256-value sweep against the oracle
     //
     // NOT a `bradEncode(bradDecode(b)) == b` round-trip identity -- that
