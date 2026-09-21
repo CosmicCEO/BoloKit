@@ -566,6 +566,16 @@ public func shellTick(
                         state.local.armour = 0
                         killTank(state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
                     }
+                } else if state.hostSimulatesRemotePlayers {
+                    // #62 S2: the host owns a remote tank's armour pool; same logic, run as that player.
+                    withSimulatedPlayer(player, &state) { victim in
+                        victim.players[player].boat = false
+                        victim.local.armour -= shellDamage
+                        if victim.local.armour < 0 {
+                            victim.local.armour = 0
+                            killTank(state: &victim, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+                        }
+                    }
                 }
 
                 state.players[shooter].shells.remove(at: j)

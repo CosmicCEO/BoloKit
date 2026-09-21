@@ -70,3 +70,79 @@ private func tick(_ state: inout GameState) {
     #expect(state.players[1].shells.isEmpty, "with the gate off, a remote's shoot flag does nothing on the host")
     #expect(state.localStats[1].shells == 20)
 }
+
+// MARK: (b)/(c) terrain entry: mines, drowning, boat
+
+/// Drives the remote east (dir 0) with accel held until `until` says stop, or `maxTicks` pass.
+private func driveRemoteEast(_ state: inout GameState, maxTicks: Int = 400, until: (GameState) -> Bool) {
+    state.players[1].dir = 0
+    state.players[1].inputFlags = [.accel]
+    for _ in 0..<maxTicks {
+        tick(&state)
+        if until(state) { break }
+    }
+}
+
+@Test func remotePlayerDrivingOntoAMineDetonatesItAndLosesArmourHostUntouched() {
+    var state = twoPlayerState()
+    state.terrain[52, 50] = .minedGrass
+    driveRemoteEast(&state) { $0.terrain[52, 50] != .minedGrass }
+    #expect(state.terrain[52, 50] == .crater, "the detonated tile must change on the host")
+    #expect(state.localStats[1].armour == maxArmour - smallboomDamage, "the remote takes the splash damage")
+    #expect(state.localStats[0].armour == maxArmour, "the host's own armour must be untouched")
+    #expect(state.players[0].dead == false)
+}
+
+@Test func remotePlayerDrivingIntoDeepWaterDrowns() {
+    var state = twoPlayerState()
+    state.terrain[52, 50] = .sea
+    driveRemoteEast(&state) { $0.players[1].dead }
+    #expect(state.players[1].dead)
+    #expect(state.localStats[1].respawnCounter == explodeTicks + 1)
+    #expect(state.players[0].dead == false)
+}
+
+@Test func remotePlayerOnABoatLosesTheBoatFlagOnceItIsOnLand() {
+    var state = twoPlayerState()
+    state.players[1].boat = true
+    state.players[0].boat = true
+    driveRemoteEast(&state, maxTicks: 60) { !$0.players[1].boat }
+    #expect(state.players[1].boat == false)
+    #expect(state.players[0].boat == true, "the host tank was not moving and keeps its boat")
+}
+
+// MARK: (d) shell hits on a remote tank
+
+private func shellAt(_ point: Vec2f, owner: UInt8) -> Shell {
+    Shell(point: point, dir: 0, range: 3.0, owner: owner, boat: false, pill: false)
+}
+
+@Test func shellHitOnARemoteTankReducesTheRemotesArmourNotTheHosts() {
+    var state = twoPlayerState()
+    state.players[0].shells = [shellAt(state.players[1].tank, owner: 0)]
+    tick(&state)
+    #expect(state.localStats[1].armour == maxArmour - shellDamage)
+    #expect(state.localStats[0].armour == maxArmour)
+    #expect(state.players[0].shells.isEmpty, "the shell is consumed by the hit")
+    #expect(state.players[1].kickSpeed > 0, "the hit kicks the remote tank")
+}
+
+@Test func shellHitKillsARemoteTankAtZeroArmour() {
+    var state = twoPlayerState()
+    state.localStats[1].armour = shellDamage - 1
+    state.players[0].shells = [shellAt(state.players[1].tank, owner: 0)]
+    tick(&state)
+    #expect(state.players[1].dead)
+    #expect(state.localStats[1].armour == 0)
+    #expect(state.localStats[1].deaths == 1)
+    #expect(state.localStats[0].deaths == 0)
+    #expect(state.players[0].dead == false)
+}
+
+@Test func shellHitOnARemoteTankIsIgnoredWhenTheGateIsOff() {
+    var state = twoPlayerState()
+    state.hostSimulatesRemotePlayers = false
+    state.players[0].shells = [shellAt(state.players[1].tank, owner: 0)]
+    tick(&state)
+    #expect(state.localStats[1].armour == maxArmour, "gate off: today's behaviour, no remote armour pool")
+}
