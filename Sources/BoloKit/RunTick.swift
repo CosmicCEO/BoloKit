@@ -317,7 +317,7 @@ public func runTick(
     // the host's own tank).
     if state.hostSimulatesRemotePlayers {
         for player in state.players.indices where player != state.localPlayer && state.players[player].connected {
-            let old = oldTankPositions[player]
+            let old = state.remoteLastTankPosition[player] ?? oldTankPositions[player]
             withSimulatedPlayer(player, &state) { simulated in
                 tankLocalTick(
                     old: Pointi(x: Int32(old.x), y: Int32(old.y)), state: &simulated,
@@ -325,6 +325,7 @@ public func runTick(
                     onShouldBroadcastDropPill: onShouldBroadcastDropPill
                 )
             }
+            state.remoteLastTankPosition[player] = state.players[player].dead ? nil : state.players[player].tank
         }
     }
 

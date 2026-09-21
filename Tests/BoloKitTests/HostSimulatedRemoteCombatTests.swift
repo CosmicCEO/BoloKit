@@ -93,6 +93,23 @@ private func driveRemoteEast(_ state: inout GameState, maxTicks: Int = 400, unti
     #expect(state.players[0].dead == false)
 }
 
+/// #62 S4 (found by the e2e loopback test): a remote's position arrives as a guest-authoritative
+/// `CLUpdate` jump between host ticks. If `runTick` only compared the tile at the start of its own
+/// tick with the tile after its own simulated step, a jump across a tile boundary was invisible and
+/// the mine under it never detonated. The host must compare against the tile it last evaluated.
+@Test func remotePositionUpdateJumpingOntoAMineTileDetonatesIt() {
+    var state = twoPlayerState()
+    state.terrain[52, 50] = .minedGrass
+    state.players[1].tank = Vec2f(x: 51.9, y: 50.5)
+    tick(&state)
+    #expect(state.terrain[52, 50] == .minedGrass, "not on the mine yet")
+
+    state.players[1].tank = Vec2f(x: 52.3, y: 50.5)  // what applying a guest CLUpdate does
+    tick(&state)
+    #expect(state.terrain[52, 50] != .minedGrass, "entering the tile by a position jump must detonate the mine")
+    #expect(state.localStats[1].armour < maxArmour)
+}
+
 @Test func remotePlayerDrivingIntoDeepWaterDrowns() {
     var state = twoPlayerState()
     state.terrain[52, 50] = .sea
