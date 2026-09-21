@@ -75,4 +75,25 @@ struct RemotePositionSmootherTests {
         // above, not that fraction 1.0 happens to equal the earlier sample by coincidence.
         #expect(smoother.smoothedPosition(atTick: 5) == Vec2f(x: 0, y: 0))
     }
+
+    // MARK: - #61: a join client's `state.ticks` never advances, so every sample carries the same tick
+
+    /// The guest never advances `state.ticks`, so every sample is stamped with the same tick. A
+    /// tank that teleports (host respawn) and then stands still must be drawn at the new spot, not
+    /// at the previous sample (the death spot), which is what a stuck clock used to leave behind.
+    @Test func `A teleport under a frozen clock is drawn at the new position`() {
+        var smoother = RemotePositionSmoother()
+        smoother.update(rawPosition: Vec2f(x: 10, y: 10), tick: 500)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 4), tick: 500)
+
+        #expect(smoother.smoothedPosition(atTick: 500) == Vec2f(x: 3, y: 4))
+    }
+
+    @Test func `Every sample under a frozen clock is drawn as the latest one`() {
+        var smoother = RemotePositionSmoother()
+        for x in 1...5 {
+            smoother.update(rawPosition: Vec2f(x: Float(x), y: 0), tick: 500)
+            #expect(smoother.smoothedPosition(atTick: 500) == Vec2f(x: Float(x), y: 0))
+        }
+    }
 }
