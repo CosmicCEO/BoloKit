@@ -46,10 +46,20 @@ final class MetalTileRenderer: TileRenderer {
     private let ciContext: CIContext
     private let textureLoader: MTKTextureLoader
 
-    /// Cached upload of `tilesImage` -- the sheet is generated once at app launch and never
-    /// changes, so this uploads at most once per `MetalTileRenderer` instance, not per frame.
-    private var tilesTexture: MTLTexture?
-    private var cachedSourceImage: CGImage?
+    /// Cached uploads, keyed by source `CGImage` identity -- `tilesImage`/`spritesImage` are
+    /// each generated once at app launch and never change, so each uploads at most once per
+    /// `MetalTileRenderer` instance, not per frame. Two distinct sheets (tiles, sprites) are
+    /// ever passed in, so a tiny linear cache is simpler than a hashable-CGImage dictionary.
+    private var textureCache: [(image: CGImage, texture: MTLTexture)] = []
+
+    /// v1.6.0 (#25) increment 5: a rendered-once-per-index cache of individual sprite cells
+    /// (each exactly 16x16, isolated, matching `CGContextTileRenderer`'s own per-cell crop
+    /// granularity from the start -- no cross-cell interpolation bleed to guard against here,
+    /// unlike terrain's whole-dirty-region composite in `draw(_:ctx:dirtyRect:)`). A sprite
+    /// sheet has on the order of 150 distinct indices total (`SELETRIMAGE` is the highest),
+    /// reused across every tank/shell/explosion instance in every frame, so this cache is
+    /// small and effectively fills once.
+    private var spriteCellCache: [Int32: CGImage] = [:]
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -90,8 +100,8 @@ final class MetalTileRenderer: TileRenderer {
     }
 
     private func texture(for cgImage: CGImage) -> MTLTexture? {
-        if let cachedSourceImage, cachedSourceImage === cgImage, let tilesTexture {
-            return tilesTexture
+        if let cached = textureCache.first(where: { $0.image === cgImage }) {
+            return cached.texture
         }
         // `.origin: .topLeft` keeps texture row 0 == the source `CGImage`'s row 0, matching
         // this codebase's own top-left-origin sheet convention (D66) -- MTKTextureLoader's
@@ -103,9 +113,20 @@ final class MetalTileRenderer: TileRenderer {
             .generateMipmaps: false,
         ]
         guard let texture = try? textureLoader.newTexture(cgImage: cgImage, options: options) else { return nil }
-        cachedSourceImage = cgImage
-        tilesTexture = texture
+        textureCache.append((cgImage, texture))
         return texture
+    }
+
+    /// Renders (or returns the cached render of) a single sprite sheet cell in isolation --
+    /// the Metal-sourced counterpart to `spritesImage.cropping(to: sheetSrcRect(forIndex:))`.
+    private func spriteCell(forIndex index: Int32, spritesTexture: MTLTexture) -> CGImage? {
+        if let cached = spriteCellCache[index] { return cached }
+        let instance = [TileInstance(origin: .zero, uvOrigin: Self.uvOrigin(forIndex: index))]
+        guard let cell = renderInstances(
+            instance, sheetTexture: spritesTexture, targetWidth: Self.tileSizePixels, targetHeight: Self.tileSizePixels
+        ) else { return nil }
+        spriteCellCache[index] = cell
+        return cell
     }
 
     /// Same tile-range math as `GameRenderView.drawTerrain`, so both renderers draw exactly the
@@ -188,7 +209,24 @@ final class MetalTileRenderer: TileRenderer {
                 view.blit(cell, in: dst, ctx)
             }
         }
+        drawSpritesViaMetal(view, ctx: ctx)
+    }
+
+    /// v1.6.0 (#25) increment 5: sprites/shells/explosions/builders. Every positioning,
+    /// alliance-coloring, fog-fade, heading, and animation-frame decision stays in
+    /// `GameRenderView.drawSprites`/`drawBuilder`/`drawSprite` itself, unchanged -- this only
+    /// swaps out where a sprite cell's pixels come from, via `spriteCellProvider`. Falls back
+    /// to the plain CPU sprite draw if the sprites sheet fails to upload.
+    private func drawSpritesViaMetal(_ view: GameRenderView, ctx: CGContext) {
+        guard let spritesTexture = texture(for: view.spritesImage) else {
+            view.drawSprites(ctx)
+            return
+        }
+        view.spriteCellProvider = { [weak self] index in
+            self?.spriteCell(forIndex: index, spritesTexture: spritesTexture)
+        }
         view.drawSprites(ctx)
+        view.spriteCellProvider = nil
     }
 
     private func renderInstances(

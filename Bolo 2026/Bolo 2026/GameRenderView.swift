@@ -920,9 +920,17 @@ public final class GameRenderView: NSView {
     /// dead always-1.0 code under D65's full-visibility v1 scope (this function's own prior
     /// doc comment said so) -- v1.5.0 #1 revives it: `fraction <= 0.00001` skips the draw
     /// entirely (matching the reference's own guard), otherwise blits at that alpha.
+    /// v1.6.0 (#25) increment 5: lets a `TileRenderer` (`MetalTileRenderer`) source each
+    /// sprite cell's pixels from its own GPU-rendered/cached texture instead of
+    /// `spritesImage.cropping(to:)`, while every positioning/alliance/fog/animation decision
+    /// in `drawSprites`/`drawBuilder`/`drawSprite` itself -- the actual business logic --
+    /// stays exactly as-is, single source of truth. `nil` (the default) means "use the CPU
+    /// crop," matching `CGContextTileRenderer`'s unmodified behavior.
+    var spriteCellProvider: ((Int32) -> CGImage?)?
+
     private func drawSprite(_ index: Int32, at point: Vec2f, _ ctx: CGContext, fraction: Float = 1.0) {
         guard fraction > 0.00001 else { return }
-        guard let cell = spritesImage.cropping(to: sheetSrcRect(forIndex: index)) else { return }
+        guard let cell = spriteCellProvider?(index) ?? spritesImage.cropping(to: sheetSrcRect(forIndex: index)) else { return }
         let size = CGFloat(tileSize)
         let originX: CGFloat = (CGFloat(point.x) * size - 8).rounded(.down)
         let originY: CGFloat = (CGFloat(point.y) * size - 8).rounded(.down)
