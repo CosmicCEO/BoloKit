@@ -28,7 +28,9 @@ Wave-by-wave history and the retired four-role process live at git tag `legacy-a
 
 The v1.8.0 issues [#14](https://github.com/CosmicCEO/BoloKit/issues/14)/[#21](https://github.com/CosmicCEO/BoloKit/issues/21)/[#6](https://github.com/CosmicCEO/BoloKit/issues/6) are unblocked (the `NWListener` fix landed pre-v1.5.0) and can be picked up any time.
 
-**`v1.5.1` tagged and released 2026-09-22.** Next up: `v1.5.2 — Rejoin fix` (milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20)), picking up #113, #120 (its focus), #89, #93, #100, #101, #87, #118 — all investigation-blocked or deferred, see "Moved out of v1.5.1" above.
+No open v1.5.1 issues remain. Milestone [19](https://github.com/CosmicCEO/BoloKit/milestone/19) closed, tag `v1.5.1` cut, [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.5.1) published, 2026-09-22.
+
+**Next step:** `v1.5.2 — Rejoin fix` (milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20)), picking up #113, #120 (its focus), #89, #93, #100, #101, #87, #118 — all investigation-blocked or deferred, see "Moved out of v1.5.1" above.
 
 ## How we track work
 
