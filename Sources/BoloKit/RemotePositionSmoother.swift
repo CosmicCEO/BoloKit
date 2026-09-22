@@ -40,6 +40,14 @@ public struct RemotePositionSmoother: Sendable {
             return
         }
         guard target.position != rawPosition else { return }
+        // A join client's `state.ticks` never advances, so consecutive samples can share a tick;
+        // interpolating between them would draw the older one forever (a respawned host tank
+        // stayed at its death spot). With no elapsed time there is nothing to interpolate: snap.
+        if tick <= target.tick {
+            previous = nil
+            self.target = (rawPosition, tick)
+            return
+        }
         previous = target
         self.target = (rawPosition, tick)
     }

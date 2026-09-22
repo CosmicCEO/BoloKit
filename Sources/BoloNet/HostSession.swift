@@ -650,15 +650,24 @@ public func dispatchHostMessage(
 
     case .dropMine:
         guard let msg = CLDropMine.decode(bytes) else { throw HostSessionError.malformedMessage }
+        // Snapshot before `recvClDropMine` takes exclusive access to `state` (its callbacks run inside it).
+        let simulated = state.hostSimulatesRemotePlayers
+        // #62: a host-simulated player's mine count is the host's (the guest never decrements it), so
+        // a key-down mine spends one here, plants nothing at zero, and a rejection sends no refund ack.
+        if simulated, !(state.players.indices.contains(player) && state.players[player].mines > 0) { break }
+        var placed = false
         recvClDropMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastDropMine: { p, x, y in
+                placed = true
                 pending.append(.mask(terrainMask(x: x, y: y), SRDropMine(player: UInt8(p), x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastMineAck: { p, success in
+                guard !simulated else { return }
                 pending.append(.one(p, SRMineAck(success: success ? 1 : 0).encode()))
             }
         )
+        if simulated, placed { state.players[player].mines -= 1 }
 
     case .touch:
         guard let msg = CLTouch.decode(bytes) else { throw HostSessionError.malformedMessage }
