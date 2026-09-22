@@ -87,8 +87,9 @@ public struct GameState: Sendable {
     /// option, not something `runTick` itself decides.
     public var pauseOnPlayerExit: Bool
     /// Mirrors `server.hiddenmines` — whether mines are rendered invisible
-    /// to non-owning players. Wire-only flag (Wave 6.3's `BoloPreamble`);
-    /// no gameplay function in this port reads it yet.
+    /// to non-owning players. Wire-only flag at introduction (Wave 6.3's
+    /// `BoloPreamble`); since v1.5.0 (#1), `FogState` and the host's
+    /// per-recipient wire redaction both read this to gate mine visibility.
     public var hiddenMines: Bool
     /// Mirrors `server.allowjoin` — `joinplayerserver()`'s `kDisallowJOIN`
     /// gate (Wave 6.3).

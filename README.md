@@ -18,7 +18,7 @@ differential tests. See `LICENSE` for the full attribution chain and license ter
 
 ## Status
 
-**Current drop:** [`v1.2.3`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.2.3) (build 10). Playable host-and-join. 795 SwiftPM tests + 66 `Bolo 2026Tests`. Apple Development–signed, not notarized (right-click → Open). On some machines `NWListener` EINVAL falls back to local-only play.
+**Current tagged drop:** [`v1.5.0`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.5.0) — Hidden-mines fog-of-war. Playable host-and-join two-player LAN, with a live-play fix pass (guest fire/range/drown/mines, alliances, name sync — [#62](https://github.com/CosmicCEO/BoloKit/issues/62)/[#92](https://github.com/CosmicCEO/BoloKit/issues/92)/[#85](https://github.com/CosmicCEO/BoloKit/issues/85)) already merged to `main` and pending its `v1.5.1` tag once the remaining known issues (guest rejoin [#113](https://github.com/CosmicCEO/BoloKit/issues/113), shells vanishing under Hidden Mines [#114](https://github.com/CosmicCEO/BoloKit/issues/114)) are closed. Apple Development–signed, not notarized (right-click → Open). On some machines `NWListener` EINVAL falls back to local-only play.
 
 The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conventions: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Live board: [`docs/STATUS.md`](docs/STATUS.md).
 
@@ -29,7 +29,7 @@ The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conve
 | **Sprint** | Two weeks, Monday start, due Friday of week 2. Skip US federal holidays. |
 | **Project** | Grouping only. [1.\*](https://github.com/users/CosmicCEO/projects/1) = path to 2.0.0. [2.\*](https://github.com/users/CosmicCEO/projects/2) = Decide items. |
 
-**Next release sprint:** [v1.3.0 Find and share games](https://github.com/CosmicCEO/BoloKit/milestone/2) (due 30 Oct 2026) — Bonjour, AWDL, `bolo://`, tracker+UPnP, dedicated host, Quick Look. Then v1.4 controls/HUD/sound, v1.5 fog ([#1](https://github.com/CosmicCEO/BoloKit/issues/1)), v1.6 Metal, v1.7 packs. **2.0.0** is the tag when that path is done.
+**Current patch:** [v1.5.1 Live play fixes](https://github.com/CosmicCEO/BoloKit/milestone/19), in flight. **Next release sprint:** [v1.6.0 Metal renderer](https://github.com/CosmicCEO/BoloKit/milestone/4), then v1.7 gameplay packs, v1.8 LAN/WAN discovery. **2.0.0** is the tag when that path is done.
 
 Engineering rules: `docs/CONSTRAINTS.md`. Wave history: git tag `legacy-agent-process`.
 
