@@ -16,6 +16,15 @@ public func roundDir(_ dir: Float) -> Float {
     return step * floor(dir / step + 0.5)
 }
 
+// MARK: - headingColumn
+
+/// Sprite heading column, matching `GSBoloView.m`'s literal formula at every one of its
+/// heading-dependent draw calls: `(int)(dir/(kPif/8.0) + 0.5) % 16`. Moved here (v1.5.1 #114
+/// fix) so it's testable from `Tests/BoloKitTests` without duplicating the formula in a test.
+public func headingColumn(_ dir: Float) -> Int32 {
+    Int32(dir / (kPif / 8.0) + 0.5) % 16
+}
+
 // MARK: - maxSpeed / maxTurnSpeed
 
 /// Maximum tank forward speed at (x, y), including pill/base overrides.

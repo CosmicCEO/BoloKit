@@ -301,6 +301,13 @@ public let SHELL2IMAGE: Int32 = 0x62
 public let SHELL3IMAGE: Int32 = 0x63
 public let SHELL4IMAGE: Int32 = 0x64
 public let SHELL5IMAGE: Int32 = 0x65
+/// v1.5.1 #114: the C reference's `images.h` only names 6 shell cells (`SHELL0`-`SHELL5`),
+/// but its real `Sprites.png` asset draws all 16 heading columns in that row -- this port's
+/// procedural art generator previously only populated the 6 named cells, so shells fired
+/// toward the other 10 headings rendered into a transparent gap for their whole flight.
+/// `SHELL15IMAGE` names the true upper bound of the row, matching the `00`/`15` endpoint
+/// convention used for other 16-heading ranges (e.g. `PTNK00IMAGE`/`PTNK15IMAGE`).
+public let SHELL15IMAGE: Int32 = 0x6f
 public let EXPLO0IMAGE: Int32 = 0x70
 public let EXPLO1IMAGE: Int32 = 0x71
 public let EXPLO2IMAGE: Int32 = 0x72

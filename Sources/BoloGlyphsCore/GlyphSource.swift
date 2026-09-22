@@ -12,7 +12,12 @@ public enum GlyphRole: Sendable {
     case pill(armor: Int, ownership: BaseOwnership)
     /// `ownership`: 0 = player, 1 = friendly, 2 = enemy.
     case tank(heading: Int, ownership: Int, destroyed: Bool)
-    case shell(frame: Int)
+    /// v1.5.1 #114: `heading` is one of the 16 `headingColumn` buckets (`PhysicsOps.swift`),
+    /// matching the C reference's real `Sprites.png` asset -- not an animation frame index
+    /// (the prior `frame` name/semantics only covered 6 of the 16 indices `headingColumn`
+    /// can actually produce, so shells fired toward the other 10 headings rendered into a
+    /// transparent gap for their entire flight; see `ImageIndex.swift`'s shell dispatch).
+    case shell(heading: Int)
     case explosion(frame: Int)
     case builder(frame: Int)
     case crosshair
@@ -44,8 +49,15 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
         drawPill(&c, armor: armor, ownership: ownership)
     case .tank(let heading, let ownership, let destroyed):
         drawTank(&c, heading: heading, ownership: ownership, destroyed: destroyed)
-    case .shell(let frame):
-        c.fillCircle(cx: 8, cy: 8, radius: 1.5 + Double(frame) * 0.3, 255, 220, 120)
+    case .shell(let heading):
+        // v1.5.1 #114: constant-size directional streak, not a growing circle -- size no
+        // longer varies by index (that was mistaking a heading bucket for an animation
+        // frame), and it's now oriented so all 16 headings render distinctly, same
+        // `dir2vec`/`kPif/8` rotation convention `drawTank` uses (D70).
+        let dir = Float(heading) * (kPif / 8.0)
+        let v = dir2vec(dir)
+        c.fillCircle(cx: 8, cy: 8, radius: 1.3, 255, 200, 100)
+        c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 4.0, halfWidth: 0.8, 255, 230, 150)
     case .explosion(let frame):
         let radius = 2.0 + Double(frame) * 1.3
         c.fillRing(cx: 8, cy: 8, inner: max(0, radius - 2), outer: radius, 255, 140, 30)
