@@ -840,6 +840,13 @@ public func mapimage(_ tiles: UnsafePointer<Int32>, _ x: Int32, _ y: Int32) -> I
     }
 }
 
+/// Port-original fog look: `mapimage`'s -1 ("tile unseen", oracle-exact) is drawn as plain sea
+/// so a host's never-seen area matches the guest's, instead of black. Render-only; the grid
+/// keeps `Tile.unknown`.
+public func unseenTileAsSeaImage(_ image: Int32) -> Int32 {
+    image >= 0 ? image : SEAA00IMAGE
+}
+
 public func mapimage(_ grid: TileGrid, _ x: Int32, _ y: Int32) -> Int32 {
     return grid.storage.withUnsafeBufferPointer { buf in
         mapimage(buf.baseAddress!, x, y)

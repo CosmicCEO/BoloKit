@@ -505,6 +505,60 @@ import CXBolo
             == SRRevealTerrain(x: 1, y: 2, terrain: 3))
     }
 
+    /// Port-only (no C counterpart, like `SRRevealTerrain`): host -> guest combat state for the
+    /// receiver's own slot (#62 S4).
+    @Test func srTankStatusRoundTripsWithAndWithoutTeleport() {
+        let plain = SRTankStatus(
+            armour: 40, shells: 39, mines: 12, trees: 7, range: 6.5, dead: false, boat: true,
+            kickDir: 1.25, kickSpeed: 3.5, teleport: nil
+        )
+        #expect(SRTankStatus.decode(plain.encode()) == plain)
+        #expect(plain.encode().count == SRTankStatus.wireSize)
+        let respawn = SRTankStatus(
+            armour: 40, shells: 40, mines: 40, trees: 40, range: 7, dead: false, boat: false,
+            kickDir: 0, kickSpeed: 0, teleport: SRTankStatus.Teleport(x: 105.5, y: 105.5, dir: 3.0)
+        )
+        #expect(SRTankStatus.decode(respawn.encode()) == respawn)
+        #expect(SRTankStatus.decode([ServerOpcode.tankStatus.rawValue]) == nil)
+    }
+
+    /// Port-only (#62 S5): host -> guest list of the receiver's OWN in-flight shells and
+    /// explosions. Fixed size (the transport frames by `wireSize`), lists bounded and padded.
+    @Test func srTankShotsRoundTripsAndIsFixedSize() {
+        let shots = SRTankShots(
+            shells: [
+                SRTankShots.ShellEntry(x: 105.5, y: 106.25, dir: 1.5, range: 6.75, boat: false, pill: false),
+                SRTankShots.ShellEntry(x: 110, y: 111, dir: 3, range: 2, boat: true, pill: false),
+            ],
+            explosions: [
+                SRTankShots.ExplosionEntry(x: 105.5, y: 105.5, counter: 0),
+                SRTankShots.ExplosionEntry(x: 106.5, y: 105.5, counter: 24),
+                SRTankShots.ExplosionEntry(x: 107.5, y: 105.5, counter: 7),
+            ]
+        )
+        #expect(SRTankShots.decode(shots.encode()) == shots)
+        #expect(shots.encode().count == SRTankShots.wireSize)
+        let empty = SRTankShots(shells: [], explosions: [])
+        #expect(SRTankShots.decode(empty.encode()) == empty)
+        #expect(empty.encode().count == SRTankShots.wireSize, "an empty list is padded to the same fixed size")
+        #expect(SRTankShots.decode([ServerOpcode.tankShots.rawValue]) == nil)
+    }
+
+    @Test func srTankShotsTruncatesOverflowToTheBoundedCaps() {
+        let manyShells = (0..<(SRTankShots.maxShells + 5)).map {
+            SRTankShots.ShellEntry(x: Float($0), y: 1, dir: 0, range: 1, boat: false, pill: false)
+        }
+        let manyExplosions = (0..<(SRTankShots.maxExplosions + 5)).map {
+            SRTankShots.ExplosionEntry(x: Float($0), y: 1, counter: UInt8($0))
+        }
+        let shots = SRTankShots(shells: manyShells, explosions: manyExplosions)
+        #expect(shots.shells.count == SRTankShots.maxShells)
+        #expect(shots.explosions.count == SRTankShots.maxExplosions)
+        #expect(shots.shells.first?.x == 0, "truncation keeps the earliest entries")
+        #expect(SRTankShots.decode(shots.encode()) == shots)
+        #expect(shots.encode().count == SRTankShots.wireSize)
+    }
+
     // MARK: - Brad encoding: full 256-value sweep against the oracle
     //
     // NOT a `bradEncode(bradDecode(b)) == b` round-trip identity -- that

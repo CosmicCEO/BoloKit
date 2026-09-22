@@ -1263,15 +1263,22 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
     /// the action under test, so the engine's ordered event stream guarantees anything the action
     /// broadcast arrives first) and returns every `SRDropMine` seen. Never waits for silence.
     private func drainUntilPause(_ connection: NWConnection) async throws -> [SRDropMine] {
+        try await drainAllUntilPause(connection).mines
+    }
+
+    /// Same as `drainUntilPause`, also returning every `SRRevealTerrain` seen.
+    private func drainAllUntilPause(_ connection: NWConnection) async throws -> (mines: [SRDropMine], reveals: [SRRevealTerrain]) {
         var mines: [SRDropMine] = []
+        var reveals: [SRRevealTerrain] = []
         while true {
             let opcode = try await receiveExactly(connection, 1)[0]
             switch opcode {
             case ServerOpcode.pause.rawValue:
                 _ = try await receiveExactly(connection, SRPause.wireSize - 1)
-                return mines
+                return (mines, reveals)
             case ServerOpcode.revealTerrain.rawValue:
-                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+                let rest = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+                if let reveal = SRRevealTerrain.decode([opcode] + rest) { reveals.append(reveal) }
             case ServerOpcode.dropMine.rawValue:
                 let rest = try await receiveExactly(connection, SRDropMine.wireSize - 1)
                 if let mine = SRDropMine.decode([opcode] + rest) { mines.append(mine) }
@@ -1334,5 +1341,110 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         let mines = try await drainUntilPause(remote)
         #expect(!mines.isEmpty, "driving with the lay-mine key held must announce each planted mine")
         #expect(mines.allSatisfy { $0.player == 0 })
+    }
+
+    // MARK: - Issue #84 / #81: terrain the host's own simulation changes must reach remote players
+
+    private static let minedRawValues: Set<UInt8> = Set(
+        [Terrain.minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass].map { UInt8($0.rawValue) }
+    )
+
+    /// The host tank drives east onto a mine; the remote must be told the tile is no longer a mine.
+    @Test(.timeLimit(.minutes(1))) func hostTankDetonatingAMineTellsARemotePlayerTheTileChanged() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.terrain[108, 105] = .minedGrass
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalInputChange(set: [.accel], clear: [])
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let reveals = try await drainAllUntilPause(remote).reveals
+        let update = reveals.last { $0.x == 108 && $0.y == 105 }
+        #expect(update != nil, "the detonated tile's new terrain must be sent to the remote")
+        #expect(update.map { !Self.minedRawValues.contains($0.terrain) } == true)
+    }
+
+    // MARK: - #62 S4: the host sends each remote its authoritative combat state
+
+    /// Like `drainUntilPause`, returning every `SRTankStatus` seen (the sentinel is `SRPause`).
+    private func drainStatusesUntilPause(_ connection: NWConnection) async throws -> [SRTankStatus] {
+        var statuses: [SRTankStatus] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return statuses
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.dropMine.rawValue:
+                _ = try await receiveExactly(connection, SRDropMine.wireSize - 1)
+            case ServerOpcode.tankStatus.rawValue:
+                let rest = try await receiveExactly(connection, SRTankStatus.wireSize - 1)
+                if let status = SRTankStatus.decode([opcode] + rest) { statuses.append(status) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostSendsAJoinedRemoteItsOwnTankStatusWhenHostSimulationIsOn() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.hostSimulatesRemotePlayers = true
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 500_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        #expect(!statuses.isEmpty, "a host-simulated remote must be told its own combat state")
+    }
+
+    /// A joined remote starts dead on the host; when the host respawns it, the status that reports
+    /// it alive carries the spawn point as a teleport (the guest owns its own movement).
+    @Test(.timeLimit(.minutes(1))) func hostRespawnOfAJoinedRemoteArrivesAsATeleportStatus() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.hostSimulatesRemotePlayers = true
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        let respawn = statuses.first { $0.teleport != nil }
+        #expect(respawn != nil, "the respawn must reach the guest as a teleport")
+        #expect(respawn?.dead == false)
+        #expect(respawn?.teleport.map { Int($0.x) == 105 && Int($0.y) == 105 } == true, "spawns at state.starts[0]")
+        #expect(statuses.first?.dead == true, "the first status reports the still-dead joined remote")
+    }
+
+    @Test(.timeLimit(.minutes(1))) func hostSendsNoTankStatusWhenHostSimulationIsOff() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: false) }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+        engine.submitPauseResumeServer()
+
+        let statuses = try await drainStatusesUntilPause(remote)
+        #expect(statuses.isEmpty)
     }
 }

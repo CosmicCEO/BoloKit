@@ -68,6 +68,32 @@ private enum JoinEvent: Sendable {
     case udpEnded
 }
 
+/// #62 S4: what the join-path tick still does for itself once the host simulates this guest's
+/// tank (the host has sent an `SRTankStatus`). The host runs tile entry (pill/base capture,
+/// mines, boat drops), shell-damage reporting, and death/respawn for it, so doing them here too
+/// would double-apply. Movement, builder round trips and input flags stay the guest's.
+nonisolated struct JoinTickThinning: Equatable {
+    var sendsTileEntry: Bool
+    var sendsShellDamage: Bool
+    var runsOwnMovementWhileDead: Bool
+    /// #62 S5: the host simulates this guest's shells and sends them (`SRTankShots`), so the guest
+    /// only applies them; an older host never does, so its guest keeps predicting its own.
+    var runsOwnShellTick: Bool
+    init(hostSimulatesMe: Bool) {
+        sendsTileEntry = !hostSimulatesMe
+        sendsShellDamage = !hostSimulatesMe
+        runsOwnMovementWhileDead = !hostSimulatesMe
+        runsOwnShellTick = !hostSimulatesMe
+    }
+}
+
+/// The fog state the host hands its renderer. Before the engine's first tick it has none, so with
+/// Hidden Mines on an empty one keeps that frame fully fogged (fail closed); with it off nothing
+/// reads it, so `nil` avoids allocating ~384 KB of `FogState` every tick.
+nonisolated func hostRenderFogState(engineFog: FogState?, hiddenMines: Bool) -> FogState? {
+    engineFog ?? (hiddenMines ? FogState() : nil)
+}
+
 @MainActor
 public final class GameSession {
     public private(set) var state: GameState
@@ -106,6 +132,11 @@ public final class GameSession {
     /// own tick timer, not this class's, so there is nothing of this class's own to measure there.
     public private(set) var recentTickIntervals: [TimeInterval] = []
     private var lastTickTime: DispatchTime?
+    /// Set on the first `SRTankStatus` from the host (see `JoinTickThinning`). Deliberately not
+    /// `GameState.hostSimulatesRemotePlayers`: that flag also gates how *relayed* updates of other
+    /// players are applied, which must stay unchanged on a guest. Stays false against an older
+    /// host that never sends the message, so the old behaviour is kept there.
+    private var hostSimulatesMe = false
 
     /// **1.1 backlog C.4:** the messages panel's own scrollback -- kept here, not on `GameState`,
     /// matching the reference's own design: `printmessage`/`messagesTextView` is a pure display
@@ -171,7 +202,8 @@ public final class GameSession {
         self.udpSession = nil
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
         self.renderView = view
-        view.render(self.state, fogState: hostEngine.fogState(for: self.state.localPlayer) ?? FogState())
+        view.render(self.state, fogState: hostRenderFogState(
+            engineFog: hostEngine.fogState(for: self.state.localPlayer), hiddenMines: self.state.hiddenMines))
         hudSnapshot.update(from: self.state)
 
         view.onInputFlagsChange = { change in
@@ -189,7 +221,8 @@ public final class GameSession {
             hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
         hostEngine.onTickRendered = { [weak self, weak view, weak hostEngine] renderedState in
-            view?.render(renderedState, fogState: hostEngine?.fogState(for: renderedState.localPlayer) ?? FogState())
+            view?.render(renderedState, fogState: hostRenderFogState(
+                engineFog: hostEngine?.fogState(for: renderedState.localPlayer), hiddenMines: renderedState.hiddenMines))
             self?.hudSnapshot.update(from: renderedState)
         }
         hostEngine.onMessageReceived = { [weak self] message in
@@ -357,12 +390,10 @@ public final class GameSession {
     ///
     /// - Host path: routes through `HostGameEngine`'s merged stream (`submitRequestAlliance`),
     ///   same reasoning as `kickPlayer` above.
-    /// - Join path: mutates only a scratch copy of `state` to compute the outgoing mask, then
-    ///   sends `CLSetAlliance` directly -- `self.state` is NOT mutated here; the host's own
-    ///   eventual `SRSetAlliance` broadcast (`recvSrSetAlliance`, already wired in
-    ///   `TCPSession.dispatch`) is what actually updates `state`, matching this path's existing
-    ///   "local input is advisory, the host's broadcast is truth" discipline (see this class's
-    ///   B.8 header).
+    /// - Join path: updates `state`'s own alliance mask and sends `CLSetAlliance`, as the C client
+    ///   does (`requestalliance()`). The host's `SRSetAlliance` goes to everyone *except* the
+    ///   requester (`server.c` `sendsrsetalliance` uses `sendtoallex`), so there is no echo to wait
+    ///   for; an earlier scratch-copy version never recorded the guest's own request (#92).
     /// - Single-process path: no other real players to inform, so mutate `state` directly.
     public func requestAlliance(_ players: UInt16) {
         if let hostEngine {
@@ -371,8 +402,7 @@ public final class GameSession {
         }
         appendLocalAllianceRequest(players)
         if let tcpSession {
-            var scratch = state
-            BoloKit.requestAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+            BoloKit.requestAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 let message = CLSetAlliance(alliance: alliance)
                 Task { try? await tcpSession.send(message.encode()) }
             })
@@ -389,8 +419,7 @@ public final class GameSession {
         }
         appendLocalAllianceLeave(players)
         if let tcpSession {
-            var scratch = state
-            BoloKit.leaveAlliance(withPlayers: players, state: &scratch, onSendSetAlliance: { alliance in
+            BoloKit.leaveAlliance(withPlayers: players, state: &state, onSendSetAlliance: { alliance in
                 let message = CLSetAlliance(alliance: alliance)
                 Task { try? await tcpSession.send(message.encode()) }
             })
@@ -620,7 +649,12 @@ public final class GameSession {
             let oldTank = state.players[localPlayer].tank
             let old = Pointi(x: Int32(oldTank.x), y: Int32(oldTank.y))
 
-            tankMoveTick(player: localPlayer, state: &state)
+            // #62 S4: a dead, host-simulated guest is respawned by the host (`SRTankStatus`
+            // teleport), so its own dead-tank branch (respawn counter, `spawn`) must not run.
+            let thinning = JoinTickThinning(hostSimulatesMe: hostSimulatesMe)
+            if thinning.runsOwnMovementWhileDead || !state.players[localPlayer].dead {
+                tankMoveTick(player: localPlayer, state: &state)
+            }
 
             // B.10 (D127): read-only detect-and-send analogue of `enter()`'s pill/base/
             // mined-terrain branches (`detectJoinTileEntry`, TankLocalTick.swift) — never
@@ -628,7 +662,7 @@ public final class GameSession {
             // broadcast (`.tcpMessage` case below), same protocol latency the reference has.
             let newTank = state.players[localPlayer].tank
             let new = Pointi(x: Int32(newTank.x), y: Int32(newTank.y))
-            let outbound = detectJoinTileEntry(new: new, old: old, state: state)
+            let outbound = thinning.sendsTileEntry ? detectJoinTileEntry(new: new, old: old, state: state) : []
             if !outbound.isEmpty, let tcpSession {
                 let bytes = outbound.map { message -> [UInt8] in
                     switch message {
@@ -700,11 +734,13 @@ public final class GameSession {
             // doc comment). `CLTouch`/`CLSmallBoom`/`CLSuperBoom` do not apply to
             // `shellcollisiontest()` and are out of scope here (see D142 pre-brief).
             var shellDamageOutbound: [(x: Int, y: Int, boat: Bool)] = []
-            shellTick(
-                player: localPlayer, state: &state,
-                onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
-            )
-            if !shellDamageOutbound.isEmpty, let tcpSession {
+            if thinning.runsOwnShellTick {
+                shellTick(
+                    player: localPlayer, state: &state,
+                    onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
+                )
+            }
+            if thinning.sendsShellDamage, !shellDamageOutbound.isEmpty, let tcpSession {
                 let bytes = shellDamageOutbound.map { hit in
                     CLDamage(x: UInt8(hit.x), y: UInt8(hit.y), boat: hit.boat ? 1 : 0).encode()
                 }
@@ -727,6 +763,7 @@ public final class GameSession {
             hudSnapshot.update(from: state)
 
         case .tcpMessage(let message):
+            if message.opcode == .tankStatus { hostSimulatesMe = true }
             // Snapshot player names before `dispatch` takes `&state` -- reading `self.state` from
             // inside `onSendMesg` below, while this same call already holds `state` as an
             // exclusive `inout` binding, would be a nested-access violation (same reasoning as

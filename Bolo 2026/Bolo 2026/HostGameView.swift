@@ -304,6 +304,7 @@ struct HostGameView: View {
         state.baseControlThreshold = Int(baseControlSeconds)
 
         var player = PlayerState()
+        player.name = hostPlayerDisplayName(stored: UserDefaults.standard.string(forKey: "GSPlayerNameString"))
         player.connected = true
         player.used = true
         player.dead = true
@@ -321,7 +322,7 @@ struct HostGameView: View {
             let bonjourName = storedName.flatMap { $0.isEmpty ? nil : $0 }
             let listener = try await HostListener(port: port, bonjourName: bonjourName)
             let dgramListener = try await HostDgramListener(port: port)
-            let engine = HostGameEngine(initialState: state, listener: listener, dgramListener: dgramListener)
+            let engine = HostGameEngine(initialState: networkHostState(from: state), listener: listener, dgramListener: dgramListener)
             engine.start()
             // v1.3.0 #24: best-effort, matches `startNetworkDiscovery`'s own "never blocks hosting"
             // contract -- `trackerEnabled`/`upnpEnabled` off (or a failure inside either) is a
@@ -342,6 +343,21 @@ struct HostGameView: View {
             onStartHostingLocalOnly(state)
         }
     }
+}
+
+/// The state a real network host runs with: the host simulates guest tanks (#59/#62). A copy, so
+/// the solo/local-only fallback (which reuses the original state) never turns simulation on.
+nonisolated func networkHostState(from state: GameState) -> GameState {
+    var hosted = state
+    hosted.hostSimulatesRemotePlayers = true
+    return hosted
+}
+
+/// The host's own display name: the stored `GSPlayerNameString`, or its shipped default. Without
+/// this the host's `PlayerState.name` stayed empty, so guests (whose preamble carries it) saw the
+/// host as "Player 0" and drew no name label for it (#85).
+nonisolated func hostPlayerDisplayName(stored: String?) -> String {
+    stored.flatMap { $0.isEmpty ? nil : $0 } ?? "Newbie"
 }
 
 #Preview {
