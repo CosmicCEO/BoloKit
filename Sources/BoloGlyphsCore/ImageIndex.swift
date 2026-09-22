@@ -12,12 +12,13 @@ public func cellCol(_ index: Int32) -> Int { Int(index) & 0xF }
 /// Tile sheet is dense `0x00`-`0xc0` (D62 + v1.2.1 NPIL) -- every index in range is used.
 public let tileIndexRange: ClosedRange<Int32> = 0x00...NPIL15IMAGE
 
-/// Sprite sheet is sparse (D62): tank rows + shells `0x00`-`0x65`,
-/// explosions `0x70`-`0x75`, builder frames `0x80`-`0x82`, crosshair/select
-/// `0x90`-`0x91`. Gaps (`0x66`-`0x6f`, `0x76`-`0x7f`, `0x83`-`0x8f`) are
+/// Sprite sheet is sparse (D62): tank rows + shells `0x00`-`0x6f` (v1.5.1 #114: shells now
+/// span the full 16-heading row, not just the 6 originally-named cells, matching the C
+/// reference's real `Sprites.png` asset), explosions `0x70`-`0x75`, builder frames
+/// `0x80`-`0x82`, crosshair/select `0x90`-`0x91`. Gaps (`0x76`-`0x7f`, `0x83`-`0x8f`) are
 /// unused cells, left transparent.
 public func isValidSpriteIndex(_ idx: Int32) -> Bool {
-    (0x00...SHELL5IMAGE).contains(idx) ||
+    (0x00...SHELL15IMAGE).contains(idx) ||
         (EXPLO0IMAGE...EXPLO5IMAGE).contains(idx) ||
         (BUILD0IMAGE...BUILD2IMAGE).contains(idx) ||
         (CROSSHIMAGE...SELETRIMAGE).contains(idx)
@@ -67,8 +68,8 @@ public func spriteGlyphRole(for index: Int32) -> GlyphRole? {
         let ownership = row / 2
         return .tank(heading: heading, ownership: ownership, destroyed: false)
     }
-    if (SHELL0IMAGE...SHELL5IMAGE).contains(index) {
-        return .shell(frame: Int(index - SHELL0IMAGE))
+    if (SHELL0IMAGE...SHELL15IMAGE).contains(index) {
+        return .shell(heading: Int(index - SHELL0IMAGE))
     }
     if (EXPLO0IMAGE...EXPLO5IMAGE).contains(index) {
         return .explosion(frame: Int(index - EXPLO0IMAGE))

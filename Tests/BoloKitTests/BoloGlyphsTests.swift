@@ -72,10 +72,12 @@ struct BoloGlyphsTests {
                 #expect(spriteGlyphRole(for: index) == nil)
             }
         }
-        #expect(validCount == 113)
+        // v1.5.1 #114: shells widened from 6 named cells to the full 16-heading row
+        // (`0x60`-`0x6f`), so `0x66`-`0x6f` is no longer a gap -- was 113, +10.
+        #expect(validCount == 123)
 
-        // The three known gap runs (D62) must be invalid.
-        for gap: ClosedRange<Int32> in [0x66...0x6f, 0x76...0x7f, 0x83...0x8f] {
+        // The two remaining known gap runs (D62, minus the now-closed shell gap) must be invalid.
+        for gap: ClosedRange<Int32> in [0x76...0x7f, 0x83...0x8f] {
             for index in gap {
                 #expect(!isValidSpriteIndex(index))
             }
@@ -125,7 +127,7 @@ struct BoloGlyphsTests {
     @Test("unused sprite gap cells are fully transparent")
     func unusedSpriteCellsAreTransparent() {
         let sheets = buildSheets()
-        for gap: ClosedRange<Int32> in [0x66...0x6f, 0x76...0x7f, 0x83...0x8f] {
+        for gap: ClosedRange<Int32> in [0x76...0x7f, 0x83...0x8f] {
             for index in gap {
                 let originX = cellCol(index) * 16
                 let originY = cellRow(index) * 16
@@ -256,6 +258,77 @@ struct BoloGlyphsTests {
             let cosineSimilarity = (offX * -Double(expected.x) + offY * -Double(expected.y)) / mag
             #expect(cosineSimilarity > 0.8, "heading \(heading) diverges from dir2vec")
         }
+    }
+
+    // MARK: - Shell heading convention (v1.5.1 #114)
+    //
+    // Issue #114: shells vanished for their whole flight when fired toward one of the 10
+    // `headingColumn` outputs the old 6-cell `.shell(frame:)` dispatch didn't cover. These
+    // three tests pin the fix down: every heading produces visible, oriented, similarly-sized
+    // art -- see `ImageIndex.swift`'s widened `SHELL0IMAGE...SHELL15IMAGE` range and
+    // `GlyphSource.swift`'s `.shell` case for the actual fix.
+
+    @Test("every headingColumn output maps to a populated, non-transparent shell sprite cell")
+    func shellSpriteCoversEveryHeadingColumn() {
+        // Sweep finely across a full turn, plus the 16 exact quantization boundaries --
+        // `headingColumn` is `Int32(dir/(kPif/8.0) + 0.5) % 16`, so every boundary and a dense
+        // sweep between them together exercise all 16 possible outputs.
+        var sampledHeadings = Set<Int32>()
+        var dir: Float = 0
+        while dir < 2 * kPif {
+            sampledHeadings.insert(headingColumn(dir))
+            dir += 0.01
+        }
+        for n in 0..<16 {
+            sampledHeadings.insert(headingColumn(Float(n) * (kPif / 8.0)))
+        }
+        #expect(sampledHeadings.count == 16, "expected the sweep to hit all 16 heading buckets")
+
+        for heading in sampledHeadings {
+            let index = SHELL0IMAGE + heading
+            #expect(isValidSpriteIndex(index), "heading bucket \(heading) (index \(index)) is not a valid sprite index")
+            let patch = renderGlyph(.shell(heading: Int(heading)))
+            let hasOpaquePixel = stride(from: 3, to: patch.pixels.count, by: 4).contains { patch.pixels[$0] != 0 }
+            #expect(hasOpaquePixel, "heading bucket \(heading) rendered a fully transparent shell")
+        }
+    }
+
+    @Test("shell art points toward dir2vec, sweeping the same way tank headings do")
+    func shellArtIsDirectional() {
+        // Unlike a tank's triangle (pixel mass sits opposite the tip), a shell's streak
+        // extends forward from a centered core, so its mass sits *with* dir2vec, not against
+        // it -- the sign is intentionally flipped from `allHeadingsMatchDir2Vec` above.
+        let east = centroidOffsetFromCenter(renderGlyph(.shell(heading: 0)))
+        #expect(east.0 > 0.3)
+        #expect(abs(east.1) < 0.3)
+
+        let north = centroidOffsetFromCenter(renderGlyph(.shell(heading: 4)))
+        #expect(north.1 < -0.3)
+        #expect(abs(north.0) < 0.3)
+
+        let west = centroidOffsetFromCenter(renderGlyph(.shell(heading: 8)))
+        #expect(west.0 < -0.3)
+        #expect(abs(west.1) < 0.3)
+
+        let south = centroidOffsetFromCenter(renderGlyph(.shell(heading: 12)))
+        #expect(south.1 > 0.3)
+        #expect(abs(south.0) < 0.3)
+    }
+
+    @Test("shell sprite size does not vary by heading (guards against reintroducing frame-index growth scaling)")
+    func shellSpriteSizeIsHeadingInvariant() {
+        func opaquePixelCount(_ heading: Int) -> Int {
+            let patch = renderGlyph(.shell(heading: heading))
+            return stride(from: 3, to: patch.pixels.count, by: 4).filter { patch.pixels[$0] != 0 }.count
+        }
+        let counts = (0..<16).map(opaquePixelCount)
+        let minCount = counts.min() ?? 0
+        let maxCount = counts.max() ?? 0
+        #expect(minCount > 0)
+        // A generous tolerance -- this guards against the old linear frame*0.3 growth (which
+        // varied opaque pixel count roughly 4x from index 0 to index 5), not against ordinary
+        // rasterization noise between headings.
+        #expect(maxCount <= minCount * 2, "shell sprite size varies too much by heading: \(counts)")
     }
 
     // MARK: - PNG round-trip (D77 -- PARITY's F1: nothing previously decoded an emitted PNG)

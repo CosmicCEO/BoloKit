@@ -49,12 +49,6 @@ private func sheetSrcRect(forIndex index: Int32) -> CGRect {
     return CGRect(x: col * tileSize, y: row * tileSize, width: tileSize, height: tileSize)
 }
 
-/// Sprite heading column, matching `GSBoloView.m`'s literal formula at every one of its
-/// heading-dependent draw calls: `(int)(dir/(kPif/8.0) + 0.5) % 16`.
-private func headingColumn(_ dir: Float) -> Int32 {
-    Int32(dir / (kPif / 8.0) + 0.5) % 16
-}
-
 public final class GameRenderView: NSView {
     private var state = GameState()
     private var tileGrid = TileGrid()
