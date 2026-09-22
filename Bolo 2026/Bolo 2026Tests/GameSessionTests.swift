@@ -11,6 +11,7 @@
 //  which a headless test never triggers anyway (no real display, `draw(_:)` never called).
 
 import CoreGraphics
+import Foundation
 import Testing
 import BoloKit
 import BoloNet
@@ -195,5 +196,150 @@ struct GameSessionTests {
         #expect(session.messages[0].text == EventLogText.disconnectedLocal)
         #expect(session.messages[0].to == EventLogText.gameTarget)
         #expect(session.messages[0].displayText == "disconnected")
+    }
+}
+
+// MARK: - Issue #85: the host's own player name
+
+/// #62 S4: once the host has told a guest its combat state (`SRTankStatus`), the host simulates
+/// that guest's tank, so the guest must stop simulating/reporting the same things itself.
+struct JoinTickThinningTests {
+    @Test func aGuestNotYetSimulatedByItsHostKeepsTheOldBehaviour() {
+        let policy = JoinTickThinning(hostSimulatesMe: false)
+        #expect(policy.sendsTileEntry && policy.sendsShellDamage && policy.runsOwnMovementWhileDead)
+        #expect(policy.runsOwnShellTick, "an older host never sends the guest its shells, so it keeps simulating them")
+    }
+
+    @Test func aGuestSimulatedByItsHostStopsReportingAndRespawningItself() {
+        let policy = JoinTickThinning(hostSimulatesMe: true)
+        #expect(!policy.sendsTileEntry && !policy.sendsShellDamage && !policy.runsOwnMovementWhileDead)
+        #expect(!policy.runsOwnShellTick, "the host simulates the guest's shells and sends them; the guest only applies them")
+    }
+}
+
+/// #62 S4: only a real network host simulates guest tanks; solo/local-only play never does.
+struct NetworkHostStateTests {
+    @Test func networkHostingTurnsOnHostSimulationOnACopy() {
+        let solo = GameState()
+        #expect(!solo.hostSimulatesRemotePlayers)
+        let hosted = networkHostState(from: solo)
+        #expect(hosted.hostSimulatesRemotePlayers)
+        #expect(!solo.hostSimulatesRemotePlayers, "the original (used for the local-only fallback) stays off")
+    }
+}
+
+struct HostPlayerNameTests {
+    @Test func storedNameIsUsedWhenNonEmpty() {
+        #expect(hostPlayerDisplayName(stored: "Ace") == "Ace")
+    }
+
+    @Test func missingOrEmptyStoredNameFallsBackToTheShippedDefault() {
+        #expect(hostPlayerDisplayName(stored: nil) == "Newbie")
+        #expect(hostPlayerDisplayName(stored: "") == "Newbie")
+    }
+}
+
+// MARK: - PR #95 nit: no per-tick FogState allocation when Hidden Mines is off
+
+struct HostRenderFogStateTests {
+    @Test func noEngineFogAndHiddenMinesOnFailsClosedWithAnEmptyFogState() {
+        let fog = hostRenderFogState(engineFog: nil, hiddenMines: true)
+        #expect(fog != nil)
+        #expect(fog?.fog.allSatisfy { $0 == 0 } == true)
+    }
+
+    @Test func noEngineFogAndHiddenMinesOffPassesNilSoNothingIsAllocated() {
+        #expect(hostRenderFogState(engineFog: nil, hiddenMines: false) == nil)
+    }
+
+    @Test func engineFogIsPassedThroughEitherWay() {
+        var engine = FogState()
+        engine.fog[7] = 1
+        #expect(hostRenderFogState(engineFog: engine, hiddenMines: true)?.fog[7] == 1)
+        #expect(hostRenderFogState(engineFog: engine, hiddenMines: false)?.fog[7] == 1)
+    }
+}
+
+// MARK: - Issue #92: a join client's own alliance changes
+
+private enum JoinHarnessError: Error { case noPort }
+
+@MainActor
+struct JoinPathAllianceTests {
+
+    private func makeHost() async throws -> (engine: HostGameEngine, port: UInt16) {
+        for _ in 0..<8 {
+            let port = UInt16.random(in: 49_152...65_000)
+            let tcp: HostListener
+            do { tcp = try await HostListener(port: port) } catch { continue }
+            let udp: HostDgramListener
+            do { udp = try await HostDgramListener(port: port) } catch { tcp.cancel(); continue }
+            var state = GameState()
+            var host = PlayerState()
+            host.name = "Host"
+            host.connected = true
+            host.used = true
+            host.dead = true
+            host.alliance = UInt16(1 << 0)
+            state.players = hostPlayerSlots(hostPlayer: host)
+            state.localPlayer = 0
+            state.local.respawnCounter = respawnTicks - 1
+            for y in 100..<120 { for x in 100..<120 { state.terrain.storage[y * 256 + x] = Terrain.grass0.rawValue } }
+            state.starts = [Start(x: 105, y: 105, dir: 0)]
+            return (HostGameEngine(initialState: state, listener: tcp, dgramListener: udp), port)
+        }
+        throw JoinHarnessError.noPort
+    }
+
+    private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+    }
+
+    /// The C client updates its own `alliance` mask locally, and the server's `SRSetAlliance` goes
+    /// to everyone *except* the sender, so a join client that waits for an echo never records its
+    /// own request: it kept showing the host as an enemy and had nothing to leave.
+    @Test func guestRequestingAndLeavingAnAllianceUpdatesItsOwnState() async throws {
+        let (engine, port) = try await makeHost()
+        engine.start()
+        defer { engine.stop() }
+
+        let joined = try await TCPSession.join(host: "127.0.0.1", port: port, name: "Guest", pass: "")
+        var initial = GameState()
+        initial.players = (0..<maxPlayers).map { _ in PlayerState() }
+        #expect(applyBoloPreamble(joined.preamble, mapData: joined.mapData, state: &initial))
+        let udp = try await UDPSession(host: joined.session.remoteHost, port: joined.session.remotePort)
+        let image = makeTrivialImage()
+        let session = GameSession(
+            tcpSession: joined.session, udpSession: udp, initialState: initial,
+            tilesImage: image, spritesImage: image
+        )
+        defer { udp.cancel(); joined.session.cancel() }
+        session.start()
+        // The host's own `SRPlayerJoin` broadcast reaches the joiner too and resets that slot's
+        // alliance to just its own bit (`recvSrPlayerJoin`). A host chat message sent afterwards
+        // arrives after it on the same ordered TCP stream, so seeing it proves the join is drained.
+        engine.submitLocalSendMessage(text: "sync", target: .everyone)
+        try await waitUntil(timeout: 10) { session.messages.contains { $0.text == "sync" } }
+        #expect(session.messages.contains { $0.text == "sync" })
+        let me = session.state.localPlayer
+        let hostBit = UInt16(1 << 0)
+
+        session.requestAlliance(hostBit)
+        #expect(session.state.players[me].alliance & hostBit != 0, "the guest must record its own alliance request")
+        try await waitUntil { engine.state.players[me].alliance & hostBit != 0 }
+        #expect(engine.state.players[me].alliance & hostBit != 0, "the host must learn of it")
+
+        // Make the alliance mutual: the leave message is only printed when the two were allied.
+        engine.submitRequestAlliance(players: UInt16(1 << me))
+        try await waitUntil { session.state.players[0].alliance & UInt16(1 << me) != 0 }
+        #expect(session.state.players[0].alliance & UInt16(1 << me) != 0, "the guest must see the host's alliance")
+
+        let messagesBeforeLeave = session.messages.count
+        session.leaveAlliance(hostBit)
+        #expect(session.state.players[me].alliance & hostBit == 0, "the guest must be able to leave")
+        #expect(session.messages.count > messagesBeforeLeave, "leaving must print a message")
+        try await waitUntil { engine.state.players[me].alliance & hostBit == 0 }
+        #expect(engine.state.players[me].alliance & hostBit == 0, "the host must learn of the departure")
     }
 }

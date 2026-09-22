@@ -357,14 +357,63 @@ public final class GameRenderView: NSView {
         }
     }
 
+    /// How many times `render` actually rebuilt `tileGrid` (a test hook for the reuse check).
+    private(set) var tileGridRebuildCount = 0
+
+    /// True when everything `resolvedTileGrid` reads is identical, so the previous grid is still
+    /// correct. Must list exactly the inputs of `displayTileGrid`/`fogResolvedTileGrid`: terrain
+    /// storage; each pill's position, armour and owner; each base's position and owner; the local
+    /// player; each player's `used`/`alliance` (via `testAlliance`); `hiddenMines`; and, when
+    /// `hiddenMines` is on, the `FogState` refcount and seen-tile arrays. Anything else in
+    /// `GameState` (ticks, counters, positions) deliberately does not count.
+    static func tileGridInputsEqual(
+        _ old: GameState, _ new: GameState, _ oldFog: FogState?, _ newFog: FogState?
+    ) -> Bool {
+        guard old.hiddenMines == new.hiddenMines, old.localPlayer == new.localPlayer,
+            old.pills.count == new.pills.count, old.bases.count == new.bases.count,
+            old.players.count == new.players.count,
+            old.terrain.storage == new.terrain.storage
+        else { return false }
+        for i in old.pills.indices {
+            let a = old.pills[i]
+            let b = new.pills[i]
+            if a.x != b.x || a.y != b.y || a.armour != b.armour || a.owner != b.owner { return false }
+        }
+        for i in old.bases.indices {
+            let a = old.bases[i]
+            let b = new.bases[i]
+            if a.x != b.x || a.y != b.y || a.owner != b.owner { return false }
+        }
+        for i in old.players.indices {
+            if old.players[i].used != new.players[i].used || old.players[i].alliance != new.players[i].alliance {
+                return false
+            }
+        }
+        guard new.hiddenMines else { return true }
+        switch (oldFog, newFog) {
+        case (nil, nil): return true
+        case let (a?, b?): return a.fog == b.fog && a.seenTiles == b.seenTiles
+        default: return false
+        }
+    }
+
     /// 7.3 calls this after each `runTick()`; this view schedules no redraw of its own (D82) --
     /// it only reacts to being handed a new snapshot. `fogState` is the rendering
     /// observer's own fog view (see this property's own doc comment above) -- `nil` unless
     /// `state.hiddenMines` is true and the host path supplies one.
     public func render(_ newState: GameState, fogState: FogState? = nil) {
+        let previousState = state
+        let previousFogState = self.fogState
         state = newState
         self.fogState = fogState
-        tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
+        // Rebuilding the 256x256 grid costs about 9 ms (18 ms with fog) in a Debug build, most of a
+        // 20 ms tick, and most ticks change nothing it reads -- so reuse it when nothing did (#89).
+        if tileGridRebuildCount == 0
+            || !Self.tileGridInputsEqual(previousState, newState, previousFogState, fogState)
+        {
+            tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
+            tileGridRebuildCount += 1
+        }
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
             remoteTankSmoothers[i, default: RemotePositionSmoother()]
@@ -698,14 +747,10 @@ public final class GameRenderView: NSView {
         for y in minY...maxY {
             for x in minX...maxX {
                 let dst = CGRect(x: x * tileSize, y: y * tileSize, width: tileSize, height: tileSize)
-                let index = mapimage(tileGrid, Int32(x), Int32(y))
-                guard index >= 0 else {
-                    // mapimage()'s "tile unseen" sentinel (D64) -- reachable now under fog
-                    // (a never-seen tile's `Tile.unknown` resolves here), painted black.
-                    ctx.setFillColor(gray: 0, alpha: 1)
-                    ctx.fill(dst)
-                    continue
-                }
+                // mapimage()'s "tile unseen" sentinel (D64) -- reachable now under fog (a
+                // never-seen tile's `Tile.unknown` resolves here) -- is drawn as plain sea, the
+                // same look a guest shows outside its view, rather than black.
+                let index = unseenTileAsSeaImage(mapimage(tileGrid, Int32(x), Int32(y)))
                 if let cell = tilesImage.cropping(to: sheetSrcRect(forIndex: index)) {
                     blit(cell, in: dst, ctx)
                 }

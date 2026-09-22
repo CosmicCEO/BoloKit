@@ -275,6 +275,8 @@ public final class TCPSession: @unchecked Sendable {
         case .baseControl: return RawMessage(opcode: opcode, bytes: try await rest(SRBaseControl.wireSize))
         case .pause: return RawMessage(opcode: opcode, bytes: try await rest(SRPause.wireSize))
         case .revealTerrain: return RawMessage(opcode: opcode, bytes: try await rest(SRRevealTerrain.wireSize))
+        case .tankStatus: return RawMessage(opcode: opcode, bytes: try await rest(SRTankStatus.wireSize))
+        case .tankShots: return RawMessage(opcode: opcode, bytes: try await rest(SRTankShots.wireSize))
         }
     }
 
@@ -487,6 +489,20 @@ public final class TCPSession: @unchecked Sendable {
                 throw TCPSessionError.malformedMessage
             }
             recvSrRevealTerrain(x: Int(msg.x), y: Int(msg.y), terrain: terrain, state: &state)
+        case .tankStatus:
+            guard let msg = SRTankStatus.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrTankStatus(
+                armour: Int(msg.armour), shells: Int(msg.shells), mines: Int(msg.mines), trees: Int(msg.trees),
+                range: msg.range, dead: msg.dead, boat: msg.boat, kickDir: msg.kickDir, kickSpeed: msg.kickSpeed,
+                teleport: msg.teleport.map { (x: $0.x, y: $0.y, dir: $0.dir) }, state: &state
+            )
+        case .tankShots:
+            guard let msg = SRTankShots.decode(bytes) else { throw TCPSessionError.malformedMessage }
+            recvSrTankShots(
+                shells: msg.shells.map { (point: Vec2f(x: $0.x, y: $0.y), dir: $0.dir, range: $0.range, boat: $0.boat, pill: $0.pill) },
+                explosions: msg.explosions.map { (point: Vec2f(x: $0.x, y: $0.y), counter: Int($0.counter)) },
+                state: &state
+            )
         }
     }
 

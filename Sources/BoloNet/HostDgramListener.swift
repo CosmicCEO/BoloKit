@@ -236,9 +236,16 @@ public func processDgramPacket(
         await table.setDgramAddress(updatedAddress, for: player)
         await table.setDgramConnection(connection, for: player)
 
+        // #62 S3: with host-simulated remote players, other peers must see the host's authoritative
+        // combat state (dead, boat, shells, kick), not the guest's claim, so relay an update the host
+        // assembles from its own state instead of the guest's bytes verbatim (T-8).
+        var relayBytes = bytes
+        if appliedInFull, state.hostSimulatesRemotePlayers {
+            relayBytes = assembleClUpdate(player: player, state: state, seq: await table.allSeqsAsUInt32()).encode()
+        }
         for target in relayTo {
             if let targetConnection = await table.dgramConnection(for: target) {
-                try? await sendBytes(bytes, over: targetConnection)
+                try? await sendBytes(relayBytes, over: targetConnection)
             }
         }
     }

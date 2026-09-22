@@ -201,6 +201,49 @@ public func recvSrRevealTerrain(x: Int, y: Int, terrain: Terrain, state: inout G
     state.terrain[x, y] = terrain
 }
 
+/// #62 S4, no C counterpart: applies the host's authoritative combat state to the local
+/// player's own slot (the host simulates guest tanks, `docs/CONSTRAINTS.md`). A respawn
+/// `teleport` moves the tank and stops it, so the guest (which owns its movement) jumps to the
+/// host-chosen spawn point atomically.
+public func recvSrTankStatus(
+    armour: Int, shells: Int, mines: Int, trees: Int, range: Float, dead: Bool, boat: Bool,
+    kickDir: Float, kickSpeed: Float, teleport: (x: Float, y: Float, dir: Float)?, state: inout GameState
+) {
+    let player = state.localPlayer
+    guard state.players.indices.contains(player) else { return }
+    state.local.armour = armour
+    state.local.shells = shells
+    state.local.range = range
+    state.players[player].mines = mines
+    state.players[player].trees = trees
+    state.players[player].dead = dead
+    state.players[player].boat = boat
+    state.players[player].kickDir = kickDir
+    state.players[player].kickSpeed = kickSpeed
+    if let teleport {
+        state.players[player].tank = Vec2f(x: teleport.x, y: teleport.y)
+        state.players[player].dir = teleport.dir
+        state.players[player].speed = 0
+        state.players[player].turnSpeed = 0
+    }
+}
+
+/// #62 S5: port-only (no C counterpart). The host simulates a guest's tank, so the guest's OWN
+/// in-flight shells and explosions live on the host; this replaces the local player's lists with
+/// the host's. Other players' shells/explosions arrive via relayed `CLUpdate`s and are untouched.
+public func recvSrTankShots(
+    shells: [(point: Vec2f, dir: Float, range: Float, boat: Bool, pill: Bool)],
+    explosions: [(point: Vec2f, counter: Int)],
+    state: inout GameState
+) {
+    let player = state.localPlayer
+    guard state.players.indices.contains(player) else { return }
+    state.players[player].shells = shells.map {
+        Shell(point: $0.point, dir: $0.dir, range: $0.range, owner: UInt8(player), boat: $0.boat, pill: $0.pill)
+    }
+    state.players[player].explosions = explosions.map { Explosion(point: $0.point, counter: $0.counter) }
+}
+
 /// Ported from `recvsrgrow()` (`client.c:1686-1730`).
 public func recvSrGrow(x: Int, y: Int, state: inout GameState) {
     switch state.terrain[x, y] {

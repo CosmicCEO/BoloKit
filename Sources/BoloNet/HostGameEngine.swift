@@ -152,6 +152,16 @@ public final class HostGameEngine: @unchecked Sendable {
     /// unconnected slot never allocates a grid it doesn't need.
     private var fogStates: [Int: FogState] = [:]
 
+    /// #62 S4: the last `SRTankStatus` sent to each remote slot, and whether that slot was dead
+    /// when it was sent, so `tankStatusSends()` only sends on change and can attach a respawn
+    /// teleport on the dead -> alive transition.
+    private var lastTankStatus: [Int: SRTankStatus] = [:]
+    private var lastTankDead: [Int: Bool] = [:]
+    /// #62 S5: the last `SRTankShots` sent to each remote slot (its own shells and explosions),
+    /// so `tankShotsSends()` sends only on change -- including one final empty list when the last
+    /// shell lands or the last explosion ends, which is what clears the guest's copy.
+    private var lastTankShots: [Int: SRTankShots] = [:]
+
     /// Read-only access to a connected player slot's current `FogState`, for rendering
     /// (Phase 3) and testing. `nil` when `state.hiddenMines` is false or the slot has no
     /// tracked fog state yet.
@@ -659,6 +669,7 @@ public final class HostGameEngine: @unchecked Sendable {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
+        let terrainBeforeTick = state.terrain.storage
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state,
@@ -699,6 +710,28 @@ public final class HostGameEngine: @unchecked Sendable {
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
 
+        // Terrain the host's own simulation changed this tick (mine detonations, builder work,
+        // shells): `runTick`'s terrain hooks are sound-only or unwired (the documented B.5d gap), so
+        // remote players were never told. Send each changed tile as an absolute update to whoever can
+        // see it, redacting mines when Hidden Mines is on. Only this tick's own changes appear here:
+        // remote players' actions are applied by `dispatchHostMessage` outside this window and
+        // broadcast themselves.
+        if state.terrain.storage != terrainBeforeTick {
+            for index in state.terrain.storage.indices where state.terrain.storage[index] != terrainBeforeTick[index] {
+                let x = index % 256
+                let y = index / 256
+                let real = Terrain(rawValue: state.terrain.storage[index]) ?? .sea
+                let sent = hiddenMinesSnapshot ? unminedTerrain(real) : real
+                let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: fogStates)
+                maskedPending.append((mask, SRRevealTerrain(x: UInt8(x), y: UInt8(y), terrain: UInt8(sent.rawValue)).encode()))
+            }
+        }
+
+        var statusSends: [(player: Int, bytes: [UInt8])] = []
+        if state.hostSimulatesRemotePlayers {
+            statusSends = tankStatusSends() + tankShotsSends()
+        }
+
         var fogReveals: [(player: Int, bytes: [UInt8])] = []
         if state.hiddenMines {
             fogReveals = updateFogVision()
@@ -721,6 +754,9 @@ public final class HostGameEngine: @unchecked Sendable {
         }
         for (mask, bytes) in maskedPending {
             await table.sendToMask(mask, bytes)
+        }
+        for (player, bytes) in statusSends {
+            await table.send(bytes, to: player)
         }
         for (player, bytes) in fogReveals {
             await table.send(bytes, to: player)
@@ -798,6 +834,65 @@ public final class HostGameEngine: @unchecked Sendable {
         BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
     }
 
+
+    /// #62 S4: each connected remote's own authoritative combat state, as `SRTankStatus`, sent
+    /// only when it differs from the last one sent to that slot (so death, damage, firing, kick
+    /// and refuel all go out immediately, and an idle tank costs nothing). A dead -> alive
+    /// transition (host-side respawn) attaches the new position as a teleport, since the guest
+    /// owns its own movement and would otherwise never learn where the host respawned it.
+    private func tankStatusSends() -> [(player: Int, bytes: [UInt8])] {
+        var sends: [(player: Int, bytes: [UInt8])] = []
+        for player in state.players.indices where player != state.localPlayer {
+            guard state.players[player].connected else {
+                lastTankStatus[player] = nil
+                lastTankDead[player] = nil
+                continue
+            }
+            let p = state.players[player]
+            let stats = state.localStats[player]
+            let respawned = lastTankDead[player] == true && !p.dead
+            let status = SRTankStatus(
+                armour: UInt8(clamping: max(stats.armour, 0)), shells: UInt8(clamping: max(stats.shells, 0)),
+                mines: UInt8(clamping: max(p.mines, 0)), trees: UInt8(clamping: max(p.trees, 0)),
+                range: stats.range, dead: p.dead, boat: p.boat, kickDir: p.kickDir, kickSpeed: p.kickSpeed,
+                teleport: respawned ? SRTankStatus.Teleport(x: p.tank.x, y: p.tank.y, dir: p.dir) : nil
+            )
+            lastTankDead[player] = p.dead
+            if lastTankStatus[player] != status {
+                lastTankStatus[player] = status
+                sends.append((player, status.encode()))
+            }
+        }
+        return sends
+    }
+
+    /// #62 S5: each connected remote's own in-flight shells and explosions as `SRTankShots`, sent
+    /// only when they differ from the last list sent to that slot. The host is the only simulator
+    /// of these, so the guest just applies what arrives (a shell moves every tick, so a flying
+    /// shell means one small message per tick; nothing is sent while there are none).
+    private func tankShotsSends() -> [(player: Int, bytes: [UInt8])] {
+        var sends: [(player: Int, bytes: [UInt8])] = []
+        for player in state.players.indices where player != state.localPlayer {
+            guard state.players[player].connected else {
+                lastTankShots[player] = nil
+                continue
+            }
+            let p = state.players[player]
+            let shots = SRTankShots(
+                shells: p.shells.map {
+                    SRTankShots.ShellEntry(x: $0.point.x, y: $0.point.y, dir: $0.dir, range: $0.range, boat: $0.boat, pill: $0.pill)
+                },
+                explosions: p.explosions.map {
+                    SRTankShots.ExplosionEntry(x: $0.point.x, y: $0.point.y, counter: UInt8(clamping: max($0.counter, 0)))
+                }
+            )
+            if (lastTankShots[player] ?? SRTankShots(shells: [], explosions: [])) != shots {
+                lastTankShots[player] = shots
+                sends.append((player, shots.encode()))
+            }
+        }
+        return sends
+    }
 
     /// v1.5.0 #1 (fix pass, `/code-review max` on PR #56): recomputes every connected player
     /// slot's `FogState` for this tick and returns the unicast `SRRevealTerrain` sends this

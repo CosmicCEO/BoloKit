@@ -1,14 +1,19 @@
-# Two-Mac test: hidden-mines fog-of-war (v1.5.0, #1)
+# Two-Mac test: hidden-mines fog-of-war and host-simulated guest (v1.5.1)
 
-Manual session that closes the one unchecked box from PR #56. Run it once, fill in the
-results table at the bottom, then update `docs/STATUS.md`.
+Manual session on two physical Macs. Run it once, fill in the results table at the bottom, then update
+`docs/STATUS.md`. It replaces the v1.5.0 script, which predicted an all-black guest map and predated the
+host-simulated guest tank (#62), so most of its predictions no longer hold.
 
-**Roles.** Mac A = host (Jerod's MacBook). Mac B = guest (Apple-silicon MacBook, macOS 26).
-If Mac A cannot bind a listener (Step 1), swap roles and note it.
+**Roles.** Mac A = host. Mac B = guest. Record the hardware of each (a VM counts, note it). If Mac A cannot bind a
+listener (Step 1), swap roles and note it.
 
-**Design under test.** Fog is host-authoritative (`docs/CONSTRAINTS.md`, "Fog-of-war"): the host
-tracks one `FogState` per player slot and redacts terrain data on the wire. This is a
-deliberate deviation from the C oracle's client-side filter, so there is no C behavior to compare against.
+**Design under test.**
+- Fog is host-authoritative (`docs/CONSTRAINTS.md`, "Fog-of-war"): the host tracks one `FogState` per player slot and
+  redacts terrain on the wire. Deliberate deviation from the C oracle, so there is no C behaviour to compare against.
+- The host simulates the guest's tank, shells and mines (`docs/CONSTRAINTS.md`, host-simulated guest tanks, #59/#62).
+  The guest is a thin client for combat: it sends input, the host answers with `SRTankStatus`.
+- **Accepted for v1.5.1 (#86/#90, closed not planned):** the guest is not fogged for tanks and pillboxes/bases. It
+  will see the host tank, and other pills/bases, outside its own vision. This is expected, not a failure.
 
 ## Facts the steps rely on
 
@@ -16,23 +21,25 @@ deliberate deviation from the C oracle's client-side filter, so there is no C be
 |------|-------|
 | Hidden Mines toggle | Host tab, Game Settings. Off by default. |
 | Port | 50000 (TCP and UDP). Leave Announce on Tracker and UPnP **off** for a LAN test. |
-| Map | Bundled training map. One start point, so **both players spawn on the same tile** (102,121). No pre-placed mines: every mine is laid by a player. |
+| Map | Note which map you use. Note whether both tanks spawn on the same tile or on different start points. |
 | Keys | W accelerate, A/D turn, Space shoot, **Shift lay mine**, X centre on tank, arrow keys scroll. Builder: keys 1-5 (5 = mine), then click a tile. |
-| Fog look (host) | Never-seen tile = solid black. Hidden mine = plain terrain. Remote tanks/shells fade near the fog edge. Your own tank is always opaque. |
+| Fog look (host) | Never-seen tile = plain sea (same blue a guest shows off the map). Hidden mine = plain terrain. Remote tanks/shells fade near the fog edge. Your own tank is always opaque. |
+| Fog look (guest) | Terrain the host has revealed to it, blue elsewhere. Tanks and pills/bases are drawn even outside vision (accepted, above). |
 | Vision | 29x29 tiles around a tank. A hidden mine within 2.0 tiles of your tank is revealed and **stays** revealed. |
-| Own mines | A mine you laid is hidden from **you** too until you come back within 2.0 tiles. Not seeing your own mine at range is expected. |
-| Build id | `MARKETING_VERSION` is still 1.2.3, so the About box cannot confirm the build. Use the git SHA. |
+| Mines | A mine within 2.0 tiles of a player's own tank is revealed to that player at once and **stays** revealed. So a mine you lay is always visible to you, and another player sees it only once their tank has come within 2.0 tiles. |
+| Build id | `MARKETING_VERSION` still says 1.2.3. Use the git SHA (or the Desktop app name). |
 
 ## 0. Setup (both Macs)
 
-1. Build the same commit on both. Record it: `git rev-parse --short HEAD` (must be `daa49b7` or later on `main`).
-   - Preferred: clone and build on Mac B (needs Xcode):
-     `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration Debug build`
-   - Alternative: copy Mac A's built `.app` to Mac B. Mac B must be registered in the Apple Development
-     provisioning profile. The app is not notarized: right-click, Open. If it still refuses, `xattr -cr <app>`.
-2. Put both Macs on the same LAN and subnet.
-3. Mac A: `ipconfig getifaddr en0` (use the interface you are actually on). Write the IP down.
-4. On first join, Mac B shows a **Local Network** prompt. Allow it (System Settings, Privacy & Security, Local Network). If Mac A's firewall prompts for incoming connections, allow it.
+1. Run the same build on both and record its SHA. For v1.5.1 use the integration build until the stack is merged
+   into `main`, then any `main` build at or after the merge.
+   - Preferred: build on each Mac: `xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration Debug ENABLE_USER_SCRIPT_SANDBOXING=NO build`
+   - Alternative: copy the built `.app` to Mac B. Mac B must be in the Apple Development provisioning profile. Not
+     notarized: right-click, Open. If it still refuses, `xattr -cr <app>`.
+2. Same LAN and subnet.
+3. Mac A: `ipconfig getifaddr en0` (or the interface in use). Write the IP down.
+4. First join: Mac B shows a **Local Network** prompt. Allow it (System Settings, Privacy & Security, Local Network).
+   If Mac A's firewall prompts, allow it. If the first join fails and the second works, note it.
 
 ## 1. Preflight: can the host bind? (gate)
 
@@ -43,69 +50,115 @@ Mac A: New Game, Host tab. Hidden Mines **off**, tracker and UPnP **off**, port 
 | Game screen | **No** orange banner "Running local-only -- hosting is unavailable on this system". |
 | Mac A: `lsof -nP -iTCP:50000 -sTCP:LISTEN` | Shows the app listening. |
 | Mac B: `nc -vz <MacA-IP> 50000` | Succeeds. |
-| Mac B: `dns-sd -B _bolo2026._tcp` | Lists the game (Bonjour is optional; manual IP is enough). |
 
-**Fail** (banner, or `nc` refused) = the listener could not bind. The failure is silent: the app quietly
-falls back to a solo local game and logs nothing. Builds before the `fix-listener-einval` change always fail
-here (a code bug, not macOS: the port was set twice), so confirm both Macs run a build that includes it. If a
-fixed build still fails, quit, swap roles (Mac B hosts, Mac A joins) and repeat. If neither binds, stop and record it.
+Fail = the listener could not bind and the app fell back to a solo local game. Swap roles and repeat, and record
+whether the other Mac can join (a VM host may refuse a real Mac; #93). If neither binds, stop and record it.
 
-## 2. Control run: Hidden Mines OFF (default unchanged)
+## 2. Control run: Hidden Mines OFF
 
-1. Host keeps Hidden Mines off and starts hosting (Step 1 state is fine).
-2. Guest: New Game, Join tab. Enter host IP, port 50000, a player name. Join. Progress runs Connecting, Sending join request, Receiving game info, Receiving map, Joined.
-3. Both screens show the full map. Host presses Shift: the mine glyph draws immediately and stays visible.
-4. Quit both to menu.
+1. Host keeps Hidden Mines off and starts hosting.
+2. Guest: New Game, Join tab. Host IP, port 50000, a player name. Join. Progress runs Connecting, Sending join request,
+   Receiving game info, Receiving map, Joined.
+3. Both screens show the full map, and each shows the other player's tank and correct name.
+4. **Guest fires** (Space): shells fly, the ammo count on the guest HUD drops. **Guest lays a mine** (Shift): the mine
+   shows and the mine count drops. Host presses Shift: the mine glyph draws immediately.
+5. Quit both to menu.
 
-Pass = join works and nothing is hidden. Errors you might see: "Connection Reset by Peer.", "The attempt to connect was forcefully rejected." (refused), "Connection establishment timed out...", "Password rejected.", "Server version doesn't match." (build mismatch: recheck Step 0).
+Pass = join works, nothing is hidden, and the guest can fire and lay mines. Errors you might see: "Connection Reset by
+Peer.", "The attempt to connect was forcefully rejected." (refused), "Connection establishment timed out...",
+"Password rejected.", "Server version doesn't match." (build mismatch: recheck Step 0).
+
+## 2A. Guest combat (host-simulated tanks), Hidden Mines OFF
+
+Host hosts, guest joins, both drive apart so the tanks no longer overlap. Watch the guest HUD (shells, mines, armour) and both event logs.
+
+| ID | Action | Expected |
+|---|--------|----------|
+| C1 | Guest fires (Space) several times. | Guest shells counter drops. The guest sees its **own** shells fly and land. The host sees them too. |
+| C2 | Guest presses Q and E. | The guest crosshair range changes; shells land nearer or farther. |
+| C3 | Guest drives into deep water without a boat. | It drowns (explosion, dead) and respawns. Leaving water on a boat does not leave a stray barge behind. |
+| C4 | Guest lays a mine (Shift), moves off, host drives onto it. Then host lays one and the guest drives onto it. | Each mine detonates. Damage shows on **both** screens and in the HUD armour of the tank that hit it. The tile becomes a crater on both. |
+| C5 | While driving and leaving a laid mine tile, watch the guest tank ([#91](https://github.com/CosmicCEO/BoloKit/issues/91)). | Note any push-back or resistance leaving a tile (like leaving a boat onto shore). Expected: none. |
+| C6 | Host shoots the guest until it is hit. | Guest armour drops in its HUD and the tank is nudged back a little (kick). |
+| C7 | Guest is destroyed (shells or mines). | Guest sees its **own** explosion, then respawns at the start tile. HUD armour and shells refill to full and track the host's values. The host sees the guest respawn at the new spot (no ghost at the death spot). |
+| C8 | Both request an alliance with each other (Alliances). Then the guest, then the host, leaves it. | Both screens show Allied when formed and Hostile after leaving ([#92](https://github.com/CosmicCEO/BoloKit/issues/92)). Event-log messages appear on **both** Macs. |
+| C9 | Both send a message (Messages). | Each arrives on the other Mac. |
+| C10 | Check the names. | Guest sees the host name (roster and label near the host tank); host sees the guest name. |
 
 ## 3. Fog run: Hidden Mines ON
 
-Host: turn **Hidden Mines on**, Start Hosting again. Guest: rejoin. Take a screenshot of both screens at each numbered check.
+Host: turn **Hidden Mines on**, Start Hosting again. Guest: rejoin. Screenshot both screens at each check.
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Both join and spawn at (102,121). Host drives north-west, guest east, at least 20 tiles apart. | Join succeeds. Both tanks move. |
-| 2 | Host looks at the whole map. | Solid black outside roughly a 29x29 area around the host tank. Nothing revealed elsewhere. |
-| 3 | Guest looks at its screen. **Record exactly what it shows.** | **Predicted: the guest map is all black.** The join path renders with no `FogState` (`GameSession.swift:235,540,707`) and `GameRenderView.render` fails closed to all-unknown (:353-365). If black, note it and use gameplay checks below instead of guest visuals. If it shows terrain, record how much. |
-| 4 | Host presses Shift, drives about 10 tiles away, then returns to within 2 tiles of the spot. | Mine is not visible at range. It appears when the tank is within 2 tiles, and **stays** after the tank leaves (sticky reveal). |
-| 5 | Host lays a mine, both move away. Guest, without ever approaching it, drives onto that tile. | The mine detonates (explosion, guest tank damage, event log). The guest never displays that mine beforehand. |
-| 6 | Host watches the guest tank approach the edge of host vision. | Guest tank fades in with distance. Its name label appears only when close. |
-| 7 | Both request an alliance with each other (Alliances button). Then break it. | On forming: host fog opens around the guest's position within about 1 tick. On breaking: that extra vision recedes back to black. |
-| 8 | Allied again, guest quits to menu. Host looks at the area around where the guest was. Guest rejoins. | Vision from the guest recedes after it leaves. On rejoin the guest starts from fresh fog and inherits none of its previous reveals. |
-| 9 | Guest changes terrain far outside host vision (chop or plant trees, build). Host later drives there. | Host does not see the change until it arrives, then shows current terrain. Best effort: mark N/A if not observable. |
-| 10 | Both quit to menu. | No crash, no stuck connection, both return to the menu cleanly. |
+| 1 | Both join. Drive them at least 20 tiles apart (host north-west, guest east). | Join succeeds. Both tanks move on both screens. Record whether the first W press from rest moves each tank at once (#105 is open and not reproduced: note if Mac A was parked on the spawn tile and whether Mac B started from rest). |
+| 2 | Host looks at the whole map. | Plain sea outside roughly a 29x29 area around the host tank. Nothing revealed elsewhere. Same blue as the guest's off-map area. |
+| 3 | Guest looks at its screen. | Terrain the host has revealed to it, blue elsewhere. **The host tank and other pills/bases are visible outside the guest's vision: accepted (#86/#90).** Record anything else that differs. |
+| 4 | Host presses Shift, then drives about 10 tiles away. Look at both screens. | The host still sees its own mine (revealed when laid, sticky). The guest, far away, does not see it. |
+| 5 | Host lays a mine, both move away. Guest drives onto that tile. | The guest does not see the mine until its tank is within 2 tiles. It then detonates (explosion, guest damage on the guest HUD, event log). Record whether it detonated. |
+| 6 | Guest lays a mine (Shift) and drives away. | The guest's mine count drops by one. The host sees that mine only once its own tank is within 2 tiles, and no "mine laid" message or glyph gives it away at range (#106). |
+| 7 | Guest fires at the host tank, then the host fires at the guest. | Both shots fire and hit. Damage and armour update on the right HUD. Ammo drops on the shooter's HUD. |
+| 8 | Host tank is destroyed and respawns while the guest watches. | The guest draws the host tank at its new spot as soon as it respawns, not at the old death spot (#61). |
+| 9 | Host watches the guest tank approach the edge of host vision. | Guest tank fades in with distance on the host. Its name label appears only when close. |
+| 10 | Both request an alliance with each other (Alliances button). Then break it. | Both screens agree on allied/enemy (#92); either side can leave. On forming, host fog opens around the guest within about 1 tick. On breaking, that extra vision recedes to sea. |
+| 11 | Allied again, guest quits to menu. Host looks where the guest was. Guest rejoins. | Vision from the guest recedes after it leaves. On rejoin the guest starts from fresh fog and inherits none of its previous reveals. The rejoined guest's screen updates, and its tank responds to controls well past 2 tiles from spawn (#113). Try one rejoin with a new name and one with the same name. |
+| 12 | Guest changes terrain far outside host vision (trees, build). Host later drives there. | Host does not see the change until it arrives, then shows current terrain. Mark N/A if not observable. |
+| 13 | Host quits to menu while the guest is in the game. | Guest stays in the game view. Open Messages on the guest: a "disconnected" line appears (#107). |
+| 14 | Both quit to menu. | No crash, no stuck connection, both return to the menu cleanly. |
+| 15 | Guest joins. Start a timer at "Joined". | Note the **seconds until terrain draws** on the guest ([#89](https://github.com/CosmicCEO/BoloKit/issues/89), was 3-5 s). Join succeeds and both tanks move. |
+| 16 | Guest explores into unseen terrain. | New terrain draws promptly. Note any visible lag ([#89](https://github.com/CosmicCEO/BoloKit/issues/89)). |
+| 17 | Watch a tree grow while both see it, then drive one Mac far away and back. | Growth matches on both screens where both can see. Distant trees update only when they come back into view. |
 
 Reading the results:
-- Check 3 black is a **finding**, not a setup error. Redaction on the wire is implemented, but no client-side display of seen tiles is wired. Checks 4-5 on the guest then have to be judged by gameplay (does it explode, does the log say so), not by looking.
+- Check 3 showing terrain is the expected v1.5.1 behaviour (the v1.5.0 script predicted all black; #75 fixed that).
+- Mines: the rule is "revealed to a player within 2.0 tiles of their own tank, and sticky". A mine you lay is visible to you at once; the other player must be within 2.0 tiles to see it. To test hiding, look from the OTHER player's screen.
 - The known deferred gap (pill and base capture, build and deploy are not vision sources) is not part of this run.
+- A guest that sees the host tank far away is the accepted leak, not a Fail. Say so in the notes if it bothers you;
+  reopening it is a ruling change, not a bug.
 
 ## 4. Diagnostics if something fails
 
 - Screenshots of both screens, with wall-clock time and what you had just done.
-- `log stream --level debug --signpost --predicate 'subsystem == "com.cosmicceo.Bolo-2026"'` on each Mac. Expect very little: the only text logs are tracker and UPnP lines. Nothing logs listener bind, joins, fog reveals or mines.
+- `log stream --level debug --signpost --predicate 'subsystem == "com.cosmicceo.Bolo-2026"'` on each Mac. Expect very little:
+  the only text logs are tracker and UPnP lines. Nothing logs listener bind, joins, fog reveals or mines.
 - Host: `lsof -nP -iTCP:50000` to see whether the guest connection is up.
 - No debug overlay exists.
 
 ## 5. Results (fill in)
 
-Date: ____  Build SHA (Mac A / Mac B): ____ / ____  Host was: Mac ___
+Date: ____  Build SHA (Mac A / Mac B): ____ / ____  Host was: Mac ___  Map: ____
 
 | Step / check | Pass / Fail / N/A | Notes, screenshots |
 |--------------|-------------------|--------------------|
 | 1 Preflight bind | | |
 | 2 Control run | | |
-| 3.1 | | |
-| 3.2 | | |
-| 3.3 (guest view) | | |
-| 3.4 | | |
-| 3.5 | | |
-| 3.6 | | |
-| 3.7 | | |
-| 3.8 | | |
-| 3.9 | | |
-| 3.10 | | |
+| 2A C1 | | |
+| 2A C2 | | |
+| 2A C3 | | |
+| 2A C4 | | |
+| 2A C5 | | |
+| 2A C6 | | |
+| 2A C7 | | |
+| 2A C8 | | |
+| 2A C9 | | |
+| 2A C10 | | |
+| 3.1 Join, first move | | |
+| 3.2 Host fog look | | |
+| 3.3 Guest view | | |
+| 3.4 Sticky mine reveal | | |
+| 3.5 Guest hits host mine | | |
+| 3.6 Guest mine, no announce | | |
+| 3.7 Shots both ways | | |
+| 3.8 Host respawn seen by guest | | |
+| 3.9 Guest fades at host edge | | |
+| 3.10 Alliance both sides | | |
+| 3.11 Guest leave and rejoin | | |
+| 3.12 Far terrain change | | |
+| 3.13 Host quit message | | |
+| 3.14 Clean quit | | |
+| 3.15 Terrain draw time (seconds) | | |
+| 3.16 Exploring lag | | |
+| 3.17 Tree growth | | |
 
-After the run: replace the "Not verified: manual two-peer hidden-mines session" line in `docs/STATUS.md`
-with the outcome, and file a GitHub issue for each Fail (new patch or release milestone, per
-`docs/STATUS.md` "How we track work"). A confirmed black guest map (check 3.3) is its own issue.
+After the run: put the outcome in `docs/STATUS.md`, and file a GitHub issue for each Fail (milestone "v1.5.1 - Live
+play fixes", per `docs/STATUS.md` "How we track work").
