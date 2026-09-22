@@ -136,6 +136,7 @@ public final class GameRenderView: NSView {
     /// explicitly supplied.
     let liveMetalTerrainRenderer: MetalTileRenderer?
     private var liveMetalOverlay: LiveMetalTerrainOverlay?
+    private var liveMetalOverlayObserversInstalled = false
 
     public init(
         tilesImage: CGImage, spritesImage: CGImage, renderer: TileRenderer = CGContextTileRenderer(),
@@ -630,10 +631,52 @@ public final class GameRenderView: NSView {
         // draws only sprites when this overlay is active) -- a plain `addSubview` appends to
         // the end of the subview list, which AppKit draws *last*, i.e. on *top*, the wrong
         // side of the document view (which draws the sprites this needs to stay under).
-        overlay.mtkView.frame = scrollView.bounds
-        overlay.mtkView.autoresizingMask = [.width, .height]
         scrollView.addSubview(overlay.mtkView, positioned: .below, relativeTo: scrollView.contentView)
         liveMetalOverlay = overlay
+        installLiveMetalOverlayObserversIfNeeded(on: scrollView)
+        syncLiveMetalOverlayFrame()
+    }
+
+    /// **Live-evaluation bug fix (first eval build, `d49ca48`):** the original implementation
+    /// sized `overlay.mtkView.frame` to `scrollView.bounds` (the *whole* scroll view, chrome
+    /// included) and tracked resize via `autoresizingMask`. `GameView`'s HUD `safeAreaInset`s
+    /// give this scroll view real, non-zero `contentInsets` (top 48/left 56/right 228 + a
+    /// bottom inset, measured at `:227-234`/`:745-749` above) -- so that frame was systematically
+    /// larger than the actual visible map region `renderLiveTerrain`'s `visibleRect` describes,
+    /// by an amount that shrinks proportionally as the window grows. `MetalTileRenderer
+    /// .renderLiveTerrain`'s `scale = targetTexture.width / visibleRect.width` then baked that
+    /// mismatch straight into the terrain's on-screen size -- exactly the reported symptom
+    /// ("elements scale with the window while the map does not"): the CPU-drawn sprites already
+    /// used the correct, inset-excluding `visibleRect`; only the terrain overlay's backing
+    /// geometry was wrong.
+    ///
+    /// Fixed by sizing/positioning the `MTKView` to `scrollView.contentView.frame` -- the clip
+    /// view, whose frame AppKit already computes as `scrollView.bounds` minus `contentInsets`,
+    /// in the *same* superview coordinate space this subview is added to (the clip view is
+    /// itself a direct subview of the scroll view) -- and re-syncing that frame explicitly on
+    /// both a scroll-view frame change (window resize) and a clip-view bounds change (scroll/
+    /// pan/zoom), matching the mechanism `configureZoom()`/`scrollViewFrameDidChange()` above
+    /// already prove reliable on this exact view hierarchy, rather than trusting
+    /// `autoresizingMask` (which only tracks the *scroll view's* size, not the clip view's
+    /// inset-adjusted one, and never fires on a pure scroll/pan at all).
+    private func installLiveMetalOverlayObserversIfNeeded(on scrollView: NSScrollView) {
+        guard !liveMetalOverlayObserversInstalled else { return }
+        liveMetalOverlayObserversInstalled = true
+        scrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncLiveMetalOverlayFrame),
+            name: NSView.frameDidChangeNotification, object: scrollView
+        )
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncLiveMetalOverlayFrame),
+            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
+    }
+
+    @objc private func syncLiveMetalOverlayFrame() {
+        guard let overlay = liveMetalOverlay, let scrollView = enclosingScrollView else { return }
+        overlay.mtkView.frame = scrollView.contentView.frame
     }
 
     /// **D137:** click-to-build. Converts the click to a tile coordinate using this view's own

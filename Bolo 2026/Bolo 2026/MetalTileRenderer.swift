@@ -30,7 +30,7 @@ import BoloKit
 /// available on every supported macOS host for this app, so a `nil` here in production would
 /// itself be a signal something is wrong, not a routine path.
 public final class MetalTileRenderer: TileRenderer {
-    private static let tileSizePixels: Float = 16
+    private nonisolated static let tileSizePixels: Float = 16
     private static let sheetPixelSize: Float = 256
     private static let sheetCellsPerAxis: Float = sheetPixelSize / tileSizePixels // 16
 
@@ -251,18 +251,51 @@ public final class MetalTileRenderer: TileRenderer {
     /// (target-texture pixels per point) folds together both the live magnification and the
     /// display's own backing scale factor in one ratio, since `targetTexture`'s pixel
     /// dimensions are already in real device pixels.
+    ///
+    /// **This ratio is only correct if `targetTexture`'s pixel dimensions actually correspond to
+    /// the same on-screen region `visibleRect` describes.** That correspondence is an invariant
+    /// this function trusts its caller (`LiveMetalTerrainOverlay`, via the `MTKView` it owns) to
+    /// maintain -- it was broken by a real bug (`GameRenderView.installLiveMetalOverlayIfNeeded`
+    /// originally sized the overlay's `MTKView` to the *whole* scroll view, contentInsets/HUD
+    /// chrome included, not the inset-excluded clip-view region `visibleRect` actually measures)
+    /// that this function's own math could not have caught, since both its inputs were
+    /// self-consistently wrong together. See `Self.cameraTransform` below and
+    /// `MetalTileRendererLiveTerrainTests.swift` for the regression coverage added for it.
+    nonisolated struct CameraTransform: Equatable {
+        var scale: Float
+        var originXPixels: Float
+        var originYPixels: Float
+        var scaledTileSize: Float
+    }
+
+    /// Pure, headlessly-testable extraction of the scale/origin math `renderLiveTerrain` uses --
+    /// no `MTLTexture`/`MTKView`/window required, so a regression like the one described above
+    /// (right formula, geometrically-wrong inputs) can be asserted against directly by comparing
+    /// this against the CPU path's own `visibleRect`-derived expectations, across several
+    /// window sizes/magnifications, without hosting a live `NSWindow`. `nonisolated` (unlike the
+    /// rest of this project-wide `@MainActor`-by-default class) since it touches no actor state
+    /// at all -- lets `Testing`'s default `nonisolated` test functions call it directly.
+    nonisolated static func cameraTransform(visibleRect: NSRect, targetTextureWidthPixels: Int) -> CameraTransform? {
+        guard visibleRect.width > 0 else { return nil }
+        let scale = Float(targetTextureWidthPixels) / Float(visibleRect.width)
+        return CameraTransform(
+            scale: scale, originXPixels: Float(visibleRect.origin.x) * scale,
+            originYPixels: Float(visibleRect.origin.y) * scale, scaledTileSize: Self.tileSizePixels * scale
+        )
+    }
+
     func renderLiveTerrain(
         tileGrid: TileGrid, visibleRect: NSRect, into targetTexture: MTLTexture,
         commandBuffer: MTLCommandBuffer, tilesImage: CGImage
     ) {
-        guard let sheetTexture = texture(for: tilesImage), visibleRect.width > 0, visibleRect.height > 0,
+        guard let sheetTexture = texture(for: tilesImage),
+            let transform = Self.cameraTransform(visibleRect: visibleRect, targetTextureWidthPixels: targetTexture.width),
             let range = Self.tileRange(for: visibleRect)
         else { return }
 
-        let scale = Float(targetTexture.width) / Float(visibleRect.width)
-        let scaledTileSize = Self.tileSizePixels * scale
-        let originXPixels = Float(visibleRect.origin.x) * scale
-        let originYPixels = Float(visibleRect.origin.y) * scale
+        let scaledTileSize = transform.scaledTileSize
+        let originXPixels = transform.originXPixels
+        let originYPixels = transform.originYPixels
 
         var instances: [TileInstance] = []
         instances.reserveCapacity((range.maxX - range.minX + 1) * (range.maxY - range.minY + 1) * 2)
