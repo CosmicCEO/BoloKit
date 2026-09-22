@@ -29,7 +29,7 @@ import BoloKit
 /// fall back to `CGContextTileRenderer` rather than force-unwrap. Metal is expected to be
 /// available on every supported macOS host for this app, so a `nil` here in production would
 /// itself be a signal something is wrong, not a routine path.
-final class MetalTileRenderer: TileRenderer {
+public final class MetalTileRenderer: TileRenderer {
     private static let tileSizePixels: Float = 16
     private static let sheetPixelSize: Float = 256
     private static let sheetCellsPerAxis: Float = sheetPixelSize / tileSizePixels // 16
@@ -39,7 +39,10 @@ final class MetalTileRenderer: TileRenderer {
         var uvOrigin: SIMD2<Float>
     }
 
-    private let device: MTLDevice
+    /// v1.6.0 (#25) increment 6: `internal`, not `private` -- `LiveMetalTerrainOverlay` reuses
+    /// this same device for its `MTKView` rather than creating a second one via a separate
+    /// `MTLCreateSystemDefaultDevice()` call.
+    let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipelineState: MTLRenderPipelineState
     private let sampler: MTLSamplerState
@@ -147,7 +150,7 @@ final class MetalTileRenderer: TileRenderer {
         return SIMD2<Float>(col, row) / sheetCellsPerAxis
     }
 
-    func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect) {
+    public func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect) {
         guard let sheetTexture = texture(for: view.tilesImage),
             let range = Self.tileRange(for: dirtyRect)
         else {
@@ -227,6 +230,78 @@ final class MetalTileRenderer: TileRenderer {
         }
         view.drawSprites(ctx)
         view.spriteCellProvider = nil
+    }
+
+    /// v1.6.0 (#25) increment 6: makes a command buffer for `LiveMetalTerrainOverlay` to
+    /// encode into and present -- keeps `commandQueue` itself private to this type.
+    func makeCommandBuffer() -> MTLCommandBuffer? {
+        commandQueue.makeCommandBuffer()
+    }
+
+    /// v1.6.0 (#25) increment 6: renders terrain tiles directly into an existing drawable
+    /// texture -- no offscreen-texture-then-`CIImage`-then-`CGImage` round trip, unlike
+    /// `draw(_:ctx:dirtyRect:)` above (that round trip exists purely to composite into a
+    /// `CGContext`, which the live floating overlay bypasses entirely). Reuses the already-
+    /// uploaded tiles texture and this renderer's pipeline/sampler.
+    ///
+    /// `visibleRect` is in `GameRenderView`'s own point space (`NSView.visibleRect`, i.e.
+    /// unaffected by `NSScrollView` magnification -- the scroll view's layer transform is what
+    /// makes zoom visually work for the CPU path, but this overlay is a *floating* subview,
+    /// deliberately exempt from that transform, so it has to account for zoom itself). `scale`
+    /// (target-texture pixels per point) folds together both the live magnification and the
+    /// display's own backing scale factor in one ratio, since `targetTexture`'s pixel
+    /// dimensions are already in real device pixels.
+    func renderLiveTerrain(
+        tileGrid: TileGrid, visibleRect: NSRect, into targetTexture: MTLTexture,
+        commandBuffer: MTLCommandBuffer, tilesImage: CGImage
+    ) {
+        guard let sheetTexture = texture(for: tilesImage), visibleRect.width > 0, visibleRect.height > 0,
+            let range = Self.tileRange(for: visibleRect)
+        else { return }
+
+        let scale = Float(targetTexture.width) / Float(visibleRect.width)
+        let scaledTileSize = Self.tileSizePixels * scale
+        let originXPixels = Float(visibleRect.origin.x) * scale
+        let originYPixels = Float(visibleRect.origin.y) * scale
+
+        var instances: [TileInstance] = []
+        instances.reserveCapacity((range.maxX - range.minX + 1) * (range.maxY - range.minY + 1) * 2)
+        for y in range.minY...range.maxY {
+            for x in range.minX...range.maxX {
+                let origin = SIMD2<Float>(
+                    Float(x) * scaledTileSize - originXPixels, Float(y) * scaledTileSize - originYPixels
+                )
+                let index = unseenTileAsSeaImage(mapimage(tileGrid, Int32(x), Int32(y)))
+                instances.append(TileInstance(origin: origin, uvOrigin: Self.uvOrigin(forIndex: index)))
+                if isMinedTile(tileGrid, Int32(x), Int32(y)) != 0 {
+                    instances.append(TileInstance(origin: origin, uvOrigin: Self.uvOrigin(forIndex: MINE00IMAGE)))
+                }
+            }
+        }
+        guard !instances.isEmpty,
+            let instanceBuffer = device.makeBuffer(
+                bytes: instances, length: instances.count * MemoryLayout<TileInstance>.stride, options: []
+            )
+        else { return }
+
+        let passDescriptor = MTLRenderPassDescriptor()
+        passDescriptor.colorAttachments[0].texture = targetTexture
+        passDescriptor.colorAttachments[0].loadAction = .clear
+        passDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        passDescriptor.colorAttachments[0].storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDescriptor) else { return }
+        encoder.setRenderPipelineState(pipelineState)
+        encoder.setVertexBuffer(instanceBuffer, offset: 0, index: 0)
+        var targetSize = SIMD2<Float>(Float(targetTexture.width), Float(targetTexture.height))
+        encoder.setVertexBytes(&targetSize, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+        var tileSizeForDraw = scaledTileSize
+        encoder.setVertexBytes(&tileSizeForDraw, length: MemoryLayout<Float>.size, index: 2)
+        var uvCellSize = 1.0 / Self.sheetCellsPerAxis
+        encoder.setVertexBytes(&uvCellSize, length: MemoryLayout<Float>.size, index: 3)
+        encoder.setFragmentTexture(sheetTexture, index: 0)
+        encoder.setFragmentSamplerState(sampler, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: instances.count)
+        encoder.endEncoding()
     }
 
     private func renderInstances(

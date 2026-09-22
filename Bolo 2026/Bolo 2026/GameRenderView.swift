@@ -126,10 +126,25 @@ public final class GameRenderView: NSView {
     /// existing CPU path -- unchanged behavior for every existing call site.
     var renderer: TileRenderer
 
-    public init(tilesImage: CGImage, spritesImage: CGImage, renderer: TileRenderer = CGContextTileRenderer()) {
+    /// v1.6.0 (#25) increment 6: when non-nil, terrain moves off this property's own
+    /// `renderer` entirely onto `liveMetalOverlay`'s floating `MTKView` once the view is in a
+    /// window (`installLiveMetalOverlayIfNeeded`) -- the actual on-screen performance path,
+    /// bypassing `CGContext`/`draw(_:)` for the part of rendering that scales with zoom (tile
+    /// count; sprites/builders/labels stay on the CGContext path unchanged, since they're
+    /// small and roughly zoom-independent -- see `LiveMetalTerrainOverlay`'s own header).
+    /// `nil` by default: every existing call site's behavior is unchanged unless this is
+    /// explicitly supplied.
+    let liveMetalTerrainRenderer: MetalTileRenderer?
+    private var liveMetalOverlay: LiveMetalTerrainOverlay?
+
+    public init(
+        tilesImage: CGImage, spritesImage: CGImage, renderer: TileRenderer = CGContextTileRenderer(),
+        liveMetalTerrainRenderer: MetalTileRenderer? = nil
+    ) {
         self.tilesImage = tilesImage
         self.spritesImage = spritesImage
         self.renderer = renderer
+        self.liveMetalTerrainRenderer = liveMetalTerrainRenderer
         super.init(frame: NSRect(x: 0, y: 0, width: mapPixelSize, height: mapPixelSize))
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
@@ -352,7 +367,16 @@ public final class GameRenderView: NSView {
     }
 
     public override var isFlipped: Bool { true }
-    public override var isOpaque: Bool { true }
+    /// v1.6.0 (#25) increment 6: `true` (the original, unconditional value) tells AppKit this
+    /// view always fully covers its own bounds with opaque content, which lets it skip
+    /// compositing anything positioned behind it -- fine when this view draws its own terrain,
+    /// but it would make `LiveMetalTerrainOverlay`'s MTKView (deliberately positioned *behind*
+    /// this view, see `installLiveMetalOverlayIfNeeded`) invisible regardless of z-order, since
+    /// AppKit would never actually composite through to it. `false` only while the live overlay
+    /// is active, when this view's own `draw(_:)` genuinely does leave terrain pixels
+    /// transparent (it skips `drawTerrain` entirely in that mode) for the layer behind it to
+    /// show through.
+    public override var isOpaque: Bool { liveMetalOverlay == nil }
 
     public override var intrinsicContentSize: NSSize {
         NSSize(width: mapPixelSize, height: mapPixelSize)
@@ -449,7 +473,15 @@ public final class GameRenderView: NSView {
         let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
         defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        renderer.draw(self, ctx: ctx, dirtyRect: dirtyRect)
+        if liveMetalOverlay != nil {
+            // Terrain is drawn live by the floating Metal overlay's own MTKView draw loop --
+            // only sprites/shells/explosions/builders stay on this CGContext path (small,
+            // roughly zoom-independent; not what #25 exists to fix). See
+            // `LiveMetalTerrainOverlay`'s own header for why terrain specifically moved.
+            drawSprites(ctx)
+        } else {
+            renderer.draw(self, ctx: ctx, dirtyRect: dirtyRect)
+        }
         drawBuilderTaskIndicators(ctx)
         drawSelector(ctx)
         drawCrosshair(ctx)
@@ -565,7 +597,43 @@ public final class GameRenderView: NSView {
             self.window?.makeFirstResponder(self)
             self.centerOnLocalPlayerSpawn()
             self.configureZoom()
+            self.installLiveMetalOverlayIfNeeded()
         }
+    }
+
+    /// v1.6.0 (#25) increment 6: must halt `liveMetalOverlay`'s continuous draw loop before
+    /// this view (and the window it's leaving) tear down -- see `LiveMetalTerrainOverlay.stop()`'s
+    /// own doc comment for the crash this fixes and how it was found.
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            liveMetalOverlay?.stop()
+        }
+    }
+
+    /// v1.6.0 (#25) increment 6: `enclosingScrollView` is reliably available by this point,
+    /// same reasoning `configureZoom()` above already relies on. A no-op unless
+    /// `liveMetalTerrainRenderer` was supplied at init and this hasn't already run.
+    private func installLiveMetalOverlayIfNeeded() {
+        guard liveMetalOverlay == nil, let renderer = liveMetalTerrainRenderer,
+            let scrollView = enclosingScrollView, let overlay = LiveMetalTerrainOverlay(renderer: renderer, gameRenderView: self)
+        else { return }
+        // A plain subview of the scroll view itself, not `addFloatingSubview` (that API floats
+        // a view along only one scroll axis at a time -- e.g. a ruler that scrolls vertically
+        // with content but stays fixed horizontally -- there's no "fixed on both axes" case in
+        // its `NSEventGestureAxis` parameter). The scroll view's own frame never moves during
+        // scrolling (only its clip/document view's bounds.origin does), so an ordinary subview
+        // of the scroll view already stays pinned to the viewport with no special API needed.
+        //
+        // `positioned: .below, relativeTo: scrollView.contentView` matters: terrain must stay
+        // *behind* sprites (this view now draws only terrain, `GameRenderView.draw(_:)` now
+        // draws only sprites when this overlay is active) -- a plain `addSubview` appends to
+        // the end of the subview list, which AppKit draws *last*, i.e. on *top*, the wrong
+        // side of the document view (which draws the sprites this needs to stay under).
+        overlay.mtkView.frame = scrollView.bounds
+        overlay.mtkView.autoresizingMask = [.width, .height]
+        scrollView.addSubview(overlay.mtkView, positioned: .below, relativeTo: scrollView.contentView)
+        liveMetalOverlay = overlay
     }
 
     /// **D137:** click-to-build. Converts the click to a tile coordinate using this view's own
