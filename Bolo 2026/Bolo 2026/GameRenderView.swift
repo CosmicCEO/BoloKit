@@ -49,6 +49,27 @@ private func sheetSrcRect(forIndex index: Int32) -> CGRect {
     return CGRect(x: col * tileSize, y: row * tileSize, width: tileSize, height: tileSize)
 }
 
+/// v1.6.0 (#25) extraction seam: the tile/sprite draw pass `GameRenderView.draw(_:)` delegates
+/// to, so a Metal-backed implementation can be swapped in behind this same call without
+/// touching `render(_:fogState:)`'s public signature or any `GameSession.swift` call site.
+/// `drawLabel`/`drawBuilderTaskIndicators`/`drawSelector`/`drawCrosshair` stay outside this
+/// seam, called directly by `GameRenderView.draw(_:)` as a thin CGContext overlay -- disclosed
+/// scope reduction, not a gap (text atlases/dashed-line shaders are out of scope for #25).
+public protocol TileRenderer: AnyObject {
+    func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect)
+}
+
+/// The existing CPU `CGContext` blit path, unchanged, just reached through the `TileRenderer`
+/// seam instead of called directly from `draw(_:)`. Default renderer; stays in-tree as the
+/// fallback/parity comparator once a Metal renderer lands.
+public final class CGContextTileRenderer: TileRenderer {
+    public init() {}
+    public func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect) {
+        view.drawTerrain(ctx, dirtyRect: dirtyRect)
+        view.drawSprites(ctx)
+    }
+}
+
 public final class GameRenderView: NSView {
     private var state = GameState()
     private var tileGrid = TileGrid()
@@ -100,9 +121,15 @@ public final class GameRenderView: NSView {
     /// a fresh value here whenever the settings UI saves a change (see `GameSession.swift`).
     public var bindings: KeyBindings = KeyBindingsStore.load()
 
-    public init(tilesImage: CGImage, spritesImage: CGImage) {
+    /// v1.6.0 (#25): the tile/sprite draw pass, set at init rather than read from
+    /// `UserDefaults` so tests can instantiate either renderer directly. Defaults to the
+    /// existing CPU path -- unchanged behavior for every existing call site.
+    var renderer: TileRenderer
+
+    public init(tilesImage: CGImage, spritesImage: CGImage, renderer: TileRenderer = CGContextTileRenderer()) {
         self.tilesImage = tilesImage
         self.spritesImage = spritesImage
+        self.renderer = renderer
         super.init(frame: NSRect(x: 0, y: 0, width: mapPixelSize, height: mapPixelSize))
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
@@ -422,8 +449,7 @@ public final class GameRenderView: NSView {
         let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
         defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        drawTerrain(ctx, dirtyRect: dirtyRect)
-        drawSprites(ctx)
+        renderer.draw(self, ctx: ctx, dirtyRect: dirtyRect)
         drawBuilderTaskIndicators(ctx)
         drawSelector(ctx)
         drawCrosshair(ctx)
@@ -731,7 +757,7 @@ public final class GameRenderView: NSView {
     // modeled (`FogState`/`fogTileFor`), just resolved before it reaches this function
     // rather than inside it.
 
-    private func drawTerrain(_ ctx: CGContext, dirtyRect: NSRect) {
+    func drawTerrain(_ ctx: CGContext, dirtyRect: NSRect) {
         let minX = max(0, Int(dirtyRect.minX) / tileSize)
         let maxX = min(255, Int(dirtyRect.maxX.rounded(.up)) / tileSize)
         let minY = max(0, Int(dirtyRect.minY) / tileSize)
@@ -776,7 +802,7 @@ public final class GameRenderView: NSView {
     // are drawn at `remoteTankSmoothers`' delayed/interpolated position (B.9's smoothing half,
     // D114), not the raw one -- builders/shells still draw raw, disclosed remaining scope, not
     // an oversight.
-    private func drawSprites(_ ctx: CGContext) {
+    func drawSprites(_ ctx: CGContext) {
         for explosion in state.explosions {
             // `GSBoloView.m:363`: fogvis for the global explosion list.
             drawExplosion(explosion, ctx, visFraction: visFraction(at: explosion.point, useForestTerm: false))
