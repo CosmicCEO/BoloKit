@@ -302,6 +302,57 @@ private func makeState(playerCount: Int) -> GameState {
     #expect(state.players[1].mines == 4, "the host spends the simulated player's mine")
 }
 
+/// #105: the guest's first key-down mine, laid on the tile it already occupies, must not
+/// detonate. `runTick` treats a gap between `remoteLastTankPosition` and the tank as a tile
+/// entry, and a between-tick position apply often leaves that stamp one tile behind — so the
+/// mine the guest just placed looks like a mine it drove onto. A snap onto a mine that was
+/// already there still detonates.
+@Test func dispatchDropMineUnderAHostSimulatedTankDoesNotDetonateOnTheNextTick() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = simulatedGuestStanding(onMinedTile: false)
+    state.players[1].mines = 5
+
+    try await sendBytes(links[1].clientEnd, CLDropMine(x: 50, y: 50).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+
+    runTick(state: &state, ticksSinceLastUpdate: [])
+
+    #expect(state.players[1].dead == false)
+    #expect(state.localStats[1].armour == 40, "a mine laid under the tank already standing on that tile is not an entry")
+    #expect(state.terrain[50, 50] == .minedGrass)
+}
+
+@Test func hostSimulatedTankAlreadyOnAMineStillDetonatesWhenTheEntryStampIsBehind() {
+    var state = simulatedGuestStanding(onMinedTile: true)
+
+    runTick(state: &state, ticksSinceLastUpdate: [])
+
+    #expect(state.terrain[50, 50] == .crater, "snapping onto a mine that was already there is still an entry")
+    #expect(state.localStats[1].armour == 40 - smallboomDamage)
+}
+
+/// Guest on tile (50, 50), entry stamp one tile west, surrounded by grass so shore-push and
+/// the default map can't move the tank or detonate something else.
+private func simulatedGuestStanding(onMinedTile: Bool) -> GameState {
+    var state = makeState(playerCount: 2)
+    state.hostSimulatesRemotePlayers = true
+    for y in 48...52 {
+        for x in 48...52 {
+            state.terrain[x, y] = .grass0
+        }
+    }
+    if onMinedTile { state.terrain[50, 50] = .minedGrass }
+    state.players[1].tank = Vec2f(x: 50.5, y: 50.5)
+    state.players[1].speed = 0
+    state.players[1].dead = false
+    state.remoteLastTankPosition[1] = Vec2f(x: 49.5, y: 50.5)
+    state.localStats[1].armour = 40
+    state.localStats[1].shells = 0
+    return state
+}
+
 @Test func dispatchDropMineFromAHostSimulatedPlayerWithNoMinesPlacesNothing() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }

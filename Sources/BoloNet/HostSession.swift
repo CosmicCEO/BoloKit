@@ -670,7 +670,19 @@ public func dispatchHostMessage(
                 pending.append(.one(p, SRMineAck(success: success ? 1 : 0).encode()))
             }
         )
-        if simulated, placed { state.players[player].mines -= 1 }
+        if simulated, placed {
+            state.players[player].mines -= 1
+            // #105: this mine is already under the tank. `runTick` treats a gap between
+            // `remoteLastTankPosition` and the tank as a tile entry, and a between-tick
+            // position apply often leaves that stamp one tile behind, so the next tick
+            // would detonate the mine just placed. Stamp the tank's current position when
+            // the mine landed on its own tile. A later snap onto some other mine still
+            // enters, because this only moves the stamp up to where the tank already is.
+            let tank = state.players[player].tank
+            if Int(tank.x) == Int(msg.x), Int(tank.y) == Int(msg.y) {
+                state.remoteLastTankPosition[player] = tank
+            }
+        }
 
     case .touch:
         guard let msg = CLTouch.decode(bytes) else { throw HostSessionError.malformedMessage }
