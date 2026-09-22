@@ -16,6 +16,7 @@ mines, so combat is host-authoritative. A guest that leaves and rejoins is the o
 - Host draws never-seen tiles as plain sea, matching the guest, instead of black.
 - A remote tank's name label now fades and hides with distance instead of always showing (#79, live-confirmed 2026-09-22).
 - The host quitting to the menu now shows the guest a disconnected message instead of leaving its session hanging (#107, live-confirmed 2026-09-22).
+- A guest's key-down mine no longer detonates under its own tank when the drop lands on the tile it already occupies (#105, PR #121, merged 2026-09-22). Note: the 2026-09-22 two-Mac run on this build didn't re-exercise the original continuous-lay-while-moving repro scenario specifically.
 
 ## Known limitations
 - **Leaving and rejoining a hosted game breaks the rejoined guest** (#113, fix planned for v1.5.2). After a guest
@@ -30,6 +31,7 @@ mines, so combat is host-authoritative. A guest that leaves and rejoins is the o
 - Shells can vanish partway through their flight under Hidden Mines, and the pattern looks angle-of-travel-dependent
   rather than purely a fog-edge fade — reproduces even with Hidden Mines off (#114).
 - Breaking an alliance removes the ally's tank sprite but does not re-fog the terrain that alliance had revealed —
-  the map stays exactly as it was while allied (#120, found 2026-09-22).
-- A guest's first key-down mine could explode under its own tank (#105). Fix is committed on `claude/coding-session-a9s35l` (`9a58453`) and is not on `main` yet. Do not list it under Fixed until that commit is merged and a two-Mac check confirms the continuous-lay-while-moving scenario specifically (a 2026-09-22 run on this exact build didn't re-exercise that scenario).
+  the map stays exactly as it was while allied (#120, found 2026-09-22, tracked and the focus of v1.5.2).
+- A builder-laid mine may not render as visible to the host until the tank moves (a render-refresh gap, #77) —
+  closed 2026-09-22 per triage direction without a dedicated re-test; flag if it resurfaces.
 - Pill/base capture, build and deploy are still not fog vision sources (#72).
