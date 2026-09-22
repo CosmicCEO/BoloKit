@@ -23,7 +23,7 @@ This repo is a product and a Swift/Xcode/networking learning vehicle. It is not 
 - Simulation tick is 50 Hz (`ticksPerSec`).
 - Port is behaviour-preserving against the C oracle (including known C bugs) unless a constraint here already documents a deviation.
 - No paid Apple Developer Program: the app ships Apple Development-signed, not notarized. Gatekeeper needs a one-time right-click → Open. Do not add signing/notarization work.
-- `NWListener` EINVAL on some machines is a known environment issue. The app already falls back to local-only play with an on-screen notice. Do not reopen an unbounded investigation.
+- The app's fixed-port `NWListener` EINVAL (port set twice) is fixed. Regression test `HostListenerFixedPortTests`. A bare bind can still fail on some machines; the app falls back to local-only play with an on-screen notice. Do not reopen an unbounded investigation. Empty LAN lists on those hosts are that bind, not a Bonjour regression.
 
 Match existing code. Prefer `swift test` / `xcodebuild` over claims.
 
@@ -40,9 +40,9 @@ xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
 
 ## Current ship
 
-`v1.2.3` (build 10). Playable host-and-join. 795 SwiftPM tests (575 BoloKitTests + 220 DifferentialTests) plus 66 `Bolo 2026Tests`. One pre-existing flaky timing test exists; do not treat a single isolated flake of that class as a new regression.
+**Current tagged drop:** `v1.5.0`. v1.5.1 live-play fixes are on `main` (PR #117) and untagged until the remaining milestone issues close. Read `docs/STATUS.md` before starting work; do not trust an older test count in this file. One pre-existing flaky timing test exists; do not treat a single isolated flake of that class as a new regression.
 
-Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week sprints). **Patch** milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Next release sprint: v1.3.0 find-and-share.
+Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week sprints). **Patch** milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Current patch: v1.5.1. Next release sprint: v1.6.0 Metal renderer. v1.6.0 stays the Metal renderer only; follow-on polish goes to v1.6.1.
 
 ## Further reading
 

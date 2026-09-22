@@ -91,7 +91,7 @@ Host: turn **Hidden Mines on**, Start Hosting again. Guest: rejoin. Screenshot b
 
 | # | Action | Expected |
 |---|--------|----------|
-| 1 | Both join. Drive them at least 20 tiles apart (host north-west, guest east). | Join succeeds. Both tanks move on both screens. Record whether the first W press from rest moves each tank at once (#105 is open and not reproduced: note if Mac A was parked on the spawn tile and whether Mac B started from rest). |
+| 1 | Both join. Drive them at least 20 tiles apart (host north-west, guest east). | Join succeeds. Both tanks move on both screens. On `Bolo 2026 (v151-test5 9a58453).app` or later, hold lay-mine while the guest drives: the first mine must not explode under the guest ([#105](https://github.com/CosmicCEO/BoloKit/issues/105)). A mine that was already on the map still must. |
 | 2 | Host looks at the whole map. | Plain sea outside roughly a 29x29 area around the host tank. Nothing revealed elsewhere. Same blue as the guest's off-map area. |
 | 3 | Guest looks at its screen. | Terrain the host has revealed to it, blue elsewhere. **The host tank and other pills/bases are visible outside the guest's vision: accepted (#86/#90).** Record anything else that differs. |
 | 4 | Host presses Shift, then drives about 10 tiles away. Look at both screens. | The host still sees its own mine (revealed when laid, sticky). The guest, far away, does not see it. |

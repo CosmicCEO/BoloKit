@@ -24,4 +24,5 @@ mines, so combat is host-authoritative. A guest that leaves and rejoins is the o
   vision (#86/#90, closed as not planned for this release).
 - A first join can fail once and succeed on the second try, and a real Mac joining a VM host was refused once (#93).
 - Shells can vanish partway through their flight under Hidden Mines (#114).
+- A guest's first key-down mine could explode under its own tank (#105). Fix is committed on `claude/coding-session-a9s35l` (`9a58453`) and is not on `main` yet. Do not list it under Fixed until that commit is merged and a two-Mac check confirms it.
 - Pill/base capture, build and deploy are still not fog vision sources (#72).
