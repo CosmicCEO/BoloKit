@@ -14,15 +14,22 @@ mines, so combat is host-authoritative. A guest that leaves and rejoins is the o
 - Host simulates guest tanks (#59/#62): firing, shells, explosions, mine triggers and a host-owned mine count.
 - Hidden Mines no longer announces a remote-laid mine at range (#106).
 - Host draws never-seen tiles as plain sea, matching the guest, instead of black.
+- A remote tank's name label now fades and hides with distance instead of always showing (#79, live-confirmed 2026-09-22).
+- The host quitting to the menu now shows the guest a disconnected message instead of leaving its session hanging (#107, live-confirmed 2026-09-22).
 
 ## Known limitations
 - **Leaving and rejoining a hosted game breaks the rejoined guest** (#113, fix planned for v1.5.2). After a guest
-  quits to the menu and rejoins, its screen does not refresh and its tank stops responding about 2 tiles from spawn.
-  A rejoin under a new player name worked in testing. Everything else in a two-player game was fine in testing as
-  long as nobody left.
+  quits to the menu and rejoins, its screen does not refresh and its tank stops responding — pinned down
+  2026-09-22 to losing control once it reaches the map border, not a fixed distance from spawn. **A rejoin under
+  a new player name does not avoid this**: it renders the map correctly but spawns the tank at wherever the
+  previous session was frozen, not a fresh spawn point (corrects this note's earlier claim that a new name
+  "worked in testing"). Everything else in a two-player game was fine in testing as long as nobody left.
 - The guest is not fogged for tanks or pillboxes/bases: it can see the host tank and other structures outside its own
   vision (#86/#90, closed as not planned for this release).
 - A first join can fail once and succeed on the second try, and a real Mac joining a VM host was refused once (#93).
-- Shells can vanish partway through their flight under Hidden Mines (#114).
-- A guest's first key-down mine could explode under its own tank (#105). Fix is committed on `claude/coding-session-a9s35l` (`9a58453`) and is not on `main` yet. Do not list it under Fixed until that commit is merged and a two-Mac check confirms it.
+- Shells can vanish partway through their flight under Hidden Mines, and the pattern looks angle-of-travel-dependent
+  rather than purely a fog-edge fade — reproduces even with Hidden Mines off (#114).
+- Breaking an alliance removes the ally's tank sprite but does not re-fog the terrain that alliance had revealed —
+  the map stays exactly as it was while allied (#120, found 2026-09-22).
+- A guest's first key-down mine could explode under its own tank (#105). Fix is committed on `claude/coding-session-a9s35l` (`9a58453`) and is not on `main` yet. Do not list it under Fixed until that commit is merged and a two-Mac check confirms the continuous-lay-while-moving scenario specifically (a 2026-09-22 run on this exact build didn't re-exercise that scenario).
 - Pill/base capture, build and deploy are still not fog vision sources (#72).
