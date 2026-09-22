@@ -72,9 +72,9 @@ public final class CGContextTileRenderer: TileRenderer {
 
 public final class GameRenderView: NSView {
     private var state = GameState()
-    private var tileGrid = TileGrid()
-    private let tilesImage: CGImage
-    private let spritesImage: CGImage
+    var tileGrid = TileGrid()
+    let tilesImage: CGImage
+    let spritesImage: CGImage
 
     /// B.9's smoothing half (D114) -- one `RemotePositionSmoother` per remote player index,
     /// keyed by index into `state.players` (stable across ticks). View-layer only; see
@@ -958,7 +958,7 @@ public final class GameRenderView: NSView {
     /// direction (a vertical mirror reverses a rotating sequence's apparent spin) exposed it.
     /// Compensated here, once, for every caller -- flips the content back around the dst rect's
     /// own vertical center, leaving `dst`'s on-screen position untouched.
-    private func blit(_ image: CGImage, in dst: CGRect, _ ctx: CGContext) {
+    func blit(_ image: CGImage, in dst: CGRect, _ ctx: CGContext) {
         ctx.saveGState()
         ctx.translateBy(x: 0, y: dst.midY)
         ctx.scaleBy(x: 1, y: -1)
