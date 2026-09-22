@@ -19,4 +19,6 @@ New v1.* work: existing or new **issue** → release or patch **milestone** → 
 
 Sprints are two weeks (Monday–Friday of week 2). Skip windows that contain a US federal holiday. Patch milestones do not replace the next `v1.x.0` sprint.
 
+**v1.6.0 is a hard ceiling (2026-09-22 ruling):** its scope is the Metal renderer only ([#25](https://github.com/CosmicCEO/BoloKit/issues/25)). Do not add issues to it. Follow-on work that would naturally attach to v1.6.0 (polish, fixes found once the renderer lands) goes to [v1.6.1 — Increase Visual Appeal of Sprites](https://github.com/CosmicCEO/BoloKit/milestone/21) (e.g. [#110](https://github.com/CosmicCEO/BoloKit/issues/110)), not into v1.6.0 itself. Work found before then that isn't v1.6.0-scoped stays in the `v1.5.x` patch line.
+
 Projects v2 mechanics (scopes, link): user skill `github-projects-v2`.
