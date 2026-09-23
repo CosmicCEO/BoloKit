@@ -25,8 +25,10 @@ Cheshire/Robert Chrzanowski Mac interface's HUD layout and semantics (`Reference
 `-refresh:`/`-setPlayerStatus:`/`-setPillStatus:`/`-setBaseStatus:`), not its art (hard
 constraint, `docs/CONSTRAINTS.md:12`). Confirms BoloKit's current HUD already matches the
 original's semantics where it matters (alliance-gated base display, staleness tint, resource
-gauges) and identifies one genuine, currently-unscoped gap (no map-wide pill/base ownership
-overview grid) -- flagged, not auto-filed as an issue.
+gauges) and identifies one genuine gap: no map-wide pill/base/player ownership overview grid
+(the original's 16-slot hex-indexed icon grids) -- filed as
+[#142](https://github.com/CosmicCEO/BoloKit/issues/142), out of v1.6.1's scope as written
+(net-new HUD surface, not sprite chrome), pending a milestone/placement decision.
 
 **Moved out during triage:**
 - [#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host-engine SIGABRT/data-race signature, `GameState.local` mutation during `tankLocalTick`) was unassigned -- not visual, moved to milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20) `v1.6.x — Rejoin fix`, the existing pre-1.7 bug-fix bucket, alongside #87/#89/#93/#100/#101/#113/#118/#120.

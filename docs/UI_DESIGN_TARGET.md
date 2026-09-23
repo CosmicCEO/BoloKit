@@ -80,9 +80,10 @@ game/system. BoloKit's `EventLogBar` (`GameHUDViews.swift:341-408`) is the equiv
   is a real, historically-present feature this port is missing, not an art-polish nit.
 
 This gap is **out of scope for the current v1.6.1 milestone as written** (#110/#137/#140 are
-scoped narrowly per `docs/STATUS.md`'s own MVP limits) and is not being filed as a new issue
-automatically — flagging it here as a considered, deliberate omission pending a decision on
-whether it's worth its own issue (it would be net-new HUD surface, not "chrome the sprites").
+scoped narrowly per `docs/STATUS.md`'s own MVP limits) — it's net-new HUD surface, not "chrome
+the sprites." Tracked as its own issue,
+[#142](https://github.com/CosmicCEO/BoloKit/issues/142), pending a milestone/placement
+decision rather than folded into v1.6.1's existing scope.
 
 ## How this informs the three in-flight issues
 
