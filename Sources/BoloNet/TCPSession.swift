@@ -92,6 +92,19 @@ public struct SRDispatchCallbacks {
 }
 
 public final class TCPSession: @unchecked Sendable {
+    /// v1.6.0 follow-up (live-play finding, 2026-09-23): this connection previously started
+    /// on `.main`, the same serial queue the guest's own `GameSession.startJoinConsumer`
+    /// (`GameSession.swift:590-633`) drains its merged tick/render/network `AsyncStream` on.
+    /// Every inbound `SR*` receive-completion (mine acks, shell broadcasts, everything) was
+    /// therefore queued behind whatever main-queue work -- including the inline
+    /// `renderView.render(state)` call inside the 50Hz `.tick` case -- happened to be running
+    /// at that moment. Reported live as guest-only, load-dependent, multi-second lag on mine
+    /// AND shell actions alike (both ride this same TCP connection; tank position doesn't --
+    /// it's UDP+smoothed, and was never laggy). The host never hits this because the host's
+    /// own actions apply locally, with no round trip through this connection at all. A
+    /// dedicated queue removes the contention without touching the tick/render merge itself.
+    private static let ioQueue = DispatchQueue(label: "com.cosmicceo.bolo2026.tcpsession", qos: .userInteractive)
+
     private let connection: NWConnection
     /// Peer used for the matching UDP channel. Typed join stores the
     /// strings the caller passed; Bonjour join reads them off the live path.
@@ -159,7 +172,7 @@ public final class TCPSession: @unchecked Sendable {
                     break
                 }
             }
-            connection.start(queue: .main)
+            connection.start(queue: ioQueue)
         }
     }
 
