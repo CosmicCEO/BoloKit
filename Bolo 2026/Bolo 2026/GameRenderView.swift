@@ -487,6 +487,10 @@ public final class GameRenderView: NSView {
         {
             tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
             tileGridRebuildCount += 1
+            // v1.6.0 follow-up: `liveMetalOverlay`'s MTKView is on-demand now (see its own
+            // init doc comment), not continuous -- redraw it only when the grid it draws
+            // actually changed, not every tick.
+            liveMetalOverlay?.mtkView.needsDisplay = true
         }
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
@@ -705,6 +709,10 @@ public final class GameRenderView: NSView {
     @objc private func syncLiveMetalOverlayFrame() {
         guard let overlay = liveMetalOverlay, let scrollView = enclosingScrollView else { return }
         overlay.mtkView.frame = scrollView.contentView.frame
+        // v1.6.0 follow-up: on-demand MTKView -- a frame/bounds change means the camera
+        // (scroll/zoom/pan/resize) moved, so the terrain needs a fresh draw even though
+        // `render(_:)` wasn't necessarily called this instant.
+        overlay.mtkView.needsDisplay = true
     }
 
     /// **D137:** click-to-build. Converts the click to a tile coordinate using this view's own

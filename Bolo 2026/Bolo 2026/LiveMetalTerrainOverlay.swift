@@ -55,11 +55,24 @@ final class LiveMetalTerrainOverlay: NSObject, MTKViewDelegate {
         let view = MTKView(frame: .zero, device: renderer.device)
         view.colorPixelFormat = .bgra8Unorm
         view.framebufferOnly = true
-        // Tick-driven redraw would need every scroll/zoom/pan input path to separately notify
-        // this view; a continuous draw loop tracks live camera movement (scroll/zoom) for
-        // free and is the conventional choice for this kind of always-visible viewport overlay.
-        view.isPaused = false
-        view.enableSetNeedsDisplay = false
+        // v1.6.0 follow-up (live-play finding, 2026-09-23): originally continuous
+        // (`isPaused = false`) to track camera movement "for free" without wiring redraw
+        // triggers into every scroll/zoom/pan path. That traded away more than intended --
+        // a continuous MTKView's `draw(in:)` fires on the main thread at display-refresh rate
+        // regardless of whether anything changed, and this project's `-default-isolation=
+        // MainActor` build setting means it directly competes with `GameSession`'s
+        // MainActor-isolated tick/network consumer loop for the same thread (confirmed via
+        // guest-side multi-second lag on mine/shell actions that tracked render activity, not
+        // network conditions). Apple's own MTKView guidance recommends on-demand rendering
+        // for event-driven content precisely to avoid this -- terrain here has no time-based
+        // animation of its own (`MetalTileRenderer` bakes animation-frame selection into which
+        // sprite cell to sample, same as the CPU path), so nothing is lost switching to
+        // on-demand. Redraw is now triggered explicitly from the same two places
+        // `GameRenderView` already has reasons to touch this overlay: camera movement
+        // (`syncLiveMetalOverlayFrame`, called from the scroll/frame observers the increment 6
+        // resize fix wired up) and an actual tile-grid rebuild (`render(_:)`).
+        view.isPaused = true
+        view.enableSetNeedsDisplay = true
         self.mtkView = view
         self.renderer = renderer
         self.gameRenderView = gameRenderView
