@@ -738,9 +738,15 @@ public final class HostGameEngine: @unchecked Sendable {
         // visibility-masked: pills/bases are never fog-hidden (only mines are), matching
         // `recvClGrabTile`'s own unmasked `.all` broadcast.
         for pill in state.pills.indices where state.pills[pill].owner != oldPillOwners[pill] {
+            Self.discoveryLogger.notice(
+                "capture-broadcast: SRCapturePill pill=\(pill) owner=\(self.state.pills[pill].owner) (was \(oldPillOwners[pill]))"
+            )
             pending.append(SRCapturePill(pill: UInt8(pill), owner: state.pills[pill].owner).encode())
         }
         for base in state.bases.indices where state.bases[base].owner != oldBaseOwners[base] {
+            Self.discoveryLogger.notice(
+                "capture-broadcast: SRCaptureBase base=\(base) owner=\(self.state.bases[base].owner) (was \(oldBaseOwners[base]))"
+            )
             pending.append(SRCaptureBase(base: UInt8(base), owner: state.bases[base].owner).encode())
         }
 
