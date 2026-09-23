@@ -701,11 +701,23 @@ public final class HostGameEngine: @unchecked Sendable {
                 let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
                 maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
             },
+            onShouldBroadcastDamage: { player, x, y, terrain in
+                pending.append(SRDamage(player: UInt8(player), x: UInt8(x), y: UInt8(y), terrain: terrain).encode())
+            },
             onPrintMessage: { pendingGameMessages.append($0) },
             onMine: { point in
                 // Same rule as `.localLayMineKeyDown`: a hidden mine is never announced.
                 guard !hiddenMinesSnapshot else { return }
                 pending.append(SRDropMine(player: UInt8(localPlayerSnapshot), x: UInt8(point.x), y: UInt8(point.y)).encode())
+            },
+            onShouldBroadcastRefuel: { _, base, armour, shells, mines in
+                pending.append(SRRefuel(base: UInt8(base), armour: armour, shells: shells, mines: mines).encode())
+            },
+            onShouldBroadcastBuildPill: { pill, x, y, armour in
+                pending.append(SRBuildPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y), armour: armour).encode())
+            },
+            onShouldBroadcastRepairPill: { pill, armour in
+                pending.append(SRRepairPill(pill: UInt8(pill), armour: armour).encode())
             }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
@@ -725,6 +737,23 @@ public final class HostGameEngine: @unchecked Sendable {
                 let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: fogStates)
                 maskedPending.append((mask, SRRevealTerrain(x: UInt8(x), y: UInt8(y), terrain: UInt8(sent.rawValue)).encode()))
             }
+        }
+
+        // Same B.5d gap as terrain above, for pill/base ownership: `grabTile` (the tile-entry
+        // capture path host-simulated remote players now also run through `tankLocalTick`, per
+        // #59/#62) mutates `state.pills`/`state.bases` directly with no broadcast hook -- unlike
+        // `recvClGrabTile`, the message-driven twin (`HostSession.swift`), which does broadcast
+        // `SRCapturePill`/`SRCaptureBase`. Diffs the same before-tick snapshots already captured
+        // above for the chat-message diff (`EventLogText.captureMessages` below). Index+owner is
+        // enough on the wire -- `recvSrCapturePill`/`recvSrCaptureBase` already reset armour/
+        // shells/mines themselves on receipt, matching what `grabTile` just did locally. Not
+        // visibility-masked: pills/bases are never fog-hidden (only mines are), matching
+        // `recvClGrabTile`'s own unmasked `.all` broadcast.
+        for pill in state.pills.indices where state.pills[pill].owner != oldPillOwners[pill] {
+            pending.append(SRCapturePill(pill: UInt8(pill), owner: state.pills[pill].owner).encode())
+        }
+        for base in state.bases.indices where state.bases[base].owner != oldBaseOwners[base] {
+            pending.append(SRCaptureBase(base: UInt8(base), owner: state.bases[base].owner).encode())
         }
 
         var statusSends: [(player: Int, bytes: [UInt8])] = []

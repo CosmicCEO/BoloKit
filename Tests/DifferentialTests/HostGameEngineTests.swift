@@ -1447,4 +1447,195 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         let statuses = try await drainStatusesUntilPause(remote)
         #expect(statuses.isEmpty)
     }
+
+    // MARK: - Capture-broadcast gap regression (v1.6.x follow-up, live-play finding)
+
+    /// Like `drainAllUntilPause`, also returning every `SRCaptureBase` seen. `grabTile` (the
+    /// tile-entry capture path `tankLocalTick` runs directly, for the host's own local player
+    /// and, since #59/#62, for host-simulated remote players too) mutated `state.bases`/
+    /// `state.pills` with no broadcast at all until this fix -- a remote player's own client
+    /// (and any other remote observer) never learned a base or pill changed hands.
+    private func drainCapturesUntilPause(_ connection: NWConnection) async throws -> (bases: [SRCaptureBase], pills: [SRCapturePill]) {
+        var bases: [SRCaptureBase] = []
+        var pills: [SRCapturePill] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return (bases, pills)
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.captureBase.rawValue:
+                let rest = try await receiveExactly(connection, SRCaptureBase.wireSize - 1)
+                if let base = SRCaptureBase.decode([opcode] + rest) { bases.append(base) }
+            case ServerOpcode.capturePill.rawValue:
+                let rest = try await receiveExactly(connection, SRCapturePill.wireSize - 1)
+                if let pill = SRCapturePill.decode([opcode] + rest) { pills.append(pill) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    /// The host's own local player (player 0) walks onto a neutral base via ordinary movement
+    /// input, same as `hostTankDetonatingAMineTellsARemotePlayerTheTileChanged`'s drive pattern
+    /// -- the fix under test is the tick-level diff-and-broadcast in `HostGameEngine.tick()`
+    /// (fires for ANY tick-driven ownership change, not just host-simulated remotes), so
+    /// player 0 is a legitimate, simpler actor to prove the broadcast fires at all.
+    @Test(.timeLimit(.minutes(1))) func hostCapturingANeutralBaseTellsARemotePlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.bases = [Base(x: 108, y: 105, armour: 0, owner: playerNeutral, shells: 0, mines: 0)]
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalInputChange(set: [.accel], clear: [])
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let captures = try await drainCapturesUntilPause(remote).bases
+        let capture = captures.first { $0.base == 0 }
+        #expect(capture != nil, "the base capture must reach the remote player, not just the host's own state")
+        #expect(capture?.owner == 0, "captured by player 0 (the host)")
+    }
+
+    // MARK: - Armour/refuel/builder-completion broadcast gap regressions (same audit)
+
+    /// Generic drain covering every opcode the three tests below need, on top of `.pause`/
+    /// `.revealTerrain` (always allowed so an incidental terrain change never trips
+    /// `.shortRead`). Deliberately separate from `drainCapturesUntilPause`/`drainAllUntilPause`
+    /// above rather than widening those -- keeps each existing test's opcode surface exactly as
+    /// narrow as it was, so an unexpected opcode in one of THOSE tests still fails loudly.
+    private func drainBroadcastGapAuditUntilPause(_ connection: NWConnection) async throws -> (
+        damages: [SRDamage], refuels: [SRRefuel], buildPills: [SRBuildPill]
+    ) {
+        var damages: [SRDamage] = []
+        var refuels: [SRRefuel] = []
+        var buildPills: [SRBuildPill] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return (damages, refuels, buildPills)
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.damage.rawValue:
+                let rest = try await receiveExactly(connection, SRDamage.wireSize - 1)
+                if let damage = SRDamage.decode([opcode] + rest) { damages.append(damage) }
+            case ServerOpcode.refuel.rawValue:
+                let rest = try await receiveExactly(connection, SRRefuel.wireSize - 1)
+                if let refuel = SRRefuel.decode([opcode] + rest) { refuels.append(refuel) }
+            case ServerOpcode.buildPill.rawValue:
+                let rest = try await receiveExactly(connection, SRBuildPill.wireSize - 1)
+                if let build = SRBuildPill.decode([opcode] + rest) { buildPills.append(build) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    /// `applyDamage` (via `shellTick`) mutated `state.bases[].armour` directly, no broadcast --
+    /// confirmed live: a guest shot down a hostile base, watched it regenerate in real time with
+    /// zero visibility, since the client never learned armour had changed at all. A shell seeded
+    /// already sitting on the base's tile collides on the very first tick -- no aiming/travel
+    /// needed to exercise the fix.
+    @Test(.timeLimit(.minutes(1))) func hostDamagingAHostileBaseTellsARemotePlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.bases = [Base(x: 108, y: 105, armour: UInt8(maxBaseArmour), owner: 1, shells: 0, mines: 0)]
+            // A single real-owned base vacuously satisfies the domination base-control
+            // win-condition's `allAllied` check (RunTick.swift:175-215, the `1..<state.bases.count`
+            // loop is empty with only one base) -- neutralize the threshold so the tick loop
+            // doesn't freeze early-returning before ever reaching shellTick.
+            state.baseControlThreshold = 255
+            // Move the tank off the shell's flight path -- `configureHostWithMines` puts it at
+            // (105.5, 105.5), directly on the row the shell below travels along, and step 3 of
+            // `shellTick` tests a player's own shells against their own tank too (no
+            // self-hit exclusion), which was consuming the shell before it ever reached the base.
+            state.players[0].tank = Vec2f(x: 115.5, y: 115.5)
+            // Starts ~7.5 units away (dir 0 -> dir2vec (1,0), so it travels in +x toward the
+            // base) rather than already sitting on the target tile -- the engine starts ticking
+            // (and testing collisions) immediately on `engine.start()`, racing `joinRemote`'s own
+            // handshake if the hit lands on literally the first tick. ~1s of travel time at
+            // shellVelocity=7.0 comfortably outlasts a loopback join handshake.
+            state.players[0].shells = [
+                Shell(point: Vec2f(x: 100.5, y: 105.5), dir: 0, range: 20, owner: 0, boat: false, pill: false)
+            ]
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let damages = try await drainBroadcastGapAuditUntilPause(remote).damages
+        let hit = damages.first { $0.x == 108 && $0.y == 105 }
+        #expect(hit != nil, "base damage must reach the remote player, not just the host's own state")
+    }
+
+    /// `tankLocalTick`'s refuel state machine depleted `state.bases[refuelingBase]` directly, no
+    /// broadcast -- a teammate guest would see a refueled-from base as still full. Player 0 sits
+    /// stationary on its own owned base with local armour already at 0, so the armour-refuel
+    /// branch (checked first) fires as soon as `refuelArmourTicks` (46 ticks, ~0.92s) elapses.
+    @Test(.timeLimit(.minutes(1))) func hostRefuelingAtAnOwnedBaseTellsARemotePlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.local.armour = 0
+            state.bases = [Base(x: 105, y: 105, armour: UInt8(maxBaseArmour), owner: 0, shells: 0, mines: 0)]
+            // Same domination-freeze pitfall as the damage test above -- neutralize it.
+            state.baseControlThreshold = 255
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        engine.submitPauseResumeServer()
+
+        let refuels = try await drainBroadcastGapAuditUntilPause(remote).refuels
+        let refuel = refuels.first { $0.base == 0 }
+        #expect(refuel != nil, "refuel depletion must reach the remote player, not just the host's own state")
+    }
+
+    /// `buildPill`'s walked-to-completion path (`arriveAtTarget`, via `gotoTick`) had no
+    /// broadcast -- unlike the instant click-command path, which already works live (confirmed
+    /// today). Builder starts already standing on its target tile, so `.ready` -> `.goto` ->
+    /// arrival all resolve within the first couple of ticks -- no walk-time budgeting needed.
+    @Test(.timeLimit(.minutes(1))) func hostBuilderAutoCompletingAPillTellsARemotePlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            // `readyTick` launches the builder from a position derived from the TANK's own
+            // position (`builderLaunchPosition`), overwriting whatever `state.players[0].builder`
+            // was set to here -- so the tank, not the builder field, controls how far it has to
+            // walk. Put the tank a couple tiles from the target (close enough to resolve within
+            // the sleep below, but NOT on the target tile itself -- `arriveAtTarget`'s `tankTest`
+            // blocks building under your own tank, which silently no-ops the build every cycle
+            // if the tank and target coincide, without ever changing `builderStatus`/`builderTask`
+            // in a way that looks different from success until you check the pill itself).
+            state.players[0].tank = Vec2f(x: 108.5, y: 108.5)
+            state.players[0].builderTarget = Pointi(x: 110, y: 110)
+            state.players[0].builderStatus = .ready
+            state.players[0].builderTask = .buildPill
+            state.players[0].trees = 20
+            state.pills = [Pill(x: 0, y: 0, armour: pillOnboard, owner: 0, speed: 40, counter: 0)]
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let builds = try await drainBroadcastGapAuditUntilPause(remote).buildPills
+        #expect(!builds.isEmpty, "an auto-completed pill build must reach the remote player, not just the host's own state")
+    }
 }

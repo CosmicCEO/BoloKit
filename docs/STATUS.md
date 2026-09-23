@@ -125,6 +125,52 @@ default renderer, no more visible tile-count ceiling at max zoom-out) — the sa
 test approach as increment 6's re-evaluation. Once that's clean: merge PR #128, close
 milestone #25, tag `v1.6.0`.
 
+### Update, 2026-09-23 (same day, live two-Mac session): increment 7 confirmed; a real,
+### unrelated multiplayer sync bug found, root-caused, and fixed
+
+**Increment 7 live-confirmed.** Two-Mac play with the combined Metal+networking build showed
+no tile-count ceiling at max zoom-out and no regression from increments 1-6 — clears the last
+item blocking PR #128.
+
+**Real bug found via live two-Mac testing (not #25's scope, host-simulation redesign
+side effect):** guest reported three desyncs — couldn't use a pillbox, couldn't see a
+host-placed pillbox, could shoot a base but not capture it. Root-caused via `advisor()` and a
+systematic audit: `tankLocalTick`/`grabTile` (`TankLocalTick.swift`) — the tile-entry capture
+path host-simulated remote players now run through, per the #59/#62 "host simulates guest
+tanks" redesign (`docs/CONSTRAINTS.md:133-146`) — mutates `state.pills`/`state.bases` directly
+with **no broadcast hook at all**, unlike `recvClGrabTile`, the message-driven twin, which does
+broadcast. This is the same "B.5d gap" shape already fixed for terrain, just never extended to
+pill/base ownership. The audit found three more instances of the identical pattern: combat
+damage to pill/base armour (`ShellTick.swift`), base refuel depletion (`TankLocalTick.swift`),
+and a builder's walked-to-completion pill build/repair (`BuilderTick.swift` — the
+instant-click-command path already worked).
+
+All four fixed on branch `guest-capture-broadcast-gap` (off `main`, later merged with
+`v160-metal-renderer` for combined live testing — **deliberately not on `v160-metal-renderer`
+itself**, since this bug and fix are unrelated to `#25` and `v1.6.0`'s own hard-ceiling scope
+rule): capture-ownership via the same diff-and-broadcast pattern as terrain; damage/refuel/
+builder-completion via real `onShouldBroadcast*` hooks threaded through the direct-mutation
+call chain to `runTick`'s own signature, mirroring the already-proven `onShouldBroadcastDropPill`
+pattern. Each has a dedicated regression test hitting a real TCP-connected observer (not just
+internal state). Live-confirmed on real two-Mac hardware for all four: pillbox pickup/build,
+neutral and hostile base capture (including the capture-war/regen mechanic — a base under 5
+armour is freely re-capturable by anyone, matching the original C oracle's `tankcollision()`
+exactly), damage, and refuel all sync correctly now.
+
+**Also triaged live:** the HUD's "Base Armor/Shells/Mines" panel only shows a *mutually allied*
+base's stats (never a non-allied enemy's) — confirmed field-for-field against the C oracle's
+`-refresh:` (`GSXBoloController.m`), not a bug. The macOS Game Mode system overlay
+(⌥+Tab) is expected behavior from this app's own `LSSupportsGameMode`/`GCSupportsGameMode`
+opt-in, not a defect (briefly toggled off by mistake mid-session, reverted).
+
+**Full test suite:** 637 BoloKitTests + 309 DifferentialTests + 146 `Bolo 2026Tests`, all
+green (three pre-existing/one-off real-clock timing flakes under full parallel runs, all
+confirmed unrelated by passing individually).
+
+**Next:** merge PR #128 (`v160-metal-renderer`, closes #25) to `main`, then merge
+`guest-capture-broadcast-gap` to `main` on top. Both live-tested together on the same combined
+build this session.
+
 ## Shipped (`v1.5.1` release, tagged 2026-09-22)
 
 **[PR #117](https://github.com/CosmicCEO/BoloKit/pull/117)** ("bring the whole two-player stack into main", merged 2026-09-22): consolidated five stacked branches (45 commits) that had landed on neighbouring branches but not `main`. Fixed and **verified by code/doc read** (no Swift toolchain in the session that did this triage pass — a `swift test` run in Xcode is still owed before the v1.5.1 tag): guest can fire/adjust range/drown/lay mines and mines now trigger for it ([#62](https://github.com/CosmicCEO/BoloKit/issues/62)/[#91](https://github.com/CosmicCEO/BoloKit/issues/91), ruling [#59](https://github.com/CosmicCEO/BoloKit/issues/59)), host builder edits and mine terrain reach guests ([#84](https://github.com/CosmicCEO/BoloKit/issues/84)/[#81](https://github.com/CosmicCEO/BoloKit/issues/81)), host name shows on the guest ([#85](https://github.com/CosmicCEO/BoloKit/issues/85)), alliances work from both sides ([#92](https://github.com/CosmicCEO/BoloKit/issues/92)), Hidden Mines no longer announces a remote-laid mine at range ([#106](https://github.com/CosmicCEO/BoloKit/issues/106)), and a mine within 2.0 tiles of an observer's own tank correctly stays hidden-then-sticky-revealed ([#77](https://github.com/CosmicCEO/BoloKit/issues/77)'s first two parts). The umbrella issue [#61](https://github.com/CosmicCEO/BoloKit/issues/61) is closed as superseded; its two bullets with no fix (host hears no guest sounds; unexplained Mac B freeze, no repro) split to [#118](https://github.com/CosmicCEO/BoloKit/issues/118).

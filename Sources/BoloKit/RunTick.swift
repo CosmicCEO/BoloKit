@@ -81,6 +81,13 @@ public func runTick(
     // (server.c:4038-4056). `chain`/`chainAt` never call `sendsrflood`, so this
     // is threaded only into the `flood(...)` call below, not `chain(...)`.
     onShouldBroadcastFlood: (Int, Int) -> Void = { _, _ in },
+    // v1.6.x follow-up (live-play finding): `shellTick`'s own `applyDamage` calls (pill/base
+    // hits) had no broadcast hook at all -- unlike `recvClDamage`, its message-driven twin,
+    // which does broadcast. Threaded through to `shellTick` (ShellTick.swift's own doc comment
+    // on `onShouldBroadcastDamage` has the full rationale for why it fires unconditionally at
+    // its three call sites there, terrain-hit branches excluded since those are already
+    // covered by this function's caller's own terrain-diff catch-up).
+    onShouldBroadcastDamage: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
     // D148(A): new sound-only hooks, threaded through to `tankLocalTick`'s shell-fire branch and
     // `builderTick`/`arriveAtTarget`'s `.getTree` completion — see `TankLocalTick.swift`/
     // `BuilderTick.swift`'s own doc comments at the fire sites.
@@ -105,7 +112,15 @@ public func runTick(
     onHitTerrain: (Pointi) -> Void = { _ in },
     onHitTree: (Pointi) -> Void = { _ in },
     onMine: (Pointi) -> Void = { _ in },
+    // v1.6.x follow-up (live-play finding): threaded through to `tankLocalTick`'s refuel state
+    // machine (TankLocalTick.swift) -- see that hook's own doc comment for the full gap.
+    onShouldBroadcastRefuel: (Int, Int, UInt8, UInt8, UInt8) -> Void = { _, _, _, _, _ in },
     onBuild: (Pointi) -> Void = { _ in },
+    // v1.6.x follow-up (live-play finding): threaded through to `builderTick`'s
+    // walked-to-completion build/repair-pill path (`BuilderTick.swift`'s `buildPill`/
+    // `repairPill`, via `arriveAtTarget`/`gotoTick`) -- see those hooks' own doc comments.
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in },
     onBuilderDeath: () -> Void = {},
     onSink: () -> Void = {},
     onBubbles: () -> Void = {},
@@ -309,7 +324,8 @@ public func runTick(
         old: Pointi(x: Int32(localOld.x), y: Int32(localOld.y)), state: &state,
         onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
         onShouldBroadcastDropPill: onShouldBroadcastDropPill, onTankShot: onTankShot,
-        onBubbles: onBubbles, onMine: onMine, onSink: onSink
+        onBubbles: onBubbles, onMine: onMine, onSink: onSink,
+        onShouldBroadcastRefuel: onShouldBroadcastRefuel
     )
 
     // #62 S2: host-simulated remote tanks. Same local-player code, run once per connected remote
@@ -322,7 +338,8 @@ public func runTick(
                 tankLocalTick(
                     old: Pointi(x: Int32(old.x), y: Int32(old.y)), state: &simulated,
                     onSuperboomTerrain: onSuperboomTerrain, onMineExplosion: onMineExplosion,
-                    onShouldBroadcastDropPill: onShouldBroadcastDropPill
+                    onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+                    onShouldBroadcastRefuel: onShouldBroadcastRefuel
                 )
             }
             state.remoteLastTankPosition[player] = state.players[player].dead ? nil : state.players[player].tank
@@ -332,7 +349,8 @@ public func runTick(
     for player in state.players.indices {
         builderTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            onBuild: onBuild, onPrintMessage: onPrintMessage
+            onBuild: onBuild, onPrintMessage: onPrintMessage,
+            onShouldBroadcastBuildPill: onShouldBroadcastBuildPill, onShouldBroadcastRepairPill: onShouldBroadcastRepairPill
         )
     }
 
@@ -346,7 +364,8 @@ public func runTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
             onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill,
-            onHitTank: onHitTank, onHitTerrain: onHitTerrain, onHitTree: onHitTree
+            onHitTank: onHitTank, onHitTerrain: onHitTerrain, onHitTree: onHitTree,
+            onShouldBroadcastDamage: onShouldBroadcastDamage
         )
     }
 
