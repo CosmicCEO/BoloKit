@@ -327,7 +327,17 @@ public func shellCollisionTest(
     onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
     onHitTerrain: (Pointi) -> Void = { _ in },
     onHitTree: (Pointi) -> Void = { _ in },
-    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
+    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil,
+    // v1.6.x follow-up (live-play finding): `applyDamage` itself has no broadcast hook at all
+    // (many callers; `recvClDamage`, the message-driven twin, wraps its own call and decides
+    // separately whether to broadcast, same shape used here). Every `applyDamage(...)` call
+    // site below is reached only when `recvClDamage`'s own equivalent branching would also
+    // broadcast (both ported from the same C source region), so this fires unconditionally
+    // after each one -- no separate `firesDamageBroadcast` re-derivation needed. Fixes guests
+    // never learning a pill/base's armour changed (only ownership was fixed earlier this
+    // session) -- confirmed live: a hostile base regenerated in real time with the guest's
+    // client frozen at a stale armour value, making capture-after-shooting untestable.
+    onShouldBroadcastDamage: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in }
 ) -> Bool {
     let x = Int(shell.point.x)
     let y = Int(shell.point.y)
@@ -335,6 +345,11 @@ public func shellCollisionTest(
 
     func reportDamage(_ boat: Bool) {
         if player == state.localPlayer { onSelfReportDamage?(x, y, boat) }
+    }
+    // Mirrors `recvClDamage`'s own post-`applyDamage` broadcast call exactly
+    // (`RecvCL.swift`) -- reads terrain AFTER the mutation, same as that function.
+    func broadcastDamage() {
+        onShouldBroadcastDamage(player, x, y, UInt8((state.terrain[x, y] ?? .sea).rawValue))
     }
 
     if let pillIndex = findPill(x: x, y: y, pills: state.pills) {
@@ -346,6 +361,7 @@ public func shellCollisionTest(
                 onHitTerrain: onHitTerrain, onHitTree: onHitTree
         )
         killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
+        broadcastDamage()
         return true
     }
 
@@ -366,6 +382,7 @@ public func shellCollisionTest(
                 onHitTerrain: onHitTerrain, onHitTree: onHitTree
                 )
                 killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
+                broadcastDamage()
             } else {
                 state.players[player].explosions.append(Explosion(point: shell.point))
                 killPointBuilder(at: shell.point, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
@@ -379,6 +396,7 @@ public func shellCollisionTest(
                 onHitTerrain: onHitTerrain, onHitTree: onHitTree
             )
             killSquareBuilder(at: p, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill, onBuilderDeath: onBuilderDeath)
+            broadcastDamage()
             return true
         } else {
             return false
@@ -509,7 +527,8 @@ public func shellTick(
     onHitTank: () -> Void = {},
     onHitTerrain: (Pointi) -> Void = { _ in },
     onHitTree: (Pointi) -> Void = { _ in },
-    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil
+    onSelfReportDamage: ((Int, Int, Bool) -> Void)? = nil,
+    onShouldBroadcastDamage: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in }
 ) {
     guard state.players[player].connected else { return }
 
@@ -526,7 +545,8 @@ public func shellTick(
             shell: shell, player: player, state: &state, onMineExplosion: onMineExplosion, onBuilderDeath: onBuilderDeath,
             onSuperboomTerrain: onSuperboomTerrain,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill,
-            onHitTerrain: onHitTerrain, onHitTree: onHitTree, onSelfReportDamage: onSelfReportDamage
+            onHitTerrain: onHitTerrain, onHitTree: onHitTree, onSelfReportDamage: onSelfReportDamage,
+            onShouldBroadcastDamage: onShouldBroadcastDamage
         ) {
             state.players[player].shells.remove(at: i)
         } else {

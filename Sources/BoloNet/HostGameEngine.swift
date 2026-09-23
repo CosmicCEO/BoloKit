@@ -701,11 +701,29 @@ public final class HostGameEngine: @unchecked Sendable {
                 let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
                 maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
             },
+            onShouldBroadcastDamage: { player, x, y, terrain in
+                Self.discoveryLogger.notice("capture-broadcast: SRDamage player=\(player) x=\(x) y=\(y) terrain=\(terrain)")
+                pending.append(SRDamage(player: UInt8(player), x: UInt8(x), y: UInt8(y), terrain: terrain).encode())
+            },
             onPrintMessage: { pendingGameMessages.append($0) },
             onMine: { point in
                 // Same rule as `.localLayMineKeyDown`: a hidden mine is never announced.
                 guard !hiddenMinesSnapshot else { return }
                 pending.append(SRDropMine(player: UInt8(localPlayerSnapshot), x: UInt8(point.x), y: UInt8(point.y)).encode())
+            },
+            onShouldBroadcastRefuel: { player, base, armour, shells, mines in
+                Self.discoveryLogger.notice(
+                    "capture-broadcast: SRRefuel player=\(player) base=\(base) armour=\(armour) shells=\(shells) mines=\(mines)"
+                )
+                pending.append(SRRefuel(base: UInt8(base), armour: armour, shells: shells, mines: mines).encode())
+            },
+            onShouldBroadcastBuildPill: { pill, x, y, armour in
+                Self.discoveryLogger.notice("capture-broadcast: SRBuildPill pill=\(pill) x=\(x) y=\(y) armour=\(armour)")
+                pending.append(SRBuildPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y), armour: armour).encode())
+            },
+            onShouldBroadcastRepairPill: { pill, armour in
+                Self.discoveryLogger.notice("capture-broadcast: SRRepairPill pill=\(pill) armour=\(armour)")
+                pending.append(SRRepairPill(pill: UInt8(pill), armour: armour).encode())
             }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)

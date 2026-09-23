@@ -346,7 +346,12 @@ private func buildBoat(
 private func buildPill(
     at point: Pointi, trees: Int, pillIndex: Int, owner: Int,
     state: inout GameState, onMineExplosion: (Pointi) -> Void,
-    onBuild: (Pointi) -> Void = { _ in }
+    onBuild: (Pointi) -> Void = { _ in },
+    // v1.6.x follow-up (live-play finding): the walked-to-completion path (this function, via
+    // `arriveAtTarget`) had no broadcast hook, unlike the instant click-command path
+    // (`recvClBuildPill`, which does broadcast via `onShouldBroadcastBuildPill`) -- confirmed
+    // working live today. Same shape as that hook: (pill, x, y, finalArmour).
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in }
 ) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
@@ -366,9 +371,11 @@ private func buildPill(
         let armour = trees * 4
         if armour > maxPillArmour {
             state.pills[pillIndex].armour = UInt8(maxPillArmour)
+            onShouldBroadcastBuildPill(pillIndex, x, y, UInt8(maxPillArmour))
             return (armour - maxPillArmour) / 4
         } else {
             state.pills[pillIndex].armour = UInt8(armour)
+            onShouldBroadcastBuildPill(pillIndex, x, y, UInt8(armour))
             return 0
         }
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
@@ -384,7 +391,9 @@ private func buildPill(
 /// refunded).
 private func repairPill(
     at point: Pointi, trees: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
-    onBuild: (Pointi) -> Void = { _ in }
+    onBuild: (Pointi) -> Void = { _ in },
+    // v1.6.x follow-up: same gap as `buildPill`'s own new hook -- see its doc comment.
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in }
 ) -> Int {
     let x = Int(point.x)
     let y = Int(point.y)
@@ -400,9 +409,11 @@ private func repairPill(
         onBuild(point)
         if armour > maxPillArmour {
             state.pills[pillIndex].armour = UInt8(maxPillArmour)
+            onShouldBroadcastRepairPill(pillIndex, UInt8(maxPillArmour))
             return (armour - maxPillArmour) / 4
         } else {
             state.pills[pillIndex].armour = UInt8(armour)
+            onShouldBroadcastRepairPill(pillIndex, UInt8(armour))
             return 0
         }
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
@@ -616,7 +627,9 @@ private func arriveAtTarget(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
     onTreeHarvest: (Pointi) -> Void = { _ in },
     onBuild: (Pointi) -> Void = { _ in },
-    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil,
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in }
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
 
@@ -665,7 +678,8 @@ private func arriveAtTarget(
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = buildPill(
                 at: target, trees: state.players[player].builderTrees, pillIndex: Int(state.players[player].builderPill),
-                owner: player, state: &state, onMineExplosion: onMineExplosion, onBuild: onBuild
+                owner: player, state: &state, onMineExplosion: onMineExplosion, onBuild: onBuild,
+                onShouldBroadcastBuildPill: onShouldBroadcastBuildPill
             )
         }
 
@@ -673,7 +687,7 @@ private func arriveAtTarget(
         if !tankTest(x: Int(target.x), y: Int(target.y), state: state) {
             state.players[player].builderTrees = repairPill(
                 at: target, trees: state.players[player].builderTrees, state: &state, onMineExplosion: onMineExplosion,
-                onBuild: onBuild
+                onBuild: onBuild, onShouldBroadcastRepairPill: onShouldBroadcastRepairPill
             )
         }
 
@@ -706,7 +720,9 @@ private func gotoTick(
     player: Int, state: inout GameState, onMineExplosion: (Pointi) -> Void,
     onTreeHarvest: (Pointi) -> Void = { _ in },
     onBuild: (Pointi) -> Void = { _ in },
-    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil
+    joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil,
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in }
 ) -> JoinOutboundBuilderCL? {
     let target = state.players[player].builderTarget
     let center = Vec2f(x: Float(target.x) + 0.5, y: Float(target.y) + 0.5)
@@ -715,7 +731,8 @@ private func gotoTick(
     if mag2f(diff) < 0.00001 {
         return arriveAtTarget(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            onBuild: onBuild, joinArrive: joinArrive
+            onBuild: onBuild, joinArrive: joinArrive,
+            onShouldBroadcastBuildPill: onShouldBroadcastBuildPill, onShouldBroadcastRepairPill: onShouldBroadcastRepairPill
         )
     }
 
@@ -887,7 +904,13 @@ public func builderTick(
     // `playsound(kBuildSound)` at each of its call sites (client.c:1670/2213/2372).
     onBuild: (Pointi) -> Void = { _ in },
     joinArrive: ((Int, GameState) -> JoinOutboundBuilderCL?)? = nil,
-    onPrintMessage: (String) -> Void = { _ in }
+    onPrintMessage: (String) -> Void = { _ in },
+    // v1.6.x follow-up (live-play finding): the walked-to-completion build/repair-pill path
+    // (`arriveAtTarget`, via `gotoTick`) had no broadcast hook, unlike the instant
+    // click-command path (`recvClBuildPill`/`recvClRepairPill`, which do broadcast) --
+    // confirmed working live today. See `buildPill`'s own doc comment for the full gap.
+    onShouldBroadcastBuildPill: (Int, Int, Int, UInt8) -> Void = { _, _, _, _ in },
+    onShouldBroadcastRepairPill: (Int, UInt8) -> Void = { _, _ in }
 ) -> JoinOutboundBuilderCL? {
     guard state.players[player].connected else { return nil }
 
@@ -901,7 +924,8 @@ public func builderTick(
     case .goto:
         return gotoTick(
             player: player, state: &state, onMineExplosion: onMineExplosion, onTreeHarvest: onTreeHarvest,
-            onBuild: onBuild, joinArrive: joinArrive
+            onBuild: onBuild, joinArrive: joinArrive,
+            onShouldBroadcastBuildPill: onShouldBroadcastBuildPill, onShouldBroadcastRepairPill: onShouldBroadcastRepairPill
         )
 
     case .work:

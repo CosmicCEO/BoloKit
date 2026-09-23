@@ -782,7 +782,13 @@ public func tankLocalTick(
     // (client.c:4304-4306). `onMine`/`onSink` pass straight through to `enterTile`.
     onBubbles: () -> Void = {},
     onMine: (Pointi) -> Void = { _ in },
-    onSink: () -> Void = {}
+    onSink: () -> Void = {},
+    // v1.6.x follow-up (live-play finding): the refuel state machine below depletes
+    // `state.bases[refuelingBase]` directly with no broadcast hook -- unlike `recvClRefuel`,
+    // its message-driven twin, which does broadcast. Fires with whichever one of
+    // armour/shells/mines this tick's branch actually moved (the other two 0), matching
+    // `recvClRefuel`'s own three-delta shape.
+    onShouldBroadcastRefuel: (Int, Int, UInt8, UInt8, UInt8) -> Void = { _, _, _, _, _ in }
 ) {
     guard old.x >= 0, old.x < 256, old.y >= 0, old.y < 256 else { return }
 
@@ -864,6 +870,7 @@ public func tankLocalTick(
                 state.bases[refuelingBase].armour -= UInt8(armourAmount)
                 state.local.armour += armourAmount
                 state.local.refuelingCounter = 0
+                onShouldBroadcastRefuel(player, refuelingBase, UInt8(armourAmount), 0, 0)
             }
         } else if state.local.shells < maxShells, Int(state.bases[refuelingBase].shells) >= minBaseShells {
             if state.local.refuelingCounter >= refuelShellsTicks {
@@ -872,6 +879,7 @@ public func tankLocalTick(
                 state.bases[refuelingBase].shells -= UInt8(transfer)
                 state.local.shells += transfer
                 state.local.refuelingCounter = 0
+                onShouldBroadcastRefuel(player, refuelingBase, 0, UInt8(transfer), 0)
             }
         } else if state.players[player].mines < maxMines, Int(state.bases[refuelingBase].mines) >= minBaseMines {
             if state.local.refuelingCounter >= refuelMinesTicks {
@@ -880,6 +888,7 @@ public func tankLocalTick(
                 state.bases[refuelingBase].mines -= UInt8(transfer)
                 state.players[player].mines += transfer
                 state.local.refuelingCounter = 0
+                onShouldBroadcastRefuel(player, refuelingBase, 0, 0, UInt8(transfer))
             }
         }
     } else {
