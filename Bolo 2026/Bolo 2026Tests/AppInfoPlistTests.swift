@@ -15,13 +15,9 @@ struct AppInfoPlistTests {
         #expect(info["LSApplicationCategoryType"] as? String == "public.app-category.games")
     }
 
-    /// Turned off 2026-09-23: opting into Game Mode also triggers macOS's own system
-    /// ⌥+Tab "Game Overlay" HUD, an unwanted system-level popup unrelated to this app's
-    /// own UI (confirmed via `Info.plist`'s `LSSupportsGameMode` +
-    /// `INFOPLIST_KEY_GCSupportsGameMode`, the only two keys that opt in).
-    @Test func supportsGameModeKeysAreFalse() {
-        #expect(info["LSSupportsGameMode"] as? Bool == false)
-        #expect(info["GCSupportsGameMode"] as? Bool == false)
+    @Test func supportsGameModeKeysAreTrue() {
+        #expect(info["LSSupportsGameMode"] as? Bool == true)
+        #expect(info["GCSupportsGameMode"] as? Bool == true)
     }
 
     @Test func supportsControllerUserInteractionIsTrue() {

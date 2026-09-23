@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>LSSupportsGameMode</key>
-	<false/>
+	<true/>
 	<key>GCSupportsControllerUserInteraction</key>
 	<true/>
 	<key>NSBonjourServices</key>
