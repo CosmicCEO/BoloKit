@@ -14,7 +14,19 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-## In flight — `v1.6.1` (planning, 2026-09-23)
+## In flight — `v1.6.1` (planning + first implementation, 2026-09-23)
+
+**End of shift, 2026-09-23:** working tree clean, everything pushed to `main` (no open PRs --
+today's changes were small enough to commit straight to `main`, docs-only or reviewed
+build-and-test-verified code). Today: triaged v1.6.1's scope, wrote a target UI design doc
+grounded in the original XBolo interface, filed #142, and shipped the sea/grass/swamp/forest
+half of #110 (commit `f3a0f6b`, tests green). **Tomorrow, pick up in this order:**
+1. **#137** (black seam lines) -- smallest, most mechanical, plan already written below.
+2. **#140** (client/host panel parity) -- plan already written below.
+3. **#110 remainder** (river/crater/road/boat textures) if there's time/appetite -- same
+   pattern as today's sea/grass/swamp/forest work, see "Progress" note in that section.
+4. **#142** (map-wide ownership grid) needs a milestone/placement decision before anyone
+   picks it up -- not blocking, just needs a call.
 
 Milestone [21](https://github.com/CosmicCEO/BoloKit/milestone/21), "Increase Visual Appeal of
 Sprites" -- visual/cosmetic polish only, same hard-ceiling convention as v1.6.0. Triaged the
