@@ -98,8 +98,20 @@ public final class TCPSession: @unchecked Sendable {
     public let remoteHost: String
     public let remotePort: UInt16
 
+    /// `TCP_NODELAY` on the guest's own outbound connection, matching `HostListener`'s
+    /// identical setting on the host's accept side (see its own comment) -- without this,
+    /// Nagle's algorithm stays on for everything the guest sends *to* the host (`CLDropMine`
+    /// etc.), and since mine lay/activation/reveal has no client-side prediction (unlike
+    /// tank position's UDP+`RemotePositionSmoother` path), any Nagle/delayed-ACK stall shows
+    /// up as a hard multi-second freeze specifically on mine actions.
+    private static func tcpNoDelayParameters() -> NWParameters {
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        return NWParameters(tls: nil, tcp: tcpOptions)
+    }
+
     public init(host: String, port: UInt16) async throws {
-        let parameters = NWParameters.tcp
+        let parameters = Self.tcpNoDelayParameters()
         ipv4Only(parameters)
         let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: parameters)
         self.connection = connection
@@ -111,7 +123,7 @@ public final class TCPSession: @unchecked Sendable {
     public init(to endpoint: NWEndpoint) async throws {
         // IPv4 only: a Bonjour `.service` endpoint otherwise resolves to the host's IPv6
         // link-local address, which the IPv4-only wire protocol cannot track (`ipv4Only`).
-        let parameters = NWParameters.tcp
+        let parameters = Self.tcpNoDelayParameters()
         ipv4Only(parameters)
         let connection = NWConnection(to: endpoint, using: parameters)
         self.connection = connection
