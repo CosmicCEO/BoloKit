@@ -34,6 +34,20 @@ public final class MetalTileRenderer: TileRenderer {
     private static let sheetPixelSize: Float = 256
     private static let sheetCellsPerAxis: Float = sheetPixelSize / tileSizePixels // 16
 
+    /// D156 (#137): extra quad size, beyond `scaledTileSize`, drawn in `renderLiveTerrain` only.
+    /// Each tile's *origin* is still stepped by the exact (unpadded) `scaledTileSize`, computed
+    /// independently per tile (`Float(x) * scaledTileSize - originXPixels`) rather than
+    /// accumulated from the previous tile's edge -- so at zoom/backing-scale ratios where
+    /// `scaledTileSize` isn't exactly `Float`-representable, adjacent origins can drift apart by
+    /// a sub-pixel amount the exact quad size doesn't cover, leaving a gap that samples this
+    /// pass's black clear color through (the reported "black seam lines," #137). Padding every
+    /// quad's *size* (not origin) by a fixed amount larger than any plausible rounding error
+    /// makes neighboring quads overlap by a hair instead -- `.nearest` sampling means the
+    /// overlap just duplicates an edge texel, imperceptible next to a visible seam. Not applied
+    /// to the offscreen `renderInstances` path (`draw(_:ctx:dirtyRect:)`): that path crops each
+    /// tile's own `CGImage` cell after compositing and was never affected by this bug.
+    private nonisolated static let seamPadPixels: Float = 1.0
+
     private struct TileInstance {
         var origin: SIMD2<Float>
         var uvOrigin: SIMD2<Float>
@@ -266,6 +280,10 @@ public final class MetalTileRenderer: TileRenderer {
         var originXPixels: Float
         var originYPixels: Float
         var scaledTileSize: Float
+        /// D156 (#137): `scaledTileSize + seamPadPixels` -- the quad size `renderLiveTerrain`
+        /// actually draws with, so neighboring tiles overlap instead of leaving a sub-pixel gap.
+        /// `scaledTileSize` itself is kept unpadded and still used for origin stepping.
+        var paddedTileSize: Float
     }
 
     /// Pure, headlessly-testable extraction of the scale/origin math `renderLiveTerrain` uses --
@@ -278,9 +296,11 @@ public final class MetalTileRenderer: TileRenderer {
     nonisolated static func cameraTransform(visibleRect: NSRect, targetTextureWidthPixels: Int) -> CameraTransform? {
         guard visibleRect.width > 0 else { return nil }
         let scale = Float(targetTextureWidthPixels) / Float(visibleRect.width)
+        let scaledTileSize = Self.tileSizePixels * scale
         return CameraTransform(
             scale: scale, originXPixels: Float(visibleRect.origin.x) * scale,
-            originYPixels: Float(visibleRect.origin.y) * scale, scaledTileSize: Self.tileSizePixels * scale
+            originYPixels: Float(visibleRect.origin.y) * scale, scaledTileSize: scaledTileSize,
+            paddedTileSize: scaledTileSize + Self.seamPadPixels
         )
     }
 
@@ -327,7 +347,9 @@ public final class MetalTileRenderer: TileRenderer {
         encoder.setVertexBuffer(instanceBuffer, offset: 0, index: 0)
         var targetSize = SIMD2<Float>(Float(targetTexture.width), Float(targetTexture.height))
         encoder.setVertexBytes(&targetSize, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
-        var tileSizeForDraw = scaledTileSize
+        // D156 (#137): drawn slightly larger than `scaledTileSize` (origins are still stepped by
+        // the exact, unpadded value above) so neighboring quads overlap instead of gapping.
+        var tileSizeForDraw = transform.paddedTileSize
         encoder.setVertexBytes(&tileSizeForDraw, length: MemoryLayout<Float>.size, index: 2)
         var uvCellSize = 1.0 / Self.sheetCellsPerAxis
         encoder.setVertexBytes(&uvCellSize, length: MemoryLayout<Float>.size, index: 3)
