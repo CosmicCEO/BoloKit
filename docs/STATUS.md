@@ -14,6 +14,24 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
+## In flight — `v1.6.1` (planning, 2026-09-23)
+
+Milestone [21](https://github.com/CosmicCEO/BoloKit/milestone/21), "Increase Visual Appeal of
+Sprites" -- visual/cosmetic polish only, same hard-ceiling convention as v1.6.0. Triaged the
+open-issue backlog on 2026-09-23 and confirmed/adjusted scope:
+
+**In milestone (all visual):**
+- [#110](https://github.com/CosmicCEO/BoloKit/issues/110) chrome the terrain/sprite art, still rough.
+- [#137](https://github.com/CosmicCEO/BoloKit/issues/137) intermittent black seam lines in the live Metal terrain overlay (found during v1.6.0 live testing).
+- [#140](https://github.com/CosmicCEO/BoloKit/issues/140) client info panels don't visually match the host's.
+
+**Moved out during triage:**
+- [#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host-engine SIGABRT/data-race signature, `GameState.local` mutation during `tankLocalTick`) was unassigned -- not visual, moved to milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20) `v1.6.x — Rejoin fix`, the existing pre-1.7 bug-fix bucket, alongside #87/#89/#93/#100/#101/#113/#118/#120.
+- [#127](https://github.com/CosmicCEO/BoloKit/issues/127) (brainstorm: what the Metal renderer's headroom could enable) unassigned from the milestone -- it's a non-committal idea list, not committed work, and already served its purpose spawning #137 as a real issue. Left open as backlog reference; not required for milestone closure.
+
+Next: pick up #110/#137/#140 as implementation work; #127's remaining ideas (camera-follow,
+minimap, decoupled render rate, etc.) stay parked pending their own issues if greenlit.
+
 ## Shipped (`v1.6.0` release, tagged 2026-09-23)
 
 **Tagged 2026-09-23.** Milestone 4 closed, #25 closed, PR #128 (Metal renderer) and PR #141
