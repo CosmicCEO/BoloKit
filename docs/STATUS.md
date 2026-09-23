@@ -14,6 +14,29 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
+## Next sprint — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
+
+Triaged the milestone's 9 open issues against what actually shipped in 1.5.1 and the
+v1.6.0 Metal-renderer switch. User confirmed (live troubleshooting during 1.6.0-1.6.1, not
+independently re-repro'd in this pass) that six were already resolved by that work and closed
+them: [#113](https://github.com/CosmicCEO/BoloKit/issues/113) (rejoin stale screen),
+[#89](https://github.com/CosmicCEO/BoloKit/issues/89) (slow terrain reveal),
+[#93](https://github.com/CosmicCEO/BoloKit/issues/93) (first-join fails),
+[#87](https://github.com/CosmicCEO/BoloKit/issues/87) (blue square artifact),
+[#118](https://github.com/CosmicCEO/BoloKit/issues/118) (no guest sounds/Mac B freeze),
+[#120](https://github.com/CosmicCEO/BoloKit/issues/120) (alliance-break re-fog).
+[#100](https://github.com/CosmicCEO/BoloKit/issues/100)/[#101](https://github.com/CosmicCEO/BoloKit/issues/101)
+(controller input / custom key bindings, live-session manual checks) are pushed off this
+sprint -- unassigned from the milestone, not code work, verify whenever the next live two-Mac
+session happens.
+
+**Sprint is just [#139](https://github.com/CosmicCEO/BoloKit/issues/139)** -- host crash,
+SIGABRT/data-race signature in `GameState.local` mutation during `tankLocalTick` (7-hour idle
+host session, `v1.5.1` build, not yet reproduced on demand). MVP: static Swift 6 concurrency
+audit of `HostGameEngine`'s tick-loop `Task` vs. every other access path into
+`GameState`/`GameSession.state`; fix the isolation gap if found, with a regression test that
+would have caught it, or document why the current codebase is already race-free at this path.
+
 ## In flight — `v1.6.1` (all three milestone issues implemented, 2026-09-23)
 
 **Run out overnight, 2026-09-23, on branch `v1.6.1-visual-polish`** (approved to close the
