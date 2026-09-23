@@ -1,6 +1,6 @@
 # Status
 
-**Current tagged drop:** `v1.5.1`. [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.5.1). **`v1.5.0`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.** Milestone [19](https://github.com/CosmicCEO/BoloKit/milestone/19) closed 2026-09-22: every issue closed, code merged to `main` (PRs [#117](https://github.com/CosmicCEO/BoloKit/pull/117), [#121](https://github.com/CosmicCEO/BoloKit/pull/121), [#123](https://github.com/CosmicCEO/BoloKit/pull/123)), and #105/#114 both live-confirmed on real two-Mac hardware (build `v151-test6 496999e`) before the tag. Release notes: `docs/RELEASE_NOTES_v1.5.1.md`.
+**Current tagged drop:** `v1.6.0`. [GitHub release](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.0). **`v1.5.1`–`v1.2.0`, `v1.1.0`, and `v1.0.0` shipped.** Milestone [4](https://github.com/CosmicCEO/BoloKit/milestone/4) closed 2026-09-23: #25 closed, code merged to `main` (PRs [#128](https://github.com/CosmicCEO/BoloKit/pull/128), [#141](https://github.com/CosmicCEO/BoloKit/pull/141)), Metal renderer plus the guest desync fixes it surfaced both live-confirmed on real two-Mac hardware before the tag. Release notes: `docs/RELEASE_NOTES_v1.6.0.md`.
 
 **Bolo 2026** is playable host-and-join multiplayer: HUD, bundled training map or imported `.map`, keyboard-, mouse-, and game-controller-driven tank, click-to-command builder, 50 Hz tick over a live network session, `bolo://` join URLs, host tracker announce + UPnP port mapping, App Intents for Host/Join from Shortcuts and Spotlight, OSLog/`OSSignposter` instrumentation, and near-complete procedural sound. Training island: straight river, player/neutral/enemy bases, yellow pickable wreck, far red turret. Hostile pills duel at combat cadence.
 
@@ -14,7 +14,14 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-## In flight — v1.6.0 Metal renderer (end of shift, 2026-09-22)
+## Shipped (`v1.6.0` release, tagged 2026-09-23)
+
+**Tagged 2026-09-23.** Milestone 4 closed, #25 closed, PR #128 (Metal renderer) and PR #141
+(the guest desync fixes it surfaced) both merged to `main` and live-confirmed on real two-Mac
+hardware. Release notes: `docs/RELEASE_NOTES_v1.6.0.md`. The full increment-by-increment history
+below is kept as-is for reference.
+
+### History (in-flight notes, kept verbatim)
 
 Milestone [4](https://github.com/CosmicCEO/BoloKit/milestone/4), scoped strictly to `#25` (hard
 ceiling — no added scope, anything else goes to v1.6.1). Work lives on branch
