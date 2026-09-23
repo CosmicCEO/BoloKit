@@ -702,7 +702,6 @@ public final class HostGameEngine: @unchecked Sendable {
                 maskedPending.append((mask, SRFlood(x: UInt8(x), y: UInt8(y)).encode()))
             },
             onShouldBroadcastDamage: { player, x, y, terrain in
-                Self.discoveryLogger.notice("capture-broadcast: SRDamage player=\(player) x=\(x) y=\(y) terrain=\(terrain)")
                 pending.append(SRDamage(player: UInt8(player), x: UInt8(x), y: UInt8(y), terrain: terrain).encode())
             },
             onPrintMessage: { pendingGameMessages.append($0) },
@@ -711,18 +710,13 @@ public final class HostGameEngine: @unchecked Sendable {
                 guard !hiddenMinesSnapshot else { return }
                 pending.append(SRDropMine(player: UInt8(localPlayerSnapshot), x: UInt8(point.x), y: UInt8(point.y)).encode())
             },
-            onShouldBroadcastRefuel: { player, base, armour, shells, mines in
-                Self.discoveryLogger.notice(
-                    "capture-broadcast: SRRefuel player=\(player) base=\(base) armour=\(armour) shells=\(shells) mines=\(mines)"
-                )
+            onShouldBroadcastRefuel: { _, base, armour, shells, mines in
                 pending.append(SRRefuel(base: UInt8(base), armour: armour, shells: shells, mines: mines).encode())
             },
             onShouldBroadcastBuildPill: { pill, x, y, armour in
-                Self.discoveryLogger.notice("capture-broadcast: SRBuildPill pill=\(pill) x=\(x) y=\(y) armour=\(armour)")
                 pending.append(SRBuildPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y), armour: armour).encode())
             },
             onShouldBroadcastRepairPill: { pill, armour in
-                Self.discoveryLogger.notice("capture-broadcast: SRRepairPill pill=\(pill) armour=\(armour)")
                 pending.append(SRRepairPill(pill: UInt8(pill), armour: armour).encode())
             }
         )
@@ -756,15 +750,9 @@ public final class HostGameEngine: @unchecked Sendable {
         // visibility-masked: pills/bases are never fog-hidden (only mines are), matching
         // `recvClGrabTile`'s own unmasked `.all` broadcast.
         for pill in state.pills.indices where state.pills[pill].owner != oldPillOwners[pill] {
-            Self.discoveryLogger.notice(
-                "capture-broadcast: SRCapturePill pill=\(pill) owner=\(self.state.pills[pill].owner) (was \(oldPillOwners[pill]))"
-            )
             pending.append(SRCapturePill(pill: UInt8(pill), owner: state.pills[pill].owner).encode())
         }
         for base in state.bases.indices where state.bases[base].owner != oldBaseOwners[base] {
-            Self.discoveryLogger.notice(
-                "capture-broadcast: SRCaptureBase base=\(base) owner=\(self.state.bases[base].owner) (was \(oldBaseOwners[base]))"
-            )
             pending.append(SRCaptureBase(base: UInt8(base), owner: state.bases[base].owner).encode())
         }
 
