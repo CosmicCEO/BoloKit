@@ -187,6 +187,16 @@ public final class GameRenderView: NSView {
     /// AppKit alone start missing a frame budget," which is what this cap actually guards.)
     static let tileCountBudget = 9_000
 
+    /// v1.6.0 (#25) increment 7: `tileCountBudget` above calibrates the *CPU* `CGContext`
+    /// draw-cost ladder -- but once `liveMetalOverlay` is live, `draw(_:)` skips the
+    /// expensive tile pass entirely (terrain moves to the Metal overlay's own draw loop;
+    /// this view's CGContext path only draws sprites, "small, roughly zoom-independent" per
+    /// that call site's own comment). Applying the CPU-calibrated floor to the Metal path is
+    /// therefore an artifact, not a real cost constraint -- the full 256x256 map (65,536
+    /// tiles) is exactly the ceiling `GSBoloView.m` never had (the v1.6.1 brainstorm issue's
+    /// item 1). Set to the whole map so the floor never binds under live Metal.
+    static let liveMetalTileCountBudget = 256 * 256
+
     private var scrollViewFrameObserverInstalled = false
 
     /// **D160 item 1:** the dynamic minimum-magnification floor, a function of the live
@@ -258,11 +268,21 @@ public final class GameRenderView: NSView {
     /// floor (the one scenario `minMagnification`/`maxMagnification` alone can't already
     /// cover, since AppKit doesn't retroactively re-clamp an existing value just because the
     /// bound itself moved).
+    /// v1.6.0 (#25) increment 7: lets `GameRenderViewZoomTests`' two window-resize/floor tests
+    /// keep asserting against a small, explicit budget instead of the production Metal-path
+    /// budget above (which, at 65,536 tiles, no longer floors those tests' window sizes at
+    /// all) -- decouples the tests from the production constant by premise, per the plan, so
+    /// a future revision of either budget doesn't silently break them. `nil` (the default) is
+    /// a no-op; production code never sets this.
+    var tileBudgetOverrideForTesting: Int?
+
     private func applyEffectiveMagnification() {
         guard let scrollView = enclosingScrollView else { return }
         let viewport = scrollView.frame.size
+        let tileBudget = tileBudgetOverrideForTesting
+            ?? (liveMetalTerrainRenderer != nil ? Self.liveMetalTileCountBudget : Self.tileCountBudget)
         let floor = Self.minimumMagnification(
-            viewportWidth: viewport.width, viewportHeight: viewport.height, tileBudget: Self.tileCountBudget
+            viewportWidth: viewport.width, viewportHeight: viewport.height, tileBudget: tileBudget
         )
         scrollView.minMagnification = floor
         scrollView.maxMagnification = Self.zoomLevels.last!
@@ -271,6 +291,14 @@ public final class GameRenderView: NSView {
             zoomIndex = max(zoomIndex, raisedIndex)
         }
         scrollView.magnification = Self.zoomLevels[zoomIndex]
+    }
+
+    /// Test-only hook: re-runs the floor computation on demand, so a test can set
+    /// `tileBudgetOverrideForTesting` after `hostGameView` has already triggered the
+    /// window's *initial* `configureZoom()` pass (which ran under the production budget)
+    /// and still observe a floor computed under the override.
+    func reapplyEffectiveMagnificationForTesting() {
+        applyEffectiveMagnification()
     }
 
     /// Ported from `zoomIn:`/`zoomOut:` (`GSXBoloController.m:1483-1515`) -- same fixed

@@ -168,7 +168,7 @@ public final class GameSession {
         self.hostEngine = nil
         self.tcpSession = nil
         self.udpSession = nil
-        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
+        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage, liveMetalTerrainRenderer: MetalTileRenderer())
         self.renderView = view
         view.render(initialState)
         hudSnapshot.update(from: initialState)
@@ -200,7 +200,7 @@ public final class GameSession {
         self.hostEngine = hostEngine
         self.tcpSession = nil
         self.udpSession = nil
-        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
+        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage, liveMetalTerrainRenderer: MetalTileRenderer())
         self.renderView = view
         view.render(self.state, fogState: hostRenderFogState(
             engineFog: hostEngine.fogState(for: self.state.localPlayer), hiddenMines: self.state.hiddenMines))
@@ -269,7 +269,7 @@ public final class GameSession {
         self.hostEngine = nil
         self.tcpSession = tcpSession
         self.udpSession = udpSession
-        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage)
+        let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage, liveMetalTerrainRenderer: MetalTileRenderer())
         self.renderView = view
         view.render(initialState)
         hudSnapshot.update(from: initialState)
