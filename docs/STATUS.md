@@ -14,19 +14,26 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-## In flight — `v1.6.1` (planning + first implementation, 2026-09-23)
+## In flight — `v1.6.1` (all three milestone issues implemented, 2026-09-23)
 
-**End of shift, 2026-09-23:** working tree clean, everything pushed to `main` (no open PRs --
-today's changes were small enough to commit straight to `main`, docs-only or reviewed
-build-and-test-verified code). Today: triaged v1.6.1's scope, wrote a target UI design doc
-grounded in the original XBolo interface, filed #142, and shipped the sea/grass/swamp/forest
-half of #110 (commit `f3a0f6b`, tests green). **Tomorrow, pick up in this order:**
-1. **#137** (black seam lines) -- smallest, most mechanical, plan already written below.
-2. **#140** (client/host panel parity) -- plan already written below.
-3. **#110 remainder** (river/crater/road/boat textures) if there's time/appetite -- same
-   pattern as today's sea/grass/swamp/forest work, see "Progress" note in that section.
-4. **#142** (map-wide ownership grid) needs a milestone/placement decision before anyone
-   picks it up -- not blocking, just needs a call.
+**Run out overnight, 2026-09-23, on branch `v1.6.1-visual-polish`** (approved to close the
+milestone via PR rather than direct-to-`main` commits, unlike earlier in the day): all three
+milestone issues implemented, tested, and committed --
+- `317e48b` -- #137, black-seam fix (`MetalTileRenderer.swift`'s `paddedTileSize`)
+- `f5f412c` -- #140, guest's own connection-age fix (`GameSession.connectionAge(for:)`) plus a
+  confirmed-clean layout audit
+- `f3a0f6b` (earlier, on `main`) + `8c2a513` -- #110, all 7 terrain families now have distinct
+  procedural textures (sea/grass/swamp/forest shipped to `main` directly; river/boat/crater/
+  road on this branch)
+
+Every fix has its own regression test, verified failing-without/passing-with the fix (same
+discipline as the v1.6.0 work), and the full `swift test` + `xcodebuild test -only-testing:"Bolo
+2026Tests"` suites are green (modulo the documented pre-existing real-clock/port-contention
+flakes under full parallel runs, each individually confirmed unrelated). Live two-Mac
+verification not yet done -- these are build-and-test-verified, not yet hands-on played.
+
+#142 (map-wide ownership grid) stays parked, out of this milestone's scope as written -- no
+action needed to close v1.6.1.
 
 Milestone [21](https://github.com/CosmicCEO/BoloKit/milestone/21), "Increase Visual Appeal of
 Sprites" -- visual/cosmetic polish only, same hard-ceiling convention as v1.6.0. Triaged the
@@ -47,6 +54,8 @@ gauges) and identifies one genuine gap: no map-wide pill/base/player ownership o
 - [#127](https://github.com/CosmicCEO/BoloKit/issues/127) (brainstorm: what the Metal renderer's headroom could enable) unassigned from the milestone -- it's a non-committal idea list, not committed work, and already served its purpose spawning #137 as a real issue. Left open as backlog reference; not required for milestone closure.
 
 ### [#137](https://github.com/CosmicCEO/BoloKit/issues/137) -- black seam lines, live Metal overlay
+
+**Done, commit `317e48b`.** Fixed exactly as planned below.
 
 **Root cause (confirmed by reading `Bolo 2026/Bolo 2026/MetalTileRenderer.swift`):** the live
 overlay's render pass clears to opaque black (`MTLClearColor(0,0,0,1)`, line 323). Each tile
@@ -78,6 +87,9 @@ various window sizes, zero visible seams; existing offscreen pixel-diff harness 
 (that path isn't touched).
 
 ### [#140](https://github.com/CosmicCEO/BoloKit/issues/140) -- client info panels vs. host
+
+**Done, commit `f5f412c`.** Fixed as planned below; the layout-audit half was confirmed clean
+(no fix needed -- see the commit message for the full trace).
 
 **Root cause (confirmed by reading `PlayerStatusView.swift` and `GameHUDViews.swift`):** host
 and guest render the *same* `PlayerStatusGrid`/`HUDPanelChrome` view tree, not separate
@@ -150,14 +162,18 @@ swamp needed their own `GlyphRole` cases (`.grass`/`.swamp`, replacing generic `
 each could carry its own texture -- the "no new `GlyphRole` cases" line written during planning
 didn't anticipate that grass/swamp couldn't be textured distinctly while sharing one generic
 case. Verified: 637/637 BoloKitTests, 146/146 Bolo 2026Tests, visual match against the
-user-approved mockup. **Remaining for #110:** river, crater, road, and boat are still flat
-fills (wall already had a bevel from D154; road already has its isolated-tile dash marker).
-Not done yet -- #110 stays open.
+user-approved mockup.
 
-Next: #137 (smallest, most mechanical fix), then #140. #110's remaining families (river,
-crater, road, boat) can follow the same pattern established here if picked up. #127's
-remaining ideas (camera-follow, minimap, decoupled render rate, etc.) stay parked pending their
-own issues if greenlit.
+**Done, commit `8c2a513`.** River (flow-streaks), boat (dashed ripples), crater (a darker bowl
+with a lighter rim -- reads clearly as an actual crater shape), and connected road segments (a
+small centerline mark) each got the same treatment. All 7 terrain families now have a distinct
+texture; wall (D154) and road's isolated-tile dash marker predate this milestone. #110 closed
+by the PR that lands this branch.
+
+All three v1.6.1 issues (#137/#140/#110) are implemented -- see the "Done" notes on each
+section above. #127's remaining ideas (camera-follow, minimap, decoupled render rate, etc.)
+stay parked pending their own issues if greenlit. #142 stays parked, out of this milestone's
+scope.
 
 ## Shipped (`v1.6.0` release, tagged 2026-09-23)
 
