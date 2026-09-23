@@ -25,12 +25,12 @@ public struct AppIconImage: Sendable {
 /// the sheet's own palette. Heading 0 matches `dir2vec`'s reference direction (D70).
 public func buildAppIconBase() -> Canvas16 {
     var canvas: Canvas16
-    if case .flatFill(let r, let g, let b)? = tileGlyphRole(for: GRAS00IMAGE, connectivity: [:]) {
-        canvas = renderGlyph(.flatFill(r: r, g: g, b: b))
+    if case .grass? = tileGlyphRole(for: GRAS00IMAGE, connectivity: [:]) {
+        canvas = renderGlyph(.grass)
     } else {
-        // GRAS00IMAGE is an unconditional `.flatFill` case in `tileGlyphRole`; this branch only
+        // GRAS00IMAGE is an unconditional `.grass` case in `tileGlyphRole`; this branch only
         // exists so a future change there fails loudly here rather than silently recolouring.
-        preconditionFailure("GRAS00IMAGE no longer resolves to .flatFill in tileGlyphRole")
+        preconditionFailure("GRAS00IMAGE no longer resolves to .grass in tileGlyphRole")
     }
     let tank = renderGlyph(.tank(heading: 0, ownership: 0, destroyed: false))
     composite(tank, over: &canvas)

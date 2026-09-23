@@ -29,8 +29,8 @@ public func tileGlyphRole(for index: Int32, connectivity: [Int32: ConnectiveGlyp
         return .connective(family: g.family, ortho: g.ortho, diag: g.diag)
     }
     switch index {
-    case GRAS00IMAGE: return .flatFill(r: 70, g: 140, b: 60)
-    case SWAM00IMAGE: return .flatFill(r: 110, g: 100, b: 50)
+    case GRAS00IMAGE: return .grass
+    case SWAM00IMAGE: return .swamp
     case RUBB00IMAGE: return .flatFill(r: 120, g: 115, b: 110)
     case DAMG00IMAGE: return .flatFill(r: 150, g: 110, b: 70)
     case NBAS00IMAGE: return .base(ownership: .neutral)

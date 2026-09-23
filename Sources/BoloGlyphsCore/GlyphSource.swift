@@ -8,6 +8,12 @@ import BoloKit
 public enum GlyphRole: Sendable {
     case connective(family: TileFamily, ortho: UInt8, diag: UInt8)
     case flatFill(r: UInt8, g: UInt8, b: UInt8)
+    /// D155 (#110): textured, not a `.flatFill` alias -- fine speckle to read as a distinct
+    /// surface from `.swamp`'s blotches, not just a different hue.
+    case grass
+    /// D155 (#110): a handful of darker irregular blotches, structurally different from
+    /// `.grass`'s fine speckle -- reads as "wet/mucky" rather than "textured but even."
+    case swamp
     case mine
     case pill(armor: Int, ownership: BaseOwnership)
     /// `ownership`: 0 = player, 1 = friendly, 2 = enemy.
@@ -42,6 +48,10 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
         drawConnective(&c, family: family, ortho: ortho, diag: diag)
     case .flatFill(let r, let g, let b):
         c.fillRect(0, 0, 16, 16, r, g, b)
+    case .grass:
+        drawGrass(&c)
+    case .swamp:
+        drawSwamp(&c)
     case .mine:
         c.fillRect(0, 0, 16, 16, 40, 40, 40)
         c.fillCircle(cx: 8, cy: 8, radius: 3, 200, 30, 30)
@@ -137,6 +147,20 @@ private func drawConnective(_ c: inout Canvas16, family: TileFamily, ortho: UInt
         applyWallBevel(&c)
     }
 
+    // D155 (#110): NW-half highlight plus scattered glints, so open sea reads as a lit
+    // surface instead of a flat color block -- same "recolor only opaque pixels" rule the
+    // wall bevel established, since sea's corners can still be transparent when inferred
+    // from ortho (see the corner-fill comment above `drawConnective`).
+    if family == .sea {
+        applySeaShading(&c)
+    }
+
+    // D155 (#110): a handful of lighter/darker canopy clumps over the forest's own filled
+    // shape, distinct in silhouette from both grass's fine speckle and swamp's blotches.
+    if family == .forest {
+        applyForestCanopy(&c)
+    }
+
     // D154 Wave 1: an isolated road tile (no road neighbor at all, ortho == 0 && diag == 0)
     // gets a dashed lone-segment marker, inspired by the reference's dashed-line marker for
     // single unconnected road cells, so it reads differently from a connected road segment.
@@ -167,6 +191,106 @@ private func applyWallBevel(_ c: inout Canvas16) {
                 c.set(x, y, highlight.0, highlight.1, highlight.2, 255)
             } else if southOpen || eastOpen {
                 c.set(x, y, shadow.0, shadow.1, shadow.2, 255)
+            }
+        }
+    }
+}
+
+/// D155 (#110): NW-half highlight (a coarse two-band "lit from one side" gradient, the same
+/// idea as the wall bevel but by diagonal position instead of edge-adjacency, since open water
+/// has no shape edges to bevel) plus a sparse set of brighter glint pixels on top. Only ever
+/// recolors already-opaque pixels, matching the wall bevel's invariant.
+private func applySeaShading(_ c: inout Canvas16) {
+    let highlight: (UInt8, UInt8, UInt8) = (45, 95, 190)
+    let glint: (UInt8, UInt8, UInt8) = (70, 130, 220)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    for y in 0..<Canvas16.size {
+        for x in 0..<Canvas16.size {
+            guard isOpaque(x, y), x + y < Canvas16.size else { continue }
+            c.set(x, y, highlight.0, highlight.1, highlight.2, 255)
+        }
+    }
+    for y in 0..<Canvas16.size {
+        for x in 0..<Canvas16.size {
+            guard isOpaque(x, y), (x * 5 + y * 9) % 13 == 0 else { continue }
+            c.set(x, y, glint.0, glint.1, glint.2, 255)
+        }
+    }
+}
+
+/// D155 (#110): a handful of lighter/darker circular clumps over the forest's own filled
+/// shape, reading as clustered foliage -- a distinct *silhouette*, not just a color shift,
+/// from `applyGrassSpeckle`'s fine scatter or `applySwampBlotches`' irregular puddles below.
+/// Only ever recolors already-opaque pixels (forest's corners can be transparent when
+/// inferred from ortho, same as sea above).
+private func applyForestCanopy(_ c: inout Canvas16) {
+    let lighter: (UInt8, UInt8, UInt8) = (55, 130, 55)
+    let darker: (UInt8, UInt8, UInt8) = (15, 75, 25)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    let clumps: [(cx: Double, cy: Double, r: Double, lighter: Bool)] = [
+        (4, 3, 1.5, true), (11, 2, 1.3, false), (7, 6, 1.7, true),
+        (2, 9, 1.4, false), (12, 9, 1.5, true), (6, 12, 1.6, false), (10, 13, 1.3, true),
+    ]
+    for (cx, cy, r, isLighter) in clumps {
+        let color = isLighter ? lighter : darker
+        for y in max(0, Int(cy - r))...min(Canvas16.size - 1, Int(cy + r)) {
+            for x in max(0, Int(cx - r))...min(Canvas16.size - 1, Int(cx + r)) {
+                guard isOpaque(x, y) else { continue }
+                let dx = Double(x) + 0.5 - cx
+                let dy = Double(y) + 0.5 - cy
+                if dx * dx + dy * dy <= r * r {
+                    c.set(x, y, color.0, color.1, color.2, 255)
+                }
+            }
+        }
+    }
+}
+
+/// D155 (#110): unconditional flat green plus a fine, even speckle -- deliberately the
+/// *quietest* of the three new textures (grass is the default ground cover, shouldn't compete
+/// visually with anything placed on it), and structurally distinct from swamp's clustered
+/// blotches below (scattered single pixels vs. a few solid blobs).
+private func drawGrass(_ c: inout Canvas16) {
+    c.fillRect(0, 0, 16, 16, 70, 140, 60)
+    applyGrassSpeckle(&c)
+}
+
+private func applyGrassSpeckle(_ c: inout Canvas16) {
+    let highlight: (UInt8, UInt8, UInt8) = (95, 165, 80)
+    for y in 0..<Canvas16.size {
+        for x in 0..<Canvas16.size {
+            guard (x * 7 + y * 13) % 11 == 0 else { continue }
+            c.set(x, y, highlight.0, highlight.1, highlight.2, 255)
+        }
+    }
+}
+
+/// D155 (#110): unconditional flat tan-brown plus a few darker irregular blotches -- reads as
+/// "wet/mucky" via *shape* (clustered blobs), not just a browner grass.
+private func drawSwamp(_ c: inout Canvas16) {
+    c.fillRect(0, 0, 16, 16, 110, 100, 50)
+    applySwampBlotches(&c)
+}
+
+private func applySwampBlotches(_ c: inout Canvas16) {
+    let shadow: (UInt8, UInt8, UInt8) = (75, 68, 32)
+    let blotches: [(cx: Double, cy: Double, r: Double)] = [
+        (3, 4, 1.8), (12, 3, 1.4), (7, 9, 2.1), (13, 12, 1.5), (2, 13, 1.3),
+    ]
+    for (cx, cy, r) in blotches {
+        for y in max(0, Int(cy - r))...min(Canvas16.size - 1, Int(cy + r)) {
+            for x in max(0, Int(cx - r))...min(Canvas16.size - 1, Int(cx + r)) {
+                let dx = Double(x) + 0.5 - cx
+                let dy = Double(y) + 0.5 - cy
+                if dx * dx + dy * dy <= r * r {
+                    c.set(x, y, shadow.0, shadow.1, shadow.2, 255)
+                }
             }
         }
     }
