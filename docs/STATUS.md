@@ -20,17 +20,109 @@ Milestone [21](https://github.com/CosmicCEO/BoloKit/milestone/21), "Increase Vis
 Sprites" -- visual/cosmetic polish only, same hard-ceiling convention as v1.6.0. Triaged the
 open-issue backlog on 2026-09-23 and confirmed/adjusted scope:
 
-**In milestone (all visual):**
-- [#110](https://github.com/CosmicCEO/BoloKit/issues/110) chrome the terrain/sprite art, still rough.
-- [#137](https://github.com/CosmicCEO/BoloKit/issues/137) intermittent black seam lines in the live Metal terrain overlay (found during v1.6.0 live testing).
-- [#140](https://github.com/CosmicCEO/BoloKit/issues/140) client info panels don't visually match the host's.
-
 **Moved out during triage:**
 - [#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host-engine SIGABRT/data-race signature, `GameState.local` mutation during `tankLocalTick`) was unassigned -- not visual, moved to milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20) `v1.6.x — Rejoin fix`, the existing pre-1.7 bug-fix bucket, alongside #87/#89/#93/#100/#101/#113/#118/#120.
 - [#127](https://github.com/CosmicCEO/BoloKit/issues/127) (brainstorm: what the Metal renderer's headroom could enable) unassigned from the milestone -- it's a non-committal idea list, not committed work, and already served its purpose spawning #137 as a real issue. Left open as backlog reference; not required for milestone closure.
 
-Next: pick up #110/#137/#140 as implementation work; #127's remaining ideas (camera-follow,
-minimap, decoupled render rate, etc.) stay parked pending their own issues if greenlit.
+### [#137](https://github.com/CosmicCEO/BoloKit/issues/137) -- black seam lines, live Metal overlay
+
+**Root cause (confirmed by reading `Bolo 2026/Bolo 2026/MetalTileRenderer.swift`):** the live
+overlay's render pass clears to opaque black (`MTLClearColor(0,0,0,1)`, line 323). Each tile
+quad's screen origin is computed independently -- `Float(x) * scaledTileSize - originXPixels`
+(lines 300-313), not accumulated from the previous tile's edge -- so when `scaledTileSize`
+(itself `Float(targetTextureWidthPixels) / Float(visibleRect.width) * tileSizePixels`, lines
+264-285) isn't exactly representable at a given zoom/backing-scale ratio, adjacent quads can
+leave a sub-pixel gap that samples the black clear color through. The offscreen/CPU-composited
+path sidesteps this entirely by cropping per-tile `CGImage` cells after compositing (lines
+194-214) -- not available to the live path, which draws straight to the drawable.
+
+**MVP -- in scope:**
+- Close the gap at the geometry level: expand each tile quad by a small fixed overlap (e.g.
+  round `scaledTileSize` up to the next whole pixel for quad *size* while keeping origin
+  spacing as-is, or pad quad size by ~0.5-1px) so neighboring quads overlap instead of leaving
+  a gap. Localized entirely to the instance-building loop in `renderLiveTerrain` (lines
+  ~300-313) plus the vertex data it feeds.
+- If geometry padding alone doesn't fully close it, a fallback clear color sampled from the
+  dominant terrain family under the visible rect (cheaper, but treats the symptom not the
+  cause -- use only if the geometry fix has residual edge cases).
+
+**MVP -- explicitly out of scope:** rewriting tile rendering as one contiguous mesh (bigger
+architecture change than this bug needs); MSAA/supersampling; touching the offscreen/CPU path
+(`renderInstances`, line 358+) -- it's already correct and untouched by this bug.
+
+**Acceptance:** live two-Mac re-run of test-script items 4 and 5 (the ones flagged in the
+tester's tracked-changes notes) over repeated zoom-in/out and resize-during-pan cycles at
+various window sizes, zero visible seams; existing offscreen pixel-diff harness stays green
+(that path isn't touched).
+
+### [#140](https://github.com/CosmicCEO/BoloKit/issues/140) -- client info panels vs. host
+
+**Root cause (confirmed by reading `PlayerStatusView.swift` and `GameHUDViews.swift`):** host
+and guest render the *same* `PlayerStatusGrid`/`HUDPanelChrome` view tree, not separate
+host/client views. The visible differences come from two role-conditioned gaps: (1) host-only
+extra chrome -- a "Banned" section (`PlayerStatusView.swift:107-124`) and inline Kick/Ban
+buttons per row (line 184-187), gated on `session.canHostAdmin`/`canKickBan`, plus
+`HostAdminBar` (`GameHUDViews.swift:426`) which "renders nothing" on the join/client path; (2)
+per-row lag-tint staleness coloring (`staleness(forPlayer:)`, lines 146-168) depends on
+`session.connectionAge(for:)`, which by its own doc comment has "no data for this slot" on
+some paths, falling back to plain untinted text -- a guest may see plain rows where a host sees
+colored ones for the *same* players.
+
+**MVP -- in scope:**
+- Fix the `connectionAge(for:)` data gap so a joined guest gets real staleness data for other
+  players (not just the host), restoring lag-tint parity on the *shared* row content -- this is
+  a real data bug, not a styling choice.
+- Audit that the host-only admin chrome (Banned section, Kick/Ban buttons, `HostAdminBar`)
+  doesn't shift the layout/alignment of the shared player-row columns (name, armor, shells,
+  mines, connection) between host and guest -- the shared data should line up 1:1; the
+  host-only controls are additive, not a re-layout.
+
+**MVP -- explicitly out of scope:** exposing Kick/Ban to guests (that's a security-model
+violation, not a bug -- guests must not be able to kick/ban); a full HUD redesign; changing
+`HUDPanelChrome`'s opaque-background constraint (`GameHUDViews.swift:26-33` explicitly rejects
+`.regularMaterial`/translucency -- stays as-is).
+
+**Acceptance:** live two-Mac side-by-side screenshot comparison of host vs. guest panels --
+shared row content (name, lag tint, armor/shell/mine display) matches modulo the host-only
+admin controls; new regression test asserting a joined guest's `connectionAge(for:)` returns
+real data for a live peer, not the "no data" fallback.
+
+### [#110](https://github.com/CosmicCEO/BoloKit/issues/110) -- chrome the terrain/sprite art
+
+**Ground truth (confirmed by reading `Sources/BoloGlyphsCore/GlyphSource.swift`):** all
+sprite/terrain art is generated procedurally at runtime by `renderGlyph(_:)` (line 38) into
+16x16 `Canvas16` bitmaps -- there is no imported bitmap/vector art or asset-catalog imageset
+(`Assets.xcassets` only holds `AppIcon`/`AccentColor`). Both the CPU and Metal render paths
+draw from the same generated 256x256px sprite sheet, so this issue only touches
+`GlyphSource.swift`, not per-backend duplicated logic. **Hard constraint**
+(`docs/CONSTRAINTS.md:12`, D5/D10/D67): never copy Stuart Cheshire's original art -- glyphs
+must stay procedural. Any MVP here draws shapes/gradients/bevels programmatically; it does not
+import outside art.
+
+The issue text ("still somewhat rough") is vague -- there are 7 terrain families (wall, river,
+forest, crater, road, boat, sea, via `familyColor`/`drawConnective`/`applyWallBevel`, lines
+85-94), plus pill/base ownership palettes, tank headings, shells, explosions, and builder
+frames. Not all of these can be MVP; picking the highest-visibility subset:
+
+**MVP -- in scope:** refine the 7 terrain-family autotiling (bevels/shading in
+`drawConnective`/`applyWallBevel`) -- this covers the most on-screen pixels at any zoom level
+and is what the issue's own wording ("terrain etc.") points at first. Small, bounded edge
+smoothing on tank/pill/base glyphs if cheap within the existing procedural generator.
+
+**MVP -- explicitly out of scope:** new `GlyphRole` cases; animation/motion changes (that's
+#127 idea 5, decoupled render rate -- separate issue if greenlit); a minimap/radar (#127 idea
+3 -- separate issue); reworking the sprite-sheet layout/cell size
+(`sheetCellsPerAxis`, `MetalTileRenderer.swift:33-35`) unless the terrain refinement genuinely
+requires it.
+
+**Acceptance:** updated pixel-diff baseline for the refined terrain looks; live two-Mac visual
+confirmation; before/after screenshots in the PR description (same convention used for the
+Metal renderer work).
+
+Next: pick up #110/#137/#140 in that order (#137 is the smallest, most mechanical fix;
+#140 next; #110 is open-ended art work, do last so its scope doesn't creep into the other two's
+review). #127's remaining ideas (camera-follow, minimap, decoupled render rate, etc.) stay
+parked pending their own issues if greenlit.
 
 ## Shipped (`v1.6.0` release, tagged 2026-09-23)
 
