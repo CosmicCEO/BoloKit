@@ -727,6 +727,23 @@ public final class HostGameEngine: @unchecked Sendable {
             }
         }
 
+        // Same B.5d gap as terrain above, for pill/base ownership: `grabTile` (the tile-entry
+        // capture path host-simulated remote players now also run through `tankLocalTick`, per
+        // #59/#62) mutates `state.pills`/`state.bases` directly with no broadcast hook -- unlike
+        // `recvClGrabTile`, the message-driven twin (`HostSession.swift`), which does broadcast
+        // `SRCapturePill`/`SRCaptureBase`. Diffs the same before-tick snapshots already captured
+        // above for the chat-message diff (`EventLogText.captureMessages` below). Index+owner is
+        // enough on the wire -- `recvSrCapturePill`/`recvSrCaptureBase` already reset armour/
+        // shells/mines themselves on receipt, matching what `grabTile` just did locally. Not
+        // visibility-masked: pills/bases are never fog-hidden (only mines are), matching
+        // `recvClGrabTile`'s own unmasked `.all` broadcast.
+        for pill in state.pills.indices where state.pills[pill].owner != oldPillOwners[pill] {
+            pending.append(SRCapturePill(pill: UInt8(pill), owner: state.pills[pill].owner).encode())
+        }
+        for base in state.bases.indices where state.bases[base].owner != oldBaseOwners[base] {
+            pending.append(SRCaptureBase(base: UInt8(base), owner: state.bases[base].owner).encode())
+        }
+
         var statusSends: [(player: Int, bytes: [UInt8])] = []
         if state.hostSimulatesRemotePlayers {
             statusSends = tankStatusSends() + tankShotsSends()

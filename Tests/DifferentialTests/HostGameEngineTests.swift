@@ -1447,4 +1447,59 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         let statuses = try await drainStatusesUntilPause(remote)
         #expect(statuses.isEmpty)
     }
+
+    // MARK: - Capture-broadcast gap regression (v1.6.x follow-up, live-play finding)
+
+    /// Like `drainAllUntilPause`, also returning every `SRCaptureBase` seen. `grabTile` (the
+    /// tile-entry capture path `tankLocalTick` runs directly, for the host's own local player
+    /// and, since #59/#62, for host-simulated remote players too) mutated `state.bases`/
+    /// `state.pills` with no broadcast at all until this fix -- a remote player's own client
+    /// (and any other remote observer) never learned a base or pill changed hands.
+    private func drainCapturesUntilPause(_ connection: NWConnection) async throws -> (bases: [SRCaptureBase], pills: [SRCapturePill]) {
+        var bases: [SRCaptureBase] = []
+        var pills: [SRCapturePill] = []
+        while true {
+            let opcode = try await receiveExactly(connection, 1)[0]
+            switch opcode {
+            case ServerOpcode.pause.rawValue:
+                _ = try await receiveExactly(connection, SRPause.wireSize - 1)
+                return (bases, pills)
+            case ServerOpcode.revealTerrain.rawValue:
+                _ = try await receiveExactly(connection, SRRevealTerrain.wireSize - 1)
+            case ServerOpcode.captureBase.rawValue:
+                let rest = try await receiveExactly(connection, SRCaptureBase.wireSize - 1)
+                if let base = SRCaptureBase.decode([opcode] + rest) { bases.append(base) }
+            case ServerOpcode.capturePill.rawValue:
+                let rest = try await receiveExactly(connection, SRCapturePill.wireSize - 1)
+                if let pill = SRCapturePill.decode([opcode] + rest) { pills.append(pill) }
+            default:
+                throw HarnessError.shortRead
+            }
+        }
+    }
+
+    /// The host's own local player (player 0) walks onto a neutral base via ordinary movement
+    /// input, same as `hostTankDetonatingAMineTellsARemotePlayerTheTileChanged`'s drive pattern
+    /// -- the fix under test is the tick-level diff-and-broadcast in `HostGameEngine.tick()`
+    /// (fires for ANY tick-driven ownership change, not just host-simulated remotes), so
+    /// player 0 is a legitimate, simpler actor to prove the broadcast fires at all.
+    @Test(.timeLimit(.minutes(1))) func hostCapturingANeutralBaseTellsARemotePlayer() async throws {
+        let (engine, tcpPort, _) = try await makeEngine { state in
+            configureHostWithMines(&state, hiddenMines: false)
+            state.bases = [Base(x: 108, y: 105, armour: 0, owner: playerNeutral, shells: 0, mines: 0)]
+        }
+        defer { engine.stop() }
+        engine.start()
+        let remote = try await joinRemote(engine, tcpPort: tcpPort)
+        defer { remote.cancel() }
+
+        engine.submitLocalInputChange(set: [.accel], clear: [])
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        engine.submitPauseResumeServer()
+
+        let captures = try await drainCapturesUntilPause(remote).bases
+        let capture = captures.first { $0.base == 0 }
+        #expect(capture != nil, "the base capture must reach the remote player, not just the host's own state")
+        #expect(capture?.owner == 0, "captured by player 0 (the host)")
+    }
 }
