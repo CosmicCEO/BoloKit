@@ -20,6 +20,14 @@ Milestone [21](https://github.com/CosmicCEO/BoloKit/milestone/21), "Increase Vis
 Sprites" -- visual/cosmetic polish only, same hard-ceiling convention as v1.6.0. Triaged the
 open-issue backlog on 2026-09-23 and confirmed/adjusted scope:
 
+**Target UI design:** `docs/UI_DESIGN_TARGET.md` -- studied the original Stuart
+Cheshire/Robert Chrzanowski Mac interface's HUD layout and semantics (`Reference/c`, its
+`-refresh:`/`-setPlayerStatus:`/`-setPillStatus:`/`-setBaseStatus:`), not its art (hard
+constraint, `docs/CONSTRAINTS.md:12`). Confirms BoloKit's current HUD already matches the
+original's semantics where it matters (alliance-gated base display, staleness tint, resource
+gauges) and identifies one genuine, currently-unscoped gap (no map-wide pill/base ownership
+overview grid) -- flagged, not auto-filed as an issue.
+
 **Moved out during triage:**
 - [#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host-engine SIGABRT/data-race signature, `GameState.local` mutation during `tankLocalTick`) was unassigned -- not visual, moved to milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20) `v1.6.x — Rejoin fix`, the existing pre-1.7 bug-fix bucket, alongside #87/#89/#93/#100/#101/#113/#118/#120.
 - [#127](https://github.com/CosmicCEO/BoloKit/issues/127) (brainstorm: what the Metal renderer's headroom could enable) unassigned from the milestone -- it's a non-committal idea list, not committed work, and already served its purpose spawning #137 as a real issue. Left open as backlog reference; not required for milestone closure.
