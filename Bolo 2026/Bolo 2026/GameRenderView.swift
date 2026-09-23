@@ -52,7 +52,7 @@ private func sheetSrcRect(forIndex index: Int32) -> CGRect {
 /// v1.6.0 (#25) extraction seam: the tile/sprite draw pass `GameRenderView.draw(_:)` delegates
 /// to, so a Metal-backed implementation can be swapped in behind this same call without
 /// touching `render(_:fogState:)`'s public signature or any `GameSession.swift` call site.
-/// `drawLabel`/`drawBuilderTaskIndicators`/`drawSelector`/`drawCrosshair` stay outside this
+/// `drawLabel`/`drawSelector`/`drawCrosshair` stay outside this
 /// seam, called directly by `GameRenderView.draw(_:)` as a thin CGContext overlay -- disclosed
 /// scope reduction, not a gap (text atlases/dashed-line shaders are out of scope for #25).
 public protocol TileRenderer: AnyObject {
@@ -202,9 +202,9 @@ public final class GameRenderView: NSView {
     /// **D160 item 1:** the dynamic minimum-magnification floor, a function of the live
     /// viewport size, with no reference counterpart (`GSBoloView.m` never bounds render
     /// cost by window size at all -- see this file's own Wave 7.2 header, D81). Pure,
-    /// static, directly `swift test`-able, matching this file's own
-    /// `isDegenerateBuilderIndicatorLine` precedent (D146) of extracting geometry logic out
-    /// of the view rather than only exercising it through the `xcodebuild`-hosted `NSView`
+    /// static, directly `swift test`-able, matching this file's own precedent (D146) of
+    /// extracting geometry logic out of the view rather than only exercising it through the
+    /// `xcodebuild`-hosted `NSView`
     /// path. `viewportWidth`/`viewportHeight` are screen-point dimensions (i.e. an
     /// `NSView.frame.size`, NOT a magnification-scaled `.bounds.size`) -- the floor is a cap
     /// on physical on-screen draw cost, which doesn't change just because magnification did.
@@ -515,7 +515,6 @@ public final class GameRenderView: NSView {
         } else {
             renderer.draw(self, ctx: ctx, dirtyRect: dirtyRect)
         }
-        drawBuilderTaskIndicators(ctx)
         drawSelector(ctx)
         drawCrosshair(ctx)
     }
@@ -552,64 +551,6 @@ public final class GameRenderView: NSView {
         guard !player.dead else { return }
         let point = player.tank + dir2vec(player.dir) * state.local.range
         drawSprite(CROSSHIMAGE, at: point, ctx)
-    }
-
-    /// **D137 UX indicator (Jerod's ruling):** a disclosed, deliberate departure from strict UI
-    /// parity -- the reference has no such indicator at all (client.c/GSBoloView.m grep-
-    /// confirmed, D137 pre-brief). Simplest acceptable form per the ruling: a straight line from
-    /// the builder's current live position to its target tile, redrawn every frame while a task
-    /// is in flight (`builderStatus != .ready` and `!= .parachute` -- parachuting has its own
-    /// descent target with no "task," see `parachuteTick`). Purely render-layer: reads
-    /// `PlayerState.builder`/`.builderTarget`, no new simulation state (`BuilderTick.swift`
-    /// already tracks both). Drawn for every connected player, not just the local one -- another
-    /// player's builder en route is exactly as useful to see as your own.
-    private func drawBuilderTaskIndicators(_ ctx: CGContext) {
-        let tile = CGFloat(tileSize)
-        ctx.saveGState()
-        ctx.setStrokeColor(NSColor.systemYellow.withAlphaComponent(0.7).cgColor)
-        ctx.setLineWidth(1.5)
-        ctx.setLineDash(phase: 0, lengths: [4, 3])
-        for i in state.players.indices where state.players[i].connected {
-            let player = state.players[i]
-            switch player.builderStatus {
-            case .goto, .work, .wait, .return:
-                let from = i == state.localPlayer
-                    ? player.builder
-                    : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? player.builder)
-                let to = CGPoint(
-                    x: (CGFloat(player.builderTarget.x) + 0.5) * tile,
-                    y: (CGFloat(player.builderTarget.y) + 0.5) * tile
-                )
-                let fromPoint = CGPoint(x: CGFloat(from.x) * tile, y: CGFloat(from.y) * tile)
-                // D146: a same-tile task (e.g. harvesting a tree the builder is already
-                // standing on -- `resolveBuilderTask`/`queueBuilderCommand`,
-                // `Sources/BoloKit/BuilderCommand.swift`, have no distance check and will
-                // happily set `builderTarget == builder`'s current tile) produces a
-                // degenerate zero-length segment here. Stroking that with an active dash
-                // pattern crashes (`SIGABRT` in AppKit/QuartzCore/Metal's debug draw-call
-                // validation, zero app-code frames) rather than silently no-op'ing -- skip
-                // the draw entirely rather than feed it a degenerate segment.
-                guard !Self.isDegenerateBuilderIndicatorLine(from: fromPoint, to: to) else { continue }
-                ctx.move(to: fromPoint)
-                ctx.addLine(to: to)
-                ctx.strokePath()
-            case .ready, .parachute:
-                break
-            }
-        }
-        ctx.restoreGState()
-    }
-
-    /// D146: true when `from`/`to` are close enough that stroking a dashed line between them
-    /// is degenerate (zero/near-zero length) -- the exact geometry that crashed under Metal's
-    /// debug draw-call validation. Small epsilon rather than exact equality: `from` carries the
-    /// builder's live fractional sub-tile position while `to` is tile-center-snapped, so a
-    /// builder that has arrived but isn't dead-center on its own target tile could differ by a
-    /// sub-pixel amount that's still not worth drawing a visible line for. Pure/static so it's
-    /// directly testable without an `NSView`/`CGContext`, matching `Bolo 2026Tests`'s D144/D145
-    /// pattern of extracting pure logic out of view code rather than testing the view itself.
-    static func isDegenerateBuilderIndicatorLine(from: CGPoint, to: CGPoint) -> Bool {
-        abs(from.x - to.x) <= 0.5 && abs(from.y - to.y) <= 0.5
     }
 
     // MARK: - Keyboard input (D88 §2)
