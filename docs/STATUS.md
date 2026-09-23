@@ -119,20 +119,33 @@ frames. Not all of these can be MVP; picking the highest-visibility subset:
 and is what the issue's own wording ("terrain etc.") points at first. Small, bounded edge
 smoothing on tank/pill/base glyphs if cheap within the existing procedural generator.
 
-**MVP -- explicitly out of scope:** new `GlyphRole` cases; animation/motion changes (that's
-#127 idea 5, decoupled render rate -- separate issue if greenlit); a minimap/radar (#127 idea
-3 -- separate issue); reworking the sprite-sheet layout/cell size
-(`sheetCellsPerAxis`, `MetalTileRenderer.swift:33-35`) unless the terrain refinement genuinely
-requires it.
+**MVP -- explicitly out of scope:** animation/motion changes (that's #127 idea 5, decoupled
+render rate -- separate issue if greenlit); a minimap/radar (#127 idea 3 -- separate issue);
+reworking the sprite-sheet layout/cell size (`sheetCellsPerAxis`,
+`MetalTileRenderer.swift:33-35`) unless the terrain refinement genuinely requires it.
 
 **Acceptance:** updated pixel-diff baseline for the refined terrain looks; live two-Mac visual
 confirmation; before/after screenshots in the PR description (same convention used for the
 Metal renderer work).
 
-Next: pick up #110/#137/#140 in that order (#137 is the smallest, most mechanical fix;
-#140 next; #110 is open-ended art work, do last so its scope doesn't creep into the other two's
-review). #127's remaining ideas (camera-follow, minimap, decoupled render rate, etc.) stay
-parked pending their own issues if greenlit.
+**Progress (2026-09-23, commit `f3a0f6b`):** sea, grass, swamp, and forest now each get a
+distinct per-family texture instead of a flat color fill -- sea (NW-half highlight + sparse
+glints), grass (fine even speckle, deliberately the quietest), swamp (a few darker irregular
+blotches, reads as "wet" by shape not just hue), forest (lighter/darker canopy clumps). All
+recolor-only-opaque-pixels, same invariant `applyWallBevel` established; all deterministic
+(fixed geometry/modular patterns, no RNG). One deviation from the MVP note above: grass and
+swamp needed their own `GlyphRole` cases (`.grass`/`.swamp`, replacing generic `.flatFill`) so
+each could carry its own texture -- the "no new `GlyphRole` cases" line written during planning
+didn't anticipate that grass/swamp couldn't be textured distinctly while sharing one generic
+case. Verified: 637/637 BoloKitTests, 146/146 Bolo 2026Tests, visual match against the
+user-approved mockup. **Remaining for #110:** river, crater, road, and boat are still flat
+fills (wall already had a bevel from D154; road already has its isolated-tile dash marker).
+Not done yet -- #110 stays open.
+
+Next: #137 (smallest, most mechanical fix), then #140. #110's remaining families (river,
+crater, road, boat) can follow the same pattern established here if picked up. #127's
+remaining ideas (camera-follow, minimap, decoupled render rate, etc.) stay parked pending their
+own issues if greenlit.
 
 ## Shipped (`v1.6.0` release, tagged 2026-09-23)
 
