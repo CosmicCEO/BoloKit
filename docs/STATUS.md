@@ -59,6 +59,72 @@ live-confirmed (see the `v1.5.1` shipped section below), so no behavior is at ri
 specific standalone regression test never landed on `main`. Worth a deliberate call next
 session: re-open and merge it, or let it go.
 
+### Update, 2026-09-22 (same day, follow-up session): increment 6 resize bug root-caused and fixed
+
+The `autoresizingMask`-vs-Auto-Layout theory above was **wrong** — investigated further and
+found the real cause: `installLiveMetalOverlayIfNeeded` sized the overlay's `MTKView` to
+`scrollView.bounds` (the *whole* scroll view, including the fixed HUD-chrome `contentInsets`
+this same file already measures elsewhere as top 48/left 56/right 228 + a bottom inset), while
+`MetalTileRenderer.renderLiveTerrain`'s `scale = targetTexture.width / visibleRect.width` was
+comparing that against `visibleRect`, the *inset-excluded* region the CPU sprite path already
+uses correctly. The two rectangles disagreed by a fixed-point amount that's a larger fraction
+of a narrow window than a wide one — exactly "elements scale with the window while the map
+does not," worse on a small window.
+
+**Fix (commit `8beea7d`, pushed to `v160-metal-renderer`):** size/position the `MTKView` to
+`scrollView.contentView.frame` (the clip view — already inset-excluded) instead of
+`scrollView.bounds`, resynced via explicit `frameDidChangeNotification`
+(scroll view)/`boundsDidChangeNotification` (clip view) observers — the same mechanism
+`configureZoom()`/`scrollViewFrameDidChange()` already prove reliable on this exact view
+hierarchy — rather than `autoresizingMask`. Also extracted the scale/origin math into a pure
+`nonisolated static func MetalTileRenderer.cameraTransform(...)`, with new headless unit tests
+(`MetalTileRendererLiveTerrainTests.swift`) — increments 4-5's pixel-exact parity tests only
+ever exercised the offscreen `draw(_:ctx:dirtyRect:)` path, never `renderLiveTerrain`, which is
+exactly why this shipped uncaught. Full relevant suite green (`GameRenderViewZoomTests`,
+`GameRenderViewTests`, `MetalTileRendererTests`, the new tests) — no regressions.
+
+**Not yet done:** live re-evaluation. Built a fresh eval copy with the overlay enabled,
+`Bolo 2026 (v160-metal-eval 8beea7d resize-fix).app` (not committed, same off-by-default
+pattern as before), and a manual test script,
+`Bolo 2026 Test Script (v160-metal-eval 8beea7d resize-fix).docx` (8 items — baseline
+alignment, widen/narrow resize, zoom at multiple sizes, resize-during-pan, fullscreen toggle,
+HUD-edge alignment, general play). Both on the Desktop. This test is single-Mac/role-agnostic —
+the overlay is wired identically at all three `GameSession.swift` `GameRenderView` construction
+sites (solo, host, guest), so it needs no second Mac. **Next session: run that script, then
+either continue to increment 7 (if clean) or reopen the investigation (if not).**
+
+### Update, 2026-09-23: live re-evaluation clean; increment 7 landed (commit `22292e0`)
+
+User ran the full 8-item test script by hand (tracked-changes `.docx`, embedded screenshots).
+All 8 items pass — no scale/alignment mismatch between terrain and sprites on resize, zoom,
+resize-during-pan, fullscreen toggle, or HUD-edge alignment. The resize fix (`8beea7d`) is
+confirmed working live, not just in the headless regression tests.
+
+Two unrelated findings surfaced by the live play, triaged as seed issues (no code
+investigation yet):
+- [#137](https://github.com/CosmicCEO/BoloKit/issues/137) — intermittent black seam lines in
+  the live Metal terrain overlay (sea-only, hard to reproduce). Filed under the existing
+  `v1.6.1` milestone as an enhancement — not a `v1.6.0`/#25 blocker.
+- [#138](https://github.com/CosmicCEO/BoloKit/issues/138) — builder movement after death looks
+  unrouted, then snaps to a direct line. Filed under a new `v1.9.0 — Builder logic` milestone
+  (22) as a bug — unrelated to the Metal renderer work.
+
+**Increment 7 (commit `22292e0`):** `tileCountBudget = 9,000` calibrates the CPU
+`CGContext` draw-cost ladder, but once `liveMetalOverlay` is live, `draw(_:)` skips the
+expensive tile pass entirely (only sprites stay on CGContext). Applying the CPU floor to the
+Metal path was an artifact, not a real cost constraint — made the floor renderer-dependent
+(`liveMetalTileCountBudget = 256*256`, i.e. no practical ceiling) instead of raising the
+budget globally, and flipped `GameSession`'s three `GameRenderView` construction sites to
+default to the Metal renderer (`liveMetalTerrainRenderer: MetalTileRenderer()`).
+`GameRenderViewZoomTests`' two tests coupled to `T=9,000` by premise now inject an explicit
+`tileBudgetOverrideForTesting` instead of reading the production constant. Full suite:
+146/146 passing.
+
+**Not yet done:** a second live-play pass specifically confirming increment 7 (Metal now the
+default renderer, no more visible tile-count ceiling at max zoom-out) — the same single-Mac
+test approach as increment 6's re-evaluation. Once that's clean: merge PR #128, close
+milestone #25, tag `v1.6.0`.
+
 ## Shipped (`v1.5.1` release, tagged 2026-09-22)
 
 **[PR #117](https://github.com/CosmicCEO/BoloKit/pull/117)** ("bring the whole two-player stack into main", merged 2026-09-22): consolidated five stacked branches (45 commits) that had landed on neighbouring branches but not `main`. Fixed and **verified by code/doc read** (no Swift toolchain in the session that did this triage pass — a `swift test` run in Xcode is still owed before the v1.5.1 tag): guest can fire/adjust range/drown/lay mines and mines now trigger for it ([#62](https://github.com/CosmicCEO/BoloKit/issues/62)/[#91](https://github.com/CosmicCEO/BoloKit/issues/91), ruling [#59](https://github.com/CosmicCEO/BoloKit/issues/59)), host builder edits and mine terrain reach guests ([#84](https://github.com/CosmicCEO/BoloKit/issues/84)/[#81](https://github.com/CosmicCEO/BoloKit/issues/81)), host name shows on the guest ([#85](https://github.com/CosmicCEO/BoloKit/issues/85)), alliances work from both sides ([#92](https://github.com/CosmicCEO/BoloKit/issues/92)), Hidden Mines no longer announces a remote-laid mine at range ([#106](https://github.com/CosmicCEO/BoloKit/issues/106)), and a mine within 2.0 tiles of an observer's own tank correctly stays hidden-then-sticky-revealed ([#77](https://github.com/CosmicCEO/BoloKit/issues/77)'s first two parts). The umbrella issue [#61](https://github.com/CosmicCEO/BoloKit/issues/61) is closed as superseded; its two bullets with no fix (host hears no guest sounds; unexplained Mac B freeze, no repro) split to [#118](https://github.com/CosmicCEO/BoloKit/issues/118).

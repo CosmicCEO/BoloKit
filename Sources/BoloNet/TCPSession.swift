@@ -92,14 +92,39 @@ public struct SRDispatchCallbacks {
 }
 
 public final class TCPSession: @unchecked Sendable {
+    /// v1.6.0 follow-up (live-play finding, 2026-09-23): this connection previously started
+    /// on `.main`, the same serial queue the guest's own `GameSession.startJoinConsumer`
+    /// (`GameSession.swift:590-633`) drains its merged tick/render/network `AsyncStream` on.
+    /// Every inbound `SR*` receive-completion (mine acks, shell broadcasts, everything) was
+    /// therefore queued behind whatever main-queue work -- including the inline
+    /// `renderView.render(state)` call inside the 50Hz `.tick` case -- happened to be running
+    /// at that moment. Reported live as guest-only, load-dependent, multi-second lag on mine
+    /// AND shell actions alike (both ride this same TCP connection; tank position doesn't --
+    /// it's UDP+smoothed, and was never laggy). The host never hits this because the host's
+    /// own actions apply locally, with no round trip through this connection at all. A
+    /// dedicated queue removes the contention without touching the tick/render merge itself.
+    private static let ioQueue = DispatchQueue(label: "com.cosmicceo.bolo2026.tcpsession", qos: .userInteractive)
+
     private let connection: NWConnection
     /// Peer used for the matching UDP channel. Typed join stores the
     /// strings the caller passed; Bonjour join reads them off the live path.
     public let remoteHost: String
     public let remotePort: UInt16
 
+    /// `TCP_NODELAY` on the guest's own outbound connection, matching `HostListener`'s
+    /// identical setting on the host's accept side (see its own comment) -- without this,
+    /// Nagle's algorithm stays on for everything the guest sends *to* the host (`CLDropMine`
+    /// etc.), and since mine lay/activation/reveal has no client-side prediction (unlike
+    /// tank position's UDP+`RemotePositionSmoother` path), any Nagle/delayed-ACK stall shows
+    /// up as a hard multi-second freeze specifically on mine actions.
+    private static func tcpNoDelayParameters() -> NWParameters {
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        return NWParameters(tls: nil, tcp: tcpOptions)
+    }
+
     public init(host: String, port: UInt16) async throws {
-        let parameters = NWParameters.tcp
+        let parameters = Self.tcpNoDelayParameters()
         ipv4Only(parameters)
         let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: parameters)
         self.connection = connection
@@ -111,7 +136,7 @@ public final class TCPSession: @unchecked Sendable {
     public init(to endpoint: NWEndpoint) async throws {
         // IPv4 only: a Bonjour `.service` endpoint otherwise resolves to the host's IPv6
         // link-local address, which the IPv4-only wire protocol cannot track (`ipv4Only`).
-        let parameters = NWParameters.tcp
+        let parameters = Self.tcpNoDelayParameters()
         ipv4Only(parameters)
         let connection = NWConnection(to: endpoint, using: parameters)
         self.connection = connection
@@ -147,7 +172,7 @@ public final class TCPSession: @unchecked Sendable {
                     break
                 }
             }
-            connection.start(queue: .main)
+            connection.start(queue: ioQueue)
         }
     }
 

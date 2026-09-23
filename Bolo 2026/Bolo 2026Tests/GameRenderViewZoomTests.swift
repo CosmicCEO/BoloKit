@@ -327,6 +327,10 @@ struct GameRenderViewZoomTests {
         // pinned at 0.5x) so the initial zoom-out to 0.5x isn't itself floor-blocked --
         // this test is about the RESIZE-triggered raise, not the starting descent.
         let (window, renderView, scrollView) = hostGameView(size: NSSize(width: 640, height: 480))
+        // v1.6.0 (#25) increment 7: production now defaults to the live Metal renderer, whose
+        // budget (256x256 tiles) never floors these window sizes -- pin an explicit small
+        // budget so this test still exercises the floor-crossing behavior it's actually about.
+        renderView.tileBudgetOverrideForTesting = 9_000
         renderView.zoomOut()
         renderView.zoomOut()
         #expect(renderView.currentZoomLevel == 0.5)
@@ -363,6 +367,11 @@ struct GameRenderViewZoomTests {
     /// before/after the set and skips the pan when it didn't move).
     @Test func setZoomDoesNotPanTheViewportWhenTheFloorClampAbsorbsTheRequestedChange() throws {
         let (_, renderView, scrollView) = hostGameView(size: NSSize(width: 2400, height: 1600))
+        // v1.6.0 (#25) increment 7: same reasoning as the resize test above -- pin the
+        // pre-Metal-default budget this test's fixed 1.5x/floor-clamp expectations assume,
+        // then force a re-apply since (unlike that test) nothing else re-triggers it here.
+        renderView.tileBudgetOverrideForTesting = 9_000
+        renderView.reapplyEffectiveMagnificationForTesting()
         #expect(renderView.currentZoomLevel == 1.5, "the floor should already have raised the view to 1.5x on load")
 
         let clipView = scrollView.contentView

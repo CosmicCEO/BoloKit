@@ -49,11 +49,32 @@ private func sheetSrcRect(forIndex index: Int32) -> CGRect {
     return CGRect(x: col * tileSize, y: row * tileSize, width: tileSize, height: tileSize)
 }
 
+/// v1.6.0 (#25) extraction seam: the tile/sprite draw pass `GameRenderView.draw(_:)` delegates
+/// to, so a Metal-backed implementation can be swapped in behind this same call without
+/// touching `render(_:fogState:)`'s public signature or any `GameSession.swift` call site.
+/// `drawLabel`/`drawBuilderTaskIndicators`/`drawSelector`/`drawCrosshair` stay outside this
+/// seam, called directly by `GameRenderView.draw(_:)` as a thin CGContext overlay -- disclosed
+/// scope reduction, not a gap (text atlases/dashed-line shaders are out of scope for #25).
+public protocol TileRenderer: AnyObject {
+    func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect)
+}
+
+/// The existing CPU `CGContext` blit path, unchanged, just reached through the `TileRenderer`
+/// seam instead of called directly from `draw(_:)`. Default renderer; stays in-tree as the
+/// fallback/parity comparator once a Metal renderer lands.
+public final class CGContextTileRenderer: TileRenderer {
+    public init() {}
+    public func draw(_ view: GameRenderView, ctx: CGContext, dirtyRect: NSRect) {
+        view.drawTerrain(ctx, dirtyRect: dirtyRect)
+        view.drawSprites(ctx)
+    }
+}
+
 public final class GameRenderView: NSView {
     private var state = GameState()
-    private var tileGrid = TileGrid()
-    private let tilesImage: CGImage
-    private let spritesImage: CGImage
+    var tileGrid = TileGrid()
+    let tilesImage: CGImage
+    let spritesImage: CGImage
 
     /// B.9's smoothing half (D114) -- one `RemotePositionSmoother` per remote player index,
     /// keyed by index into `state.players` (stable across ticks). View-layer only; see
@@ -100,9 +121,31 @@ public final class GameRenderView: NSView {
     /// a fresh value here whenever the settings UI saves a change (see `GameSession.swift`).
     public var bindings: KeyBindings = KeyBindingsStore.load()
 
-    public init(tilesImage: CGImage, spritesImage: CGImage) {
+    /// v1.6.0 (#25): the tile/sprite draw pass, set at init rather than read from
+    /// `UserDefaults` so tests can instantiate either renderer directly. Defaults to the
+    /// existing CPU path -- unchanged behavior for every existing call site.
+    var renderer: TileRenderer
+
+    /// v1.6.0 (#25) increment 6: when non-nil, terrain moves off this property's own
+    /// `renderer` entirely onto `liveMetalOverlay`'s floating `MTKView` once the view is in a
+    /// window (`installLiveMetalOverlayIfNeeded`) -- the actual on-screen performance path,
+    /// bypassing `CGContext`/`draw(_:)` for the part of rendering that scales with zoom (tile
+    /// count; sprites/builders/labels stay on the CGContext path unchanged, since they're
+    /// small and roughly zoom-independent -- see `LiveMetalTerrainOverlay`'s own header).
+    /// `nil` by default: every existing call site's behavior is unchanged unless this is
+    /// explicitly supplied.
+    let liveMetalTerrainRenderer: MetalTileRenderer?
+    private var liveMetalOverlay: LiveMetalTerrainOverlay?
+    private var liveMetalOverlayObserversInstalled = false
+
+    public init(
+        tilesImage: CGImage, spritesImage: CGImage, renderer: TileRenderer = CGContextTileRenderer(),
+        liveMetalTerrainRenderer: MetalTileRenderer? = nil
+    ) {
         self.tilesImage = tilesImage
         self.spritesImage = spritesImage
+        self.renderer = renderer
+        self.liveMetalTerrainRenderer = liveMetalTerrainRenderer
         super.init(frame: NSRect(x: 0, y: 0, width: mapPixelSize, height: mapPixelSize))
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
@@ -143,6 +186,16 @@ public final class GameRenderView: NSView {
     /// it answers a different question, "where does Canvas start winning," not "where does
     /// AppKit alone start missing a frame budget," which is what this cap actually guards.)
     static let tileCountBudget = 9_000
+
+    /// v1.6.0 (#25) increment 7: `tileCountBudget` above calibrates the *CPU* `CGContext`
+    /// draw-cost ladder -- but once `liveMetalOverlay` is live, `draw(_:)` skips the
+    /// expensive tile pass entirely (terrain moves to the Metal overlay's own draw loop;
+    /// this view's CGContext path only draws sprites, "small, roughly zoom-independent" per
+    /// that call site's own comment). Applying the CPU-calibrated floor to the Metal path is
+    /// therefore an artifact, not a real cost constraint -- the full 256x256 map (65,536
+    /// tiles) is exactly the ceiling `GSBoloView.m` never had (the v1.6.1 brainstorm issue's
+    /// item 1). Set to the whole map so the floor never binds under live Metal.
+    static let liveMetalTileCountBudget = 256 * 256
 
     private var scrollViewFrameObserverInstalled = false
 
@@ -215,11 +268,21 @@ public final class GameRenderView: NSView {
     /// floor (the one scenario `minMagnification`/`maxMagnification` alone can't already
     /// cover, since AppKit doesn't retroactively re-clamp an existing value just because the
     /// bound itself moved).
+    /// v1.6.0 (#25) increment 7: lets `GameRenderViewZoomTests`' two window-resize/floor tests
+    /// keep asserting against a small, explicit budget instead of the production Metal-path
+    /// budget above (which, at 65,536 tiles, no longer floors those tests' window sizes at
+    /// all) -- decouples the tests from the production constant by premise, per the plan, so
+    /// a future revision of either budget doesn't silently break them. `nil` (the default) is
+    /// a no-op; production code never sets this.
+    var tileBudgetOverrideForTesting: Int?
+
     private func applyEffectiveMagnification() {
         guard let scrollView = enclosingScrollView else { return }
         let viewport = scrollView.frame.size
+        let tileBudget = tileBudgetOverrideForTesting
+            ?? (liveMetalTerrainRenderer != nil ? Self.liveMetalTileCountBudget : Self.tileCountBudget)
         let floor = Self.minimumMagnification(
-            viewportWidth: viewport.width, viewportHeight: viewport.height, tileBudget: Self.tileCountBudget
+            viewportWidth: viewport.width, viewportHeight: viewport.height, tileBudget: tileBudget
         )
         scrollView.minMagnification = floor
         scrollView.maxMagnification = Self.zoomLevels.last!
@@ -228,6 +291,14 @@ public final class GameRenderView: NSView {
             zoomIndex = max(zoomIndex, raisedIndex)
         }
         scrollView.magnification = Self.zoomLevels[zoomIndex]
+    }
+
+    /// Test-only hook: re-runs the floor computation on demand, so a test can set
+    /// `tileBudgetOverrideForTesting` after `hostGameView` has already triggered the
+    /// window's *initial* `configureZoom()` pass (which ran under the production budget)
+    /// and still observe a floor computed under the override.
+    func reapplyEffectiveMagnificationForTesting() {
+        applyEffectiveMagnification()
     }
 
     /// Ported from `zoomIn:`/`zoomOut:` (`GSXBoloController.m:1483-1515`) -- same fixed
@@ -325,7 +396,16 @@ public final class GameRenderView: NSView {
     }
 
     public override var isFlipped: Bool { true }
-    public override var isOpaque: Bool { true }
+    /// v1.6.0 (#25) increment 6: `true` (the original, unconditional value) tells AppKit this
+    /// view always fully covers its own bounds with opaque content, which lets it skip
+    /// compositing anything positioned behind it -- fine when this view draws its own terrain,
+    /// but it would make `LiveMetalTerrainOverlay`'s MTKView (deliberately positioned *behind*
+    /// this view, see `installLiveMetalOverlayIfNeeded`) invisible regardless of z-order, since
+    /// AppKit would never actually composite through to it. `false` only while the live overlay
+    /// is active, when this view's own `draw(_:)` genuinely does leave terrain pixels
+    /// transparent (it skips `drawTerrain` entirely in that mode) for the layer behind it to
+    /// show through.
+    public override var isOpaque: Bool { liveMetalOverlay == nil }
 
     public override var intrinsicContentSize: NSSize {
         NSSize(width: mapPixelSize, height: mapPixelSize)
@@ -407,6 +487,10 @@ public final class GameRenderView: NSView {
         {
             tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
             tileGridRebuildCount += 1
+            // v1.6.0 follow-up: `liveMetalOverlay`'s MTKView is on-demand now (see its own
+            // init doc comment), not continuous -- redraw it only when the grid it draws
+            // actually changed, not every tick.
+            liveMetalOverlay?.mtkView.needsDisplay = true
         }
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
@@ -422,8 +506,15 @@ public final class GameRenderView: NSView {
         let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
         defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        drawTerrain(ctx, dirtyRect: dirtyRect)
-        drawSprites(ctx)
+        if liveMetalOverlay != nil {
+            // Terrain is drawn live by the floating Metal overlay's own MTKView draw loop --
+            // only sprites/shells/explosions/builders stay on this CGContext path (small,
+            // roughly zoom-independent; not what #25 exists to fix). See
+            // `LiveMetalTerrainOverlay`'s own header for why terrain specifically moved.
+            drawSprites(ctx)
+        } else {
+            renderer.draw(self, ctx: ctx, dirtyRect: dirtyRect)
+        }
         drawBuilderTaskIndicators(ctx)
         drawSelector(ctx)
         drawCrosshair(ctx)
@@ -539,7 +630,89 @@ public final class GameRenderView: NSView {
             self.window?.makeFirstResponder(self)
             self.centerOnLocalPlayerSpawn()
             self.configureZoom()
+            self.installLiveMetalOverlayIfNeeded()
         }
+    }
+
+    /// v1.6.0 (#25) increment 6: must halt `liveMetalOverlay`'s continuous draw loop before
+    /// this view (and the window it's leaving) tear down -- see `LiveMetalTerrainOverlay.stop()`'s
+    /// own doc comment for the crash this fixes and how it was found.
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            liveMetalOverlay?.stop()
+        }
+    }
+
+    /// v1.6.0 (#25) increment 6: `enclosingScrollView` is reliably available by this point,
+    /// same reasoning `configureZoom()` above already relies on. A no-op unless
+    /// `liveMetalTerrainRenderer` was supplied at init and this hasn't already run.
+    private func installLiveMetalOverlayIfNeeded() {
+        guard liveMetalOverlay == nil, let renderer = liveMetalTerrainRenderer,
+            let scrollView = enclosingScrollView, let overlay = LiveMetalTerrainOverlay(renderer: renderer, gameRenderView: self)
+        else { return }
+        // A plain subview of the scroll view itself, not `addFloatingSubview` (that API floats
+        // a view along only one scroll axis at a time -- e.g. a ruler that scrolls vertically
+        // with content but stays fixed horizontally -- there's no "fixed on both axes" case in
+        // its `NSEventGestureAxis` parameter). The scroll view's own frame never moves during
+        // scrolling (only its clip/document view's bounds.origin does), so an ordinary subview
+        // of the scroll view already stays pinned to the viewport with no special API needed.
+        //
+        // `positioned: .below, relativeTo: scrollView.contentView` matters: terrain must stay
+        // *behind* sprites (this view now draws only terrain, `GameRenderView.draw(_:)` now
+        // draws only sprites when this overlay is active) -- a plain `addSubview` appends to
+        // the end of the subview list, which AppKit draws *last*, i.e. on *top*, the wrong
+        // side of the document view (which draws the sprites this needs to stay under).
+        scrollView.addSubview(overlay.mtkView, positioned: .below, relativeTo: scrollView.contentView)
+        liveMetalOverlay = overlay
+        installLiveMetalOverlayObserversIfNeeded(on: scrollView)
+        syncLiveMetalOverlayFrame()
+    }
+
+    /// **Live-evaluation bug fix (first eval build, `d49ca48`):** the original implementation
+    /// sized `overlay.mtkView.frame` to `scrollView.bounds` (the *whole* scroll view, chrome
+    /// included) and tracked resize via `autoresizingMask`. `GameView`'s HUD `safeAreaInset`s
+    /// give this scroll view real, non-zero `contentInsets` (top 48/left 56/right 228 + a
+    /// bottom inset, measured at `:227-234`/`:745-749` above) -- so that frame was systematically
+    /// larger than the actual visible map region `renderLiveTerrain`'s `visibleRect` describes,
+    /// by an amount that shrinks proportionally as the window grows. `MetalTileRenderer
+    /// .renderLiveTerrain`'s `scale = targetTexture.width / visibleRect.width` then baked that
+    /// mismatch straight into the terrain's on-screen size -- exactly the reported symptom
+    /// ("elements scale with the window while the map does not"): the CPU-drawn sprites already
+    /// used the correct, inset-excluding `visibleRect`; only the terrain overlay's backing
+    /// geometry was wrong.
+    ///
+    /// Fixed by sizing/positioning the `MTKView` to `scrollView.contentView.frame` -- the clip
+    /// view, whose frame AppKit already computes as `scrollView.bounds` minus `contentInsets`,
+    /// in the *same* superview coordinate space this subview is added to (the clip view is
+    /// itself a direct subview of the scroll view) -- and re-syncing that frame explicitly on
+    /// both a scroll-view frame change (window resize) and a clip-view bounds change (scroll/
+    /// pan/zoom), matching the mechanism `configureZoom()`/`scrollViewFrameDidChange()` above
+    /// already prove reliable on this exact view hierarchy, rather than trusting
+    /// `autoresizingMask` (which only tracks the *scroll view's* size, not the clip view's
+    /// inset-adjusted one, and never fires on a pure scroll/pan at all).
+    private func installLiveMetalOverlayObserversIfNeeded(on scrollView: NSScrollView) {
+        guard !liveMetalOverlayObserversInstalled else { return }
+        liveMetalOverlayObserversInstalled = true
+        scrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncLiveMetalOverlayFrame),
+            name: NSView.frameDidChangeNotification, object: scrollView
+        )
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncLiveMetalOverlayFrame),
+            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
+    }
+
+    @objc private func syncLiveMetalOverlayFrame() {
+        guard let overlay = liveMetalOverlay, let scrollView = enclosingScrollView else { return }
+        overlay.mtkView.frame = scrollView.contentView.frame
+        // v1.6.0 follow-up: on-demand MTKView -- a frame/bounds change means the camera
+        // (scroll/zoom/pan/resize) moved, so the terrain needs a fresh draw even though
+        // `render(_:)` wasn't necessarily called this instant.
+        overlay.mtkView.needsDisplay = true
     }
 
     /// **D137:** click-to-build. Converts the click to a tile coordinate using this view's own
@@ -731,7 +904,7 @@ public final class GameRenderView: NSView {
     // modeled (`FogState`/`fogTileFor`), just resolved before it reaches this function
     // rather than inside it.
 
-    private func drawTerrain(_ ctx: CGContext, dirtyRect: NSRect) {
+    func drawTerrain(_ ctx: CGContext, dirtyRect: NSRect) {
         let minX = max(0, Int(dirtyRect.minX) / tileSize)
         let maxX = min(255, Int(dirtyRect.maxX.rounded(.up)) / tileSize)
         let minY = max(0, Int(dirtyRect.minY) / tileSize)
@@ -776,7 +949,7 @@ public final class GameRenderView: NSView {
     // are drawn at `remoteTankSmoothers`' delayed/interpolated position (B.9's smoothing half,
     // D114), not the raw one -- builders/shells still draw raw, disclosed remaining scope, not
     // an oversight.
-    private func drawSprites(_ ctx: CGContext) {
+    func drawSprites(_ ctx: CGContext) {
         for explosion in state.explosions {
             // `GSBoloView.m:363`: fogvis for the global explosion list.
             drawExplosion(explosion, ctx, visFraction: visFraction(at: explosion.point, useForestTerm: false))
@@ -894,9 +1067,17 @@ public final class GameRenderView: NSView {
     /// dead always-1.0 code under D65's full-visibility v1 scope (this function's own prior
     /// doc comment said so) -- v1.5.0 #1 revives it: `fraction <= 0.00001` skips the draw
     /// entirely (matching the reference's own guard), otherwise blits at that alpha.
+    /// v1.6.0 (#25) increment 5: lets a `TileRenderer` (`MetalTileRenderer`) source each
+    /// sprite cell's pixels from its own GPU-rendered/cached texture instead of
+    /// `spritesImage.cropping(to:)`, while every positioning/alliance/fog/animation decision
+    /// in `drawSprites`/`drawBuilder`/`drawSprite` itself -- the actual business logic --
+    /// stays exactly as-is, single source of truth. `nil` (the default) means "use the CPU
+    /// crop," matching `CGContextTileRenderer`'s unmodified behavior.
+    var spriteCellProvider: ((Int32) -> CGImage?)?
+
     private func drawSprite(_ index: Int32, at point: Vec2f, _ ctx: CGContext, fraction: Float = 1.0) {
         guard fraction > 0.00001 else { return }
-        guard let cell = spritesImage.cropping(to: sheetSrcRect(forIndex: index)) else { return }
+        guard let cell = spriteCellProvider?(index) ?? spritesImage.cropping(to: sheetSrcRect(forIndex: index)) else { return }
         let size = CGFloat(tileSize)
         let originX: CGFloat = (CGFloat(point.x) * size - 8).rounded(.down)
         let originY: CGFloat = (CGFloat(point.y) * size - 8).rounded(.down)
@@ -932,7 +1113,7 @@ public final class GameRenderView: NSView {
     /// direction (a vertical mirror reverses a rotating sequence's apparent spin) exposed it.
     /// Compensated here, once, for every caller -- flips the content back around the dst rect's
     /// own vertical center, leaving `dst`'s on-screen position untouched.
-    private func blit(_ image: CGImage, in dst: CGRect, _ ctx: CGContext) {
+    func blit(_ image: CGImage, in dst: CGRect, _ ctx: CGContext) {
         ctx.saveGState()
         ctx.translateBy(x: 0, y: dst.midY)
         ctx.scaleBy(x: 1, y: -1)
