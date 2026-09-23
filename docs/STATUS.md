@@ -14,6 +14,51 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
+## In flight — v1.6.0 Metal renderer (end of shift, 2026-09-22)
+
+Milestone [4](https://github.com/CosmicCEO/BoloKit/milestone/4), scoped strictly to `#25` (hard
+ceiling — no added scope, anything else goes to v1.6.1). Work lives on branch
+`v160-metal-renderer`, [PR #128](https://github.com/CosmicCEO/BoloKit/pull/128) (open, not
+merged). Milestone [20](https://github.com/CosmicCEO/BoloKit/milestone/20) `v1.5.2 — Rejoin
+fix` is deliberately sequenced *after* v1.6.0 per direction this session, so v1.6.0 is the
+active work.
+
+**Increments 1-5 (baseline, `TileRenderer` extraction seam, offscreen pixel-diff parity
+harness, Metal terrain path, Metal sprite/shell/explosion path) are done, tested, and
+verified pixel-exact** against the existing CPU `CGContextTileRenderer` — see PR #128 for the
+two real interpolation bugs found and fixed via the parity harness along the way. None of this
+is wired into the live app yet; `MetalTileRenderer` exists but nothing in `GameSession.swift`
+constructs a `GameRenderView` with it.
+
+**Increment 6 (the real on-screen performance path — a `CAMetalLayer`-backed `MTKView`
+floating behind `GameRenderView`'s scroll view, live camera tracking) landed as code but
+found genuinely broken on first live evaluation.** Built an evaluation copy with the overlay
+temporarily enabled (`Bolo 2026 (v160-metal-eval d49ca48).app`, not committed — the flag stays
+off by default on `main`/the branch) and had it hand-tested: **terrain does not scale with
+window resize while sprites/other elements do.** Working theory, not yet confirmed or fixed:
+the overlay's `MTKView` tracks its size via legacy `autoresizingMask`
+(`GameRenderView.installLiveMetalOverlayIfNeeded`), while this app's SwiftUI-hosted view
+hierarchy likely drives sizing via Auto Layout constraints — mixing the two is a classic
+source of exactly this "some things resize, some don't" symptom. **Next session: confirm that
+theory and fix (likely: pin the `MTKView`'s edges to its superview with real constraints
+instead of `autoresizingMask`), then re-evaluate live before touching increment 7.**
+
+The two structural tests for increment 6 (`LiveMetalTerrainOverlayTests.swift`) are still
+`.disabled` — they crash/misbehave in this session's specific sandboxed test-hosting
+environment for reasons unrelated to the resize bug (tried and ruled out: app activation
+policy, `MainActor`/`nonisolated` delegate isolation, shared vs. separate `MTLDevice`s, test
+serialization). See that file's own header for the full account.
+
+**Increment 7 (raise `tileCountBudget`, flip the default renderer to Metal) has not started**
+— correctly blocked on increment 6 actually working, not just compiling.
+
+**Also from today, flagged for awareness:** [PR #119](https://github.com/CosmicCEO/BoloKit/pull/119)
+(a `#79` label-fog-gate regression test, `RemoteTankFogGateTests.swift`) was closed without
+merging. The underlying `#79` fix it was testing is already live and separately
+live-confirmed (see the `v1.5.1` shipped section below), so no behavior is at risk — only that
+specific standalone regression test never landed on `main`. Worth a deliberate call next
+session: re-open and merge it, or let it go.
+
 ## Shipped (`v1.5.1` release, tagged 2026-09-22)
 
 **[PR #117](https://github.com/CosmicCEO/BoloKit/pull/117)** ("bring the whole two-player stack into main", merged 2026-09-22): consolidated five stacked branches (45 commits) that had landed on neighbouring branches but not `main`. Fixed and **verified by code/doc read** (no Swift toolchain in the session that did this triage pass — a `swift test` run in Xcode is still owed before the v1.5.1 tag): guest can fire/adjust range/drown/lay mines and mines now trigger for it ([#62](https://github.com/CosmicCEO/BoloKit/issues/62)/[#91](https://github.com/CosmicCEO/BoloKit/issues/91), ruling [#59](https://github.com/CosmicCEO/BoloKit/issues/59)), host builder edits and mine terrain reach guests ([#84](https://github.com/CosmicCEO/BoloKit/issues/84)/[#81](https://github.com/CosmicCEO/BoloKit/issues/81)), host name shows on the guest ([#85](https://github.com/CosmicCEO/BoloKit/issues/85)), alliances work from both sides ([#92](https://github.com/CosmicCEO/BoloKit/issues/92)), Hidden Mines no longer announces a remote-laid mine at range ([#106](https://github.com/CosmicCEO/BoloKit/issues/106)), and a mine within 2.0 tiles of an observer's own tank correctly stays hidden-then-sticky-revealed ([#77](https://github.com/CosmicCEO/BoloKit/issues/77)'s first two parts). The umbrella issue [#61](https://github.com/CosmicCEO/BoloKit/issues/61) is closed as superseded; its two bullets with no fix (host hears no guest sounds; unexplained Mac B freeze, no repro) split to [#118](https://github.com/CosmicCEO/BoloKit/issues/118).
