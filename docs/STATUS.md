@@ -36,6 +36,15 @@ real gaps, both filed:
   `testAlliance` check, enemy-tile-overlap triggers `killPointBuilder`/`killSquareBuilder`,
   no new sound work (`kBuilderDeathSound` already wired).
 
+**Both implemented, 2026-09-23** (commits `54fed1d`/`cc7967b`): #146's `.builder(frame)` now
+draws a walking-figure silhouette for BUILD0/BUILD1 (stride alternates between the two) and a
+parachute-canopy silhouette for BUILD2, instead of a placeholder growing square. #145 added
+`tankCrushBuilder()` (`TankTick.swift`) -- exact tile overlap, `testAlliance`-gated, wired into
+`tankMoveTick`'s alive branch right after terrain collision resolves each tick; reuses
+`killBuilder` for the actual kill/respawn-as-parachute. Both covered by new tests
+(`BoloGlyphsTests`/`TankTickTests`); full `swift test` and `xcodebuild build -scheme "Bolo 2026"`
+green (the two pre-existing timing/socket flakes noted above still pass in isolation).
+
 Related but deliberately not pulled forward: [#138](https://github.com/CosmicCEO/BoloKit/issues/138)
 (builder movement after death looks unrouted) stays in its own `v1.9.0 — Builder logic`
 milestone -- it's a movement-smoothing/gameplay-logic issue, not a sprite/visual one.
