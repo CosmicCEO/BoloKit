@@ -811,6 +811,15 @@ private actor HostRenderedTicksBox {
     func record(_ tick: UInt64) { ticks.append(tick) }
 }
 
+/// #149: `onShouldPlaySound` is `@MainActor`-isolated the same way `onTickRendered` is (see this
+/// file's own doc comment above it) -- same actor-box pattern to observe it from an `async` test.
+private actor HostPlayedSoundsBox {
+    private var sounds: [(name: String, near: Bool)] = []
+    var isEmpty: Bool { sounds.isEmpty }
+    var all: [(name: String, near: Bool)] { sounds }
+    func record(_ sound: (name: String, near: Bool)) { sounds.append(sound) }
+}
+
 /// `onPlayerDisconnected`'s own wiring (`HostGameEngine.tick()`) -- distinct from the two tests
 /// above, which exercise the dynamic per-connection producer's disconnect paths. This one exercises
 /// `RunTick.swift`'s own step-4 lag-timeout path instead: a player whose `HostSessionTable`
@@ -1311,6 +1320,80 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         #expect(mines.count == 1)
         #expect(mines.first.map { Int($0.x) } == 105 && mines.first.map { Int($0.y) } == 105)
         #expect(mines.first?.player == 0)
+    }
+
+    // #149: a real networked host had no `onShouldPlaySound` wiring at all before this -- see
+    // `HostGameEngine.swift`'s own doc comment on that property. Reuses the same
+    // `configureHostWithMines`/`submitLocalLayMineKeyDown` fixture the two tests above already
+    // establish as a reliable, deterministic sound trigger. "mine" has no far variant (matches
+    // the oracle), so it must always queue as near regardless of Hidden Mines.
+    @Test(.timeLimit(.minutes(1))) func hostGameEngineFiresOnShouldPlaySoundForALaidMine() async throws {
+        let (engine, _, _) = try await makeEngine { configureHostWithMines(&$0, hiddenMines: false) }
+        defer { engine.stop() }
+
+        let playedSounds = HostPlayedSoundsBox()
+        engine.onShouldPlaySound = { name, near in
+            Task { await playedSounds.record((name, near)) }
+        }
+        engine.start()
+
+        engine.submitLocalLayMineKeyDown()
+
+        try await waitForCondition(timeout: 3) { await !playedSounds.isEmpty }
+        let sounds = await playedSounds.all
+        #expect(sounds.contains { $0.name == "mine" && $0.near })
+    }
+
+    // #150: proves the near/far selection itself, not just that `onShouldPlaySound` fires --
+    // two host-simulated tanks (no real network connection needed, `hostSimulatesRemotePlayers`
+    // alone is enough for `RunTick` to simulate player 1), unallied, so player 0 (the listener)
+    // shares no vision with player 1. Player 1 drives onto a mine far outside player 0's own
+    // 29x29 vision box (centered on (105,105)); the resulting "explosion" must resolve to
+    // `near: false`, using the exact same `fogStates`/`isFog` machinery
+    // `HostGameEngineFogVisionTests`'s other tests already independently verify -- this test's
+    // job is only to confirm the sound wiring actually reaches that machinery, not to re-derive
+    // fog correctness.
+    @Test(.timeLimit(.minutes(1))) func hostGameEngineOnShouldPlaySoundIsFarForAnEventOutsideTheHostsOwnFogVision() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.hostSimulatesRemotePlayers = true
+            state.players[0].used = true
+            state.players[0].connected = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105.5, y: 105.5)
+            // Not allied with player 1 -- no shared vision (mirrors
+            // `testAllianceFormingRevealsTheNewAllyImmediately`'s own default-unallied setup).
+            state.players[1].used = true
+            state.players[1].connected = true
+            state.players[1].dead = false
+            for y in 195..<205 {
+                for x in 195..<205 {
+                    state.terrain.storage[y * 256 + x] = Terrain.grass0.rawValue
+                }
+            }
+            state.terrain[200, 200] = .minedGrass
+            // Starts several tiles back (not adjacent) so plenty of ticks pass -- and player 0's
+            // own fog genuinely initializes (a real, if small, race otherwise: `fogStates` starts
+            // completely empty, and `updateFogVision()` only runs *after* `runTick` returns each
+            // tick, so `isNear`'s pre-tick snapshot can still be `nil` on the very first ticks) --
+            // before the detonation this test is actually checking fires.
+            state.players[1].tank = Vec2f(x: 196.5, y: 200.5)
+            state.players[1].dir = 0 // dir2vec(0) is screen-east (D70) -- drives straight into x=200.
+            state.players[1].inputFlags = [.accel]
+        }
+        defer { engine.stop() }
+
+        let playedSounds = HostPlayedSoundsBox()
+        engine.onShouldPlaySound = { name, near in
+            Task { await playedSounds.record((name, near)) }
+        }
+        engine.start()
+
+        try await waitForCondition(timeout: 5) {
+            await playedSounds.all.contains { $0.name == "explosion" }
+        }
+        let sounds = await playedSounds.all
+        #expect(sounds.contains { $0.name == "explosion" && !$0.near }, "an event outside the host's own fog vision must resolve to far, got: \(sounds)")
     }
 
     @Test(.timeLimit(.minutes(1))) func hostLaidMineKeyDownIsNotSentToARemotePlayerWhenHiddenMinesIsOn() async throws {
