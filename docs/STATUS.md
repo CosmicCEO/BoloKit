@@ -78,40 +78,41 @@ were missing the one assertion that would have caught it, now added. Full `swift
 `xcodebuild build -scheme "Bolo 2026"` green (one pre-existing timing flake, confirmed pass in
 isolation).
 
-**Milestone 26, `v1.6.5 — Sound Parity`, mostly done 2026-09-23 -- one issue intentionally left
-open.** Live audit of every oracle `playsound()` trigger against the port's own sound catalog,
-prompted directly by a live user report ("hearing trees being harvested beyond view") and an
-explicit ask to verify host/client sound wiring. Two real, high-severity findings:
+**Milestone 26, `v1.6.5 — Sound Parity`, done and closed 2026-09-24.** Live audit of every
+oracle `playsound()` trigger against the port's own sound catalog, prompted directly by a live
+user report ("hearing trees being harvested beyond view") and an explicit ask to verify
+host/client sound wiring. Two real, high-severity findings:
 - [#149](https://github.com/CosmicCEO/BoloKit/issues/149) (closed) -- a real networked HOST and a
   joined GUEST played **zero** gameplay sound at all. `SoundPlayer` was only ever reachable from
   the single-process/solo tick loop; `HostGameEngine`'s own separate internal loop had no sound
   callback of any kind. Fixed: `HostGameEngine.onShouldPlaySound`, wired the same way
   `onTickRendered`/`onMessageReceived` already are, plus the join path's three local-prediction
   call sites.
-- [#150](https://github.com/CosmicCEO/BoloKit/issues/150) (**left open, deliberately**) -- sound
-  played "near" unconditionally regardless of distance -- this was the direct cause of the
-  reported symptom. Fixed for the host path whenever Hidden Mines is on (reuses the existing,
-  already-live `FogState`/`isFog` machinery, no new distance proxy invented). **Does not fully
-  fix the reported symptom**: with Hidden Mines off (this port's current default) or on the solo/
-  join paths, every sound still plays "near" -- BoloKit's fog/vision tracking is deliberately
-  scoped to "always visible" for v1 (D65), narrower than the oracle's own always-active
-  tank/pillbox vision-box system; making it unconditional and live on every path is a bigger,
-  separate project, not done here. Caught two real bugs while testing this fix (a nested-`inout`
-  exclusivity crash, and an inverted `isFog` near/far polarity) via two new
-  `HostGameEngineTests` that exercise both through a live tick loop. Full `swift test` and
-  `xcodebuild build -scheme "Bolo 2026"` green (known pre-existing timing/socket flakes,
-  confirmed pass in isolation).
+- [#150](https://github.com/CosmicCEO/BoloKit/issues/150) (closed, ruled 2026-09-24) -- sound
+  played "near" unconditionally regardless of distance. Fixed for the host path whenever Hidden
+  Mines is on (reuses the existing, already-live `FogState`/`isFog` machinery, no new distance
+  proxy invented). The remaining gap -- making fog/vision tracking unconditional and live on
+  every path (solo/join), matching the oracle's own always-active tank/pillbox vision-box system
+  -- is **parked, not fixed**: Jerod's ruling (2026-09-24) is that solo play, this port's primary
+  mode, has no second listener anywhere else on the map for a far-sound distinction to matter to,
+  so the unconditional extension isn't worth building. Moved to
+  [milestone 10](https://github.com/CosmicCEO/BoloKit/milestone/10) (`Decide: Oracle parking
+  lot`) and closed there; reopen only on a real repro (e.g. hosted multiplayer with Hidden Mines
+  off). Caught two real bugs while landing the host-path fix (a nested-`inout` exclusivity crash,
+  and an inverted `isFog` near/far polarity) via two new `HostGameEngineTests` that exercise both
+  through a live tick loop. Full `swift test` and `xcodebuild build -scheme "Bolo 2026"` green
+  (known pre-existing timing/socket flakes, confirmed pass in isolation).
 
-Also noted in #150, not implemented, filed for a human call (same category as #145): even a
-fixed oracle near/far model is binary, two fixed clips -- true continuous-distance volume/pan
-would be richer than the oracle itself, a disclosed-new-feature candidate, not assumed.
+Also noted in #150's body, not implemented, no ruling requested yet (same disclosed-new-feature
+category as #145): even a fixed oracle near/far model is binary, two fixed clips -- true
+continuous-distance volume/pan would be richer than the oracle itself.
 
-This closes out the four 1.6.x themed parity releases' initial audit-and-fix pass (man #145/#146,
-tank #147, boat #148, sound #149 done/#150 partial). #145/#146/#147/#148/#149/#150 all came from
-live code-vs-`Reference/c` audits, not the backlog -- the closest backlog candidates,
+This closes out all four 1.6.x themed parity releases' initial audit-and-fix pass (man #145/#146,
+tank #147, boat #148, sound #149/#150). #145/#146/#147/#148/#149/#150 all came from live
+code-vs-`Reference/c` audits, not the backlog -- the closest backlog candidates,
 [#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while standing on a captured base) and
 [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion owner attribution), remain
-explicitly parked `Decide:` rulings, left alone rather than force-fit.
+their own explicitly parked `Decide:` rulings, left alone rather than force-fit.
 
 ## Queued next — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
 
