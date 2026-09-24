@@ -260,6 +260,25 @@ struct BoloGlyphsTests {
         }
     }
 
+    // MARK: - Builder sprite identity (#146)
+
+    @Test("builder walk frames and the parachute frame each render a non-empty, distinct silhouette")
+    func builderFramesAreDistinctAndNonEmpty() {
+        func opaquePixelCount(_ patch: Canvas16) -> Int {
+            stride(from: 3, to: patch.pixels.count, by: 4).filter { patch.pixels[$0] != 0 }.count
+        }
+        let frames = (0...2).map { renderGlyph(.builder(frame: $0)) }
+        for (frame, patch) in frames.enumerated() {
+            #expect(opaquePixelCount(patch) > 0, "builder frame \(frame) rendered no pixels")
+        }
+        // The two walk frames (BUILD0/BUILD1) must differ from each other -- that's the whole
+        // point of the alternation `GameRenderView.drawBuilder` drives off tick parity.
+        #expect(frames[0].pixels != frames[1].pixels)
+        // The parachute frame (BUILD2) is a structurally different pose, not just a third walk
+        // frame -- its opaque pixel count should differ from either walk frame's.
+        #expect(opaquePixelCount(frames[2]) != opaquePixelCount(frames[0]))
+    }
+
     // MARK: - Shell heading convention (v1.5.1 #114)
     //
     // Issue #114: shells vanished for their whole flight when fired toward one of the 10
