@@ -195,6 +195,9 @@ private func connectedPlayer(dead: Bool = false, boat: Bool = false) -> PlayerSt
     state.terrain[5, 5] = .boat
     enterTile(new: Pointi(x: 5, y: 5), old: Pointi(x: 4, y: 5), state: &state)
     #expect(state.terrain[5, 5] == .river)
+    // #148: grabbing a boat tile must actually put the player in boat mode -- this assertion
+    // is the whole point of the test, previously missing, which is how #148 shipped unnoticed.
+    #expect(state.players[0].boat)
 }
 
 @Test func enterTileMinedSeaDrownsRegardlessOfBoat() {

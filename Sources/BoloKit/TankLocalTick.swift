@@ -387,7 +387,14 @@ public func grabTile(
     guard let terrain = state.terrain[x, y] else { return }
     switch terrain {
     case .boat:
+        // #148: the oracle's server never sets this either (each real client self-reports its
+        // own `boat` state) -- but BoloKit's host-authoritative model needs it set here, at the
+        // point of mutation, since the host's own physics/rendering/broadcast all read it from
+        // this copy of `GameState`. Without this, no player (host's own local tank OR a
+        // host-simulated remote, both of which route through this function) could ever actually
+        // board a boat.
         state.terrain[x, y] = .river
+        state.players[player].boat = true
 
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         onMineExplosion(point)
