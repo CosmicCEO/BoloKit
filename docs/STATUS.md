@@ -546,6 +546,15 @@ Source of truth: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43) and
 |------|-------------|----------------|
 | **Release** | `v1.x.0 — …` | Every issue closed → tag `v1.x.0`, GitHub release, update this file. |
 | **Patch** | `v1.x.y — …` (`y ≥ 1`) | Ship-between-sprints work (playability, display, hotfixes). Tag `v1.x.y`, GitHub release. Does not replace the next `v1.x.0` sprint. |
+
+**Release/patch checklist** (missed the version-bump step for `v1.6.0`-`v1.6.5`, see
+[#152](https://github.com/CosmicCEO/BoloKit/issues/152) -- fixed for `v1.6.6`, added here so it
+doesn't get dropped again): merge PR → tag `vX.Y.Z` → `docs/RELEASE_NOTES_vX.Y.Z.md` →
+`gh release create` → **bump `MARKETING_VERSION` in `Bolo 2026.xcodeproj/project.pbxproj` (both
+Debug and Release configs of the main app target, `PRODUCT_BUNDLE_IDENTIFIER =
+com.cosmicceo.Bolo-2026`) to match `vX.Y.Z`, rebuild, verify with `plutil -p
+".../Info.plist" | grep CFBundleShortVersionString`** → update this file's top line and
+`README.md`'s "Current tagged drop" line.
 | **Decide** | `Decide: …` | Written ruling, **no code**. Then `not_planned` or move the issue to a future release milestone. Due **3 May 2027**. |
 
 New v1.* work: **issue** → release or patch **milestone** → add to [project 1](https://github.com/users/CosmicCEO/projects/1). New Decide work → Decide milestone → [project 2](https://github.com/users/CosmicCEO/projects/2). GitHub MCP `projects_*` may 403; `gh project item-add` is the fallback.
