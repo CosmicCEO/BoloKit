@@ -142,4 +142,17 @@ struct HostGameViewTests {
         #expect(MapOpenPolicy.retainPending(isPlaying: true))
         #expect(!MapOpenPolicy.retainPending(isPlaying: false))
     }
+
+    // #157: `hostAdvertisedName` decides the LAN/tracker display string for a hosted game.
+    @Test func hostAdvertisedNameFallsBackToThePlayerNameWhenBlank() {
+        #expect(hostAdvertisedName(gameName: "", playerName: "Skywalker") == "Skywalker")
+    }
+
+    @Test func hostAdvertisedNameUsesTheCustomGameNameWhenSet() {
+        #expect(hostAdvertisedName(gameName: "Friday Night Bolo", playerName: "Skywalker") == "Friday Night Bolo")
+    }
+
+    @Test func hostAdvertisedNameFallsBackToNewbieWhenBothAreBlank() {
+        #expect(hostAdvertisedName(gameName: "", playerName: "") == "Newbie")
+    }
 }

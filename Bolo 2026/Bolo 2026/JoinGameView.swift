@@ -50,7 +50,10 @@ struct JoinGameView: View {
     @State private var addressText = "127.0.0.1"
     @State private var portText = "50000"  // GSJoinPortNumber's own shipped default
     @State private var passwordText = ""
-    @State private var nameText = "Newbie"  // GSPlayerNameString's own shipped default
+    // #157: was a plain `@State` seeded once from "GSPlayerNameString" in `init` and never
+    // written back, so edits made here never persisted. `@AppStorage` reads/writes the same
+    // store live, matching `PreferencesView`'s and `HostGameView`'s own player-name field.
+    @AppStorage("GSPlayerNameString") private var nameText = "Newbie"
     @State private var isJoining = false
     @State private var progress: JoinProgress?
     @State private var errorMessage: String?
@@ -64,21 +67,20 @@ struct JoinGameView: View {
     @State private var lanGames: [LANGame] = []
     @State private var selectedLANGame: LANGame?
 
-    /// Milestone C.5 (D120): `nameText`/`trackerHostnameText`'s initial values now read the same
-    /// `"GSPlayerNameString"`/`"GSTrackerString"` keys `PreferencesView`'s `@AppStorage` writes to
-    /// (both back onto `UserDefaults.standard`, the same store) -- `portText` deliberately does
-    /// NOT read `"GSHostPortNumber"` here, since that preference is the *host's own* default
-    /// listening port (`HostGameView`'s own field), not this view's join-target port, which the
-    /// reference's own `GSJoinPortNumber` keeps as a genuinely separate default (also 50000, but a
-    /// different key, never wired to a preference in this v1 slice).
+    /// Milestone C.5 (D120): `trackerHostnameText`'s initial value reads the same
+    /// `"GSTrackerString"` key `PreferencesView`'s `@AppStorage` writes to (both back onto
+    /// `UserDefaults.standard`, the same store) -- `portText` deliberately does NOT read
+    /// `"GSHostPortNumber"` here, since that preference is the *host's own* default listening port
+    /// (`HostGameView`'s own field), not this view's join-target port, which the reference's own
+    /// `GSJoinPortNumber` keeps as a genuinely separate default (also 50000, but a different key,
+    /// never wired to a preference in this v1 slice). `nameText` needs no seeding here -- #157
+    /// switched it to `@AppStorage("GSPlayerNameString")` directly, same store, live.
     init(
         onJoinedGame: @escaping (TCPSession, UDPSession, GameState) -> Void,
         pendingJoinURL: Binding<URL?> = .constant(nil)
     ) {
         self.onJoinedGame = onJoinedGame
         _pendingJoinURL = pendingJoinURL
-        let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
-        _nameText = State(initialValue: storedName ?? "Newbie")
         let storedTracker = UserDefaults.standard.string(forKey: "GSTrackerString")
         _trackerHostnameText = State(initialValue: storedTracker ?? "tracker.xbolo.org")
     }

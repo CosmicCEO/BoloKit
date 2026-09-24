@@ -68,9 +68,25 @@ struct HostGameView: View {
     @State private var mapErrorMessage: String?
     @State private var isChoosingMap = false
 
+    /// #157: same `"GSPlayerNameString"` key `PreferencesView`'s `@AppStorage` and
+    /// `JoinGameView`'s own field write to -- one shared identity, matching the oracle's single
+    /// `playerNameString` ivar. Previously this screen had no field at all; `startHosting()` read
+    /// the key directly from `UserDefaults`.
+    @AppStorage("GSPlayerNameString") private var playerName = "Newbie"
+    /// #157: optional, new relative to the oracle (which has no server/game-name concept at all
+    /// -- joiners there see the host's player name + map filename). Blank falls back to the
+    /// player name at the two call sites that advertise this game's display string.
+    @State private var gameName = ""
+
     @State private var timeLimitEnabled = false
     @State private var timeLimitMinutes: Double = 30
-    @State private var hiddenMinesEnabled = false
+    // #157: default flipped true -- deliberate product decision, diverges from the oracle's own
+    // default-off (`DefaultPreferences.plist`'s `hostHiddenMinesBool`).
+    @State private var hiddenMinesEnabled = true
+    // #157: surfaces `GameState.pauseOnPlayerExit` (already simulated, `GameState.swift:88`) --
+    // the oracle only ever exposed this via the headless Dedicated Host CLI's `-e` flag, never in
+    // its own GUI.
+    @State private var pauseOnPlayerExitEnabled = false
     @State private var passwordEnabled = false
     @State private var passwordText = ""
     @State private var dominationType: DominationType = .open
@@ -108,6 +124,12 @@ struct HostGameView: View {
 
     var body: some View {
         Form {
+            Section("Player") {
+                TextField("Player Name", text: $playerName)
+                TextField("Game Name (optional)", text: $gameName)
+                    .help("Shown to joiners in the LAN/tracker list instead of your player name")
+            }
+
             Section("Map") {
                 HStack {
                     Button("Choose Map…") { isChoosingMap = true }
@@ -128,6 +150,7 @@ struct HostGameView: View {
                     )
                 }
                 Toggle("Hidden Mines", isOn: $hiddenMinesEnabled)
+                Toggle("Pause on Player Exit", isOn: $pauseOnPlayerExitEnabled)
                 Toggle("Password", isOn: $passwordEnabled)
                 if passwordEnabled {
                     SecureField("Password", text: $passwordText)
@@ -298,13 +321,14 @@ struct HostGameView: View {
 
         state.timeLimit = timeLimitEnabled ? Int(timeLimitMinutes) * 60 : 0
         state.hiddenMines = hiddenMinesEnabled
+        state.pauseOnPlayerExit = pauseOnPlayerExitEnabled
         state.passwordRequired = passwordEnabled
         state.serverPassword = passwordEnabled ? passwordText : ""
         state.dominationType = dominationType
         state.baseControlThreshold = Int(baseControlSeconds)
 
         var player = PlayerState()
-        player.name = hostPlayerDisplayName(stored: UserDefaults.standard.string(forKey: "GSPlayerNameString"))
+        player.name = hostPlayerDisplayName(stored: playerName)
         player.connected = true
         player.used = true
         player.dead = true
@@ -318,9 +342,11 @@ struct HostGameView: View {
         defer { isStartingHost = false }
 
         do {
-            let storedName = UserDefaults.standard.string(forKey: "GSPlayerNameString")
-            let bonjourName = storedName.flatMap { $0.isEmpty ? nil : $0 }
-            let listener = try await HostListener(port: port, bonjourName: bonjourName)
+            // #157: the LAN/tracker display string -- the optional custom game name if set,
+            // otherwise the player's own name (matching the oracle's only option, host player
+            // name + map filename; `Reference/c/Mac OS X/GSXBoloController.m`).
+            let advertisedName = hostAdvertisedName(gameName: gameName, playerName: playerName)
+            let listener = try await HostListener(port: port, bonjourName: advertisedName)
             let dgramListener = try await HostDgramListener(port: port)
             let engine = HostGameEngine(initialState: networkHostState(from: state), listener: listener, dgramListener: dgramListener)
             engine.start()
@@ -331,7 +357,7 @@ struct HostGameView: View {
             await engine.startNetworkDiscovery(
                 trackerHostname: trackerEnabled ? trackerHostname : nil,
                 advertisedPort: port,
-                hostPlayerName: bonjourName ?? "Newbie",
+                hostPlayerName: advertisedName,
                 mapName: mapURL?.lastPathComponent ?? "",
                 upnpEnabled: upnpEnabled
             )
@@ -358,6 +384,15 @@ nonisolated func networkHostState(from state: GameState) -> GameState {
 /// host as "Player 0" and drew no name label for it (#85).
 nonisolated func hostPlayerDisplayName(stored: String?) -> String {
     stored.flatMap { $0.isEmpty ? nil : $0 } ?? "Newbie"
+}
+
+/// #157: the LAN/tracker display string for a hosted game -- the host's optional custom game
+/// name if set, otherwise their own player name (`hostPlayerDisplayName`'s "Newbie" fallback
+/// still applies underneath). The oracle has no game-name concept at all, only host player name +
+/// map filename (`Reference/c/Mac OS X/GSXBoloController.m`'s tracker-listing columns) -- this is
+/// additive, not a parity gap.
+nonisolated func hostAdvertisedName(gameName: String, playerName: String) -> String {
+    gameName.isEmpty ? hostPlayerDisplayName(stored: playerName) : gameName
 }
 
 #Preview {

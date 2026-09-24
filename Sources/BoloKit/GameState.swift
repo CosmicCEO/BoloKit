@@ -124,7 +124,10 @@ public struct GameState: Sendable {
         baseControlThreshold: Int = 0,
         baseControlCounter: Int = 0,
         pauseOnPlayerExit: Bool = false,
-        hiddenMines: Bool = false,
+        // #157: default flipped true (Jerod, 2026-09-24) -- a deliberate product decision, not a
+        // parity fix; the oracle itself defaults this off (`DefaultPreferences.plist`'s
+        // `hostHiddenMinesBool`).
+        hiddenMines: Bool = true,
         allowJoin: Bool = true,
         passwordRequired: Bool = false,
         serverPassword: String = "",
