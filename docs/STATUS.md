@@ -78,17 +78,40 @@ were missing the one assertion that would have caught it, now added. Full `swift
 `xcodebuild build -scheme "Bolo 2026"` green (one pre-existing timing flake, confirmed pass in
 isolation).
 
-**Scaffolded, not yet scoped:** [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 —
-Sound Parity`.
-Checked the full open-issue backlog (39 issues, 2026-09-23) for anything that fits -- nothing
-does. The closest candidates, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while
-standing on a captured base) and [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion
-owner attribution), are both explicitly parked `Decide:` rulings ("not a sprint," "do not fix
-without a ruling") -- left alone rather than force-fit. #145/#146 above didn't come from the
-backlog either; they came from a live code-vs-`Reference/c` audit of the "man" theme. Each of
-tank/boat/sound needs that same audit (trace the relevant state machine/collision/sound-hook
-code against the oracle, confirm what's already correct, find the real gaps) before real issues
-can be filed -- not a sprint on its own, but the prerequisite to scoping each one.
+**Milestone 26, `v1.6.5 — Sound Parity`, mostly done 2026-09-23 -- one issue intentionally left
+open.** Live audit of every oracle `playsound()` trigger against the port's own sound catalog,
+prompted directly by a live user report ("hearing trees being harvested beyond view") and an
+explicit ask to verify host/client sound wiring. Two real, high-severity findings:
+- [#149](https://github.com/CosmicCEO/BoloKit/issues/149) (closed) -- a real networked HOST and a
+  joined GUEST played **zero** gameplay sound at all. `SoundPlayer` was only ever reachable from
+  the single-process/solo tick loop; `HostGameEngine`'s own separate internal loop had no sound
+  callback of any kind. Fixed: `HostGameEngine.onShouldPlaySound`, wired the same way
+  `onTickRendered`/`onMessageReceived` already are, plus the join path's three local-prediction
+  call sites.
+- [#150](https://github.com/CosmicCEO/BoloKit/issues/150) (**left open, deliberately**) -- sound
+  played "near" unconditionally regardless of distance -- this was the direct cause of the
+  reported symptom. Fixed for the host path whenever Hidden Mines is on (reuses the existing,
+  already-live `FogState`/`isFog` machinery, no new distance proxy invented). **Does not fully
+  fix the reported symptom**: with Hidden Mines off (this port's current default) or on the solo/
+  join paths, every sound still plays "near" -- BoloKit's fog/vision tracking is deliberately
+  scoped to "always visible" for v1 (D65), narrower than the oracle's own always-active
+  tank/pillbox vision-box system; making it unconditional and live on every path is a bigger,
+  separate project, not done here. Caught two real bugs while testing this fix (a nested-`inout`
+  exclusivity crash, and an inverted `isFog` near/far polarity) via two new
+  `HostGameEngineTests` that exercise both through a live tick loop. Full `swift test` and
+  `xcodebuild build -scheme "Bolo 2026"` green (known pre-existing timing/socket flakes,
+  confirmed pass in isolation).
+
+Also noted in #150, not implemented, filed for a human call (same category as #145): even a
+fixed oracle near/far model is binary, two fixed clips -- true continuous-distance volume/pan
+would be richer than the oracle itself, a disclosed-new-feature candidate, not assumed.
+
+This closes out the four 1.6.x themed parity releases' initial audit-and-fix pass (man #145/#146,
+tank #147, boat #148, sound #149 done/#150 partial). #145/#146/#147/#148/#149/#150 all came from
+live code-vs-`Reference/c` audits, not the backlog -- the closest backlog candidates,
+[#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while standing on a captured base) and
+[#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion owner attribution), remain
+explicitly parked `Decide:` rulings, left alone rather than force-fit.
 
 ## Queued next — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
 
