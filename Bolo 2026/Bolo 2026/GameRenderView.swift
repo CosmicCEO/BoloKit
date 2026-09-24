@@ -1035,13 +1035,20 @@ public final class GameRenderView: NSView {
 
     /// `calcVis`/`fogVis` fraction at `point` for the current render's observer, matching
     /// `GSBoloView.m:301,315,349,363,378,389`'s own per-sprite-kind choice of which of the
-    /// two to call. `1.0` (fully visible, no fade) when `state.hiddenMines` is off or no
-    /// `fogState` was supplied -- the D65 default this feature must not change.
+    /// two to call.
+    ///
+    /// #153: the `useForestTerm` (tank/walking-builder) path always calls `calcVis` now,
+    /// even with no `fogState` -- forest concealment is core oracle gameplay, unrelated to
+    /// `hiddenMines`/fog tracking (see `calcVis`'s own doc comment). The plain-`fogVis` path
+    /// (shells/explosions/parachute builder) has nothing to offer without real fog data, so
+    /// it keeps the `hiddenMines`/`fogState` gate -- `1.0` (fully visible, no fade) there is
+    /// still the D65 default this feature must not change.
     private func visFraction(at point: Vec2f, useForestTerm: Bool) -> Float {
+        if useForestTerm {
+            return calcVis(point, state: state, fogState: fogState, observer: state.localPlayer)
+        }
         guard state.hiddenMines, let fogState else { return 1.0 }
-        return useForestTerm
-            ? calcVis(point, state: state, fogState: fogState, observer: state.localPlayer)
-            : fogVis(point, fogState: fogState)
+        return fogVis(point, fogState: fogState)
     }
 
     /// `CGContext.draw(_:in:)` draws a `CGImage`'s row 0 at the *high-Y* edge of the destination

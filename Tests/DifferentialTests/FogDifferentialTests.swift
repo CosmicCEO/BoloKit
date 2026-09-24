@@ -94,6 +94,50 @@ import CXBolo
         let vis = calcVis(v, state: state, fogState: fogState, observer: 0)
         #expect(vis == 1.0) // fully lit, no forest, far from own tank/pills
     }
+
+    // #153: `fogState: nil` (the join/solo paths, or the host with `hiddenMines` off) must
+    // still apply forest concealment -- only the fog term drops out to "fully lit."
+
+    @Test func testCalcVisWithNilFogStateStillAppliesForestConcealmentFarAway() {
+        var state = GameState()
+        state.players = [PlayerState()]
+        state.players[0].tank = BoloKit.Vec2f(x: 10, y: 10) // far from the forest tile below
+        for dy in -1...1 {
+            for dx in -1...1 {
+                state.terrain[200 + dx, 200 + dy] = .forest
+            }
+        }
+        let v = BoloKit.Vec2f(x: 200.5, y: 200.5)
+        let vis = calcVis(v, state: state, fogState: nil, observer: 0)
+        #expect(vis == forestVis(v, state: state))
+        #expect(vis < 1.0) // fully forest-surrounded -> concealed
+    }
+
+    @Test func testCalcVisWithNilFogStateStillFloorsVisibilityNearOwnTank() {
+        var state = GameState()
+        state.players = [PlayerState()]
+        state.players[0].tank = BoloKit.Vec2f(x: 50, y: 50)
+        for dy in -1...1 {
+            for dx in -1...1 {
+                state.terrain[50 + dx, 50 + dy] = .forest
+            }
+        }
+        // Standing on your own tank: dist == 0 <= 2.0, so vis is at least 0.5 even fully
+        // forest-concealed, same distance floor as the fogState-present case above.
+        let vis = calcVis(BoloKit.Vec2f(x: 50, y: 50), state: state, fogState: nil, observer: 0)
+        #expect(vis >= 0.5)
+    }
+
+    @Test func testCalcVisWithNilFogStateMatchesCalcVisBlendWithFogTermOne() {
+        var state = GameState()
+        state.players = [PlayerState()]
+        state.players[0].tank = BoloKit.Vec2f(x: 10, y: 10)
+        state.terrain[100, 100] = .forest
+        let v = BoloKit.Vec2f(x: 100.5, y: 100.5)
+        let vis = calcVis(v, state: state, fogState: nil, observer: 0)
+        let expected = calcVisBlend(forestVis: forestVis(v, state: state), fogVis: 1.0, dist: mag2f(sub2f(state.players[0].tank, v)))
+        #expect(vis == expected)
+    }
 }
 
 @Suite struct FogTileForDifferentialTests {
