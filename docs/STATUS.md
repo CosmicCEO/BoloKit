@@ -49,9 +49,21 @@ Related but deliberately not pulled forward: [#138](https://github.com/CosmicCEO
 (builder movement after death looks unrouted) stays in its own `v1.9.0 — Builder logic`
 milestone -- it's a movement-smoothing/gameplay-logic issue, not a sprite/visual one.
 
-**Scaffolded, not yet scoped:** [milestone 24](https://github.com/CosmicCEO/BoloKit/milestone/24)
-`v1.6.3 — Tank Parity`, [25](https://github.com/CosmicCEO/BoloKit/milestone/25) `v1.6.4 — Boat
-Parity`, [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 — Sound Parity`.
+**Milestone 24, `v1.6.3 — Tank Parity`, done and closed 2026-09-23.** Live audit of
+`tankmovelogic`/`tanklocallogic`/`killtank`/`tankcollision`/`tanktest`/`tankonaboattest` and the
+shell-vs-tank damage path against `Reference/c`: everything but one item is already a faithful,
+complete port (movement, collision, tank-vs-tank push-apart, mine/refuel/pillbox-capture logic,
+`killTank`, shell-hit damage). The one real gap: [#147](https://github.com/CosmicCEO/BoloKit/issues/147)
+-- a boated tank rendered pixel-identical to a land tank (`ImageIndex.swift` already selected the
+right `PTKB`/etc. sprite row, but `GlyphRole.tank` had no `boat` parameter at all, so both rows
+drew the same triangle+barrel). Fixed: `boat: Bool` threaded through, `drawBoatHull` gives it a
+distinct hull silhouette. Same porting-gap category as #146, not a new mechanic. Full `swift
+test` and `xcodebuild build -scheme "Bolo 2026"` green (four DifferentialTests flakes under the
+full parallel run, all confirmed pass in isolation -- real-network/timing flakiness, unrelated to
+this pure-rendering change).
+
+**Scaffolded, not yet scoped:** [25](https://github.com/CosmicCEO/BoloKit/milestone/25) `v1.6.4 —
+Boat Parity`, [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 — Sound Parity`.
 Checked the full open-issue backlog (39 issues, 2026-09-23) for anything that fits -- nothing
 does. The closest candidates, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while
 standing on a captured base) and [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion
