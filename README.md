@@ -33,6 +33,14 @@ The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conve
 
 Engineering rules: `docs/CONSTRAINTS.md`. Wave history: git tag `legacy-agent-process`.
 
+## Playing
+
+Host or join over LAN from the app's Host/Join screens. Cmd-N opens a second window (macOS
+tabs it automatically); each window runs its own independent game session, so you can host in
+one tab and join in another on the same Mac -- a convenient way to drive two tanks solo, no
+second machine required. See [#144](https://github.com/CosmicCEO/BoloKit/issues/144) for
+follow-up on formalizing this into a supported mode.
+
 ## Approach
 
 - `Reference/` holds the original xbolo C/Objective-C source as a git submodule. It is

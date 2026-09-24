@@ -20,7 +20,7 @@
 //  ~7.9k-11.9k tiles") and `GameRenderView.tileCountBudget`'s doc comment both identify *tile
 //  count* -- which scales with zoom-out level -- as the actual cost driver. Sprite/shell/
 //  explosion/builder count stays small and roughly constant regardless of zoom, so it was
-//  never the bottleneck; those, plus labels/crosshair/selector/dashed builder-task lines, stay
+//  never the bottleneck; those, plus labels/crosshair/selector, stay
 //  on the existing CGContext path in `GameRenderView.draw(_:)`.
 //
 //  Z-order and compositing -- two things had to change together, not just one:

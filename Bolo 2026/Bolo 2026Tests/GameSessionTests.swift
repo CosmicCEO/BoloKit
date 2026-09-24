@@ -342,4 +342,45 @@ struct JoinPathAllianceTests {
         try await waitUntil { engine.state.players[me].alliance & hostBit == 0 }
         #expect(engine.state.players[me].alliance & hostBit == 0, "the host must learn of the departure")
     }
+
+    // MARK: - #140: guest's own connection-age must never read as stale
+
+    /// #140: a guest never receives a `CLUpdate` about itself over UDP (no self-echo, same as
+    /// `applyRemotePlayerUpdate`'s own rejection of it), so before the fix
+    /// `UDPSession.remoteLastUpdates` for the guest's own slot never advanced past its `0`
+    /// default -- `connectionAge(for:)`'s age (`localSeq - 0`) grew unbounded with real time and
+    /// eventually crossed the "dropped" threshold, coloring the guest's own player row red even
+    /// though it obviously has a live connection to itself. The host path never had this: it
+    /// explicitly re-stamps its own slot fresh every tick (`HostGameEngine.tick()`,
+    /// `table.setLastUpdate(state.ticks, for: state.localPlayer)`) -- this is that same fix,
+    /// mirrored on the join side.
+    @Test func guestsOwnConnectionAgeStaysFreshEvenThoughItNeverReceivesAnUpdateAboutItself() async throws {
+        let (engine, port) = try await makeHost()
+        engine.start()
+        defer { engine.stop() }
+
+        let joined = try await TCPSession.join(host: "127.0.0.1", port: port, name: "Guest", pass: "")
+        var initial = GameState()
+        initial.players = (0..<maxPlayers).map { _ in PlayerState() }
+        #expect(applyBoloPreamble(joined.preamble, mapData: joined.mapData, state: &initial))
+        let udp = try await UDPSession(host: joined.session.remoteHost, port: joined.session.remotePort)
+        let image = makeTrivialImage()
+        let session = GameSession(
+            tcpSession: joined.session, udpSession: udp, initialState: initial,
+            tilesImage: image, spritesImage: image
+        )
+        defer { udp.cancel(); joined.session.cancel() }
+        session.start()
+        engine.submitLocalSendMessage(text: "sync", target: .everyone)
+        try await waitUntil(timeout: 10) { session.messages.contains { $0.text == "sync" } }
+        #expect(session.messages.contains { $0.text == "sync" })
+
+        let me = session.state.localPlayer
+        // The pre-fix bug only shows up once `localSeq` (this session's own tick counter, ~50Hz
+        // on the join path) has climbed past the "dropped" threshold (`ticksPerSec * 3` = 150
+        // ticks, ~3s) -- wait comfortably past it.
+        try await Task.sleep(nanoseconds: 3_500_000_000)
+        let age = session.connectionAge(for: me)
+        #expect(age == 0, "the guest's own player row must never read as stale/dropped -- it needs no network data about itself")
+    }
 }

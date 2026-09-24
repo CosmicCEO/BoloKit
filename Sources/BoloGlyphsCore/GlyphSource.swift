@@ -161,11 +161,37 @@ private func drawConnective(_ c: inout Canvas16, family: TileFamily, ortho: UInt
         applyForestCanopy(&c)
     }
 
+    // D156 (#110 remainder): three horizontal flow-streaks -- reads as "current," and
+    // structurally distinct from sea's diagonal-plus-glint treatment despite the similar hue,
+    // so the two water families don't read as the same texture in a different color.
+    if family == .river {
+        applyRiverFlow(&c)
+    }
+
+    // D156 (#110 remainder): short dashed ripple marks, distinct from river's continuous
+    // flow-lines (river reads as "current," boat reads as "choppy/still water").
+    if family == .boat {
+        applyBoatRipple(&c)
+    }
+
+    // D156 (#110 remainder): a darker bowl toward the tile's center with a lighter rim --
+    // reads as an impact crater's actual shape, not just a darker patch of ground.
+    if family == .crater {
+        applyCraterBowl(&c)
+    }
+
     // D154 Wave 1: an isolated road tile (no road neighbor at all, ortho == 0 && diag == 0)
     // gets a dashed lone-segment marker, inspired by the reference's dashed-line marker for
     // single unconnected road cells, so it reads differently from a connected road segment.
-    if family == .road && ortho == 0 && diag == 0 {
-        drawIsolatedRoadMarker(&c)
+    // D156 (#110 remainder): a connected segment gets a small centerline lane mark instead --
+    // always inside the core 8x8 fill every connected road shape has, so no opacity check
+    // is needed the way the other new textures above require.
+    if family == .road {
+        if ortho == 0 && diag == 0 {
+            drawIsolatedRoadMarker(&c)
+        } else {
+            applyRoadLaneMark(&c)
+        }
     }
 }
 
@@ -250,6 +276,74 @@ private func applyForestCanopy(_ c: inout Canvas16) {
             }
         }
     }
+}
+
+/// D156 (#110 remainder): three full-width horizontal highlight rows -- "flow lines," distinct
+/// in *shape* from `applySeaShading`'s diagonal split (river is a current, sea is open water).
+/// Only ever recolors already-opaque pixels, same invariant as every texture above.
+private func applyRiverFlow(_ c: inout Canvas16) {
+    let flow: (UInt8, UInt8, UInt8) = (90, 140, 235)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    for y in [2, 7, 12] {
+        for x in 0..<Canvas16.size {
+            guard isOpaque(x, y) else { continue }
+            c.set(x, y, flow.0, flow.1, flow.2, 255)
+        }
+    }
+}
+
+/// D156 (#110 remainder): short dashed highlight segments (not full-width rows, unlike
+/// `applyRiverFlow` above) -- reads as choppy ripples rather than a directional current.
+private func applyBoatRipple(_ c: inout Canvas16) {
+    let ripple: (UInt8, UInt8, UInt8) = (90, 200, 210)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    for y in stride(from: 3, to: Canvas16.size, by: 5) {
+        for startX in stride(from: 1, to: Canvas16.size - 2, by: 4) {
+            for x in startX..<(startX + 3) {
+                guard isOpaque(x, y) else { continue }
+                c.set(x, y, ripple.0, ripple.1, ripple.2, 255)
+            }
+        }
+    }
+}
+
+/// D156 (#110 remainder): a darker bowl toward the tile's own center, a lighter ring at its
+/// rim, and the flat base color in between -- reads as an actual crater's shape (concentric,
+/// centered on the tile), not just a mottled patch like swamp's irregular off-center blotches.
+private func applyCraterBowl(_ c: inout Canvas16) {
+    let rim: (UInt8, UInt8, UInt8) = (95, 82, 74)
+    let bowl: (UInt8, UInt8, UInt8) = (40, 32, 28)
+    func isOpaque(_ x: Int, _ y: Int) -> Bool {
+        guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
+        return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
+    }
+    for y in 0..<Canvas16.size {
+        for x in 0..<Canvas16.size {
+            guard isOpaque(x, y) else { continue }
+            let dx = Double(x) - 8, dy = Double(y) - 8
+            let dist = (dx * dx + dy * dy).squareRoot()
+            if dist < 3 {
+                c.set(x, y, bowl.0, bowl.1, bowl.2, 255)
+            } else if dist > 6 {
+                c.set(x, y, rim.0, rim.1, rim.2, 255)
+            }
+        }
+    }
+}
+
+/// D156 (#110 remainder): a small centerline mark for a *connected* road segment, distinct from
+/// `drawIsolatedRoadMarker`'s dashed-cross treatment for a lone tile. Always lands inside the
+/// core 8x8 fill every connected road shape has (`fillRect(4,4,12,12,...)` above always runs),
+/// so unlike every other texture in this file it needs no opacity check.
+private func applyRoadLaneMark(_ c: inout Canvas16) {
+    let mark: (UInt8, UInt8, UInt8) = (210, 205, 195)
+    c.fillRect(7, 7, 9, 9, mark.0, mark.1, mark.2)
 }
 
 /// D155 (#110): unconditional flat green plus a fine, even speckle -- deliberately the

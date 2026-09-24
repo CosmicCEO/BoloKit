@@ -378,6 +378,15 @@ public final class GameSession {
         }
         if let udpSession {
             guard (0..<maxPlayers).contains(player) else { return nil }
+            // #140: a guest never receives a `CLUpdate` about itself over UDP (no self-echo,
+            // same as `applyRemotePlayerUpdate`'s own rejection of it) -- `remoteLastUpdates`
+            // for the guest's own slot stays permanently 0, so subtracting it from `localSeq`
+            // produced an ever-growing, always-"dropped" age for the guest's own row, unlike
+            // the host path, which explicitly re-stamps its own slot fresh every tick
+            // (`HostGameEngine.tick()`, `table.setLastUpdate(state.ticks, for: state.localPlayer)`).
+            // Mirror that here: the guest's own row is trivially always fresh, since a guest
+            // needs no network data to know about itself.
+            if player == state.localPlayer { return 0 }
             return UInt64(bitPattern: Int64(localSeq) - Int64(udpSession.lastUpdate(for: player)))
         }
         return nil

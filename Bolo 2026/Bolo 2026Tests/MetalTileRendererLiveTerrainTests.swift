@@ -127,4 +127,55 @@ struct MetalTileRendererLiveTerrainTests {
         )
         #expect(transform == nil)
     }
+
+    // MARK: - D156 (#137): black seam lines
+
+    /// #137: adjacent tiles' *origins* (`Float(x) * scaledTileSize - originXPixels`) are each
+    /// computed independently, not accumulated from the previous tile's edge, so at a zoom/
+    /// backing-scale ratio where `scaledTileSize` isn't exactly `Float`-representable, the
+    /// origin delta between two adjacent tiles can drift a hair below the true tile size --
+    /// leaving a sub-pixel gap that sampled `renderLiveTerrain`'s black clear color through (the
+    /// reported seam). `paddedTileSize` is the fix: the quad size actually drawn, always
+    /// strictly larger than `scaledTileSize`. Swept across widths deliberately chosen to be
+    /// awkward for `Float` division (not round numbers, not powers of two), reproducing the
+    /// same non-integer-scale conditions the original report described ("only sometimes during
+    /// zoom in/out or a resize-during-pan").
+    @Test(arguments: [
+        (visibleWidth: 337.0, factor: 1.0), (visibleWidth: 337.0, factor: 1.3),
+        (visibleWidth: 611.0, factor: 1.7), (visibleWidth: 999.0, factor: 2.3),
+        (visibleWidth: 123.0, factor: 3.1),
+    ])
+    func paddedTileSizeAlwaysCoversTheGapBetweenAnyTwoAdjacentTileOrigins(visibleWidth: Double, factor: Double) throws {
+        let visibleRect = NSRect(x: 0, y: 0, width: visibleWidth, height: visibleWidth * 0.75)
+        let targetWidthPixels = Int((visibleWidth * factor).rounded())
+        let transform = try #require(
+            MetalTileRenderer.cameraTransform(visibleRect: visibleRect, targetTextureWidthPixels: targetWidthPixels)
+        )
+
+        // Same formula `renderLiveTerrain` uses per-tile, over the full tile range this map
+        // ever produces (0..<256) -- reproducing the actual accumulated-rounding conditions
+        // rather than asserting on the arithmetic in isolation.
+        func origin(_ x: Int) -> Float {
+            Float(x) * transform.scaledTileSize
+        }
+
+        for x in 0..<255 {
+            let gap = origin(x + 1) - (origin(x) + transform.paddedTileSize)
+            #expect(gap <= 0, "tile \(x)/\(x + 1) at visibleWidth=\(visibleWidth) factor=\(factor): gap of \(gap)px would show the black clear color")
+        }
+    }
+
+    /// `paddedTileSize` must always exceed `scaledTileSize` -- the whole mechanism the test
+    /// above relies on -- and by a bounded, deliberate amount, not an ever-growing one that
+    /// would visibly distort tiles at high zoom.
+    @Test
+    func paddedTileSizeIsAlwaysStrictlyLargerThanScaledTileSizeByABoundedAmount() {
+        let transform = try! #require(
+            MetalTileRenderer.cameraTransform(
+                visibleRect: NSRect(x: 0, y: 0, width: 400, height: 300), targetTextureWidthPixels: 800
+            )
+        )
+        #expect(transform.paddedTileSize > transform.scaledTileSize)
+        #expect(transform.paddedTileSize - transform.scaledTileSize <= 2.0)
+    }
 }
