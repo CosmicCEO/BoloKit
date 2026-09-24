@@ -8,7 +8,7 @@
 
 **CI:** a `.github/workflows/test.yml` (GitHub Actions, `swift build`/`swift test` on `macos-15`) exists on a not-yet-merged branch. `Package.swift`'s `swift-tools-version` is `6.2` on `main`, matching what `macos-15`'s `latest-stable` (currently Xcode 26.3 / Swift 6.2.4) actually ships -- do not bump past that without checking the runner image first.
 
-**Small known gap:** [#152](https://github.com/CosmicCEO/BoloKit/issues/152) -- the app's `CFBundleShortVersionString` has been stuck at `1.2.3` since that tag, doesn't track any release since. Cosmetic (About This App / crash-log build strings), no urgency, but worth wiring into the release convention next time this file gets touched for a tag.
+**2026-09-24, post-`v1.6.6`:** [#138](https://github.com/CosmicCEO/BoloKit/issues/138) ("builder movement after death looks unrouted, then snaps to a direct line") audited and closed as **not a bug** -- faithful port of the oracle's parachute-to-death-snapshot then return-to-live-tracking design (`killbuilder()`/`kBuilderParachute`/`kBuilderReturn`, `client.c:7047-7087`/`4933-5022`). A real, separate deviation found in the same function during that audit -- `killBuilder` wasn't clearing a queued builder command on death, unlike the oracle (`client.c:7061-7062`) -- filed and fixed as [#156](https://github.com/CosmicCEO/BoloKit/issues/156).
 
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
