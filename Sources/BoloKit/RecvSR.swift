@@ -390,9 +390,10 @@ public func recvSrDropPill(pill: Int, x: UInt8, y: UInt8, state: inout GameState
 
 /// Ported from `recvsrreplenishbase()` (`client.c:2425-2453`).
 public func recvSrReplenishBase(base: Int, state: inout GameState, onBaseStatusChanged: (Int) -> Void = { _ in }) {
-    state.bases[base].armour = min(state.bases[base].armour + 1, UInt8(maxBaseArmour))
-    state.bases[base].shells = min(state.bases[base].shells + 1, UInt8(maxBaseShells))
-    state.bases[base].mines = min(state.bases[base].mines + 1, UInt8(maxBaseMines))
+    // See GrowTrees.swift's replenishBases for why this is Int arithmetic, not UInt8 (#155).
+    state.bases[base].armour = UInt8(min(Int(state.bases[base].armour) + 1, maxBaseArmour))
+    state.bases[base].shells = UInt8(min(Int(state.bases[base].shells) + 1, maxBaseShells))
+    state.bases[base].mines = UInt8(min(Int(state.bases[base].mines) + 1, maxBaseMines))
     onBaseStatusChanged(base)
 }
 

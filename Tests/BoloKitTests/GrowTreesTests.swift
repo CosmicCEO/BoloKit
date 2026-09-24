@@ -333,3 +333,22 @@ private func makeState(connectedPlayers: Int = 1) -> GameState {
     #expect(state.bases[0].shells == UInt8(maxBaseShells))
     #expect(state.bases[0].mines == UInt8(maxBaseMines))
 }
+
+// Regression for #155: a base stat already at 255 must clamp, not trap. Byte-level UInt8
+// overflow (`state.bases[i].shells + 1`) crashed the host engine mid-game; a stray or corrupt
+// map byte above the documented 90 max was the real-world trigger (now also clamped at map
+// load, see BMapTests).
+@Test func replenishBasesDoesNotOverflowWhenAlreadyAtByteMaximum() {
+    var state = makeState(connectedPlayers: 1)
+    state.bases = [
+        Base(
+            x: 10, y: 10, armour: 255, owner: playerNeutral, shells: 255, mines: 255,
+            counter: UInt16(replenishBaseTicks - 1)
+        )
+    ]
+    replenishBases(state: &state)
+
+    #expect(state.bases[0].armour == UInt8(maxBaseArmour))
+    #expect(state.bases[0].shells == UInt8(maxBaseShells))
+    #expect(state.bases[0].mines == UInt8(maxBaseMines))
+}

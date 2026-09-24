@@ -46,6 +46,22 @@ private func encodeFullBMap(pills: [Pill], bases: [Base], starts: [Start], grid:
     #expect(state.terrain[0, 0] == .minedSea)  // untouched border cell, still default
 }
 
+// Regression for #155: a stray/corrupt map byte above the documented 90 max (up to the UInt8
+// ceiling, 255) must clamp on load, not just get carried into GameState -- replenishBases would
+// otherwise trap on overflow the first time it tried to `+1` a base already sitting at 255.
+@Test func decodeBMapClampsOutOfRangeBaseStatsToTheDocumentedMaximum() {
+    let bases = [Base(x: 30, y: 30, armour: 255, owner: 0, shells: 255, mines: 255)]
+    let bytes = encodeFullBMap(pills: [], bases: bases, starts: [], grid: .mapDefault())
+
+    var state = GameState()
+    #expect(decodeBMap(bytes, into: &state))
+
+    #expect(state.bases.count == 1)
+    #expect(state.bases[0].armour == UInt8(maxBaseArmour))
+    #expect(state.bases[0].shells == UInt8(maxBaseShells))
+    #expect(state.bases[0].mines == UInt8(maxBaseMines))
+}
+
 @Test func decodeBMapRejectsWrongIdent() {
     var bytes = encodeFullBMap(pills: [], bases: [], starts: [], grid: .mapDefault())
     bytes[0] = 0

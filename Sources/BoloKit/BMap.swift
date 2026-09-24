@@ -574,7 +574,18 @@ public func decodeBMap(_ bytes: [UInt8], into state: inout GameState) -> Bool {
 
     var bases: [Base] = []
     for _ in 0..<nbases {
-        bases.append(Base(x: bytes[offset], y: bytes[offset + 1], armour: bytes[offset + 3], owner: bytes[offset + 2], shells: bytes[offset + 4], mines: bytes[offset + 5]))
+        // Clamp to the documented 90 max (bolo.h's MAXBASEARMOUR/SHELLS/MINES): the oracle
+        // trusts the map file unconditionally here, harmless since C's later `++`/clamp in
+        // replenish just wraps; Swift's checked UInt8 arithmetic traps on a stray out-of-range
+        // byte (#155), so an untrusted/corrupt map must not be able to hand a base a value
+        // above the max in the first place.
+        bases.append(Base(
+            x: bytes[offset], y: bytes[offset + 1],
+            armour: min(bytes[offset + 3], UInt8(maxBaseArmour)),
+            owner: bytes[offset + 2],
+            shells: min(bytes[offset + 4], UInt8(maxBaseShells)),
+            mines: min(bytes[offset + 5], UInt8(maxBaseMines))
+        ))
         offset += 6
     }
     state.bases = bases

@@ -172,9 +172,12 @@ public func replenishBases(state: inout GameState, onReplenishBase: (Int) -> Voi
         state.bases[i].counter += UInt16(nplayers)
 
         if state.bases[i].counter >= UInt16(replenishBaseTicks) {
-            state.bases[i].armour = min(state.bases[i].armour + 1, UInt8(maxBaseArmour))
-            state.bases[i].mines = min(state.bases[i].mines + 1, UInt8(maxBaseMines))
-            state.bases[i].shells = min(state.bases[i].shells + 1, UInt8(maxBaseShells))
+            // Int arithmetic, not UInt8: C's `++armour` (client.c:2432) silently wraps at 256
+            // before its own clamp fires, harmless there; Swift traps on the same UInt8
+            // overflow, so a base stat already at 255 would crash here (#155).
+            state.bases[i].armour = UInt8(min(Int(state.bases[i].armour) + 1, maxBaseArmour))
+            state.bases[i].mines = UInt8(min(Int(state.bases[i].mines) + 1, maxBaseMines))
+            state.bases[i].shells = UInt8(min(Int(state.bases[i].shells) + 1, maxBaseShells))
 
             onReplenishBase(i)
 
