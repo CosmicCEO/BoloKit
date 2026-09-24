@@ -99,10 +99,14 @@ public func killSquareBuilder(
 /// Kills `player`'s builder outright: drops its reserved pill (if
 /// any) and respawns it as a parachute at a uniformly random start.
 ///
-/// Ported from `killbuilder()` (client.c:7047). C's `client.nextbuildercommand`/
-/// `client.nextbuildertarget` are queued-UI-input fields with no simulation
-/// state to port; `playsound`/`printmessage` are UI hooks. All omitted,
-/// matching the treatment already given to `settankstatus` elsewhere.
+/// Ported from `killbuilder()` (client.c:7047). `playsound`/`printmessage` are
+/// UI hooks, omitted, matching the treatment already given to `settankstatus`
+/// elsewhere. `client.nextbuildercommand`/`client.nextbuildertarget` -- C's
+/// `BUILDERNILL`-clearing at client.c:7061-7062 -- were called "queued-UI-input
+/// fields with no simulation state to port" when this comment was first
+/// written; D137 later gave them a real home
+/// (`PlayerState.pendingBuilderCommand`/`pendingBuilderTarget`), so they are
+/// ported here too now (#156, found during the #138 audit).
 ///
 /// **B.5d (D100/D103):** calls `dropPills` directly instead of firing a bare
 /// `(UInt16, Vec2f) -> Void` pass-through — the same nested-`inout`-exclusivity
@@ -152,6 +156,10 @@ public func killBuilder(
     state.players[player].builderTarget = Pointi(
         x: Int32(state.players[player].tank.x), y: Int32(state.players[player].tank.y)
     )
+    // #156: a build click queued before death must not silently survive the
+    // parachute/return cycle and fire once the builder is back on the tank.
+    state.players[player].pendingBuilderCommand = nil
+    state.players[player].pendingBuilderTarget = Pointi(x: 0, y: 0)
 }
 
 // MARK: - drown / smallboom / superboom

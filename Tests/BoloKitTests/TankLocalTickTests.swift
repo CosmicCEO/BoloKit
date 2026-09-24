@@ -484,6 +484,23 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     #expect(fired == 1)
 }
 
+/// #156: a build click queued before death (client.c:7061-7062's `nextbuildercommand =
+/// BUILDERNILL; nextbuildertarget = makepoint(0, 0);`) must not silently survive the
+/// parachute/return cycle -- readyTick would otherwise resolve and execute the stale, pre-death
+/// command once the builder is back on the tank.
+@Test func killBuilderClearsAPendingBuilderCommand() {
+    var player = connectedPlayer()
+    player.pendingBuilderCommand = .tree
+    player.pendingBuilderTarget = Pointi(x: 5, y: 5)
+    var state = makeState(player: player)
+    state.starts = [Start(x: 10, y: 20, dir: 0)]
+
+    killBuilder(player: 0, state: &state)
+
+    #expect(state.players[0].pendingBuilderCommand == nil)
+    #expect(state.players[0].pendingBuilderTarget == Pointi(x: 0, y: 0))
+}
+
 @Test func killSquareBuilderIgnoresReadyAndParachuteStates() {
     var player = connectedPlayer()
     player.builderStatus = .ready
