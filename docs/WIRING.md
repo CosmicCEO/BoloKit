@@ -12,6 +12,9 @@ flowchart TB
     GRV["GameRenderView"]
     HUD["HUDSnapshot"]
     SP["SoundPlayer"]
+    MTL["MetalTileRenderer"]
+    OV["LiveMetalTerrainOverlay"]
+    CG["CGContextTileRenderer"]
   end
 
   subgraph spm["SwiftPM"]
@@ -36,6 +39,9 @@ flowchart TB
   GS --> BK
   GS --> BN
   GS --> GRV
+  GRV --> OV
+  OV --> MTL
+  GRV --> CG
   GS --> HUD
   GS --> SP
   BN --> BK
@@ -57,6 +63,10 @@ flowchart TB
 | `Bolo 2026` | Playable Mac app: chrome, render, input, owns `GameSession`. |
 
 Dependency direction is one-way: **app → BoloNet → BoloKit**. `BoloKit` never imports `BoloNet`; net cadence (`seq`, CL emission) stays in the app / `BoloNet`.
+
+Live play constructs `GameRenderView` with `liveMetalTerrainRenderer: MetalTileRenderer()` (`GameSession`'s single-process, host, and join inits). Terrain is drawn by `LiveMetalTerrainOverlay`, an `MTKView` behind the map, and only when the tile grid changes (`needsDisplay`), not on a continuous draw loop. Sprites, shells, explosions, builders, labels, the selector, and the crosshair stay on the `CGContext` path in `GameRenderView.draw`. `CGContextTileRenderer` remains the `renderer` used when no Metal renderer is passed (tests, and any call site that does not opt in). Remote tank and builder positions are smoothed in the view with `RemotePositionSmoother` (`BoloKit`). Shells are not smoothed.
+
+`BoloSignposts` (`Sources/BoloNet/BoloSignposts.swift`, subsystem `com.cosmicceo.Bolo-2026`) records `runTick`, `draw`, and `clUpdate`. It does not change the package arrows.
 
 ## 2. Three session modes
 
@@ -82,7 +92,7 @@ flowchart LR
 | Host | `HostGameEngine` (live) | Engine’s own timer; session timer **not** created | `submitLocal*` → engine event stream |
 | Join | `GameSession.state` (post-handshake) | Session timer + TCP/UDP producers → one consumer | Local tank → `CLUpdate` on UDP |
 
-Host path: session keeps a **snapshot** of state at init for bookkeeping; rendering goes through the engine’s tick callbacks (`onTickRendered`), not by re-reading that snapshot as truth.
+Host path: `HostGameEngine` owns the live `GameState` and its timer. `GameSession` does not create its own timer on this path. `onTickRendered` delivers a value snapshot onto the main actor, stored as `hostLiveState`. Rendering and admin reads use that snapshot. They do not read `HostGameEngine.state` from the main actor (#139: that race corrupted `GameState.local` and SIGABRT'd a long host session). Local input goes through `submitLocal*` into the engine's event stream. `onShouldPlaySound` is the host's sound path. The engine's tick loop never calls `GameSession.tick()`.
 
 ## 3. Host path
 
@@ -108,7 +118,8 @@ sequenceDiagram
   loop every 50 Hz tick
     HGE->>Sim: runTick and apply CL
     HGE->>UDP: SR and dgram relay
-    HGE-->>GS: onTickRendered
+    HGE-->>GS: onTickRendered snapshot
+    HGE-->>GS: onShouldPlaySound
     GS->>Out: render HUD sounds
   end
   UI->>GS: local input builder chat
@@ -120,6 +131,7 @@ Key types (`Sources/BoloNet/`):
 - `HostGameEngine` — merged event stream, single consumer of `GameState`, fog per slot, broadcasts.
 - `HostListener` / `HostAcceptLoop` / `HostSession` — TCP join / control plane.
 - `HostDgramListener` / `DgramServerRelay` — UDP gameplay plane.
+- `TCPSession.ioQueue` — guest TCP completions run on `com.cosmicceo.bolo2026.tcpsession`, not `.main`, so an `SR` is not queued behind `render`. `TCP_NODELAY` is set on the guest's outbound connection and on the host accept side. Tank motion stays on UDP plus `RemotePositionSmoother`. Mine lay has no client prediction, which is why Nagle showed up as a mine freeze.
 - `BonjourDiscovery`, `TrackerRegistration`, `PortMapping` — find-and-share (best-effort).
 
 ## 4. Join path
@@ -140,7 +152,7 @@ flowchart TB
   UDP --> CONS
   TMR --> CONS
 
-  CONS --> APPLY["apply SR / CL<br/>runTick locally"]
+  CONS --> APPLY["apply SR and CL<br/>runTick, thinned after SRTankStatus"]
   APPLY --> SEND["sendLocalUpdateIfDue<br/>about 10 Hz"]
   SEND --> UDP
   APPLY --> OUT["GameRenderView<br/>HUDSnapshot"]
@@ -178,7 +190,9 @@ Key types:
 - `RecvSR` / `RecvCL` (in `BoloKit`) — decode into `GameState`.
 - Join lag tint uses `UDPSession.lastUpdate(for:)` vs local `seq` (v1.4.0 #3).
 
-Guest is still a **partial client** for some gameplay (fire, range, drown/barge). Product ruling: [#59](https://github.com/CosmicCEO/BoloKit/issues/59).
+Once the host sends `SRTankStatus`, `JoinTickThinning` turns off four guest-local jobs: tile-entry reports, shell-damage reports, movement while dead, and the guest's own shell tick. The host is simulating that tank (pill and base capture, mines, boat drops, shells, death and respawn), which is what [#59](https://github.com/CosmicCEO/BoloKit/issues/59) and [#62](https://github.com/CosmicCEO/BoloKit/issues/62) shipped. The guest still runs movement, builder round trips, input flags, chat, alliances, and the key-down mine drop, and it still calls `runTick`. A host that never sends `SRTankStatus` leaves `hostSimulatesMe` false, and the guest keeps predicting all four of those jobs itself. The authority split is in [CONSTRAINTS.md](CONSTRAINTS.md) under "Host-simulated guest tanks".
+
+`hostSimulatesMe` is not `GameState.hostSimulatesRemotePlayers`. The flag on `GameState` also gates how relayed updates of *other* players are applied.
 
 ## 5. Tick loop (50 Hz)
 
@@ -202,7 +216,11 @@ flowchart TB
 
 Callbacks from `runTick` (sounds, broadcasts, lag UI) are closures supplied by `GameSession` or `HostGameEngine` — that is how `BoloKit` stays free of a `BoloNet` dependency.
 
-Fog / vision: `FogState`, `CalcVis`, host-authoritative redaction on the wire (`SRRevealTerrain`, etc.). Deliberate deviation from C’s client-side filter — see CONSTRAINTS “Fog-of-war”.
+Those closures are also how capture, damage, refuel, and builder-completion broadcasts leave `BoloKit`, and how sound names are chosen. Solo play wires them inside `GameSession.tick()`. A real host wires sound only through `HostGameEngine.onShouldPlaySound`. A joined guest wires the names its own `tankMoveTick`, `builderTick`, and `shellTick` can reach. `tankLocalTick` and `pillTick` stay off the join path, so a guest does not play tank-shot, mine-plant, bubbles, sink, or pill-shot from those hooks.
+
+Near versus far (`SoundPlayer.play(_:near:)`) follows host `FogState` for the location-bearing hooks when Hidden Mines is on. Join and solo have no `FogState`, so they always play the near clip. Hooks with no position stay near. The rest of that gap is parked ([#150](https://github.com/CosmicCEO/BoloKit/issues/150), Decide milestone 10).
+
+Fog / vision: `FogState`, `CalcVis`, host-authoritative redaction on the wire (`SRRevealTerrain`, etc.). Deliberate deviation from C’s client-side filter — see CONSTRAINTS “Fog-of-war”. `calcVis` with a nil `fogState` contributes fog term `1.0` and still applies `forestVis`, so forest concealment (#153) works for solo, host, and join even when fog tracking is off. `hostRenderFogState` passes an empty `FogState` only when Hidden Mines is on and the engine has not produced fog yet (fail closed for that frame). Hidden Mines defaults on (#157). With it off, the host passes nil fog and concealment is forest only.
 
 ## 6. UI chrome (app layer)
 
@@ -216,6 +234,8 @@ flowchart TB
   JOINV --> GV
   GV --> GS["GameSession"]
   GS --> GRV["GameRenderView"]
+  GRV --> OV2["LiveMetalTerrainOverlay<br/>terrain"]
+  GRV --> CG2["CGContext sprites labels selector"]
   GS --> HUD["HUDSnapshot to gauges and player grid"]
   GS --> MSG["MessagesView / chat"]
   GS --> SP["SoundPlayer"]
@@ -223,6 +243,8 @@ flowchart TB
 ```
 
 Also: `bolo://` (`BoloJoinURL`), App Intents (`HostGameIntent` / `JoinLastHostIntent`), preferences / key bindings.
+
+`HostGameView` and `JoinGameView` share `@AppStorage("GSPlayerNameString")` for the player name. The host form also has an optional game name (advertised as the game name when set, otherwise the player name), a Hidden Mines toggle defaulting on, and a Pause on Player Exit toggle bound to `GameState.pauseOnPlayerExit` (#157).
 
 ## 7. Oracle and tests
 
@@ -247,3 +269,4 @@ flowchart LR
 | [ORACLE_COVERAGE.md](ORACLE_COVERAGE.md) | C-function coverage snapshot |
 | [notes/HOSTMODELS.md](notes/HOSTMODELS.md) | In-process host vs dedicated server |
 | [TEST_TWO_MAC_FOG.md](TEST_TWO_MAC_FOG.md) | Two-Mac fog checklist |
+| [UI_DESIGN_TARGET.md](UI_DESIGN_TARGET.md) | Visual target from the original Mac UI. Procedural art only. |
