@@ -14,7 +14,46 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-## Next sprint — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
+## Roadmap ruling (Jerod, 2026-09-23): 1.6.* is a visual + play parity arc
+
+Every `v1.6.*` release from here on targets visual/play parity with the original, one theme
+per release: **man** (the builder/"little green man"), **tank**, **boat**, **sound** --
+`v1.6.1` (sprite chrome/terrain) already covered general polish; the next four are themed.
+
+**Active sprint: [milestone 23](https://github.com/CosmicCEO/BoloKit/milestone/23), `v1.6.2 —
+Little Green Man Parity`** -- takes priority over milestone 20 below. Investigated parachute-in/spawn behavior against `Reference/c` first --
+state machine (`killBuilder` → `.parachute` → `parachuteTick` → `.return`,
+`TankLocalTick.swift:121-152`/`BuilderTick.swift:864-876`) matches `killbuilder()`/
+`kBuilderParachute` line-for-line, including initial spawn defaulting to `.ready` (no
+parachute on first spawn) exactly like `client.c:265/395/735` -- no work needed there. Two
+real gaps, both filed:
+- [#146](https://github.com/CosmicCEO/BoloKit/issues/146) -- the builder sprite itself has no
+  visual identity (`GlyphSource.swift:74-76`'s `.builder(frame)` is a plain growing square for
+  all 3 frames, walk-cycle and parachute alike; the frame-selection logic is already a
+  faithful `GSBoloView.m:296-389` port, it's purely the art that's a placeholder).
+- [#145](https://github.com/CosmicCEO/BoloKit/issues/145) -- tank-crush-builder, a disclosed
+  new mechanic (not in the oracle, see the issue). Scoped: reuses `tankCollision`'s
+  `testAlliance` check, enemy-tile-overlap triggers `killPointBuilder`/`killSquareBuilder`,
+  no new sound work (`kBuilderDeathSound` already wired).
+
+Related but deliberately not pulled forward: [#138](https://github.com/CosmicCEO/BoloKit/issues/138)
+(builder movement after death looks unrouted) stays in its own `v1.9.0 — Builder logic`
+milestone -- it's a movement-smoothing/gameplay-logic issue, not a sprite/visual one.
+
+**Scaffolded, not yet scoped:** [milestone 24](https://github.com/CosmicCEO/BoloKit/milestone/24)
+`v1.6.3 — Tank Parity`, [25](https://github.com/CosmicCEO/BoloKit/milestone/25) `v1.6.4 — Boat
+Parity`, [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 — Sound Parity`.
+Checked the full open-issue backlog (39 issues, 2026-09-23) for anything that fits -- nothing
+does. The closest candidates, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while
+standing on a captured base) and [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion
+owner attribution), are both explicitly parked `Decide:` rulings ("not a sprint," "do not fix
+without a ruling") -- left alone rather than force-fit. #145/#146 above didn't come from the
+backlog either; they came from a live code-vs-`Reference/c` audit of the "man" theme. Each of
+tank/boat/sound needs that same audit (trace the relevant state machine/collision/sound-hook
+code against the oracle, confirm what's already correct, find the real gaps) before real issues
+can be filed -- not a sprint on its own, but the prerequisite to scoping each one.
+
+## Queued next — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
 
 Triaged the milestone's 9 open issues against what actually shipped in 1.5.1 and the
 v1.6.0 Metal-renderer switch. User confirmed (live troubleshooting during 1.6.0-1.6.1, not
