@@ -406,6 +406,165 @@ import CXBolo
     }
 }
 
+// MARK: - #159: client-side FogVisionTracker
+
+// Direct unit tests for `updateFogVisionTracker`, the join/solo-path equivalent of
+// `HostGameEngine.updateFogVision`'s per-observer body (extracted to `BoloKit` so a
+// non-host party can compute its own fog locally -- see `FogVisionTracker`'s own header).
+// Exercises the same generic-transition diff (newly contributing / moved / stopped) that
+// `HostGameEngineFogVisionTests` (`HostGameEngineTests.swift`) already covers end-to-end
+// against a live ticking engine; these are synchronous, single-call unit tests of the
+// extracted function itself.
+
+@Suite struct FogVisionTrackerTests {
+
+    @Test func testHiddenMinesOffIsANoOp() {
+        var state = GameState()
+        state.hiddenMines = false
+        state.players = [PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = 1 << 0
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[105 * 256 + 105] == 0)
+    }
+
+    @Test func testBootstrapRevealsOwnTankImmediately() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = 1 << 0 // self-allied, matching HostGameEngine's own test setup
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[105 * 256 + 105] > 0)
+        #expect(tracker.fogState.seenTiles[200 * 256 + 200] == .unknown, "far tile, never covered by any vision source, stays unknown")
+    }
+
+    @Test func testAllianceRevealsTheAllysPosition() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = (1 << 0) | (1 << 1)
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = (1 << 1) | (1 << 0)
+        state.players[1].tank = BoloKit.Vec2f(x: 150, y: 150) // outside player 0's own vision
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[150 * 256 + 150] > 0, "an ally's position is its own vision source")
+    }
+
+    @Test func testUnalliedRemotePlayerIsNotRevealed() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = 1 << 0
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = 1 << 1 // not allied with player 0
+        state.players[1].tank = BoloKit.Vec2f(x: 150, y: 150)
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[150 * 256 + 150] == 0, "an unallied remote tank must not be a vision source -- this is #159's actual bug")
+        #expect(tracker.fogState.seenTiles[150 * 256 + 150] == .unknown)
+    }
+
+    @Test func testMovementDiffsTheVisionSourceRectInsteadOfDoubleCounting() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = 1 << 0
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[105 * 256 + 105] == 1)
+
+        state.players[0].tank = BoloKit.Vec2f(x: 200, y: 200) // outside the old 29x29 vision rect
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[200 * 256 + 200] == 1, "new position becomes visible")
+        #expect(tracker.fogState.fog[105 * 256 + 105] == 0, "old position's vision source is removed, not left double-counted")
+        #expect(tracker.fogState.seenTiles[105 * 256 + 105] == .sea, "the stale snapshot persists while re-fogged")
+    }
+
+    @Test func testDisconnectDecrementsTheVisionThatMoverWasContributing() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = (1 << 0) | (1 << 1)
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = (1 << 1) | (1 << 0)
+        state.players[1].tank = BoloKit.Vec2f(x: 150, y: 150)
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[150 * 256 + 150] > 0)
+
+        state.players[1].connected = false
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[150 * 256 + 150] == 0, "a disconnected mover's vision source must be removed")
+    }
+
+    @Test func testOverlappingVisionSourcesComposeCorrectlyAcrossMovers() {
+        // Two allied tanks both covering the same tile; one moving away must leave it
+        // visible via the other's still-active vision source -- same refcount-composition
+        // guarantee `IncreaseDecreaseVisTests.testOverlappingVisionSourcesComposeCorrectly`
+        // already proves for `increaseVis`/`decreaseVis` directly, exercised here through
+        // the tracker's own diff loop across two movers instead of two raw rect calls.
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = (1 << 0) | (1 << 1)
+        state.players[0].tank = BoloKit.Vec2f(x: 100, y: 100)
+
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = (1 << 1) | (1 << 0)
+        state.players[1].tank = BoloKit.Vec2f(x: 101, y: 101) // overlapping 29x29 vision rect
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 2, "both tanks' vision rects cover this tile")
+
+        state.players[1].tank = BoloKit.Vec2f(x: 200, y: 200) // moves far away
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 1, "still covered by player 0's own tank")
+    }
+}
+
 @Suite struct RevealNearbyHiddenMinesTests {
 
     @Test func testRevealsAMineWithinTheTwoUnitRadius() {

@@ -147,6 +147,13 @@ public final class GameSession {
     /// host that never sends the message, so the old behaviour is kept there.
     private var hostSimulatesMe = false
 
+    /// **#159:** the solo/local-tab and join paths' own client-side fog-of-war tracker --
+    /// neither path has a `HostGameEngine` to read `fogState(for:)` from, so each computes
+    /// its own fog locally from `state`'s already-known ground truth, matching the C
+    /// oracle's `client.fog[][]` architecture (`FogState.swift`'s own header). Unused on
+    /// the host path, which already renders off `hostEngine.fogState(for:)` directly.
+    private var fogVisionTracker = FogVisionTracker()
+
     /// **1.1 backlog C.4:** the messages panel's own scrollback -- kept here, not on `GameState`,
     /// matching the reference's own design: `printmessage`/`messagesTextView` is a pure display
     /// sink with no simulation effect (`recvclsendmesg`/`recvsrsendmesg`'s own zero-`GameState`-
@@ -179,7 +186,10 @@ public final class GameSession {
         self.udpSession = nil
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage, liveMetalTerrainRenderer: MetalTileRenderer())
         self.renderView = view
-        view.render(initialState)
+        // #159: fail-closed first frame, same policy as the host path's own `hostRenderFogState`
+        // call -- an empty tracker's `FogState` (all-fogged) rather than the unfogged raw `state`.
+        view.render(initialState, fogState: hostRenderFogState(
+            engineFog: fogVisionTracker.fogState, hiddenMines: initialState.hiddenMines))
         hudSnapshot.update(from: initialState)
 
         view.onInputFlagsChange = { [weak self] change in
@@ -285,7 +295,9 @@ public final class GameSession {
         self.udpSession = udpSession
         let view = GameRenderView(tilesImage: tilesImage, spritesImage: spritesImage, liveMetalTerrainRenderer: MetalTileRenderer())
         self.renderView = view
-        view.render(initialState)
+        // #159: fail-closed first frame -- see the solo path's identical call for rationale.
+        view.render(initialState, fogState: hostRenderFogState(
+            engineFog: fogVisionTracker.fogState, hiddenMines: initialState.hiddenMines))
         hudSnapshot.update(from: initialState)
 
         view.onInputFlagsChange = { [weak self] change in
@@ -601,7 +613,12 @@ public final class GameSession {
         for text in pendingGameMessages {
             appendGameMessage(text)
         }
-        renderView.render(state)
+        // #159: this session's own client-side fog (see `fogVisionTracker`'s header) --
+        // gates remote tank/pillbox/base visibility the same way the host path's
+        // `hostEngine.fogState(for:)` already does for its own screen.
+        updateFogVisionTracker(&fogVisionTracker, observer: state.localPlayer, state: state)
+        renderView.render(state, fogState: hostRenderFogState(
+            engineFog: fogVisionTracker.fogState, hiddenMines: state.hiddenMines))
         hudSnapshot.update(from: state)
     }
 
@@ -805,7 +822,11 @@ public final class GameSession {
             explosionTick(state: &state)
 
             sendLocalUpdateIfDue(udpSession)
-            renderView.render(state)
+            // #159: same client-side fog tracker as the solo path's `tick()` -- see
+            // `fogVisionTracker`'s header.
+            updateFogVisionTracker(&fogVisionTracker, observer: state.localPlayer, state: state)
+            renderView.render(state, fogState: hostRenderFogState(
+                engineFog: fogVisionTracker.fogState, hiddenMines: state.hiddenMines))
             hudSnapshot.update(from: state)
 
         case .tcpMessage(let message):

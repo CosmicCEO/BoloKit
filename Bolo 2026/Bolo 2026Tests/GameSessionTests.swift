@@ -260,6 +260,59 @@ struct HostRenderFogStateTests {
     }
 }
 
+// MARK: - #159: solo-path client-side fog wiring
+
+/// Confirms `GameSession.tick()` actually feeds `FogVisionTracker`'s output into
+/// `renderView.render(_:fogState:)` on the single-process path -- the actual bug this issue
+/// fixes (a remote tank/pillbox/base rendered unconditionally, with no fog gating). Asserted
+/// at the resolved-tile-grid level (`GameRenderView.tileGrid`, populated by `render`), not
+/// pixel diff, matching `Tests/DifferentialTests/FogDifferentialTests.swift`'s
+/// `FogResolvedTileGridTests` for the same reason: cheaper and less brittle than a rendered
+/// pixel comparison.
+@MainActor
+struct GameSessionFogVisionWiringTests {
+
+    @Test func undiscoveredTileResolvesToUnknownAfterATickWithHiddenMinesOn() {
+        var far = PlayerState()
+        far.used = true
+        far.connected = true
+        far.dead = true // stationary -- doesn't project its own vision, isolating this observer's
+        far.tank = Vec2f(x: 200, y: 200)
+
+        let session = makeSession(players: [PlayerState(), far]) { state in
+            state.hiddenMines = true
+            state.localPlayer = 0
+            state.players[0].used = true
+            state.players[0].connected = true
+            state.players[0].alliance = 1 << 0 // self-allied, matching HostGameEngine's own test setup
+            state.players[0].tank = Vec2f(x: 10, y: 10) // far from (200, 200)
+            state.terrain[200, 200] = .grass0
+        }
+
+        session.tick()
+
+        let index = 200 * 256 + 200
+        #expect(Tile(rawValue: session.renderView.tileGrid.storage[index]) == .unknown, "a tile this session's own tank has never discovered must render as unknown, not full ground truth")
+    }
+
+    @Test func aLivePlayerWithinItsOwnVisionRectResolvesLive() {
+        let session = makeSession { state in
+            state.hiddenMines = true
+            state.localPlayer = 0
+            state.players[0].used = true
+            state.players[0].connected = true
+            state.players[0].alliance = 1 << 0
+            state.players[0].tank = Vec2f(x: 100, y: 100)
+            state.terrain[100, 100] = .grass0
+        }
+
+        session.tick()
+
+        let index = 100 * 256 + 100
+        #expect(Tile(rawValue: session.renderView.tileGrid.storage[index]) == .grass, "the observer's own vision rect must resolve live, not unknown")
+    }
+}
+
 // MARK: - Issue #92: a join client's own alliance changes
 
 private enum JoinHarnessError: Error { case noPort }

@@ -498,14 +498,6 @@ public func receiveOneHostMessageBytes(from connection: NWConnection) async thro
     }
 }
 
-/// v1.5.0 #1's tank-vision rect: 29×29 tiles centered on `pos`'s own tile, matching every C
-/// call site's hardcoded literal (`client.c:459-460` et al.) -- no named `bolo.h` macro
-/// exists for this (`docs/CONSTRAINTS.md`). Shared by `HostGameEngine`'s tick-driven
-/// movement/alliance hooks and `HostListener`'s join-time spawn reveal.
-func tankVisionRect(around pos: Vec2f) -> Recti {
-    makerect(Int32(pos.x) - 14, Int32(pos.y) - 14, 29, 29)
-}
-
 /// v1.5.0 #1: `(x, y)`'s unmined equivalent if it's one of the 7 mined terrain variants,
 /// else itself unchanged. Terrain-level counterpart to `applyMineSubstitution`
 /// (`FogState.swift`), which operates on the coarser display `Tile` space instead --

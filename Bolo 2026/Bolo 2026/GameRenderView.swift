@@ -411,13 +411,12 @@ public final class GameRenderView: NSView {
         NSSize(width: mapPixelSize, height: mapPixelSize)
     }
 
-    /// v1.5.0 #1: the host's own player-slot `FogState` for the current `state.localPlayer`,
-    /// supplied by whichever `GameSession` init actually has one (the host path, via
-    /// `HostGameEngine.fogState(for:)`) -- `nil` for the join/single-process paths, which
-    /// render `state.terrain` as received/simulated with no fog logic of their own (the
-    /// host-authoritative deviation, `docs/CONSTRAINTS.md`, moves fog entirely onto the
-    /// host side; a join client's data is already redacted by the time it arrives, once
-    /// Phase 4 wires that up).
+    /// v1.5.0 #1: the current observer's own `FogState`, supplied by whichever `GameSession`
+    /// init has one -- the host path via `HostGameEngine.fogState(for:)`, and (#159) the
+    /// join/solo paths via their own locally-computed `FogVisionTracker.fogState`. `nil`
+    /// only when `hiddenMines` is off (`hostRenderFogState`'s own fail-open/fail-closed
+    /// policy, `GameSession.swift`), in which case `resolvedTileGrid` below skips fog
+    /// entirely and there is nothing to gate.
     private var fogState: FogState?
 
     /// `fogState == nil` means this path has no fog logic (join client, solo): it draws the terrain
@@ -438,8 +437,12 @@ public final class GameRenderView: NSView {
     /// correct. Must list exactly the inputs of `displayTileGrid`/`fogResolvedTileGrid`: terrain
     /// storage; each pill's position, armour and owner; each base's position and owner; the local
     /// player; each player's `used`/`alliance` (via `testAlliance`); `hiddenMines`; and, when
-    /// `hiddenMines` is on, the `FogState` refcount and seen-tile arrays. Anything else in
-    /// `GameState` (ticks, counters, positions) deliberately does not count.
+    /// `hiddenMines` is on, the `FogState` (via its `revision` counter -- see that property's own
+    /// header for why this compares `revision`, not the `fog`/`seenTiles` arrays directly: #159
+    /// found the join/solo paths' tick-consuming loop falls behind its ~20ms budget and starves
+    /// TCP/UDP message delivery once a real `FogState` makes this a two-array, 131072-element
+    /// comparison every tick in a -Onone debug build). Anything else in `GameState` (ticks,
+    /// counters, positions) deliberately does not count.
     static func tileGridInputsEqual(
         _ old: GameState, _ new: GameState, _ oldFog: FogState?, _ newFog: FogState?
     ) -> Bool {
@@ -466,7 +469,7 @@ public final class GameRenderView: NSView {
         guard new.hiddenMines else { return true }
         switch (oldFog, newFog) {
         case (nil, nil): return true
-        case let (a?, b?): return a.fog == b.fog && a.seenTiles == b.seenTiles
+        case let (a?, b?): return a.revision == b.revision
         default: return false
         }
     }

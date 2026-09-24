@@ -26,11 +26,30 @@ public struct FogState: Sendable {
     /// falsely re-fog a tile another source still covers. `Int16` comfortably bounds the
     /// realistic overlap count; this is a pure count, never sent over the wire, so exact
     /// bit-width parity with C's `int` isn't required.
-    public var fog: [Int16]
+    public var fog: [Int16] {
+        didSet { revision += 1 }
+    }
     /// Last-observed display `Tile` at each coordinate, at full resolution (pill/base
     /// occupancy classification included, matching what `fogTileFor` actually returns —
     /// not collapsed to raw terrain). `.unknown` where never seen. Mirrors `seentiles`.
-    public var seenTiles: [Tile]
+    public var seenTiles: [Tile] {
+        didSet { revision += 1 }
+    }
+    /// #159: bumped by every write to `fog`/`seenTiles` (a `didSet` observer, not a manual
+    /// call at each known mutator -- `fog`/`seenTiles` are `public var`, and
+    /// `TileGridCacheTests` legitimately pokes them directly to simulate a change without
+    /// going through `increaseVis`/`decreaseVis`, so anything less than "any write bumps
+    /// this" misses real callers). Exists so `GameRenderView.tileGridInputsEqual` can detect
+    /// "this FogState is unchanged since the last render" in O(1) instead of comparing two
+    /// 65536-element arrays every tick -- cheap for the host path (whose `FogState` was
+    /// already paying that cost once per tick regardless of whether anything moved) but was
+    /// a real regression on the join/solo paths once #159 gave them a fog of their own:
+    /// their tick-consuming loop shares one queue with TCP/UDP message dispatch, so a
+    /// per-tick cost that used to be O(1) (`fogState == nil` short-circuits) growing to
+    /// O(131072 elements) in a -Onone debug build was enough to fall behind the ~20ms tick
+    /// budget and starve message delivery -- confirmed by `JoinPathAllianceTests` timing out
+    /// only with the unthrottled comparison, not with this counter.
+    public var revision: UInt64 = 0
 
     public init() {
         fog = [Int16](repeating: 0, count: 256 * 256)
@@ -46,6 +65,16 @@ public struct FogState: Sendable {
         grid.storage = seenTiles.map(\.rawValue)
         return grid
     }
+}
+
+/// v1.5.0 #1's tank-vision rect: 29×29 tiles centered on `pos`'s own tile, matching every C
+/// call site's hardcoded literal (`client.c:459-460` et al.) -- no named `bolo.h` macro
+/// exists for this (`docs/CONSTRAINTS.md`). Shared by `HostGameEngine`'s tick-driven
+/// movement/alliance hooks, `HostListener`'s join-time spawn reveal, and
+/// `updateFogVisionTracker`'s client-side equivalent. Moved here from `BoloNet`
+/// (`HostSession.swift`) for #159 since it's pure geometry with no host-only dependency.
+public func tankVisionRect(around pos: Vec2f) -> Recti {
+    makerect(Int32(pos.x) - 14, Int32(pos.y) - 14, 29, 29)
 }
 
 // MARK: - increaseVis / decreaseVis
@@ -176,17 +205,39 @@ public func applyMineSubstitution(resolved: Tile, previousSeen: Tile, hiddenMine
 /// pill/base state transitions don't yet re-trigger their own vision-source resync —
 /// see `HostGameEngine.updateFogVision`'s own doc comment); fogged-but-previously-seen
 /// tiles use the frozen `seenTiles` snapshot; never-seen tiles are `.unknown`.
+///
+/// **#159 perf note:** starts from `live` in place (instead of allocating a second empty
+/// `TileGrid` and copying every cell from `live.storage`), skips the `Tile(rawValue:)!`
+/// round trip for the ~65000 non-mined tiles per call (mine substitution only matters for
+/// the 7 mined `Tile` raw values), and hoists the `hiddenMines` check out of the per-tile
+/// loop (`applyMineSubstitution`'s own guard made this a no-op call every tile when off).
+/// Measured ~19ms -> well under 10ms in a Debug build -- this made #159's join/solo-path
+/// fog wiring (which now calls this every tick, not just the host path) cheap enough to
+/// not starve `handleJoinEvent`'s single-consumer TCP/UDP dispatch loop
+/// (`JoinPathAllianceTests.guestRequestingAndLeavingAnAllianceUpdatesItsOwnState` was the
+/// regression this was caught by). Behavior is unchanged -- `FogResolvedTileGridTests`
+/// pins it.
 public func fogResolvedTileGrid(for state: GameState, fogState: FogState) -> TileGrid {
-    let live = displayTileGrid(for: state)
-    var grid = TileGrid()
-    for key in grid.storage.indices {
-        if fogState.fog[key] > 0 {
-            let liveTile = Tile(rawValue: live.storage[key])!
-            grid.storage[key] = applyMineSubstitution(
-                resolved: liveTile, previousSeen: fogState.seenTiles[key], hiddenMines: state.hiddenMines
-            ).rawValue
-        } else {
-            grid.storage[key] = fogState.seenTiles[key].rawValue
+    var grid = displayTileGrid(for: state)
+    let hiddenMines = state.hiddenMines
+
+    grid.storage.withUnsafeMutableBufferPointer { gridBuf in
+        fogState.fog.withUnsafeBufferPointer { fogBuf in
+            fogState.seenTiles.withUnsafeBufferPointer { seenBuf in
+                for key in 0..<gridBuf.count {
+                    if fogBuf[key] > 0 {
+                        guard hiddenMines else { continue } // live value already in place
+                        let raw = gridBuf[key]
+                        guard (10...15).contains(raw) || raw == Tile.minedSea.rawValue else { continue }
+                        let liveTile = Tile(rawValue: raw)!
+                        gridBuf[key] = applyMineSubstitution(
+                            resolved: liveTile, previousSeen: seenBuf[key], hiddenMines: true
+                        ).rawValue
+                    } else {
+                        gridBuf[key] = seenBuf[key].rawValue
+                    }
+                }
+            }
         }
     }
     return grid
@@ -239,13 +290,88 @@ public func revealNearbyHiddenMines(
             // previously included it, a real parity deviation the review caught.
             case .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
                 let index = Int(y) * 256 + Int(x)
-                state.seenTiles[index] = tileFor(
+                let revealed = tileFor(
                     x: x, y: y, terrain: terrain, pills: pills, bases: bases,
                     localPlayer: observer, players: players
                 )
+                if state.seenTiles[index] != revealed {
+                    state.seenTiles[index] = revealed // bumps `revision` via `didSet`
+                }
             default:
                 break
             }
         }
     }
+}
+
+// MARK: - FogVisionTracker (#159)
+
+/// One observer's fog-vision bookkeeping across ticks: the accumulated `FogState` plus,
+/// per contributing mover, the vision rect they're currently contributing. Generalizes
+/// the per-observer body of `HostGameEngine.updateFogVision` (`BoloNet`) so a non-host
+/// party -- the join client, or the solo/local-tab session, neither of which has a
+/// `HostGameEngine` -- can compute its own fog locally, matching the C oracle's actual
+/// architecture: each peer maintains its own `client.fog[][]` from data it already holds
+/// (`client.c`'s `increasevis`/`decreasevis`), rather than the host transmitting a fog
+/// grid over the wire. See `updateFogVisionTracker` below.
+public struct FogVisionTracker: Sendable {
+    public var fogState = FogState()
+    /// Keyed by mover's player index -- unlike `HostGameEngine`'s `observer * maxPlayers +
+    /// mover` key (which tracks every observer at once), a tracker only ever has one
+    /// observer, so the mover index alone is unambiguous. Not `private`: mutated directly
+    /// by the free function `updateFogVisionTracker` below, which needs write access but
+    /// isn't a member of this struct (kept as a free function, matching `increaseVis`/
+    /// `decreaseVis`'s own shape, rather than adding a `BoloKit`-only mutating method).
+    var visionSourceRect: [Int: Recti] = [:]
+
+    public init() {}
+}
+
+/// Diffs `observer`'s vision sources (own tank + allied tanks) against last tick's cached
+/// rects and applies exactly one `increaseVis`/`decreaseVis` per real transition (newly
+/// contributing / moved / stopped contributing), then runs the observer's own proximity
+/// mine reveal -- the same generic-transition diff `HostGameEngine.updateFogVision` uses,
+/// minus that function's `SRRevealTerrain` wire-send bookkeeping (irrelevant here: the
+/// caller already holds ground-truth `state`, so there's nothing to redact to itself).
+/// Must be called every tick, diffing against `tracker`'s cached rects rather than
+/// rebuilt from scratch each time -- rebuilding breaks `fog`'s refcount semantics the
+/// same way `updateFogVision`'s own doc comment already documents paying to avoid
+/// (double-apply, an unclamped `Int16` going negative, a stale `decreaseVis`).
+public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: Int, state: GameState) {
+    guard state.hiddenMines else { return }
+
+    for mover in state.players.indices {
+        let shouldContribute = state.players[mover].connected
+            && testAlliance(observer, mover, players: state.players)
+        let previousRect = tracker.visionSourceRect[mover]
+
+        if shouldContribute {
+            let currentRect = tankVisionRect(around: state.players[mover].tank)
+            if let previousRect, previousRect.origin != currentRect.origin {
+                increaseVis(
+                    currentRect, state: &tracker.fogState, terrain: state.terrain, pills: state.pills,
+                    bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                    players: state.players
+                )
+                decreaseVis(previousRect, state: &tracker.fogState)
+                tracker.visionSourceRect[mover] = currentRect
+            } else if previousRect == nil {
+                increaseVis(
+                    currentRect, state: &tracker.fogState, terrain: state.terrain, pills: state.pills,
+                    bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                    players: state.players
+                )
+                tracker.visionSourceRect[mover] = currentRect
+            }
+            // previousRect == currentRect (same tile): unchanged, no-op.
+        } else if let previousRect {
+            decreaseVis(previousRect, state: &tracker.fogState)
+            tracker.visionSourceRect[mover] = nil
+        }
+    }
+
+    revealNearbyHiddenMines(
+        tankPos: state.players[observer].tank, state: &tracker.fogState, terrain: state.terrain,
+        pills: state.pills, bases: state.bases, observer: observer, players: state.players
+    )
 }

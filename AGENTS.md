@@ -44,8 +44,10 @@ xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
 (this file once said `v1.5.0`/"v1.6.0 next" while `main` was already at `v1.6.6`) because nobody
 re-synced it on every tag. **Always read `docs/STATUS.md`'s top line** for the current tagged
 drop and next-release target before starting work; do not trust a version number, test count, or
-milestone name written anywhere else, including here. One pre-existing flaky timing test class
-exists; do not treat a single isolated flake of that class as a new regression.
+milestone name written anywhere else, including here. A couple of pre-existing flaky timing test
+classes exist (both pass in isolation, both flake only under full-parallel-suite load -- see
+`docs/STATUS.md`'s dated notes for the specific tests); do not treat a single isolated flake of
+one of those classes as a new regression.
 
 Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week sprints). **Patch**
 milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43), `docs/GITHUB_BOARDS.md`.
