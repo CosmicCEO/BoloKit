@@ -66,7 +66,8 @@ public func spriteGlyphRole(for index: Int32) -> GlyphRole? {
         let row = cellRow(index)
         let heading = cellCol(index)
         let ownership = row / 2
-        return .tank(heading: heading, ownership: ownership, destroyed: false)
+        let boat = row % 2 == 0
+        return .tank(heading: heading, ownership: ownership, boat: boat, destroyed: false)
     }
     if (SHELL0IMAGE...SHELL15IMAGE).contains(index) {
         return .shell(heading: Int(index - SHELL0IMAGE))

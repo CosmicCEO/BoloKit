@@ -16,8 +16,10 @@ public enum GlyphRole: Sendable {
     case swamp
     case mine
     case pill(armor: Int, ownership: BaseOwnership)
-    /// `ownership`: 0 = player, 1 = friendly, 2 = enemy.
-    case tank(heading: Int, ownership: Int, destroyed: Bool)
+    /// `ownership`: 0 = player, 1 = friendly, 2 = enemy. `boat`: #147 -- the tank is currently
+    /// boated (`PlayerState.boat`), matching the reference's separate `PTKB`/`FTKB`/`ETKB`
+    /// sprite row (`ImageIndex.swift`'s `spriteGlyphRole`) with a distinct hull shape.
+    case tank(heading: Int, ownership: Int, boat: Bool, destroyed: Bool)
     /// v1.5.1 #114: `heading` is one of the 16 `headingColumn` buckets (`PhysicsOps.swift`),
     /// matching the C reference's real `Sprites.png` asset -- not an animation frame index
     /// (the prior `frame` name/semantics only covered 6 of the 16 indices `headingColumn`
@@ -57,8 +59,8 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
         c.fillCircle(cx: 8, cy: 8, radius: 3, 200, 30, 30)
     case .pill(let armor, let ownership):
         drawPill(&c, armor: armor, ownership: ownership)
-    case .tank(let heading, let ownership, let destroyed):
-        drawTank(&c, heading: heading, ownership: ownership, destroyed: destroyed)
+    case .tank(let heading, let ownership, let boat, let destroyed):
+        drawTank(&c, heading: heading, ownership: ownership, boat: boat, destroyed: destroyed)
     case .shell(let heading):
         // v1.5.1 #114: constant-size directional streak, not a growing circle -- size no
         // longer varies by index (that was mistaking a heading bucket for an animation
@@ -521,7 +523,7 @@ private func tankPalette(_ ownership: Int) -> (UInt8, UInt8, UInt8) {
     }
 }
 
-private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroyed: Bool) {
+private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, boat: Bool, destroyed: Bool) {
     let (r, g, b) = tankPalette(ownership)
     if destroyed {
         for i in 0..<16 {
@@ -536,10 +538,27 @@ private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroy
     // that could silently drift from the simulation's own convention.
     let dir = Float(heading) * (kPif / 8.0)
     let v = dir2vec(dir)
-    c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
-    // D148(C): a solid triangle alone reads as an ambiguous arrow at small
-    // sizes -- add a dark barrel extending past the hull's tip (6px) toward
-    // the same heading, using the same rotation convention as the hull, so
-    // rotation can never drift from `dir2vec`/D70's reference frame.
-    c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 5.0, halfWidth: 0.8, 20, 20, 20)
+    if boat {
+        drawBoatHull(&c, dx: Double(v.x), dy: Double(v.y), r, g, b)
+    } else {
+        c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
+        // D148(C): a solid triangle alone reads as an ambiguous arrow at small
+        // sizes -- add a dark barrel extending past the hull's tip (6px) toward
+        // the same heading, using the same rotation convention as the hull, so
+        // rotation can never drift from `dir2vec`/D70's reference frame.
+        c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 5.0, halfWidth: 0.8, 20, 20, 20)
+    }
+}
+
+/// #147: the reference draws a distinct hull sprite for a boated tank (`PTKB`/`FTKB`/`ETKB`),
+/// not the same triangle+barrel as a land tank -- this was previously indistinguishable since
+/// `GlyphRole.tank` had no `boat` parameter at all. Reuses the same bow (`fillRotatedTriangle`)
+/// as the land tank's hull, but adds a wide flat stern deck extending aft (negative-length
+/// `fillRotatedBar`, matching drawTank's own rotation convention) instead of the thin forward
+/// gun barrel, plus a thin waterline band -- an elongated boat-like silhouette, not an
+/// ambiguous arrowhead.
+private func drawBoatHull(_ c: inout Canvas16, dx: Double, dy: Double, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
+    c.fillRotatedTriangle(dx: dx, dy: dy, r, g, b)
+    c.fillRotatedBar(dx: dx, dy: dy, length: -4.0, halfWidth: 2.2, r, g, b)
+    c.fillRotatedBar(dx: dx, dy: dy, length: 6.0, halfWidth: 0.5, 20, 40, 70)
 }
