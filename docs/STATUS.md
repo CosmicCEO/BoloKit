@@ -62,8 +62,24 @@ test` and `xcodebuild build -scheme "Bolo 2026"` green (four DifferentialTests f
 full parallel run, all confirmed pass in isolation -- real-network/timing flakiness, unrelated to
 this pure-rendering change).
 
-**Scaffolded, not yet scoped:** [25](https://github.com/CosmicCEO/BoloKit/milestone/25) `v1.6.4 —
-Boat Parity`, [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 — Sound Parity`.
+**Milestone 25, `v1.6.4 — Boat Parity`, done and closed 2026-09-23.** Live audit of
+boarding/disembarking, boat physics, shore-push, boat terrain rendering, and boat-specific
+sounds against `Reference/c`: disembarking, ramming, drowning, physics constants, shore-push,
+and boat-terrain rendering (`applyBoatRipple`, shipped earlier) are all already faithful. One
+real, high-severity gap, confirmed live and directly explaining a live user report ("boats don't
+look like boats"): [#148](https://github.com/CosmicCEO/BoloKit/issues/148) --
+`state.players[player].boat` was never set `true` by actually boarding a boat, under ANY
+connection topology (host's own tank, host-simulated remotes, or real networked guests) -- only
+spawning directly onto a boat start-tile ever set it. Both `grabTile` (`TankLocalTick.swift`) and
+`recvClGrabTile` (`RecvCL.swift`) cleared the terrain but never flipped the flag on the host's
+own authoritative state, so #147's boat-hull sprite never had a live trigger. Fixed by adding the
+missing assignment to both call sites; the two existing tests that already exercised this path
+were missing the one assertion that would have caught it, now added. Full `swift test` and
+`xcodebuild build -scheme "Bolo 2026"` green (one pre-existing timing flake, confirmed pass in
+isolation).
+
+**Scaffolded, not yet scoped:** [26](https://github.com/CosmicCEO/BoloKit/milestone/26) `v1.6.5 —
+Sound Parity`.
 Checked the full open-issue backlog (39 issues, 2026-09-23) for anything that fits -- nothing
 does. The closest candidates, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while
 standing on a captured base) and [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion
