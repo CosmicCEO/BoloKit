@@ -106,6 +106,15 @@ public final class GameSession {
     private let ticksSinceLastUpdate: [UInt64]
     private var timer: DispatchSourceTimer?
     private let hostEngine: HostGameEngine?
+    /// #139: the host path's own last-rendered `GameState` snapshot, kept in step with
+    /// `onTickRendered` below instead of `adminState`/`liveState` reading `hostEngine.state`
+    /// directly. `HostGameEngine.state` is a plain stored property mutated off-main by the
+    /// engine's tick-loop `Task` (see its own header on `onTickRendered`: "a value-type
+    /// snapshot, never the live `state` itself, which only the consumer `Task` may ever
+    /// touch") -- reading it synchronously from this `@MainActor` class raced that mutation
+    /// and corrupted `Array` refcounts on `GameState.local`, crashing with `SIGABRT` after a
+    /// long-running host session. This snapshot is `@MainActor`-only, so it's race-free.
+    private var hostLiveState: GameState?
     private let tcpSession: TCPSession?
     private let udpSession: UDPSession?
     private var joinContinuation: AsyncStream<JoinEvent>.Continuation?
@@ -196,6 +205,7 @@ public final class GameSession {
     /// driving a second, competing tick loop against a second copy of it.
     public init(hostEngine: HostGameEngine, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = hostEngine.state
+        self.hostLiveState = hostEngine.state
         self.ticksSinceLastUpdate = []
         self.hostEngine = hostEngine
         self.tcpSession = nil
@@ -224,6 +234,7 @@ public final class GameSession {
             view?.render(renderedState, fogState: hostRenderFogState(
                 engineFog: hostEngine?.fogState(for: renderedState.localPlayer), hiddenMines: renderedState.hiddenMines))
             self?.hudSnapshot.update(from: renderedState)
+            self?.hostLiveState = renderedState
         }
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)
@@ -330,13 +341,14 @@ public final class GameSession {
     /// `submitUnbanPlayer`); this is the app-side surface.
     public var canHostAdmin: Bool { hostEngine != nil }
 
-    /// Live host `GameState` when hosting; otherwise this session's own copy.
-    private var adminState: GameState { hostEngine?.state ?? state }
+    /// Live host `GameState` when hosting; otherwise this session's own copy. `hostLiveState`,
+    /// not `hostEngine?.state` (#139: the latter races the engine's tick-loop `Task`).
+    private var adminState: GameState { hostLiveState ?? state }
 
     /// The state panels should display: the engine's live state on the host path, `state` otherwise.
     /// On the host path `state` is a frozen one-time snapshot (see this file's header), so a panel
     /// reading it directly never sees a guest join, leave or ally.
-    public var liveState: GameState { hostEngine?.state ?? state }
+    public var liveState: GameState { hostLiveState ?? state }
 
     public var isServerPaused: Bool {
         adminState.serverPauseTicks != 0 || adminState.clientPauseDisplaySeconds != 0
