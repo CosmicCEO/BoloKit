@@ -98,6 +98,94 @@ private func connectedPlayer(dead: Bool = false) -> PlayerState {
     #expect(!isSolid(Pointi(x: 6, y: 6)))
 }
 
+// MARK: - tankCrushBuilder (#145)
+
+@Test func tankCrushBuilderKillsHostileBuilderSharingTheTankTile() {
+    var owner = connectedPlayer()
+    owner.tank = Vec2f(x: 50.5, y: 50.5)
+    var victim = connectedPlayer()
+    victim.builderStatus = .work
+    victim.builder = Vec2f(x: 50.5, y: 50.5)
+    var state = GameState()
+    state.players = [owner, victim]
+    state.localPlayer = 0
+    state.starts = [Start(x: 10, y: 20, dir: 0)]
+
+    var deathFired = false
+    tankCrushBuilder(owner: 0, state: &state, onBuilderDeath: { deathFired = true })
+
+    #expect(state.players[1].builderStatus == .parachute)
+    #expect(deathFired)
+}
+
+@Test func tankCrushBuilderSparesAlliedBuilderOnTheSameTile() {
+    var owner = connectedPlayer()
+    owner.tank = Vec2f(x: 50.5, y: 50.5)
+    owner.used = true
+    owner.alliance = 1 << 1
+    var ally = connectedPlayer()
+    ally.builderStatus = .work
+    ally.builder = Vec2f(x: 50.5, y: 50.5)
+    ally.used = true
+    ally.alliance = 1 << 0
+    var state = GameState()
+    state.players = [owner, ally]
+    state.localPlayer = 0
+
+    tankCrushBuilder(owner: 0, state: &state)
+
+    #expect(state.players[1].builderStatus == .work)
+}
+
+@Test func tankCrushBuilderSparesBuilderOnADifferentTile() {
+    var owner = connectedPlayer()
+    owner.tank = Vec2f(x: 50.5, y: 50.5)
+    var victim = connectedPlayer()
+    victim.builderStatus = .work
+    victim.builder = Vec2f(x: 80.5, y: 80.5)
+    var state = GameState()
+    state.players = [owner, victim]
+    state.localPlayer = 0
+
+    tankCrushBuilder(owner: 0, state: &state)
+
+    #expect(state.players[1].builderStatus == .work)
+}
+
+@Test func tankCrushBuilderSparesAReadyOrParachutingBuilder() {
+    var owner = connectedPlayer()
+    owner.tank = Vec2f(x: 50.5, y: 50.5)
+    var victim = connectedPlayer()
+    victim.builderStatus = .ready
+    victim.builder = Vec2f(x: 50.5, y: 50.5)
+    var state = GameState()
+    state.players = [owner, victim]
+    state.localPlayer = 0
+
+    tankCrushBuilder(owner: 0, state: &state)
+
+    #expect(state.players[1].builderStatus == .ready)
+}
+
+@Test func tankMoveTickAliveBranchCrushesAHostileBuilderOnArrival() {
+    var owner = connectedPlayer()
+    owner.tank = Vec2f(x: 49.5, y: 50.5)
+    owner.inputFlags = []
+    owner.speed = 0
+    var victim = connectedPlayer()
+    victim.builderStatus = .work
+    victim.builder = Vec2f(x: 49.5, y: 50.5)
+    var state = GameState()
+    state.players = [owner, victim]
+    state.localPlayer = 0
+    state.starts = [Start(x: 10, y: 20, dir: 0)]
+    for x in 45...55 { state.terrain[x, 50] = .grass0 }
+
+    tankMoveTick(player: 0, state: &state)
+
+    #expect(state.players[1].builderStatus == .parachute)
+}
+
 // MARK: - tankMoveTick: dead-tank branch
 
 @Test func tankMoveTickIgnoresDisconnectedPlayer() {

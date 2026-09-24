@@ -54,6 +54,49 @@ public func tankCollision(owner: Int, state: GameState) -> (Pointi) -> Bool {
     }
 }
 
+// MARK: - tankCrushBuilder
+
+/// #145: a tank occupying the same tile as a hostile (non-allied) connected player's active
+/// builder crushes it instantly.
+///
+/// Not in `Reference/c` — `tankcollision()` above has zero builder-position awareness, and no
+/// `Reference/c` call site kills a builder via tank contact (only via explosion radius, see
+/// `killPointBuilder`). Filed as a disclosed departure from the oracle (issue #145, v1.6.2 —
+/// see [[project_reference_c_is_approximation]]): the user's own memory of the original Stuart
+/// Cheshire game placed this mechanic on large maps, and a real memory of original gameplay can
+/// justify a disclosed new feature even when the oracle itself doesn't show it.
+///
+/// Deliberately narrower than `killPointBuilder`/`killSquareBuilder`'s explosion-radius check:
+/// exact tile overlap only, no armour/radius grace, gated by `testAlliance` (mirroring
+/// `tankCollision`'s own alliance-gated base check above) so a tank never crushes its own or an
+/// allied builder.
+public func tankCrushBuilder(
+    owner: Int,
+    state: inout GameState,
+    onShouldBroadcastDropPill: (Int, Int, Int) -> Void = { _, _, _ in },
+    onBuilderDeath: () -> Void = {}
+) {
+    let tank = state.players[owner].tank
+    let tile = Pointi(x: Int32(tank.x), y: Int32(tank.y))
+    for victim in state.players.indices where state.players[victim].connected && victim != owner {
+        guard !testAlliance(victim, owner, players: state.players) else { continue }
+        switch state.players[victim].builderStatus {
+        case .goto, .work, .wait, .return:
+            let builderTile = Pointi(
+                x: Int32(state.players[victim].builder.x), y: Int32(state.players[victim].builder.y)
+            )
+            if builderTile == tile {
+                killBuilder(
+                    player: victim, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+                    onBuilderDeath: onBuilderDeath
+                )
+            }
+        case .ready, .parachute:
+            break
+        }
+    }
+}
+
 // MARK: - tankMoveTick
 
 /// Per-tick tank physics for one player: dead-tumble/death-event/respawn
@@ -364,5 +407,12 @@ public func tankMoveTick(
     // 7. Terrain collision
     state.players[player].tank = collisionDetect(
         state.players[player].tank, radius: tankRadius, isSolid: tankCollision(owner: player, state: state)
+    )
+
+    // 8. #145: crush any hostile builder now sharing this tank's tile (disclosed departure
+    // from the oracle — see `tankCrushBuilder`'s own doc comment).
+    tankCrushBuilder(
+        owner: player, state: &state, onShouldBroadcastDropPill: onShouldBroadcastDropPill,
+        onBuilderDeath: onBuilderDeath
     )
 }
