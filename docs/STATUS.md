@@ -103,6 +103,23 @@ host/client sound wiring. Two real, high-severity findings:
   through a live tick loop. Full `swift test` and `xcodebuild build -scheme "Bolo 2026"` green
   (known pre-existing timing/socket flakes, confirmed pass in isolation).
 
+**Milestone 20, `v1.6.x — Rejoin fix`, done and closed 2026-09-24.** Last remaining issue,
+[#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host engine `SIGABRT` after a long-idle
+hosted session, crash-log-only, no live repro) -- root-caused via a live audit of
+`HostGameEngine`'s concurrency model, not the soak-test repro the issue asked for. Confirmed
+root cause: `HostGameEngine` is `final class HostGameEngine: @unchecked Sendable` with `state` a
+plain stored property, mutated off-main by the tick-loop `Task` inside `tick()`. `GameSession`'s
+`adminState`/`liveState` (`@MainActor`) read `hostEngine.state` directly and synchronously --
+racing that mutation and corrupting `Array` refcounts on `GameState.local` (`tankLocalTick`'s
+COW trigger), matching the crash stack's `Array._makeMutableAndUnique` abort exactly.
+`HostGameEngine.swift`'s own header already documented the one safe way to get `state` off the
+tick loop (`onTickRendered`'s value-type snapshot -- "never the live `state` itself, which only
+the consumer `Task` may ever touch"); `adminState`/`liveState` just weren't using it. Fixed by
+caching that snapshot into a new `GameSession.hostLiveState` property, updated alongside
+`hudSnapshot` in the same `onTickRendered` closure, and reading it instead of `hostEngine.state`.
+146/146 `Bolo 2026Tests` and 956/956 SwiftPM tests green (one pre-existing timing flake,
+confirmed unrelated and passes in isolation).
+
 Also noted in #150's body, not implemented, no ruling requested yet (same disclosed-new-feature
 category as #145): even a fixed oracle near/far model is binary, two fixed clips -- true
 continuous-distance volume/pan would be richer than the oracle itself.
