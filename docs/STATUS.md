@@ -133,6 +133,36 @@ code-vs-`Reference/c` audits, not the backlog -- the closest backlog candidates,
 [#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion owner attribution), remain
 their own explicitly parked `Decide:` rulings, left alone rather than force-fit.
 
+**Milestone 27, `v1.6.6 — Visibility Parity`, done and closed 2026-09-24.** Jerod's ruling: the
+original four-theme roadmap (man/tank/boat/sound) missed a fifth theme, visibility/concealment --
+live-observed: a tank entering forested terrain should become progressively less visible with
+distance and cover, never fully invisible up close. Audit found this is not a missing mechanic:
+`bolo.c:174` `forestvis()` + `bolo.c:217-321` `calcvis()` are already a faithful,
+differentially-tested port (`Sources/BoloKit/CalcVis.swift`, `Sources/BoloKit/PillTick.swift`)
+and already wired into rendering (`GameRenderView.swift`'s `visFraction`). The bug:
+`visFraction` short-circuited to `1.0` (always fully visible) unless `state.hiddenMines` was on
+*and* a `fogState` existed -- but forest concealment is core, always-on oracle gameplay,
+unrelated to the separate Hidden Mines fog-of-war feature (#1). Compounding this, only the host
+render path ever supplied a `fogState` at all (`GameRenderView.render(_:fogState:)` defaults to
+`nil`); the join/guest path never had one, structurally, regardless of `hiddenMines` -- so a
+joined guest never saw any concealment on the enemy tank, even when the host did. Filed and
+fixed as [#153](https://github.com/CosmicCEO/BoloKit/issues/153): `calcVis` now accepts
+`fogState: FogState?`, treating a missing one as "no fog contribution" while still applying the
+forest term and the distance floor; `visFraction`'s `useForestTerm: true` path (tank +
+walking-builder, matching the oracle's own per-sprite-kind `calcvis()` choice) always calls
+`calcVis` now. Fixes host, solo, and join uniformly -- no join-path-specific code needed, since
+all three render through the same call sites. The parachuting-builder state deliberately stays
+on plain `fogVis` (`GSBoloView.m:389` uses `fogvis`, not `calcvis`, for an airborne builder --
+correct oracle behavior, not a gap). New coverage: 4 differential unit tests
+(`FogDifferentialTests.swift`, `calcVis` with `fogState: nil`) plus 2 offscreen pixel-diff render
+tests (`VisibilityParityTests.swift`) confirming the actual reported symptom -- a forest-buried
+enemy tank renders differently than one in the open with no `fogState` at all, and more visibly
+the closer the observer gets. Also softened the sea/river water textures in the same pass
+(`applySeaShading`/`applyRiverFlow`, `GlyphSource.swift`) -- Jerod reported the patterns read too
+bold/high-contrast; halved each texture's color delta from its base fill. 148/148 `Bolo
+2026Tests` and 956/956 SwiftPM tests green (same pre-existing flakes as milestone 20/26,
+confirmed unrelated).
+
 ## Queued next — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
 
 Triaged the milestone's 9 open issues against what actually shipped in 1.5.1 and the

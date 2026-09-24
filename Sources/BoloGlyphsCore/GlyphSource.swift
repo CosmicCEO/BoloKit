@@ -235,8 +235,10 @@ private func applyWallBevel(_ c: inout Canvas16) {
 /// has no shape edges to bevel) plus a sparse set of brighter glint pixels on top. Only ever
 /// recolors already-opaque pixels, matching the wall bevel's invariant.
 private func applySeaShading(_ c: inout Canvas16) {
-    let highlight: (UInt8, UInt8, UInt8) = (45, 95, 190)
-    let glint: (UInt8, UInt8, UInt8) = (70, 130, 220)
+    // #153 follow-up: halved both deltas from the base sea color (20, 70, 160) -- Jerod
+    // reported the pattern reads too bold/high-contrast against the flat fill.
+    let highlight: (UInt8, UInt8, UInt8) = (32, 82, 175)
+    let glint: (UInt8, UInt8, UInt8) = (45, 100, 190)
     func isOpaque(_ x: Int, _ y: Int) -> Bool {
         guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
         return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0
@@ -290,7 +292,10 @@ private func applyForestCanopy(_ c: inout Canvas16) {
 /// in *shape* from `applySeaShading`'s diagonal split (river is a current, sea is open water).
 /// Only ever recolors already-opaque pixels, same invariant as every texture above.
 private func applyRiverFlow(_ c: inout Canvas16) {
-    let flow: (UInt8, UInt8, UInt8) = (90, 140, 235)
+    // #153 follow-up: halved the delta from the base river color (60, 110, 220) -- same
+    // "too bold" softening as `applySeaShading` above, kept in sync since the two water
+    // families share the complaint even though their patterns are shaped differently.
+    let flow: (UInt8, UInt8, UInt8) = (75, 125, 227)
     func isOpaque(_ x: Int, _ y: Int) -> Bool {
         guard x >= 0, x < Canvas16.size, y >= 0, y < Canvas16.size else { return false }
         return c.pixels[(y * Canvas16.size + x) * 4 + 3] != 0

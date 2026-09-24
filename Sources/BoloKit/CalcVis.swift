@@ -76,10 +76,17 @@ public func fogVis(_ v: Vec2f, fogState: FogState) -> Float {
 /// (armour neither `pillOnboard` nor `0`) get a hard 3.0-world-unit minimum-visibility
 /// floor regardless of fog/forest, blended smoothly between 2.0 and 3.0 units rather than
 /// snapping.
-public func calcVis(_ v: Vec2f, state: GameState, fogState: FogState, observer: Int) -> Float {
+///
+/// #153: `fogState` is `nil` whenever the caller has no real fog tracking (`hiddenMines`
+/// off, or the join/solo paths, which never compute one at all -- see
+/// `GameRenderView.render(_:fogState:)`'s own doc comment). Forest concealment is core,
+/// always-on oracle gameplay, unrelated to the separate "Hidden Mines" fog-of-war feature
+/// (#1) -- so a missing `fogState` means "no fog contribution" (`fogVis` term is `1.0`,
+/// fully lit), not "skip forest concealment entirely."
+public func calcVis(_ v: Vec2f, state: GameState, fogState: FogState?, observer: Int) -> Float {
     guard v.x >= 0.0, v.x < 256.0, v.y >= 0.0, v.y < 256.0 else { return 0.0 }
 
-    let fog = fogVis(v, fogState: fogState)
+    let fog = fogState.map { fogVis(v, fogState: $0) } ?? 1.0
     let forest = forestVis(v, state: state)
 
     var dist: Float = 3.0
