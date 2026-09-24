@@ -106,6 +106,15 @@ public final class GameSession {
     private let ticksSinceLastUpdate: [UInt64]
     private var timer: DispatchSourceTimer?
     private let hostEngine: HostGameEngine?
+    /// #139: the host path's own last-rendered `GameState` snapshot, kept in step with
+    /// `onTickRendered` below instead of `adminState`/`liveState` reading `hostEngine.state`
+    /// directly. `HostGameEngine.state` is a plain stored property mutated off-main by the
+    /// engine's tick-loop `Task` (see its own header on `onTickRendered`: "a value-type
+    /// snapshot, never the live `state` itself, which only the consumer `Task` may ever
+    /// touch") -- reading it synchronously from this `@MainActor` class raced that mutation
+    /// and corrupted `Array` refcounts on `GameState.local`, crashing with `SIGABRT` after a
+    /// long-running host session. This snapshot is `@MainActor`-only, so it's race-free.
+    private var hostLiveState: GameState?
     private let tcpSession: TCPSession?
     private let udpSession: UDPSession?
     private var joinContinuation: AsyncStream<JoinEvent>.Continuation?
@@ -196,6 +205,7 @@ public final class GameSession {
     /// driving a second, competing tick loop against a second copy of it.
     public init(hostEngine: HostGameEngine, tilesImage: CGImage, spritesImage: CGImage) {
         self.state = hostEngine.state
+        self.hostLiveState = hostEngine.state
         self.ticksSinceLastUpdate = []
         self.hostEngine = hostEngine
         self.tcpSession = nil
@@ -224,10 +234,14 @@ public final class GameSession {
             view?.render(renderedState, fogState: hostRenderFogState(
                 engineFog: hostEngine?.fogState(for: renderedState.localPlayer), hiddenMines: renderedState.hiddenMines))
             self?.hudSnapshot.update(from: renderedState)
+            self?.hostLiveState = renderedState
         }
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)
         }
+        // #149: a real networked host had no sound wiring at all before this -- see
+        // `HostGameEngine.onShouldPlaySound`'s own doc comment and `SoundPlayer.swift`'s header.
+        hostEngine.onShouldPlaySound = { name, near in SoundPlayer.shared.play(name, near: near) }
         controllerInput = GameControllerInputHandler(renderView: view)
     }
 
@@ -327,13 +341,14 @@ public final class GameSession {
     /// `submitUnbanPlayer`); this is the app-side surface.
     public var canHostAdmin: Bool { hostEngine != nil }
 
-    /// Live host `GameState` when hosting; otherwise this session's own copy.
-    private var adminState: GameState { hostEngine?.state ?? state }
+    /// Live host `GameState` when hosting; otherwise this session's own copy. `hostLiveState`,
+    /// not `hostEngine?.state` (#139: the latter races the engine's tick-loop `Task`).
+    private var adminState: GameState { hostLiveState ?? state }
 
     /// The state panels should display: the engine's live state on the host path, `state` otherwise.
     /// On the host path `state` is a frozen one-time snapshot (see this file's header), so a panel
     /// reading it directly never sees a guest join, leave or ally.
-    public var liveState: GameState { hostEngine?.state ?? state }
+    public var liveState: GameState { hostLiveState ?? state }
 
     public var isServerPaused: Bool {
         adminState.serverPauseTicks != 0 || adminState.clientPauseDisplaySeconds != 0
@@ -662,7 +677,20 @@ public final class GameSession {
             // teleport), so its own dead-tank branch (respawn counter, `spawn`) must not run.
             let thinning = JoinTickThinning(hostSimulatesMe: hostSimulatesMe)
             if thinning.runsOwnMovementWhileDead || !state.players[localPlayer].dead {
-                tankMoveTick(player: localPlayer, state: &state)
+                // #149: this client had zero SoundPlayer wiring at all before now (confirmed by
+                // grep, not merely out of scope) -- these three closures mirror the solo path's
+                // own wiring (`tick()` below) for this join client's own locally-predicted death/
+                // explosion sequence. No fog data exists on this path (no FogState tracked here),
+                // so always "near" -- same disclosed limitation as the solo path.
+                tankMoveTick(
+                    player: localPlayer, state: &state,
+                    onExplosion: { _ in SoundPlayer.shared.play("explosion") },
+                    onSuperboom: { SoundPlayer.shared.play("superboom") },
+                    onSmallboom: { SoundPlayer.shared.play("explosion") },
+                    onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
+                    onBuilderDeath: { SoundPlayer.shared.play("builderdeath") },
+                    onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") }
+                )
             }
 
             // B.10 (D127): read-only detect-and-send analogue of `enter()`'s pill/base/
@@ -701,6 +729,9 @@ public final class GameSession {
                 ? state.players[localPlayer].builderStatus : nil
             let builderOutbound = builderTick(
                 player: localPlayer, state: &state,
+                onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
+                onTreeHarvest: { _ in SoundPlayer.shared.play("tree") },
+                onBuild: { _ in SoundPlayer.shared.play("build") },
                 joinArrive: { player, state in detectJoinBuilderArrival(player: player, state: state) },
                 onPrintMessage: { builderNeed.append($0) }
             )
@@ -746,6 +777,12 @@ public final class GameSession {
             if thinning.runsOwnShellTick {
                 shellTick(
                     player: localPlayer, state: &state,
+                    onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
+                    onBuilderDeath: { SoundPlayer.shared.play("builderdeath") },
+                    onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") },
+                    onHitTank: { SoundPlayer.shared.play("hittank") },
+                    onHitTerrain: { _ in SoundPlayer.shared.play("hitterrain") },
+                    onHitTree: { _ in SoundPlayer.shared.play("hittree") },
                     onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
                 )
             }

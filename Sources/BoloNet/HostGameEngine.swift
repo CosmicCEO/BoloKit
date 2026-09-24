@@ -189,6 +189,17 @@ public final class HostGameEngine: @unchecked Sendable {
     /// isolation of its own).
     public var onTickRendered: (@MainActor (GameState) -> Void)?
 
+    /// #149: `runTick`'s sound-only hooks (`onExplosion`/`onHitTank`/`onBuild`/etc.) were never
+    /// wired here at all -- a real networked host played no gameplay sound whatsoever, since
+    /// `GameSession`'s own `SoundPlayer` wiring only exists on the single-process/solo `tick()`
+    /// path, which this class has no relationship to. Fired the same way `onTickRendered` is
+    /// (hopped to the main actor at this one call site), with the already-resolved sound name
+    /// and whether it's in fog range (`near`) for this host's own listening player -- the app
+    /// layer (`SoundPlayer.play(_:near:)`) owns the near/far asset-name mapping, not this file,
+    /// so this stays a plain `(String, Bool)` pair rather than adding a `BoloSoundsCore`
+    /// dependency to `BoloNet`.
+    public var onShouldPlaySound: (@MainActor (String, Bool) -> Void)?
+
     /// **1.1 backlog C.4 / D154 Wave 3:** fired for chat that includes the host's own slot
     /// *and* for `MSGGAME` system-event lines (roster/capture/alliance/clock/builder). The host
     /// has no socket to itself, so this is the in-process equivalent of receiving those `SR*`
@@ -526,6 +537,14 @@ public final class HostGameEngine: @unchecked Sendable {
         case .localLayMineKeyDown:
             var planted: Pointi?
             layMineOnKeyDown(state: &state, onMine: { planted = $0 })
+            if planted != nil {
+                // #149: this event bypasses `tick()`'s own `runTick` call entirely (a direct
+                // `layMineOnKeyDown` call in this merged-stream consumer, matching the
+                // single-process path's own separate `onLayMineKeyDown` wiring in
+                // `GameSession.swift`) -- `pendingSounds`/`isNear(at:)` in `tick()` never see
+                // this one, so it needs its own `onShouldPlaySound` fire here.
+                if let onShouldPlaySound { await MainActor.run { onShouldPlaySound("mine", true) } }
+            }
             // A hidden mine is never announced: remote players learn of it by proximity reveal.
             if let planted, !state.hiddenMines {
                 await table.sendToAll(SRDropMine(player: UInt8(state.localPlayer), x: UInt8(planted.x), y: UInt8(planted.y)).encode())
@@ -669,6 +688,30 @@ public final class HostGameEngine: @unchecked Sendable {
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
 
+        // #149/#150: sound-only queue, flushed via `onShouldPlaySound` after `runTick` returns,
+        // same "queue during the synchronous call, flush after" shape `pending`/`maskedPending`
+        // already use. `isNear(at:)` mirrors the oracle's own `client.fog[y][x] > 0` check
+        // (`isFog`, `CalcVis.swift`) using this host's own already-maintained `fogStates` --
+        // real near/far parity whenever Hidden Mines is on (the only mode `fogStates` is kept
+        // live for today, see that property's own doc comment); falls back to always-near
+        // otherwise, matching this port's existing D65 full-visibility default rather than
+        // inventing an independent distance proxy that could diverge from the oracle's own
+        // tank/pillbox/alliance vision-box rules.
+        var pendingSounds: [(name: String, near: Bool)] = []
+        let hostFogStateSnapshot = fogStates[state.localPlayer]
+        func isNear(at point: Pointi) -> Bool {
+            // Reads only pre-tick snapshots (`hiddenMinesSnapshot`/`hostFogStateSnapshot`), never
+            // the live `state`/`fogStates` -- this closure fires from inside `runTick`'s own
+            // exclusive `state: &state` access below (via `onMineExplosion`/etc.), so touching
+            // `self.state` here would be a nested-access violation (the same class this file's
+            // own `onGrow`/`onShouldBroadcastSmallBoom`/`onShouldBroadcastFlood` closures are
+            // already careful to avoid -- confirmed by a live exclusivity trap while testing this).
+            guard hiddenMinesSnapshot, let hostFogStateSnapshot else { return true }
+            // `isFog` returns true when the tile IS fogged (no current vision source covers it,
+            // `fog == 0`) -- i.e. far, not near. Inverted here, not in `isFog` itself.
+            return !isFog(x: point.x, y: point.y, fogState: hostFogStateSnapshot)
+        }
+
         let terrainBeforeTick = state.terrain.storage
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
@@ -690,6 +733,18 @@ public final class HostGameEngine: @unchecked Sendable {
                 let mask = terrainVisibilityMask(x: x, y: y, hiddenMines: hiddenMinesSnapshot, fogStates: self?.fogStates ?? [:])
                 maskedPending.append((mask, SRGrow(x: UInt8(x), y: UInt8(y)).encode()))
             },
+            // #149/#150: the rest of `SoundPlayer.swift`'s 15 names -- this host had none of
+            // these wired at all before now (only the single-process/solo path did). The 7
+            // location-bearing ones resolve near/far via `isNear(at:)`; the rest (no location in
+            // their `runTick` signature) stay "near" always, a known, narrower, disclosed
+            // remaining gap -- see #150's own issue body for why closing it needs a
+            // signature-changing thread of a location parameter through `TankLocalTick.swift`/
+            // `ShellTick.swift`/`PillTick.swift`, out of scope for this pass.
+            onMineExplosion: { point in pendingSounds.append(("explosion", isNear(at: point))) },
+            onSuperboomTerrain: { point in pendingSounds.append(("superboom", isNear(at: point))) },
+            onExplosion: { v in pendingSounds.append(("explosion", isNear(at: Pointi(x: Int32(v.x), y: Int32(v.y))))) },
+            onSuperboom: { pendingSounds.append(("superboom", true)) },
+            onSmallboom: { pendingSounds.append(("explosion", true)) },
             onShouldBroadcastDropPill: { pill, x, y in
                 pending.append(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode())
             },
@@ -704,8 +759,16 @@ public final class HostGameEngine: @unchecked Sendable {
             onShouldBroadcastDamage: { player, x, y, terrain in
                 pending.append(SRDamage(player: UInt8(player), x: UInt8(x), y: UInt8(y), terrain: terrain).encode())
             },
+            onTankShot: { pendingSounds.append(("tankshot", true)) },
+            onTreeHarvest: { point in pendingSounds.append(("tree", isNear(at: point))) },
             onPrintMessage: { pendingGameMessages.append($0) },
+            onHitTank: { pendingSounds.append(("hittank", true)) },
+            onHitTerrain: { point in pendingSounds.append(("hitterrain", isNear(at: point))) },
+            onHitTree: { point in pendingSounds.append(("hittree", isNear(at: point))) },
             onMine: { point in
+                // #149: no far variant exists for "mine" (matches the oracle -- no `kFarMineSound`
+                // either), so this always queues "near" regardless of fog.
+                pendingSounds.append(("mine", true))
                 // Same rule as `.localLayMineKeyDown`: a hidden mine is never announced.
                 guard !hiddenMinesSnapshot else { return }
                 pending.append(SRDropMine(player: UInt8(localPlayerSnapshot), x: UInt8(point.x), y: UInt8(point.y)).encode())
@@ -713,12 +776,17 @@ public final class HostGameEngine: @unchecked Sendable {
             onShouldBroadcastRefuel: { _, base, armour, shells, mines in
                 pending.append(SRRefuel(base: UInt8(base), armour: armour, shells: shells, mines: mines).encode())
             },
+            onBuild: { point in pendingSounds.append(("build", isNear(at: point))) },
             onShouldBroadcastBuildPill: { pill, x, y, armour in
                 pending.append(SRBuildPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y), armour: armour).encode())
             },
             onShouldBroadcastRepairPill: { pill, armour in
                 pending.append(SRRepairPill(pill: UInt8(pill), armour: armour).encode())
-            }
+            },
+            onBuilderDeath: { pendingSounds.append(("builderdeath", true)) },
+            onSink: { pendingSounds.append(("sink", true)) },
+            onBubbles: { pendingSounds.append(("bubbles", true)) },
+            onPillShot: { pendingSounds.append(("pillshot", true)) }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
 
@@ -812,6 +880,15 @@ public final class HostGameEngine: @unchecked Sendable {
         if let onTickRendered {
             let snapshot = state
             await MainActor.run { onTickRendered(snapshot) }
+        }
+
+        // #149: same shape as `onTickRendered` above -- one main-actor hop for every sound
+        // queued this tick, not one hop per sound.
+        if let onShouldPlaySound, !pendingSounds.isEmpty {
+            let sounds = pendingSounds
+            await MainActor.run {
+                for (name, near) in sounds { onShouldPlaySound(name, near) }
+            }
         }
 
         // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,

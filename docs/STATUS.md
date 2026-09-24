@@ -14,7 +14,124 @@
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
-## Next sprint — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
+## Roadmap ruling (Jerod, 2026-09-23): 1.6.* is a visual + play parity arc
+
+Every `v1.6.*` release from here on targets visual/play parity with the original, one theme
+per release: **man** (the builder/"little green man"), **tank**, **boat**, **sound** --
+`v1.6.1` (sprite chrome/terrain) already covered general polish; the next four are themed.
+
+**Active sprint: [milestone 23](https://github.com/CosmicCEO/BoloKit/milestone/23), `v1.6.2 —
+Little Green Man Parity`** -- takes priority over milestone 20 below. Investigated parachute-in/spawn behavior against `Reference/c` first --
+state machine (`killBuilder` → `.parachute` → `parachuteTick` → `.return`,
+`TankLocalTick.swift:121-152`/`BuilderTick.swift:864-876`) matches `killbuilder()`/
+`kBuilderParachute` line-for-line, including initial spawn defaulting to `.ready` (no
+parachute on first spawn) exactly like `client.c:265/395/735` -- no work needed there. Two
+real gaps, both filed:
+- [#146](https://github.com/CosmicCEO/BoloKit/issues/146) -- the builder sprite itself has no
+  visual identity (`GlyphSource.swift:74-76`'s `.builder(frame)` is a plain growing square for
+  all 3 frames, walk-cycle and parachute alike; the frame-selection logic is already a
+  faithful `GSBoloView.m:296-389` port, it's purely the art that's a placeholder).
+- [#145](https://github.com/CosmicCEO/BoloKit/issues/145) -- tank-crush-builder, a disclosed
+  new mechanic (not in the oracle, see the issue). Scoped: reuses `tankCollision`'s
+  `testAlliance` check, enemy-tile-overlap triggers `killPointBuilder`/`killSquareBuilder`,
+  no new sound work (`kBuilderDeathSound` already wired).
+
+**Both implemented, 2026-09-23** (commits `54fed1d`/`cc7967b`): #146's `.builder(frame)` now
+draws a walking-figure silhouette for BUILD0/BUILD1 (stride alternates between the two) and a
+parachute-canopy silhouette for BUILD2, instead of a placeholder growing square. #145 added
+`tankCrushBuilder()` (`TankTick.swift`) -- exact tile overlap, `testAlliance`-gated, wired into
+`tankMoveTick`'s alive branch right after terrain collision resolves each tick; reuses
+`killBuilder` for the actual kill/respawn-as-parachute. Both covered by new tests
+(`BoloGlyphsTests`/`TankTickTests`); full `swift test` and `xcodebuild build -scheme "Bolo 2026"`
+green (the two pre-existing timing/socket flakes noted above still pass in isolation).
+
+Related but deliberately not pulled forward: [#138](https://github.com/CosmicCEO/BoloKit/issues/138)
+(builder movement after death looks unrouted) stays in its own `v1.9.0 — Builder logic`
+milestone -- it's a movement-smoothing/gameplay-logic issue, not a sprite/visual one.
+
+**Milestone 24, `v1.6.3 — Tank Parity`, done and closed 2026-09-23.** Live audit of
+`tankmovelogic`/`tanklocallogic`/`killtank`/`tankcollision`/`tanktest`/`tankonaboattest` and the
+shell-vs-tank damage path against `Reference/c`: everything but one item is already a faithful,
+complete port (movement, collision, tank-vs-tank push-apart, mine/refuel/pillbox-capture logic,
+`killTank`, shell-hit damage). The one real gap: [#147](https://github.com/CosmicCEO/BoloKit/issues/147)
+-- a boated tank rendered pixel-identical to a land tank (`ImageIndex.swift` already selected the
+right `PTKB`/etc. sprite row, but `GlyphRole.tank` had no `boat` parameter at all, so both rows
+drew the same triangle+barrel). Fixed: `boat: Bool` threaded through, `drawBoatHull` gives it a
+distinct hull silhouette. Same porting-gap category as #146, not a new mechanic. Full `swift
+test` and `xcodebuild build -scheme "Bolo 2026"` green (four DifferentialTests flakes under the
+full parallel run, all confirmed pass in isolation -- real-network/timing flakiness, unrelated to
+this pure-rendering change).
+
+**Milestone 25, `v1.6.4 — Boat Parity`, done and closed 2026-09-23.** Live audit of
+boarding/disembarking, boat physics, shore-push, boat terrain rendering, and boat-specific
+sounds against `Reference/c`: disembarking, ramming, drowning, physics constants, shore-push,
+and boat-terrain rendering (`applyBoatRipple`, shipped earlier) are all already faithful. One
+real, high-severity gap, confirmed live and directly explaining a live user report ("boats don't
+look like boats"): [#148](https://github.com/CosmicCEO/BoloKit/issues/148) --
+`state.players[player].boat` was never set `true` by actually boarding a boat, under ANY
+connection topology (host's own tank, host-simulated remotes, or real networked guests) -- only
+spawning directly onto a boat start-tile ever set it. Both `grabTile` (`TankLocalTick.swift`) and
+`recvClGrabTile` (`RecvCL.swift`) cleared the terrain but never flipped the flag on the host's
+own authoritative state, so #147's boat-hull sprite never had a live trigger. Fixed by adding the
+missing assignment to both call sites; the two existing tests that already exercised this path
+were missing the one assertion that would have caught it, now added. Full `swift test` and
+`xcodebuild build -scheme "Bolo 2026"` green (one pre-existing timing flake, confirmed pass in
+isolation).
+
+**Milestone 26, `v1.6.5 — Sound Parity`, done and closed 2026-09-24.** Live audit of every
+oracle `playsound()` trigger against the port's own sound catalog, prompted directly by a live
+user report ("hearing trees being harvested beyond view") and an explicit ask to verify
+host/client sound wiring. Two real, high-severity findings:
+- [#149](https://github.com/CosmicCEO/BoloKit/issues/149) (closed) -- a real networked HOST and a
+  joined GUEST played **zero** gameplay sound at all. `SoundPlayer` was only ever reachable from
+  the single-process/solo tick loop; `HostGameEngine`'s own separate internal loop had no sound
+  callback of any kind. Fixed: `HostGameEngine.onShouldPlaySound`, wired the same way
+  `onTickRendered`/`onMessageReceived` already are, plus the join path's three local-prediction
+  call sites.
+- [#150](https://github.com/CosmicCEO/BoloKit/issues/150) (closed, ruled 2026-09-24) -- sound
+  played "near" unconditionally regardless of distance. Fixed for the host path whenever Hidden
+  Mines is on (reuses the existing, already-live `FogState`/`isFog` machinery, no new distance
+  proxy invented). The remaining gap -- making fog/vision tracking unconditional and live on
+  every path (solo/join), matching the oracle's own always-active tank/pillbox vision-box system
+  -- is **parked, not fixed**: Jerod's ruling (2026-09-24) is that solo play, this port's primary
+  mode, has no second listener anywhere else on the map for a far-sound distinction to matter to,
+  so the unconditional extension isn't worth building. Moved to
+  [milestone 10](https://github.com/CosmicCEO/BoloKit/milestone/10) (`Decide: Oracle parking
+  lot`) and closed there; reopen only on a real repro (e.g. hosted multiplayer with Hidden Mines
+  off). Caught two real bugs while landing the host-path fix (a nested-`inout` exclusivity crash,
+  and an inverted `isFog` near/far polarity) via two new `HostGameEngineTests` that exercise both
+  through a live tick loop. Full `swift test` and `xcodebuild build -scheme "Bolo 2026"` green
+  (known pre-existing timing/socket flakes, confirmed pass in isolation).
+
+**Milestone 20, `v1.6.x — Rejoin fix`, done and closed 2026-09-24.** Last remaining issue,
+[#139](https://github.com/CosmicCEO/BoloKit/issues/139) (host engine `SIGABRT` after a long-idle
+hosted session, crash-log-only, no live repro) -- root-caused via a live audit of
+`HostGameEngine`'s concurrency model, not the soak-test repro the issue asked for. Confirmed
+root cause: `HostGameEngine` is `final class HostGameEngine: @unchecked Sendable` with `state` a
+plain stored property, mutated off-main by the tick-loop `Task` inside `tick()`. `GameSession`'s
+`adminState`/`liveState` (`@MainActor`) read `hostEngine.state` directly and synchronously --
+racing that mutation and corrupting `Array` refcounts on `GameState.local` (`tankLocalTick`'s
+COW trigger), matching the crash stack's `Array._makeMutableAndUnique` abort exactly.
+`HostGameEngine.swift`'s own header already documented the one safe way to get `state` off the
+tick loop (`onTickRendered`'s value-type snapshot -- "never the live `state` itself, which only
+the consumer `Task` may ever touch"); `adminState`/`liveState` just weren't using it. Fixed by
+caching that snapshot into a new `GameSession.hostLiveState` property, updated alongside
+`hudSnapshot` in the same `onTickRendered` closure, and reading it instead of `hostEngine.state`.
+146/146 `Bolo 2026Tests` and 956/956 SwiftPM tests green (one pre-existing timing flake,
+confirmed unrelated and passes in isolation).
+
+Also noted in #150's body, not implemented, no ruling requested yet (same disclosed-new-feature
+category as #145): even a fixed oracle near/far model is binary, two fixed clips -- true
+continuous-distance volume/pan would be richer than the oracle itself.
+
+This closes out all four 1.6.x themed parity releases' initial audit-and-fix pass (man #145/#146,
+tank #147, boat #148, sound #149/#150). #145/#146/#147/#148/#149/#150 all came from live
+code-vs-`Reference/c` audits, not the backlog -- the closest backlog candidates,
+[#7](https://github.com/CosmicCEO/BoloKit/issues/7) (fire while standing on a captured base) and
+[#5](https://github.com/CosmicCEO/BoloKit/issues/5) (explosion owner attribution), remain
+their own explicitly parked `Decide:` rulings, left alone rather than force-fit.
+
+## Queued next — milestone 20 `v1.6.x — Rejoin fix`, re-scoped 2026-09-23
 
 Triaged the milestone's 9 open issues against what actually shipped in 1.5.1 and the
 v1.6.0 Metal-renderer switch. User confirmed (live troubleshooting during 1.6.0-1.6.1, not

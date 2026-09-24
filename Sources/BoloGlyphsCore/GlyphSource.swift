@@ -16,8 +16,10 @@ public enum GlyphRole: Sendable {
     case swamp
     case mine
     case pill(armor: Int, ownership: BaseOwnership)
-    /// `ownership`: 0 = player, 1 = friendly, 2 = enemy.
-    case tank(heading: Int, ownership: Int, destroyed: Bool)
+    /// `ownership`: 0 = player, 1 = friendly, 2 = enemy. `boat`: #147 -- the tank is currently
+    /// boated (`PlayerState.boat`), matching the reference's separate `PTKB`/`FTKB`/`ETKB`
+    /// sprite row (`ImageIndex.swift`'s `spriteGlyphRole`) with a distinct hull shape.
+    case tank(heading: Int, ownership: Int, boat: Bool, destroyed: Bool)
     /// v1.5.1 #114: `heading` is one of the 16 `headingColumn` buckets (`PhysicsOps.swift`),
     /// matching the C reference's real `Sprites.png` asset -- not an animation frame index
     /// (the prior `frame` name/semantics only covered 6 of the 16 indices `headingColumn`
@@ -57,8 +59,8 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
         c.fillCircle(cx: 8, cy: 8, radius: 3, 200, 30, 30)
     case .pill(let armor, let ownership):
         drawPill(&c, armor: armor, ownership: ownership)
-    case .tank(let heading, let ownership, let destroyed):
-        drawTank(&c, heading: heading, ownership: ownership, destroyed: destroyed)
+    case .tank(let heading, let ownership, let boat, let destroyed):
+        drawTank(&c, heading: heading, ownership: ownership, boat: boat, destroyed: destroyed)
     case .shell(let heading):
         // v1.5.1 #114: constant-size directional streak, not a growing circle -- size no
         // longer varies by index (that was mistaking a heading bucket for an animation
@@ -72,8 +74,14 @@ public func renderGlyph(_ role: GlyphRole) -> Canvas16 {
         let radius = 2.0 + Double(frame) * 1.3
         c.fillRing(cx: 8, cy: 8, inner: max(0, radius - 2), outer: radius, 255, 140, 30)
     case .builder(let frame):
-        let s = 3 + frame
-        c.fillRect(8 - s, 8 - s, 8 + s, 8 + s, 160, 160, 60)
+        // #146: frames 0/1 are `GameRenderView.drawBuilder`'s BUILD0/BUILD1 walk-cycle
+        // alternation, frame 2 is BUILD2 (parachute-in). A humanoid silhouette so the
+        // "little green man" reads as a person, not a growing placeholder square.
+        if frame == 2 {
+            drawBuilderParachute(&c)
+        } else {
+            drawBuilderWalking(&c, strideFlip: frame == 1)
+        }
     case .crosshair:
         c.fillRect(7, 0, 9, 16, 255, 255, 255)
         c.fillRect(0, 7, 16, 9, 255, 255, 255)
@@ -460,6 +468,53 @@ private func drawBase(_ c: inout Canvas16, ownership: BaseOwnership) {
     c.fillRect(7, 10, 9, 14, 20, 20, 20)
 }
 
+/// #146: an upright walking figure -- round head, torso, arms, and two legs whose stride
+/// offsets swap between the two frames `drawBuilder` alternates between (BUILD0/BUILD1),
+/// giving the same "legs moving" read the reference's own alternation implies. No heading
+/// input (unlike `drawTank`) -- the reference's builder sprite has no directional art either,
+/// it always faces the same way regardless of travel direction.
+private func drawBuilderWalking(_ c: inout Canvas16, strideFlip: Bool) {
+    let skin: (UInt8, UInt8, UInt8) = (210, 190, 150)
+    let suit: (UInt8, UInt8, UInt8) = (60, 150, 70)
+    c.fillCircle(cx: 8, cy: 3.5, radius: 1.6, skin.0, skin.1, skin.2)
+    c.fillRect(6, 5, 10, 11, suit.0, suit.1, suit.2)
+    c.fillRect(4, 6, 6, 9, suit.0, suit.1, suit.2)
+    c.fillRect(10, 6, 12, 9, suit.0, suit.1, suit.2)
+    if strideFlip {
+        c.fillRect(5, 11, 7, 16, suit.0, suit.1, suit.2)
+        c.fillRect(9, 11, 11, 15, suit.0, suit.1, suit.2)
+    } else {
+        c.fillRect(5, 11, 7, 15, suit.0, suit.1, suit.2)
+        c.fillRect(9, 11, 11, 16, suit.0, suit.1, suit.2)
+    }
+}
+
+/// #146: a dome canopy over a smaller hanging figure with two suspension-cord pixels per
+/// side -- distinct in silhouette from the walking pose, for BUILD2 (`.parachute` status).
+private func drawBuilderParachute(_ c: inout Canvas16) {
+    let canopy: (UInt8, UInt8, UInt8) = (200, 200, 60)
+    let suit: (UInt8, UInt8, UInt8) = (60, 150, 70)
+    let skin: (UInt8, UInt8, UInt8) = (210, 190, 150)
+    let cord: (UInt8, UInt8, UInt8) = (230, 230, 230)
+    let cx = 8.0, cy = 3.0, r = 7.0
+    for y in 0..<5 {
+        for x in 0..<16 {
+            let dx = Double(x) + 0.5 - cx
+            let dy = Double(y) + 0.5 - cy
+            if dx * dx + dy * dy <= r * r {
+                c.set(x, y, canopy.0, canopy.1, canopy.2)
+            }
+        }
+    }
+    c.set(3, 5, cord.0, cord.1, cord.2)
+    c.set(4, 6, cord.0, cord.1, cord.2)
+    c.set(12, 5, cord.0, cord.1, cord.2)
+    c.set(11, 6, cord.0, cord.1, cord.2)
+    c.fillCircle(cx: 8, cy: 9, radius: 1.3, skin.0, skin.1, skin.2)
+    c.fillRect(7, 10, 9, 14, suit.0, suit.1, suit.2)
+    c.fillRect(6, 14, 10, 16, suit.0, suit.1, suit.2)
+}
+
 private func tankPalette(_ ownership: Int) -> (UInt8, UInt8, UInt8) {
     switch ownership {
     case 0: return (220, 220, 220)
@@ -468,7 +523,7 @@ private func tankPalette(_ ownership: Int) -> (UInt8, UInt8, UInt8) {
     }
 }
 
-private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroyed: Bool) {
+private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, boat: Bool, destroyed: Bool) {
     let (r, g, b) = tankPalette(ownership)
     if destroyed {
         for i in 0..<16 {
@@ -483,10 +538,27 @@ private func drawTank(_ c: inout Canvas16, heading: Int, ownership: Int, destroy
     // that could silently drift from the simulation's own convention.
     let dir = Float(heading) * (kPif / 8.0)
     let v = dir2vec(dir)
-    c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
-    // D148(C): a solid triangle alone reads as an ambiguous arrow at small
-    // sizes -- add a dark barrel extending past the hull's tip (6px) toward
-    // the same heading, using the same rotation convention as the hull, so
-    // rotation can never drift from `dir2vec`/D70's reference frame.
-    c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 5.0, halfWidth: 0.8, 20, 20, 20)
+    if boat {
+        drawBoatHull(&c, dx: Double(v.x), dy: Double(v.y), r, g, b)
+    } else {
+        c.fillRotatedTriangle(dx: Double(v.x), dy: Double(v.y), r, g, b)
+        // D148(C): a solid triangle alone reads as an ambiguous arrow at small
+        // sizes -- add a dark barrel extending past the hull's tip (6px) toward
+        // the same heading, using the same rotation convention as the hull, so
+        // rotation can never drift from `dir2vec`/D70's reference frame.
+        c.fillRotatedBar(dx: Double(v.x), dy: Double(v.y), length: 5.0, halfWidth: 0.8, 20, 20, 20)
+    }
+}
+
+/// #147: the reference draws a distinct hull sprite for a boated tank (`PTKB`/`FTKB`/`ETKB`),
+/// not the same triangle+barrel as a land tank -- this was previously indistinguishable since
+/// `GlyphRole.tank` had no `boat` parameter at all. Reuses the same bow (`fillRotatedTriangle`)
+/// as the land tank's hull, but adds a wide flat stern deck extending aft (negative-length
+/// `fillRotatedBar`, matching drawTank's own rotation convention) instead of the thin forward
+/// gun barrel, plus a thin waterline band -- an elongated boat-like silhouette, not an
+/// ambiguous arrowhead.
+private func drawBoatHull(_ c: inout Canvas16, dx: Double, dy: Double, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
+    c.fillRotatedTriangle(dx: dx, dy: dy, r, g, b)
+    c.fillRotatedBar(dx: dx, dy: dy, length: -4.0, halfWidth: 2.2, r, g, b)
+    c.fillRotatedBar(dx: dx, dy: dy, length: 6.0, halfWidth: 0.5, 20, 40, 70)
 }

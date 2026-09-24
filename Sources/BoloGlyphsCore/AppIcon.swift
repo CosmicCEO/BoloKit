@@ -32,7 +32,7 @@ public func buildAppIconBase() -> Canvas16 {
         // exists so a future change there fails loudly here rather than silently recolouring.
         preconditionFailure("GRAS00IMAGE no longer resolves to .grass in tileGlyphRole")
     }
-    let tank = renderGlyph(.tank(heading: 0, ownership: 0, destroyed: false))
+    let tank = renderGlyph(.tank(heading: 0, ownership: 0, boat: false, destroyed: false))
     composite(tank, over: &canvas)
     return canvas
 }

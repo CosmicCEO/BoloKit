@@ -160,12 +160,18 @@ private func makeState(players: [PlayerState] = [PlayerState()]) -> GameState {
 }
 
 @Test func recvClGrabTileBoatTerrainBecomesRiver() {
-    var state = makeState()
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()])
     state.terrain[50, 50] = .boat
     var broadcast: (Int, Int, Int)?
     recvClGrabTile(player: 1, x: 50, y: 50, state: &state, onShouldBroadcastGrabBoat: { broadcast = ($0, $1, $2) })
     #expect(state.terrain[50, 50] == .river)
     #expect(broadcast?.0 == 1)
+    // #148: the host's own authoritative copy must record the requesting player as boated too,
+    // not just clear the terrain and broadcast -- previously missing, which is how #148 shipped
+    // unnoticed (the requesting guest's own client-side ack made it LOOK correct on that one
+    // machine, while the host's copy -- and every other player's view of this guest -- stayed
+    // wrong).
+    #expect(state.players[1].boat)
 }
 
 @Test func recvClGrabTileMinedTerrainDetonates() {

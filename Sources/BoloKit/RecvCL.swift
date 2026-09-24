@@ -173,7 +173,13 @@ public func recvClGrabTile(
     guard let terrain = state.terrain[x, y] else { return }
     switch terrain {
     case .boat:
+        // #148: same fix as `grabTile`'s `.boat` case (`TankLocalTick.swift`) -- the requesting
+        // guest's own client sets `boat = true` for itself via `recvSrGrabBoat` once this
+        // broadcast reaches it, but the HOST's own authoritative copy (which drives the host's
+        // rendering of this guest and every other connected player's view via the periodic
+        // per-tick broadcast) never did.
         state.terrain[x, y] = .river
+        state.players[player].boat = true
         onShouldBroadcastGrabBoat(player, x, y)
     case .minedSea, .minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass:
         explosionAt(

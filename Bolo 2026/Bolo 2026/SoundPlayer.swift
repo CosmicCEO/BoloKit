@@ -32,24 +32,44 @@
 //  branch), and `onPillShot` (`PillTick.swift`'s `emitPillShell`). Fog-dependent `far*` variants
 //  remain out of scope (see below) -- these are all "near" names.
 //
-//  **`far*` variants are explicitly NOT wired.** The reference's own near/far choice is a
-//  `client.fog[y][x] > 0` check (`client.c:1368` and elsewhere) -- fog-of-war/seen-tiles is out
-//  of v1 scope entirely (D65: "treat every tile as fully visible"), so there is no real signal to
-//  compute near-vs-far from yet.
+//  **#149/#150 (v1.6.5 Sound Parity): `far*` variants are now wired, host path only, and the**
+//  **real networked host/guest silence bug is fixed.** Two real, confirmed findings superseded
+//  the paragraph this replaces:
 //
-//  **Not every sound wired here is the local player's own action.** `onTankShot`/`onTreeHarvest`/
-//  `onMine` are local-player-only (`TankLocalTick.swift` only ever runs for `state.localPlayer`).
-//  But `onHitTank`/`onBuild`/`onBuilderDeath`/`onSink`/`onPillShot` fire for *any* connected
-//  player's shells/builder/tank/pillbox -- `shellTick`'s tank-hit loop, `builderTick`'s per-player
-//  call, and the mine-detonation/splash-damage chain (`explosionAt`/`superboomAt`) all run once
-//  per player, not just the local one. With fog out of scope (D65: every tile fully visible),
-//  there's no near/far signal to gate these on, so the local player now hears every player's hit/
-//  build/death/sink/pill-shot map-wide, not just their own -- a real behavior change from the
-//  four sounds wired before this pass, all of which happened to be local-player-only. Remote-
-//  player-triggered sounds are still not wired for the *join* client specifically: this port's
-//  join-mode client doesn't run the callback-bearing `runTick` at all (D116 -- see
-//  `GameSession.swift`'s own B.8 header), so a join client only ever hears its own locally-
-//  predicted actions regardless of this pass.
+//  1. `GameSession.tick()` (this file's only caller before #149) has exactly one caller of its
+//     own: the single-process/solo `DispatchSource` timer. A REAL networked host
+//     (`HostGameEngine`) never called `SoundPlayer` at all -- `hostEngine.start()` runs its own
+//     internal tick loop, entirely separate from this file's `tick()`, and had no sound callback
+//     of any kind. Fixed: `HostGameEngine.onShouldPlaySound` (`Sources/BoloNet/HostGameEngine.swift`)
+//     now fires the same 15 names this file already knew about, wired at the host `init` below.
+//     A joined guest was *also* completely silent (zero `SoundPlayer` calls existed on the join
+//     path before this pass, confirmed by grep, not merely under-scoped) -- fixed for the guest's
+//     own locally-predicted actions (`tankMoveTick`/`builderTick`/`shellTick`, all three already
+//     called in `handleJoinEvent`'s `.tick` case). `onTankShot`/`onMine`/`onBubbles`/`onSink`/
+//     `onPillShot` remain unreachable on the join path -- those need `tankLocalTick`/`pillTick`
+//     itself, which D116 deliberately keeps off this path (see `GameSession.swift`'s own B.8
+//     header); not expanded here.
+//
+//  2. `far*` near/far selection: the reference's own choice is a `client.fog[y][x] > 0` check
+//     (`client.c:1368` and elsewhere) -- a real, always-active vision-radius system (tank/pillbox/
+//     alliance vision boxes), unrelated to the separate `hiddenmines` flag. This port's own
+//     equivalent (`FogState`/`isFog`, `CalcVis.swift`) is currently maintained ONLY when
+//     `state.hiddenMines` is on, and ONLY on the host path (`HostGameEngine.fogStates`) -- so
+//     near/far selection here is real and oracle-faithful whenever Hidden Mines is on, for the 7
+//     location-bearing hooks (`onMineExplosion`/`onSuperboomTerrain`/`onExplosion`/
+//     `onTreeHarvest`/`onHitTerrain`/`onHitTree`/`onBuild`); the other 8 hooks have no location
+//     in their `runTick` signature at all and stay "near" always (disclosed, narrower remaining
+//     gap, see #150). With Hidden Mines off (this port's default, matching D65's "every tile
+//     fully visible" v1 decision) or on the solo/join paths (no `FogState` tracked there at all),
+//     everything still plays "near" regardless of distance -- this is the real, larger,
+//     already-known vision-system gap D65 disclosed, not something #149/#150 silently claims to
+//     have closed.
+//
+//  `play(_:near:)` picks the far name via a local reverse of `SoundSetBuilder.swift`'s
+//  `farNameSources` (duplicated here, not imported, since the app target doesn't currently link
+//  `BoloSoundsCore` as a runtime dependency -- keep the two lists in sync by hand); a near name
+//  with no far entry (`mine`/`pillshot`/`bubbles`/`msgreceived` -- matches the oracle, which has
+//  no `kFarMineSound` etc. either) always plays its near clip regardless of `near`.
 //
 
 import AppKit
@@ -68,24 +88,44 @@ final class SoundPlayer {
         "tree": 2, "bubbles": 2, "sink": 1, "msgreceived": 1,
     ]
 
+    /// #150: near-name -> far-name, a local copy of `SoundSetBuilder.swift`'s own
+    /// `farNameSources` (reversed) -- see this file's header for why it's duplicated, not
+    /// imported. `fshot` covers both `tankshot`'s and `pillshot`'s far variant (D122, no
+    /// separate `fpillshot`); a near name absent here (`mine`/`pillshot`/`bubbles`/
+    /// `msgreceived`) has no far variant at all, matching the oracle.
+    private static let farNames: [String: String] = [
+        "explosion": "fexplosion", "superboom": "fsuperboom", "hittank": "fhittank",
+        "hitterrain": "fhitterrain", "hittree": "fhittree", "build": "fbuild",
+        "builderdeath": "fbuilderdeath", "tree": "ftree", "sink": "fsink", "tankshot": "fshot",
+    ]
+
     private var pools: [String: [NSSound]] = [:]
 
     private init() {
         for (name, count) in Self.poolSizes {
-            guard let url = Bundle.main.url(forResource: name, withExtension: "aiff") else { continue }
-            pools[name] = (0..<count).compactMap { _ in NSSound(contentsOf: url, byReference: true) }
+            loadPool(name, count: count)
+            if let farName = Self.farNames[name] {
+                loadPool(farName, count: count)
+            }
         }
     }
 
-    /// Plays `name` on the first non-playing pool slot, silently doing nothing if every slot is
-    /// busy (matches `playsound()`'s own `for` loop exactly -- it never queues or interrupts,
-    /// just skips the sound if the whole pool is already in use) or if the name isn't in this
-    /// v1 slice's wired set. Checks `"GSMuteBool"` on every call, not once at init, so toggling
-    /// the preference mid-session takes effect immediately -- matching `playsound()`'s own
+    private func loadPool(_ name: String, count: Int) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "aiff") else { return }
+        pools[name] = (0..<count).compactMap { _ in NSSound(contentsOf: url, byReference: true) }
+    }
+
+    /// Plays `name` (or its far variant, if `near` is false and one exists) on the first
+    /// non-playing pool slot, silently doing nothing if every slot is busy (matches
+    /// `playsound()`'s own `for` loop exactly -- it never queues or interrupts, just skips the
+    /// sound if the whole pool is already in use) or if the resolved name isn't in this v1
+    /// slice's wired set. Checks `"GSMuteBool"` on every call, not once at init, so toggling the
+    /// preference mid-session takes effect immediately -- matching `playsound()`'s own
     /// `if (!muteBool)` guard, evaluated fresh every call.
-    func play(_ name: String) {
+    func play(_ name: String, near: Bool = true) {
         guard !UserDefaults.standard.bool(forKey: "GSMuteBool") else { return }
-        guard let pool = pools[name] else { return }
+        let resolvedName = (!near ? Self.farNames[name] : nil) ?? name
+        guard let pool = pools[resolvedName] else { return }
         for sound in pool where !sound.isPlaying {
             sound.play()
             return

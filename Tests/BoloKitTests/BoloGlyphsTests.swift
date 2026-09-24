@@ -218,7 +218,7 @@ struct BoloGlyphsTests {
 
     @Test("tank heading 0 points screen-east, matching dir2vec(0), not screen-north")
     func tankHeadingZeroPointsEast() {
-        let patch = renderGlyph(.tank(heading: 0, ownership: 0, destroyed: false))
+        let patch = renderGlyph(.tank(heading: 0, ownership: 0, boat: false, destroyed: false))
         let (offX, offY) = centroidOffsetFromCenter(patch)
         // Tip points east (+x); pixel mass sits behind it, toward -x.
         #expect(offX < -0.5)
@@ -228,17 +228,17 @@ struct BoloGlyphsTests {
     @Test("tank headings sweep counterclockwise on screen as the index increases, matching dir2vec")
     func tankHeadingsSweepCounterclockwise() {
         // heading 4 -> dir = pi/2 -> dir2vec = (0, -1) = screen-north.
-        let north = centroidOffsetFromCenter(renderGlyph(.tank(heading: 4, ownership: 0, destroyed: false)))
+        let north = centroidOffsetFromCenter(renderGlyph(.tank(heading: 4, ownership: 0, boat: false, destroyed: false)))
         #expect(north.1 > 0.5)   // mass sits south (behind a north-pointing tip)
         #expect(abs(north.0) < 0.5)
 
         // heading 8 -> dir = pi -> dir2vec = (-1, 0) = screen-west.
-        let west = centroidOffsetFromCenter(renderGlyph(.tank(heading: 8, ownership: 0, destroyed: false)))
+        let west = centroidOffsetFromCenter(renderGlyph(.tank(heading: 8, ownership: 0, boat: false, destroyed: false)))
         #expect(west.0 > 0.5)    // mass sits east (behind a west-pointing tip)
         #expect(abs(west.1) < 0.5)
 
         // heading 12 -> dir = 3pi/2 -> dir2vec = (0, 1) = screen-south.
-        let south = centroidOffsetFromCenter(renderGlyph(.tank(heading: 12, ownership: 0, destroyed: false)))
+        let south = centroidOffsetFromCenter(renderGlyph(.tank(heading: 12, ownership: 0, boat: false, destroyed: false)))
         #expect(south.1 < -0.5)  // mass sits north (behind a south-pointing tip)
         #expect(abs(south.0) < 0.5)
     }
@@ -246,7 +246,7 @@ struct BoloGlyphsTests {
     @Test("every heading's rendered tip direction matches dir2vec, not an independently-derived angle")
     func allHeadingsMatchDir2Vec() {
         for heading in 0..<16 {
-            let patch = renderGlyph(.tank(heading: heading, ownership: 0, destroyed: false))
+            let patch = renderGlyph(.tank(heading: heading, ownership: 0, boat: false, destroyed: false))
             let (offX, offY) = centroidOffsetFromCenter(patch)
             let mag = (offX * offX + offY * offY).squareRoot()
             guard mag > 0 else {
@@ -258,6 +258,43 @@ struct BoloGlyphsTests {
             let cosineSimilarity = (offX * -Double(expected.x) + offY * -Double(expected.y)) / mag
             #expect(cosineSimilarity > 0.8, "heading \(heading) diverges from dir2vec")
         }
+    }
+
+    // MARK: - Tank boat hull (#147)
+
+    @Test("a boated tank renders a distinct hull, not the same triangle+barrel as a land tank")
+    func boatedTankRendersADistinctHull() {
+        let land = renderGlyph(.tank(heading: 0, ownership: 0, boat: false, destroyed: false))
+        let boated = renderGlyph(.tank(heading: 0, ownership: 0, boat: true, destroyed: false))
+        #expect(land.pixels != boated.pixels)
+    }
+
+    @Test("the boat hull still points toward dir2vec, same as the land tank")
+    func boatHullFollowsDir2Vec() {
+        // heading 4 -> dir = pi/2 -> dir2vec = (0, -1) = screen-north: mass sits south of center.
+        let patch = renderGlyph(.tank(heading: 4, ownership: 0, boat: true, destroyed: false))
+        let (offX, offY) = centroidOffsetFromCenter(patch)
+        #expect(offY > 0.5)
+        #expect(abs(offX) < 0.5)
+    }
+
+    // MARK: - Builder sprite identity (#146)
+
+    @Test("builder walk frames and the parachute frame each render a non-empty, distinct silhouette")
+    func builderFramesAreDistinctAndNonEmpty() {
+        func opaquePixelCount(_ patch: Canvas16) -> Int {
+            stride(from: 3, to: patch.pixels.count, by: 4).filter { patch.pixels[$0] != 0 }.count
+        }
+        let frames = (0...2).map { renderGlyph(.builder(frame: $0)) }
+        for (frame, patch) in frames.enumerated() {
+            #expect(opaquePixelCount(patch) > 0, "builder frame \(frame) rendered no pixels")
+        }
+        // The two walk frames (BUILD0/BUILD1) must differ from each other -- that's the whole
+        // point of the alternation `GameRenderView.drawBuilder` drives off tick parity.
+        #expect(frames[0].pixels != frames[1].pixels)
+        // The parachute frame (BUILD2) is a structurally different pose, not just a third walk
+        // frame -- its opaque pixel count should differ from either walk frame's.
+        #expect(opaquePixelCount(frames[2]) != opaquePixelCount(frames[0]))
     }
 
     // MARK: - Shell heading convention (v1.5.1 #114)
