@@ -238,7 +238,75 @@ flowchart LR
 - Cheshire original art/sound: never copy; glyphs/sounds are generated.
 - WinBolo/LinBolo: GPL — read-only clean-room, no import.
 
-## 8. Related docs
+## 8. Future optimization
+
+**GPU (Metal compute) offload for fog/tile-grid resolution — idea, parked, not scheduled.**
+Tracking issue: [#160](https://github.com/CosmicCEO/BoloKit/issues/160).
+
+[#159](https://github.com/CosmicCEO/BoloKit/issues/159) (client-side fog gating for the join/solo
+render paths, 2026-09-24) wired real per-tick fog resolution into paths that previously always
+rendered unfogged. Measured cost, Debug build (`-Onone`, what a real desktop session actually
+runs today) with Hidden Mines on:
+
+| Path | Per-tick cost | Share of the 20 ms tick budget |
+|------|---------------|----------------------------------|
+| Unfogged (`displayTileGrid`, pre-#159 behavior) | ~9 ms | ~45% |
+| Fogged (`fogResolvedTileGrid`, current) | ~16–17 ms | ~80–85% |
+
+Tests pass reliably with margin at this cost, but the margin (~3–4 ms/tick) is tighter than
+ideal — any future per-tick work added to the join/solo path eats directly into it.
+
+```mermaid
+flowchart LR
+  subgraph current["Current: CPU-only, every tick"]
+    LIVE1["state.terrain / pills / bases"] --> RESOLVE["fogResolvedTileGrid<br/>CPU loop, 65536 tiles"]
+    FOG1["FogState.fog / seenTiles"] --> RESOLVE
+    RESOLVE --> GRID1["TileGrid.storage<br/>(CPU array)"]
+    GRID1 --> CALCVIS["calcVis / tileFor<br/>gameplay hit-testing"]
+    GRID1 --> UPLOAD["upload to GPU as texture"]
+    UPLOAD --> DRAW1["MetalTileRenderer draw"]
+  end
+```
+
+```mermaid
+flowchart LR
+  subgraph proposed["Proposed: Metal compute kernel"]
+    LIVE2["state.terrain / pills / bases"] --> BUF1["GPU buffer"]
+    FOG2["FogState.fog / seenTiles"] --> BUF2["GPU buffer"]
+    BUF1 --> KERNEL["Metal compute kernel<br/>per-tile select/substitute<br/>(embarrassingly parallel)"]
+    BUF2 --> KERNEL
+    KERNEL --> GPUOUT["GPU-resident resolved grid"]
+    GPUOUT --> DRAW2["LiveMetalTerrainOverlay draw<br/>(no CPU round trip)"]
+    GPUOUT -.->|"readback only if gameplay<br/>logic needs it"| CALCVIS2["calcVis / tileFor<br/>gameplay hit-testing"]
+  end
+```
+
+**Why this is a plausible GPU candidate:** `fogResolvedTileGrid`/`displayTileGrid`
+(`Sources/BoloKit/FogState.swift` / `Tiles.swift`) is a fixed-size (256×256), embarrassingly
+parallel per-tile select/substitute transform with no cross-tile dependencies within a single
+resolve pass — exactly the shape GPU compute shines at. The project already has Metal rendering
+infrastructure from the v1.6.0 renderer (`MetalTileRenderer`, `LiveMetalTerrainOverlay`) a
+compute-kernel output could feed directly, avoiding a CPU round trip if the result stays
+GPU-resident for drawing (right diagram above).
+
+**Why the Neural Engine (ANE/NPU) is ruled out:** present on every Apple Silicon Mac since the
+M1 (2020; the underlying ANE itself debuted on the A11 Bionic, iPhone 8/X, 2017), but it's
+built for CoreML-style neural-network inference (matrix multiplies) and isn't addressable
+outside CoreML — a poor match for this workload's branchy, lookup-dependent substitution logic
+(mine reveal state, sticky-reveal rules per `applyMineSubstitution`).
+
+**Real tradeoffs, not a free win** (full detail in #160): CPU-side gameplay code (`calcVis` per
+sprite, `tileFor` hit-testing) still needs to read individual resolved tiles, so a GPU-only
+pipeline needs either a synced CPU fallback or a broader shift to make gameplay logic
+GPU-buffer-aware; GPU dispatch overhead at this grid size is unmeasured and could eat into the
+win; a Release (`-O`) build's real number is also unmeasured, and Debug's ~16-17ms may already
+have healthier margin in what actually ships.
+
+**Recommendation:** park until/unless the tick budget becomes a real constraint, then prototype
+with a benchmark comparing GPU dispatch+readback cost against the current ~16 ms CPU number
+before committing to the architecture change.
+
+## 9. Related docs
 
 | Doc | Topic |
 |-----|--------|
