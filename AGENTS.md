@@ -40,9 +40,15 @@ xcodebuild -project "Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
 
 ## Current ship
 
-**Current tagged drop:** `v1.5.0`. v1.5.1 live-play fixes are on `main` (PR #117) and untagged until the remaining milestone issues close. Read `docs/STATUS.md` before starting work; do not trust an older test count in this file. One pre-existing flaky timing test exists; do not treat a single isolated flake of that class as a new regression.
+**No version number is restated here on purpose** — one went stale for seven releases in a row
+(this file once said `v1.5.0`/"v1.6.0 next" while `main` was already at `v1.6.6`) because nobody
+re-synced it on every tag. **Always read `docs/STATUS.md`'s top line** for the current tagged
+drop and next-release target before starting work; do not trust a version number, test count, or
+milestone name written anywhere else, including here. One pre-existing flaky timing test class
+exists; do not treat a single isolated flake of that class as a new regression.
 
-Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week sprints). **Patch** milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Current patch: v1.5.1. Next release sprint: v1.6.0 Metal renderer. v1.6.0 stays the Metal renderer only; follow-on polish goes to v1.6.1.
+Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week sprints). **Patch**
+milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43), `docs/GITHUB_BOARDS.md`.
 
 ## Further reading
 
@@ -53,4 +59,3 @@ Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week 
 - `docs/notes/HOSTMODELS.md` — in-process host vs dedicated server research
 - Wave history and the old four-role process: `git show legacy-agent-process:docs/PLAN.md`
 - GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43, `docs/GITHUB_BOARDS.md`
-- Harness routing (which of Claude/Gemini/Grok, director vs. plain-agent, for a given task): skill `harness-routing`

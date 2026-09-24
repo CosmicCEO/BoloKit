@@ -18,7 +18,7 @@ differential tests. See `LICENSE` for the full attribution chain and license ter
 
 ## Status
 
-**Current tagged drop:** [`v1.6.5`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.5) — bundles the visual-polish milestone (`v1.6.1`, [#143](https://github.com/CosmicCEO/BoloKit/pull/143)) and the four-theme visual/play parity arc — man, tank, boat, sound (milestones 23–26) — plus the [#139](https://github.com/CosmicCEO/BoloKit/issues/139) host-engine crash fix. Sound parity (#149) is done; the related #150 distance-sound gap is only partially fixed (host path under Hidden Mines) and the rest deliberately parked (see [`docs/STATUS.md`](docs/STATUS.md)). Merged to `main`, pending its own tag: `v1.6.6 — Visibility Parity` ([#153](https://github.com/CosmicCEO/BoloKit/issues/153), milestone 27) — forest concealment was already ported but wired behind the wrong gate (`hiddenMines`), so it never fired by default and never fired at all for a joined guest; now fixed for host, solo, and join uniformly. Playable host-and-join two-player LAN. Apple Development–signed, not notarized (right-click → Open). The app's fixed-port `NWListener` EINVAL is fixed; a bare bind can still fail on some machines and fall back to local-only play.
+**Current tagged drop:** [`v1.6.6`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.6) — the fifth `1.6.x` theme, visibility parity: forest concealment ([#153](https://github.com/CosmicCEO/BoloKit/issues/153)) was already ported but wired behind the wrong gate (`hiddenMines`), so it never fired by default and never fired at all for a joined guest; now fixed for host, solo, and join uniformly. Bundles `v1.6.5` (visual-polish `v1.6.1`, [#143](https://github.com/CosmicCEO/BoloKit/pull/143), plus the man/tank/boat/sound parity arc, milestones 23–26, plus the [#139](https://github.com/CosmicCEO/BoloKit/issues/139) host-engine crash fix). Sound parity (#149) is done; the related #150 distance-sound gap is only partially fixed (host path under Hidden Mines) and the rest deliberately parked (see [`docs/STATUS.md`](docs/STATUS.md)). Playable host-and-join two-player LAN. Apple Development–signed, not notarized (right-click → Open). The app's fixed-port `NWListener` EINVAL is fixed; a bare bind can still fail on some machines and fall back to local-only play.
 
 The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conventions: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Live board: [`docs/STATUS.md`](docs/STATUS.md).
 
@@ -29,7 +29,7 @@ The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conve
 | **Sprint** | Two weeks, Monday start, due Friday of week 2. Skip US federal holidays. |
 | **Project** | Grouping only. [1.\*](https://github.com/users/CosmicCEO/projects/1) = path to 2.0.0. [2.\*](https://github.com/users/CosmicCEO/projects/2) = Decide items. |
 
-**Next release:** `v1.6.6` (visibility parity, above) is next to tag, then v1.7 gameplay packs, v1.8 LAN/WAN discovery. **2.0.0** is the tag when that path is done.
+**Next release:** `v1.7.0` gameplay packs, then `v1.8.0` LAN/WAN discovery. **2.0.0** is the tag when that path is done.
 
 Engineering rules: `docs/CONSTRAINTS.md`. Wave history: git tag `legacy-agent-process`.
 
