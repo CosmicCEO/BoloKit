@@ -8,6 +8,8 @@
 
 **CI:** a `.github/workflows/test.yml` (GitHub Actions, `swift build`/`swift test` on `macos-15`) exists on a not-yet-merged branch. `Package.swift`'s `swift-tools-version` is `6.2` on `main`, matching what `macos-15`'s `latest-stable` (currently Xcode 26.3 / Swift 6.2.4) actually ships -- do not bump past that without checking the runner image first.
 
+**Small known gap:** [#152](https://github.com/CosmicCEO/BoloKit/issues/152) -- the app's `CFBundleShortVersionString` has been stuck at `1.2.3` since that tag, doesn't track any release since. Cosmetic (About This App / crash-log build strings), no urgency, but worth wiring into the release convention next time this file gets touched for a tag.
+
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
 **Former "environment issue" (fixed):** hosting on any fixed port failed with `NWListener` EINVAL and the app fell back to local-only play with an on-screen notice. It was a bug in this port, not macOS: the listeners set the port twice (`requiredLocalEndpoint` and `NWListener(using:on:)`). Fixed on `fix-listener-einval`; regression test `HostListenerFixedPortTests`. The v1.8.0 issues below were blocked on it and can be picked up again.
