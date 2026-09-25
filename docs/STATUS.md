@@ -14,6 +14,24 @@
 
 **2026-09-24, same day:** [#159](https://github.com/CosmicCEO/BoloKit/issues/159) -- fog-of-war never gated the join/solo render paths. Live user testing showed a join client seeing the host's tank and every pillbox/base icon across the whole map, including never-discovered territory, under Hidden Mines. Root cause: `GameRenderView.render(_:fogState:)` was only ever passed a real `FogState` on the host's own screen; join and solo always passed `nil`, so both tank-sprite fog and the pill/base-carrying tile grid resolved unfogged. Fixed with a new `FogVisionTracker`/`updateFogVisionTracker` (`BoloKit`) that lets a non-host party compute its own fog locally every tick, matching the C oracle's own per-peer `client.fog[][]` design (no new wire message) -- extracted from `HostGameEngine.updateFogVision`'s per-observer diff logic, not yet unified with it (flagged as a known duplication risk in both functions' headers). Verification surfaced a real perf regression on the join path (a previously `nil`-short-circuited fog comparison becoming a 131072-element array compare, plus an expensive `fogResolvedTileGrid` per-tile pass, together blew the ~20ms tick budget and starved TCP/UDP message delivery -- caught by `JoinPathAllianceTests` timing out) -- fixed with a `FogState.revision` counter (`didSet`-driven, so it can't miss a direct-field mutator) for O(1) staleness checks and an unsafe-buffer-pointer rewrite of `fogResolvedTileGrid` that skips `Tile(rawValue:)!`/`applyMineSubstitution` for non-mined tiles. Verified: 649 `BoloKitTests`, 34 fog-specific `DifferentialTests` (including 7 new `FogVisionTrackerTests`), full `Bolo 2026Tests` app suite (153 tests) all green. One `JoinPathAllianceTests` test flakes under the full 27-suite parallel run -- reverted this fix and re-ran the identical full suite twice to confirm it fails the same way on the pre-fix baseline too; a newly-discovered pre-existing flake under machine load, unrelated to this change (joining the existing `HostGameEngineTests` pair as a second documented flaky-timing-test class -- see this file's own "Tests" line above).
 
+**2026-09-24, same day:** [#72](https://github.com/CosmicCEO/BoloKit/issues/72) -- pill/base
+capture, build, and deploy as fog vision sources. The oracle audit found the issue's own
+framing didn't quite match `client.c`: **capturing a pill is never a vision trigger**
+(architecturally impossible -- a just-captured pill's `armour` becomes `pillOnboard`,
+carried by the tank with no fixed position); only **build** and **repair-from-destroyed**
+ever call `increasevis`, always a fixed 15×15 rect. **Bases have no vision mechanism in the
+oracle at all** -- confirmed by exhaustive grep, `recvsrcapturebase` never touches
+`increasevis`/`decreasevis`. Fixed pill vision oracle-matched (new `structureVisionRect`/
+`applyVisionSourceTransition` in `BoloKit`, shared by both `HostGameEngine.updateFogVision`
+and #159's client-side `FogVisionTracker` so the new logic isn't duplicated a third time).
+Added base vision anyway as a deliberate product enhancement (Jerod's explicit decision),
+gated behind a new host-facing `GameState.baseVisionEnabled` toggle (default **off** --
+oracle-authentic "genuine" play unless a host opts into "enhanced" play) surfaced in
+`HostGameView`'s Game Settings section. `docs/CONSTRAINTS.md`'s "Fog-of-war" section had a
+pre-existing wrong claim ("pill/base vision 15×15 tiles" as an oracle fact) corrected in
+the same pass. Verified: 14 `FogVisionTrackerTests` (7 new) and 3 new live-engine
+`HostGameEngineFogVisionTests` cases, all green; `swift build`/`xcodebuild build` clean.
+
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
 **Former "environment issue" (fixed):** hosting on any fixed port failed with `NWListener` EINVAL and the app fell back to local-only play with an on-screen notice. It was a bug in this port, not macOS: the listeners set the port twice (`requiredLocalEndpoint` and `NWListener(using:on:)`). Fixed on `fix-listener-einval`; regression test `HostListenerFixedPortTests`. The v1.8.0 issues below were blocked on it and can be picked up again.

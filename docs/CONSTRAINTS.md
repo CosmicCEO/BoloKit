@@ -105,9 +105,22 @@ XBolo must match original Bolo 0.99.7, **not** WinBolo:
   fog boundary. The math is oracle-verified; the wiring is a reconstruction with no
   oracle-exercised behavior to verify against.
 - Vision-rectangle sizes have no `bolo.h` macro — hardcoded literals at each `client.c`
-  call site: tank vision 29×29 tiles (`pos ± 14`), pill/base vision 15×15 tiles
-  (`pos ± 7`), hidden-mine proximity 2.0 world units, `calcVis` self-visibility floor 3.0
-  world units.
+  call site: tank vision 29×29 tiles (`pos ± 14`), pill vision 15×15 tiles (`pos ± 7`),
+  hidden-mine proximity 2.0 world units, `calcVis` self-visibility floor 3.0 world units.
+- **Pill build/repair as a vision source is oracle-verified; base capture as one is not
+  (#72, corrected 2026-09-24 — this bullet previously claimed "pill/base vision 15×15
+  tiles" as if both were an oracle fact, which was wrong for bases).** Confirmed by
+  exhaustive grep of every `client.bases[]` reference in `client.c`: base capture
+  (`recvsrcapturebase`, `client.c:2455-2496`) never calls `increasevis`/`decreasevis` —
+  bases have no vision mechanism in the oracle at all. Pills, by contrast, really are
+  oracle-verified vision sources at `makerect(pillX - 7, pillY - 7, 15, 15)` — but only at
+  **build** (`recvsrbuildpill`, `client.c:2356-2396`) and **repair-from-destroyed**
+  (`client.c:2193-2233`), never at capture itself: a just-captured pill's `armour` becomes
+  `pillOnboard` (carried by the tank, no fixed position), so capture alone is
+  architecturally never a trigger, matching the port's own `Pill.isOnboard`/`.isDead`
+  gates. `GameState.baseVisionEnabled` (default `false`) adds base-as-vision-source anyway
+  as a deliberate host-toggled product enhancement beyond the oracle — reusing the pill's
+  same 15×15 size for consistency, not a second invented magic number.
 
 ## Host is also a client (v1.5.0 live-hosting fixes)
 

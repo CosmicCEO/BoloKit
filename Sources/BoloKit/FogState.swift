@@ -77,6 +77,54 @@ public func tankVisionRect(around pos: Vec2f) -> Recti {
     makerect(Int32(pos.x) - 14, Int32(pos.y) - 14, 29, 29)
 }
 
+/// #72: the fixed vision rect a built pill (oracle-verified) or, if
+/// `GameState.baseVisionEnabled` is on, a captured base (a deliberate deviation -- see
+/// that property's own doc comment) projects -- 15×15 tiles centered on its own tile,
+/// `tankVisionRect`'s shape at a smaller size. Oracle-verified for pills:
+/// `makerect(pillX - 7, pillY - 7, 15, 15)` at every one of `client.c`'s pill-vision call
+/// sites (`1549,2013,2205,2383,2954,2993,6359,6436`) -- no `bolo.h` macro exists for this
+/// either, matching `tankVisionRect`'s own precedent. Bases reuse this exact size for
+/// consistency rather than inventing a second magic number, since the oracle has no size
+/// of its own to port for them.
+public func structureVisionRect(around tile: Pointi) -> Recti {
+    makerect(tile.x - 7, tile.y - 7, 15, 15)
+}
+
+/// #72: factors out the "moved / newly-contributing / stopped-contributing" three-way
+/// branch that both `HostGameEngine.updateFogVision`'s tank loop and
+/// `updateFogVisionTracker`'s tank loop already duplicate inline -- used by the new
+/// pill/base loops in both places so this logic isn't written a third time. Deliberately
+/// **not** used to refactor the existing tank loops in this pass (shipped, tested, out of
+/// scope) -- new code shares an abstraction; old code stays untouched. Returns the rect to
+/// cache for next tick's diff (`nil` when not currently contributing).
+public func applyVisionSourceTransition(
+    shouldContribute: Bool, currentRect: Recti, previousRect: Recti?,
+    fogState: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    hiddenMines: Bool, observer: Int, players: [PlayerState]
+) -> Recti? {
+    if shouldContribute {
+        if let previousRect, previousRect.origin != currentRect.origin {
+            increaseVis(
+                currentRect, state: &fogState, terrain: terrain, pills: pills, bases: bases,
+                hiddenMines: hiddenMines, observer: observer, players: players
+            )
+            decreaseVis(previousRect, state: &fogState)
+            return currentRect
+        } else if previousRect == nil {
+            increaseVis(
+                currentRect, state: &fogState, terrain: terrain, pills: pills, bases: bases,
+                hiddenMines: hiddenMines, observer: observer, players: players
+            )
+            return currentRect
+        }
+        return previousRect // unchanged
+    } else if let previousRect {
+        decreaseVis(previousRect, state: &fogState)
+        return nil
+    }
+    return nil
+}
+
 // MARK: - increaseVis / decreaseVis
 
 /// Ported from `increasevis()` (`client.c:3876-3921`). Clips `r` to the map, increments
@@ -323,6 +371,11 @@ public struct FogVisionTracker: Sendable {
     /// isn't a member of this struct (kept as a free function, matching `increaseVis`/
     /// `decreaseVis`'s own shape, rather than adding a `BoloKit`-only mutating method).
     var visionSourceRect: [Int: Recti] = [:]
+    /// #72: same shape as `visionSourceRect`, keyed by `state.pills`/`state.bases` array
+    /// index instead of player index -- a separate dictionary per object kind, not a
+    /// shared key space, since a pill index and a player index would otherwise collide.
+    var visionSourcePillRect: [Int: Recti] = [:]
+    var visionSourceBaseRect: [Int: Recti] = [:]
 
     public init() {}
 }
@@ -367,6 +420,41 @@ public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: 
         } else if let previousRect {
             decreaseVis(previousRect, state: &tracker.fogState)
             tracker.visionSourceRect[mover] = nil
+        }
+    }
+
+    for pill in state.pills.indices {
+        let key = pill
+        let shouldContribute = state.pills[pill].owner != playerNeutral
+            && testAlliance(observer, Int(state.pills[pill].owner), players: state.players)
+            && !state.pills[pill].isOnboard && !state.pills[pill].isDead
+        let currentRect = structureVisionRect(around: Pointi(x: Int32(state.pills[pill].x), y: Int32(state.pills[pill].y)))
+        tracker.visionSourcePillRect[key] = applyVisionSourceTransition(
+            shouldContribute: shouldContribute, currentRect: currentRect, previousRect: tracker.visionSourcePillRect[key],
+            fogState: &tracker.fogState, terrain: state.terrain, pills: state.pills, bases: state.bases,
+            hiddenMines: state.hiddenMines, observer: observer, players: state.players
+        )
+    }
+
+    if state.baseVisionEnabled {
+        for base in state.bases.indices {
+            let key = base
+            let shouldContribute = state.bases[base].owner != playerNeutral
+                && testAlliance(observer, Int(state.bases[base].owner), players: state.players)
+            let currentRect = structureVisionRect(around: Pointi(x: Int32(state.bases[base].x), y: Int32(state.bases[base].y)))
+            tracker.visionSourceBaseRect[key] = applyVisionSourceTransition(
+                shouldContribute: shouldContribute, currentRect: currentRect, previousRect: tracker.visionSourceBaseRect[key],
+                fogState: &tracker.fogState, terrain: state.terrain, pills: state.pills, bases: state.bases,
+                hiddenMines: state.hiddenMines, observer: observer, players: state.players
+            )
+        }
+    } else if !tracker.visionSourceBaseRect.isEmpty {
+        // #72: the host toggle was turned off mid-session -- decay every currently-active
+        // base vision source cleanly (matches the generic diff's own "stopped contributing"
+        // branch) rather than leaving stale fog counts stuck incremented forever.
+        for (key, rect) in tracker.visionSourceBaseRect {
+            decreaseVis(rect, state: &tracker.fogState)
+            tracker.visionSourceBaseRect[key] = nil
         }
     }
 

@@ -91,6 +91,15 @@ public struct GameState: Sendable {
     /// `BoloPreamble`); since v1.5.0 (#1), `FogState` and the host's
     /// per-recipient wire redaction both read this to gate mine visibility.
     public var hiddenMines: Bool
+    /// #72: whether an owned, built base projects its own 15×15 fog vision, the same shape
+    /// as a built pill (`structureVisionRect`). **No oracle equivalent** — confirmed against
+    /// `Reference/c/client.c`: base capture (`recvsrcapturebase`) never calls
+    /// `increasevis`/`decreasevis` anywhere in the C source; bases simply have no vision
+    /// mechanism there. This is a deliberate product enhancement (Jerod, 2026-09-24), not a
+    /// parity fix, gated behind a host setting so a host can choose oracle-authentic
+    /// ("genuine") play (off, the default) or the QoL improvement ("enhanced" play, on) --
+    /// same reasoning `hiddenMines`'s own comment gives for its default.
+    public var baseVisionEnabled: Bool
     /// Mirrors `server.allowjoin` — `joinplayerserver()`'s `kDisallowJOIN`
     /// gate (Wave 6.3).
     public var allowJoin: Bool
@@ -128,6 +137,8 @@ public struct GameState: Sendable {
         // parity fix; the oracle itself defaults this off (`DefaultPreferences.plist`'s
         // `hostHiddenMinesBool`).
         hiddenMines: Bool = true,
+        // #72: default off -- oracle-authentic behavior unless a host explicitly opts in.
+        baseVisionEnabled: Bool = false,
         allowJoin: Bool = true,
         passwordRequired: Bool = false,
         serverPassword: String = "",
@@ -153,6 +164,7 @@ public struct GameState: Sendable {
         self.baseControlCounter = baseControlCounter
         self.pauseOnPlayerExit = pauseOnPlayerExit
         self.hiddenMines = hiddenMines
+        self.baseVisionEnabled = baseVisionEnabled
         self.allowJoin = allowJoin
         self.passwordRequired = passwordRequired
         self.serverPassword = serverPassword

@@ -179,6 +179,12 @@ public final class HostGameEngine: @unchecked Sendable {
     /// contributing (disconnected, alliance broken) be correctly `decreaseVis`'d using
     /// wherever they last actually revealed from, not a value re-derived after the fact.
     private var visionSourceRect: [Int: Recti] = [:]
+    /// #72: same role as `visionSourceRect`, per observer, but keyed by pill/base array
+    /// index instead of player index -- a separate `[observer: [index: Recti]]` dictionary
+    /// per object kind (not sharing `visionSourceRect`'s key space, since a pill index and
+    /// a player index would otherwise collide).
+    private var visionSourcePillRect: [Int: [Int: Recti]] = [:]
+    private var visionSourceBaseRect: [Int: [Int: Recti]] = [:]
 
     /// **B.7 (D108):** fired at the end of every `tick()`, once `runTick` has already mutated
     /// `state` for that tick, with a value-type snapshot (never the live `state` itself, which
@@ -1101,6 +1107,62 @@ public final class HostGameEngine: @unchecked Sendable {
                 }
             }
 
+            // #72: a built, owned/allied pill is its own 15×15 vision source (oracle-verified
+            // -- see `structureVisionRect`'s own doc comment). Uses the shared
+            // `applyVisionSourceTransition` instead of duplicating the tank loop's inline
+            // branch a third time between here and `updateFogVisionTracker`.
+            for pill in state.pills.indices {
+                let shouldContribute = state.pills[pill].owner != playerNeutral
+                    && testAlliance(observer, Int(state.pills[pill].owner), players: state.players)
+                    && !state.pills[pill].isOnboard && !state.pills[pill].isDead
+                let currentRect = structureVisionRect(
+                    around: Pointi(x: Int32(state.pills[pill].x), y: Int32(state.pills[pill].y))
+                )
+                let before = fogState
+                let result = applyVisionSourceTransition(
+                    shouldContribute: shouldContribute, currentRect: currentRect,
+                    previousRect: visionSourcePillRect[observer]?[pill], fogState: &fogState,
+                    terrain: state.terrain, pills: state.pills, bases: state.bases,
+                    hiddenMines: state.hiddenMines, observer: observer, players: state.players
+                )
+                visionSourcePillRect[observer, default: [:]][pill] = result
+                if shouldContribute {
+                    queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer, fogState: fogState)
+                }
+            }
+
+            // #72: captured bases are a deliberate product deviation, not oracle-matched --
+            // see `GameState.baseVisionEnabled`'s own doc comment. Off by default; when off,
+            // decay any already-active base vision cleanly instead of leaving it stuck.
+            if state.baseVisionEnabled {
+                for base in state.bases.indices {
+                    let shouldContribute = state.bases[base].owner != playerNeutral
+                        && testAlliance(observer, Int(state.bases[base].owner), players: state.players)
+                    let currentRect = structureVisionRect(
+                        around: Pointi(x: Int32(state.bases[base].x), y: Int32(state.bases[base].y))
+                    )
+                    let before = fogState
+                    let result = applyVisionSourceTransition(
+                        shouldContribute: shouldContribute, currentRect: currentRect,
+                        previousRect: visionSourceBaseRect[observer]?[base], fogState: &fogState,
+                        terrain: state.terrain, pills: state.pills, bases: state.bases,
+                        hiddenMines: state.hiddenMines, observer: observer, players: state.players
+                    )
+                    visionSourceBaseRect[observer, default: [:]][base] = result
+                    if shouldContribute {
+                        queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer, fogState: fogState)
+                    }
+                }
+            } else if let activeRects = visionSourceBaseRect[observer], !activeRects.isEmpty {
+                // Matches the tank loop's own "stopped contributing" branch: `decreaseVis`
+                // only ever re-fogs tiles, it never reveals anything new, so there's no
+                // `queueReveals` call here either.
+                for (base, rect) in activeRects {
+                    decreaseVis(rect, state: &fogState)
+                    visionSourceBaseRect[observer]?[base] = nil
+                }
+            }
+
             // Every connected slot gets its own proximity reveal around its own tank, not
             // just the host's `state.localPlayer` -- C only ever does this for "the local
             // player" because each C client is its own single-player process; this port's
@@ -1121,16 +1183,14 @@ public final class HostGameEngine: @unchecked Sendable {
             fogStates[observer] = fogState
         }
 
-        // v1.5.0 #1 known gap, deliberately deferred (not skipped, matching this file's own
-        // `MineChain.swift`-precedent convention for flagging incomplete-but-tracked work):
-        // pill/base state transitions (capture, build, deploy/onboard) do not yet act as
-        // their own 15×15 vision sources the way C's own pill/base-related call sites do
-        // (`client.c:1549,2013,2205,2383,2954,2993,6359,6436`). A pill/base a player has
-        // never had a tank near still gets its own tile revealed via `fogTileFor`'s live
-        // pill/base occupancy branch the moment ANY vision source (tank movement above)
-        // crosses that tile, so this is a completeness gap on the *vision source* side
-        // (structures projecting their own vision), not a correctness gap on the
-        // *resolution* side (what a tile displays once seen).
+        // v1.5.0 #1's known gap here is now closed by #72: a built, owned/allied pill is
+        // its own 15×15 vision source (oracle-verified against `client.c:1549,2013,2205,
+        // 2383,2954,2993,6359,6436` -- capturing a pill is architecturally never a trigger,
+        // since a just-captured pill is carried onboard a tank with no fixed position;
+        // only build and repair-from-destroyed ever call `increasevis` in the C source).
+        // A captured base is *also* a vision source when `GameState.baseVisionEnabled` is
+        // on -- a deliberate product deviation with no oracle equivalent at all (see that
+        // property's own doc comment), off by default.
         return revealsToSend
     }
 

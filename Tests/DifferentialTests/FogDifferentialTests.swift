@@ -563,6 +563,119 @@ import CXBolo
 
         #expect(tracker.fogState.fog[100 * 256 + 100] == 1, "still covered by player 0's own tank")
     }
+
+    // MARK: - #72: pill vision (oracle-verified) and base vision (deliberate deviation)
+
+    private func twoPlayerStateFarApart() -> GameState {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = (1 << 0) | (1 << 1)
+        state.players[0].tank = BoloKit.Vec2f(x: 10, y: 10) // far from the pill/base under test
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = (1 << 1) | (1 << 0)
+        state.players[1].tank = BoloKit.Vec2f(x: 10, y: 10)
+        return state
+    }
+
+    @Test func testBuiltOwnedPillRevealsItsArea() {
+        var state = twoPlayerStateFarApart()
+        state.pills = [Pill(x: 100, y: 100, armour: 10, owner: 0, speed: 10, counter: 0)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] > 0, "a built, owned pill projects its own 15x15 vision")
+    }
+
+    @Test func testOnboardPillDoesNotReveal() {
+        // #72 oracle correction: a just-captured pill is carried (armour == pillOnboard),
+        // not a fixed-position vision source -- matches client.c exactly (capture alone
+        // never calls increasevis).
+        var state = twoPlayerStateFarApart()
+        state.pills = [Pill(x: 100, y: 100, armour: pillOnboard, owner: 0, speed: 10, counter: 0)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "an onboard (carried, not built) pill must not reveal")
+    }
+
+    @Test func testDestroyedPillDoesNotReveal() {
+        var state = twoPlayerStateFarApart()
+        state.pills = [Pill(x: 100, y: 100, armour: 0, owner: 0, speed: 10, counter: 0)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "a destroyed pill (armour 0) must not reveal")
+    }
+
+    @Test func testUnalliedPillDoesNotReveal() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState(), PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].alliance = 1 << 0
+        state.players[0].tank = BoloKit.Vec2f(x: 10, y: 10)
+        state.players[1].used = true
+        state.players[1].connected = true
+        state.players[1].alliance = 1 << 1 // not allied with player 0
+        state.pills = [Pill(x: 100, y: 100, armour: 10, owner: 1, speed: 10, counter: 0)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "an unallied pill must not reveal")
+    }
+
+    @Test func testBaseVisionOffByDefaultDoesNotReveal() {
+        var state = twoPlayerStateFarApart()
+        #expect(!state.baseVisionEnabled, "default matches the oracle -- no base vision")
+        state.bases = [Base(x: 100, y: 100, armour: 10, owner: 0, shells: 10, mines: 10)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "base vision is opt-in; off by default")
+    }
+
+    @Test func testBaseVisionOnRevealsAndOffDecays() {
+        var state = twoPlayerStateFarApart()
+        state.baseVisionEnabled = true
+        state.bases = [Base(x: 100, y: 100, armour: 10, owner: 0, shells: 10, mines: 10)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[100 * 256 + 100] > 0, "base vision on: a captured base reveals its area")
+
+        state.baseVisionEnabled = false
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "toggling off decays any already-active base vision")
+    }
+
+    @Test func testBaseRecaptureTransfersVisionToTheNewOwnersAllies() {
+        var state = twoPlayerStateFarApart()
+        state.baseVisionEnabled = true
+        state.players.append(PlayerState())
+        state.players[2].used = true
+        state.players[2].connected = true
+        state.players[2].alliance = 1 << 2 // not allied with player 0
+        state.bases = [Base(x: 100, y: 100, armour: 10, owner: 0, shells: 10, mines: 10)]
+        var tracker = FogVisionTracker()
+
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+        #expect(tracker.fogState.fog[100 * 256 + 100] > 0, "player 0 owns the base -- revealed")
+
+        state.bases[0].owner = 2 // captured by an unallied player
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[100 * 256 + 100] == 0, "losing ownership must decay the vision it was contributing")
+    }
 }
 
 @Suite struct RevealNearbyHiddenMinesTests {

@@ -1249,6 +1249,65 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         #expect(SRRevealTerrain.decode(revealBytes) != nil, "a remote player must receive SRRevealTerrain as their own vision reveals tiles")
     }
 
+    // MARK: - #72: pill (oracle-verified) and base (deliberate deviation) vision sources
+
+    @Test func testBuiltPillIsItsOwnVisionSourceOnTheHost() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+            state.pills = [Pill(x: 150, y: 150, armour: 10, owner: 0, speed: 10, counter: 0)]
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[150 * 256 + 150] ?? 0) > 0, "a built, owned pill is its own 15x15 vision source")
+    }
+
+    @Test func testCapturedBaseIsAVisionSourceOnlyWhenEnabled() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+            state.baseVisionEnabled = true
+            state.bases = [Base(x: 160, y: 160, armour: 10, owner: 0, shells: 10, mines: 10)]
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) {
+            (engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) > 0
+        }
+        #expect((engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) > 0, "base vision, once enabled, reveals a captured base's area")
+    }
+
+    @Test func testBaseVisionStaysOffByDefaultOnTheHost() async throws {
+        let (engine, _, _) = try await makeEngine { state in
+            state.hiddenMines = true
+            state.players[0].connected = true
+            state.players[0].used = true
+            state.players[0].dead = false
+            state.players[0].tank = Vec2f(x: 105, y: 105)
+            state.players[0].alliance = 1 << 0
+            state.bases = [Base(x: 160, y: 160, armour: 10, owner: 0, shells: 10, mines: 10)]
+        }
+        defer { engine.stop() }
+        engine.start()
+
+        try await waitForCondition(timeout: 2) { engine.fogState(for: 0) != nil }
+        try await Task.sleep(nanoseconds: 100_000_000) // a handful of ticks with nothing changing
+        #expect((engine.fogState(for: 0)?.fog[160 * 256 + 160] ?? 0) == 0, "base vision must default off, matching the oracle")
+    }
+
     // MARK: - Issue #76: host-laid mines must reach remote players
 
     /// Joins a remote connection into `engine` and consumes the join handshake (status byte,

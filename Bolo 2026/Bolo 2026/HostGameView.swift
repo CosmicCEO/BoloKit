@@ -87,6 +87,10 @@ struct HostGameView: View {
     // the oracle only ever exposed this via the headless Dedicated Host CLI's `-e` flag, never in
     // its own GUI.
     @State private var pauseOnPlayerExitEnabled = false
+    // #72: surfaces `GameState.baseVisionEnabled` -- no oracle equivalent (a captured base
+    // never projects vision in `Reference/c`), a deliberate product enhancement a host can
+    // opt into for "enhanced" play while defaulting off for oracle-authentic "genuine" play.
+    @State private var baseVisionEnabled = false
     @State private var passwordEnabled = false
     @State private var passwordText = ""
     @State private var dominationType: DominationType = .open
@@ -151,6 +155,8 @@ struct HostGameView: View {
                 }
                 Toggle("Hidden Mines", isOn: $hiddenMinesEnabled)
                 Toggle("Pause on Player Exit", isOn: $pauseOnPlayerExitEnabled)
+                Toggle("Base Vision", isOn: $baseVisionEnabled)
+                    .help("Enhanced play: a captured base reveals the area around it, like a built pillbox. Off matches the original game exactly.")
                 Toggle("Password", isOn: $passwordEnabled)
                 if passwordEnabled {
                     SecureField("Password", text: $passwordText)
@@ -322,6 +328,7 @@ struct HostGameView: View {
         state.timeLimit = timeLimitEnabled ? Int(timeLimitMinutes) * 60 : 0
         state.hiddenMines = hiddenMinesEnabled
         state.pauseOnPlayerExit = pauseOnPlayerExitEnabled
+        state.baseVisionEnabled = baseVisionEnabled
         state.passwordRequired = passwordEnabled
         state.serverPassword = passwordEnabled ? passwordText : ""
         state.dominationType = dominationType
