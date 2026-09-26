@@ -92,15 +92,24 @@ final class GameLifecycle: @unchecked Sendable {
         state.localPlayer = Self.hostSlot
         state.local.respawnCounter = respawnTicks - 1
 
-        // A modest grass arena (100..<160 on each axis) with a lake, a forest patch for
-        // build materials, and one neutral pill/base pair worth fighting over. Fully grown
-        // grass, matching what a decoded join-path map yields (avoids a growth-variant-only
-        // divergence between host and guest terrain copies).
-        for y in 100..<160 { for x in 100..<160 { state.terrain.storage[y * 256 + x] = Terrain.grass3.rawValue } }
+        // A modest grass arena (90..<170 on each axis -- a generous 15-tile margin around both
+        // start points, found the hard way: a first version stopped the grass at 100..<160 with
+        // starts right at (105,105)/(155,155), and real play surfaced a genuine infinite
+        // death-loop where the spawn/parachute scatter occasionally landed a tank just outside
+        // that boundary, into the default map's open sea, drowning it every single respawn) with
+        // a lake, a forest patch for build materials, and one neutral pill/base pair worth
+        // fighting over. Fully grown grass, matching what a decoded join-path map yields
+        // (avoids a growth-variant-only divergence between host and guest terrain copies).
+        for y in 90..<170 { for x in 90..<170 { state.terrain.storage[y * 256 + x] = Terrain.grass3.rawValue } }
         for y in 125..<135 { for x in 120..<130 { state.terrain[x, y] = .sea } }
         for y in 100..<108 { for x in 145..<155 { state.terrain[x, y] = .forest } }
         state.starts = [Start(x: 105, y: 105, dir: 4), Start(x: 155, y: 155, dir: 12)]
-        state.pills = [Pill(x: 130, y: 105, armour: 20, owner: playerNeutral, speed: 50, counter: 0)]
+        // `armour: 20` here previously exceeded `maxPillArmour` (15) -- `displayTile(forPill:)`
+        // (`BMap.swift:101`) computes `Tile.neutralPill00.rawValue + armour` unconditionally and
+        // force-unwraps the result, so a pill armour above 15 crashed the whole process the
+        // moment anything asked for that tile's display value. Found by real play (a build/
+        // repair command on this pill), not by inspection -- exactly what this tool is for.
+        state.pills = [Pill(x: 130, y: 105, armour: UInt8(maxPillArmour), owner: playerNeutral, speed: 50, counter: 0)]
         state.bases = [Base(x: 105, y: 155, armour: 20, owner: playerNeutral, shells: 30, mines: 5)]
         return state
     }
