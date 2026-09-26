@@ -29,6 +29,10 @@ let package = Package(
         .executableTarget(name: "BoloGlyphs", dependencies: ["BoloGlyphsCore"]),
         .target(name: "BoloSoundsCore"),
         .executableTarget(name: "BoloSounds", dependencies: ["BoloSoundsCore"]),
+        // Agent-vs-agent soak/anomaly-hunting tool (not shipped game functionality) --
+        // `swift run BoloArena` starts a real host+guest game with two control ports two
+        // independent Claude agents drive by hand, one seat each.
+        .executableTarget(name: "BoloArena", dependencies: ["BoloKit", "BoloNet"]),
         .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore", "BoloSoundsCore"]),
         .testTarget(
             name: "DifferentialTests",
