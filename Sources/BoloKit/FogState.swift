@@ -394,7 +394,15 @@ public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: 
     guard state.hiddenMines else { return }
 
     for mover in state.players.indices {
-        let shouldContribute = state.players[mover].connected
+        // A newly-joined player's tank sits at the `(0, 0)` placeholder until their own
+        // `spawn()` actually runs (`HostListener.swift`'s own doc comment on `applyJoin`
+        // documents this exact placeholder and the join-time reveal bug it already caused
+        // once). Without this `!dead` check, a not-yet-spawned (or mid-respawn) mover's
+        // placeholder position was treated as a live 29x29 vision source, sticking a
+        // permanent, erroneous reveal (terrain and any pill/base sitting there) around
+        // world origin into `seenTiles` -- which never clears once the mover's real spawn
+        // position arrives, since `decreaseVis` deliberately never un-reveals a tile.
+        let shouldContribute = state.players[mover].connected && !state.players[mover].dead
             && testAlliance(observer, mover, players: state.players)
         let previousRect = tracker.visionSourceRect[mover]
 

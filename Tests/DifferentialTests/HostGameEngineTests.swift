@@ -1215,15 +1215,25 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
     /// encoded/decoded/dispatched but never constructed and sent by any production code path
     /// -- a real, network-joined player's own client never learned about newly-revealed
     /// terrain at all. This joins a real remote connection into a live engine and confirms a
-    /// `SRRevealTerrain` message actually arrives on it (fired by `updateFogVision`'s own
-    /// per-tick self-vision bootstrap, the same mechanism that will later report their real
-    /// spawn and any territory they explore).
-    @Test func hostGameEngineSendsRevealTerrainToARemoteJoinedPlayer() async throws {
+    /// `SRRevealTerrain` message actually arrives on it, fired by `updateFogVision`'s own
+    /// per-tick vision tracking once the joined remote actually spawns.
+    ///
+    /// **Not immediately on join.** A freshly-joined player is `dead`, tank at the `(0, 0)`
+    /// placeholder, until their own respawn countdown elapses and `spawn()` runs -- exactly
+    /// like an ordinary in-game death/respawn (`HostListener.swift`'s `applyJoin` doc comment).
+    /// `shouldContribute`'s `!dead` gate (this fix) means no reveal fires for this player until
+    /// that real spawn happens, so this test enables `hostSimulatesRemotePlayers` and waits for
+    /// it, matching `hostRespawnOfAJoinedRemoteArrivesAsATeleportStatus`'s own identical wait --
+    /// before this fix, the reveal fired immediately, off the still-`(0, 0)` placeholder, which
+    /// was itself the live bug (a stray reveal -- and any pill/base sitting at world origin --
+    /// stuck permanently visible to the join client, reported with a screenshot).
+    @Test(.timeLimit(.minutes(1))) func hostGameEngineSendsRevealTerrainToARemoteJoinedPlayer() async throws {
         let (engine, tcpPort, _) = try await makeEngine { state in
             state.hiddenMines = true
             state.players[0].used = true
             state.players[0].connected = true
             state.players[0].dead = false
+            state.hostSimulatesRemotePlayers = true
         }
         defer { engine.stop() }
         engine.start()
@@ -1245,8 +1255,16 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
         _ = try await receiveExactly(joinClient, Int(mapLength))
         _ = try await receiveExactly(joinClient, SRPlayerJoin.wireSize)
 
-        let revealBytes = try await receiveExactly(joinClient, SRRevealTerrain.wireSize)
-        #expect(SRRevealTerrain.decode(revealBytes) != nil, "a remote player must receive SRRevealTerrain as their own vision reveals tiles")
+        // The joined remote is still `dead` at the placeholder position -- wait for its real
+        // respawn countdown to elapse (same margin as the sibling teleport test) before its own
+        // vision bootstrap has anything to reveal, then drain everything that arrived in that
+        // window (a busy tick loop interleaves other broadcasts too, not just the one reveal)
+        // rather than assuming the very next fixed-size chunk off the wire is it.
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        engine.submitPauseResumeServer()
+        let (_, reveals) = try await drainAllUntilPause(joinClient)
+
+        #expect(!reveals.isEmpty, "a remote player must receive SRRevealTerrain as their own vision reveals tiles")
     }
 
     // MARK: - #72: pill (oracle-verified) and base (deliberate deviation) vision sources
@@ -1350,6 +1368,12 @@ private func sendStreamBytes(_ connection: NWConnection, _ bytes: [UInt8]) async
             case ServerOpcode.dropMine.rawValue:
                 let rest = try await receiveExactly(connection, SRDropMine.wireSize - 1)
                 if let mine = SRDropMine.decode([opcode] + rest) { mines.append(mine) }
+            case ServerOpcode.tankStatus.rawValue:
+                // Discarded here, same as `drainStatusesUntilPause`'s own reveal/mine cases --
+                // a `hostSimulatesRemotePlayers` scenario also broadcasts the joined remote's
+                // own respawn teleport in this same window; callers only interested in
+                // mines/reveals shouldn't have to know every other broadcast shape to skip past it.
+                _ = try await receiveExactly(connection, SRTankStatus.wireSize - 1)
             default:
                 throw HarnessError.shortRead
             }

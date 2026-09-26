@@ -1067,7 +1067,16 @@ public final class HostGameEngine: @unchecked Sendable {
             var fogState = fogStates[observer] ?? FogState()
 
             for mover in state.players.indices {
-                let shouldContribute = state.players[mover].connected
+                // A newly-joined player's tank sits at the `(0, 0)` placeholder until their
+                // own `spawn()` actually runs (see `applyJoin`'s own doc comment in
+                // `HostListener.swift`, which already fixed the equivalent one-time reveal at
+                // accept time). Without this `!dead` check, this per-tick loop reintroduced
+                // the same bug on the very next real tick: a not-yet-spawned (or mid-respawn)
+                // mover's placeholder position counted as a live 29x29 vision source, so a
+                // real `SRRevealTerrain` batch for world origin's corner -- terrain and any
+                // pill/base sitting there -- was sent to every allied observer and stuck
+                // (sticky `seenTiles`) even after the mover's real spawn position arrived.
+                let shouldContribute = state.players[mover].connected && !state.players[mover].dead
                     && testAlliance(observer, mover, players: state.players)
                 let key = observer * maxPlayers + mover
                 let previousRect = visionSourceRect[key]

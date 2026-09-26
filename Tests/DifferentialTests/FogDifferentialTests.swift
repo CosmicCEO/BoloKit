@@ -439,6 +439,7 @@ import CXBolo
         state.players = [PlayerState()]
         state.players[0].used = true
         state.players[0].connected = true
+        state.players[0].dead = false
         state.players[0].alliance = 1 << 0 // self-allied, matching HostGameEngine's own test setup
         state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
         var tracker = FogVisionTracker()
@@ -455,11 +456,13 @@ import CXBolo
         state.players = [PlayerState(), PlayerState()]
         state.players[0].used = true
         state.players[0].connected = true
+        state.players[0].dead = false
         state.players[0].alliance = (1 << 0) | (1 << 1)
         state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
 
         state.players[1].used = true
         state.players[1].connected = true
+        state.players[1].dead = false
         state.players[1].alliance = (1 << 1) | (1 << 0)
         state.players[1].tank = BoloKit.Vec2f(x: 150, y: 150) // outside player 0's own vision
 
@@ -490,12 +493,47 @@ import CXBolo
         #expect(tracker.fogState.seenTiles[150 * 256 + 150] == .unknown)
     }
 
+    // A freshly-joined player's tank sits at the `(0, 0)` placeholder (`GameState.players`'
+    // default) until their own `spawn()` actually runs -- `HostListener.swift`'s `applyJoin`
+    // doc comment documents this exact placeholder, and a real bug it already caused once:
+    // a join-time reveal computed against it, live-reported with a screenshot showing pill/
+    // base icons stuck in never-explored territory. That one-time reveal was removed, but
+    // this per-tick tracker (and its host-side twin, `HostGameEngine.updateFogVision`) still
+    // treated a not-yet-spawned (`dead == true`) mover's placeholder position as a live vision
+    // source on every regular tick before the fix below -- reintroducing the identical bug
+    // from the very next tick after join, not just at accept time.
+    @Test func testNotYetSpawnedMoverAtThePlaceholderPositionIsNotAVisionSource() {
+        var state = GameState()
+        state.hiddenMines = true
+        state.players = [PlayerState()]
+        state.players[0].used = true
+        state.players[0].connected = true
+        state.players[0].dead = true // not yet spawned -- tank still at its (0, 0) default
+        state.players[0].alliance = 1 << 0
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[0] == 0, "a not-yet-spawned mover must not reveal anything around the placeholder position")
+        #expect(tracker.fogState.seenTiles[0] == .unknown)
+
+        // Once the real spawn happens (dead flips false, tank moves to its real position),
+        // vision must start fresh there -- the placeholder tile stays permanently unrevealed.
+        state.players[0].dead = false
+        state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
+        updateFogVisionTracker(&tracker, observer: 0, state: state)
+
+        #expect(tracker.fogState.fog[105 * 256 + 105] > 0, "vision starts at the real spawn position")
+        #expect(tracker.fogState.seenTiles[0] == .unknown, "the placeholder-position tile was never actually revealed")
+    }
+
     @Test func testMovementDiffsTheVisionSourceRectInsteadOfDoubleCounting() {
         var state = GameState()
         state.hiddenMines = true
         state.players = [PlayerState()]
         state.players[0].used = true
         state.players[0].connected = true
+        state.players[0].dead = false
         state.players[0].alliance = 1 << 0
         state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
         var tracker = FogVisionTracker()
@@ -517,11 +555,13 @@ import CXBolo
         state.players = [PlayerState(), PlayerState()]
         state.players[0].used = true
         state.players[0].connected = true
+        state.players[0].dead = false
         state.players[0].alliance = (1 << 0) | (1 << 1)
         state.players[0].tank = BoloKit.Vec2f(x: 105, y: 105)
 
         state.players[1].used = true
         state.players[1].connected = true
+        state.players[1].dead = false
         state.players[1].alliance = (1 << 1) | (1 << 0)
         state.players[1].tank = BoloKit.Vec2f(x: 150, y: 150)
 
@@ -546,11 +586,13 @@ import CXBolo
         state.players = [PlayerState(), PlayerState()]
         state.players[0].used = true
         state.players[0].connected = true
+        state.players[0].dead = false
         state.players[0].alliance = (1 << 0) | (1 << 1)
         state.players[0].tank = BoloKit.Vec2f(x: 100, y: 100)
 
         state.players[1].used = true
         state.players[1].connected = true
+        state.players[1].dead = false
         state.players[1].alliance = (1 << 1) | (1 << 0)
         state.players[1].tank = BoloKit.Vec2f(x: 101, y: 101) // overlapping 29x29 vision rect
 
