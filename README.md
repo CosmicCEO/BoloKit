@@ -41,6 +41,14 @@ one tab and join in another on the same Mac -- a convenient way to drive two tan
 second machine required. See [#144](https://github.com/CosmicCEO/BoloKit/issues/144) for
 follow-up on formalizing this into a supported mode.
 
+## BoloArena
+
+`swift run BoloArena` runs a real headless host+guest game behind two independent local HTTP
+control ports (default 9101/9102) — a soak/anomaly-hunting tool, not shipped game functionality,
+built so two agents (or a human via `curl`) can actually play a real match and surface unexpected
+behavior. Supports the built-in test map or a real `.map` file via `BOLO_ARENA_MAP_PATH`. See
+`Sources/BoloArena/main.swift` for the command protocol.
+
 ## Approach
 
 - `Reference/` holds the original xbolo C/Objective-C source as a git submodule. It is
