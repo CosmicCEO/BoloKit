@@ -2,7 +2,11 @@ import BoloKit
 import BoloNet
 import Foundation
 
-enum GameLifecycleError: Error { case noPort }
+enum GameLifecycleError: Error {
+    case noPort
+    case mapReadFailed(String)
+    case mapDecodeFailed(String)
+}
 
 /// Owns one round's real host engine + real in-process guest, and the teardown/rebuild that
 /// `newgame` triggers. Mirrors `HostSimulatedSoakTests.swift`'s `makeSoakHost`/`runSoakRound`
@@ -18,13 +22,17 @@ final class GameLifecycle: @unchecked Sendable {
     private var joinedSession: TCPSession?
     private var udpSession: UDPSession?
     private let anomalyLog: AnomalyLog
+    /// A real `.map` (BMAPBOLO-format) file to load instead of the built-in hand-drawn patch --
+    /// `nil` keeps the existing built-in map.
+    private let mapPath: String?
 
     /// Host player is always slot 0; the guest's slot is whatever the join handshake assigns
     /// (recorded once the join succeeds).
     private static let hostSlot = 0
 
-    init(anomalyLog: AnomalyLog) {
+    init(anomalyLog: AnomalyLog, mapPath: String? = nil) {
         self.anomalyLog = anomalyLog
+        self.mapPath = mapPath
         hostBox = StateBox(state: GameState(), phase: .joining, gameId: 0, playerIndex: Self.hostSlot)
         guestBox = StateBox(state: GameState(), phase: .joining, gameId: 0, playerIndex: 0)
     }
@@ -79,7 +87,7 @@ final class GameLifecycle: @unchecked Sendable {
         engine = nil
     }
 
-    private func makeMap() -> GameState {
+    private func makeMap() throws -> GameState {
         var state = GameState()
         state.hostSimulatesRemotePlayers = true
         var host = PlayerState()
@@ -92,14 +100,39 @@ final class GameLifecycle: @unchecked Sendable {
         state.localPlayer = Self.hostSlot
         state.local.respawnCounter = respawnTicks - 1
 
-        // A modest grass arena (90..<170 on each axis -- a generous 15-tile margin around both
-        // start points, found the hard way: a first version stopped the grass at 100..<160 with
-        // starts right at (105,105)/(155,155), and real play surfaced a genuine infinite
-        // death-loop where the spawn/parachute scatter occasionally landed a tank just outside
-        // that boundary, into the default map's open sea, drowning it every single respawn) with
-        // a lake, a forest patch for build materials, and one neutral pill/base pair worth
-        // fighting over. Fully grown grass, matching what a decoded join-path map yields
-        // (avoids a growth-variant-only divergence between host and guest terrain copies).
+        if let mapPath {
+            try loadRealMap(path: mapPath, into: &state)
+        } else {
+            buildDefaultMap(into: &state)
+        }
+        return state
+    }
+
+    /// Loads a real `.map` (BMAPBOLO-format) file -- the same format the original game's map
+    /// editor and this port's own `encodeBMap` both produce -- straight off disk with
+    /// `decodeBMap`, which handles `terrain`/`pills`/`bases`/`starts` itself.
+    private func loadRealMap(path: String, into state: inout GameState) throws {
+        let bytes: [UInt8]
+        do {
+            bytes = try Array(Data(contentsOf: URL(fileURLWithPath: path)))
+        } catch {
+            throw GameLifecycleError.mapReadFailed("\(path): \(error)")
+        }
+        guard decodeBMap(bytes, into: &state) else {
+            throw GameLifecycleError.mapDecodeFailed(path)
+        }
+    }
+
+    /// The built-in hand-drawn patch, used only when no real map file is configured. A modest
+    /// grass arena (90..<170 on each axis -- a generous 15-tile margin around both start points,
+    /// found the hard way: a first version stopped the grass at 100..<160 with starts right at
+    /// (105,105)/(155,155), and real play surfaced a genuine infinite death-loop where the
+    /// spawn/parachute scatter occasionally landed a tank just outside that boundary, into the
+    /// default map's open sea, drowning it every single respawn) with a lake, a forest patch for
+    /// build materials, and one neutral pill/base pair worth fighting over. Fully grown grass,
+    /// matching what a decoded join-path map yields (avoids a growth-variant-only divergence
+    /// between host and guest terrain copies).
+    private func buildDefaultMap(into state: inout GameState) {
         for y in 90..<170 { for x in 90..<170 { state.terrain.storage[y * 256 + x] = Terrain.grass3.rawValue } }
         for y in 125..<135 { for x in 120..<130 { state.terrain[x, y] = .sea } }
         for y in 100..<108 { for x in 145..<155 { state.terrain[x, y] = .forest } }
@@ -111,10 +144,10 @@ final class GameLifecycle: @unchecked Sendable {
         // repair command on this pill), not by inspection -- exactly what this tool is for.
         state.pills = [Pill(x: 130, y: 105, armour: UInt8(maxPillArmour), owner: playerNeutral, speed: 50, counter: 0)]
         state.bases = [Base(x: 105, y: 155, armour: 20, owner: playerNeutral, shells: 30, mines: 5)]
-        return state
     }
 
     private func buildRound(gameId myGameId: Int) async throws {
+        let mapState = try makeMap() // a bad map file fails once, loudly -- not worth 8 port retries
         var lastError: Error = GameLifecycleError.noPort
         for _ in 0..<8 {
             let port = UInt16.random(in: 49_152...65_000)
@@ -125,7 +158,7 @@ final class GameLifecycle: @unchecked Sendable {
             do { udp = try await HostDgramListener(port: port) }
             catch let error as POSIXError where error.code == .EADDRINUSE { tcp.cancel(); lastError = error; continue }
 
-            let engine = HostGameEngine(initialState: makeMap(), listener: tcp, dgramListener: udp)
+            let engine = HostGameEngine(initialState: mapState, listener: tcp, dgramListener: udp)
             self.engine = engine
             let hostBox = self.hostBox
             engine.onTickRendered = { [weak self] state in

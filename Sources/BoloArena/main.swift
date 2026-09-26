@@ -29,7 +29,7 @@ var sampler: Task<Void, Never>!
 Task {
     do {
         let anomalyLog = try AnomalyLog(logDirectory: config.logDirectory)
-        lifecycle = GameLifecycle(anomalyLog: anomalyLog)
+        lifecycle = GameLifecycle(anomalyLog: anomalyLog, mapPath: config.mapPath)
 
         hostServer = ControlServer(
             seat: .host, port: config.hostControlPort, stateBox: lifecycle.hostBox,

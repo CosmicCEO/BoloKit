@@ -7,6 +7,9 @@ struct ArenaConfig {
     var hostControlPort: UInt16 = 9101
     var guestControlPort: UInt16 = 9102
     var logDirectory: URL
+    /// A real `.map` (BMAPBOLO-format) file to load instead of the built-in hand-drawn test
+    /// patch. `nil` keeps the existing built-in map (default, unchanged behavior).
+    var mapPath: String?
 
     static func fromEnvironment() -> ArenaConfig {
         let env = ProcessInfo.processInfo.environment
@@ -19,6 +22,9 @@ struct ArenaConfig {
         }
         if let dir = env["BOLO_ARENA_LOG_DIR"] {
             config.logDirectory = URL(fileURLWithPath: dir)
+        }
+        if let path = env["BOLO_ARENA_MAP_PATH"] {
+            config.mapPath = path
         }
         return config
     }
