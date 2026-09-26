@@ -5,12 +5,12 @@ import BoloKit
 /// integrity: never render from host truth on the guest seat).
 enum ObserveBuilder {
     static func build(from box: StateBox) -> ObserveResponse {
-        let (state, phase, gameId, playerIndex) = box.snapshot
+        let (state, phase, gameId, playerIndex, displayTick) = box.snapshot
         let events = box.drainEvents()
 
         guard state.players.indices.contains(playerIndex), state.localStats.indices.contains(playerIndex) else {
             return ObserveResponse(
-                phase: phase.rawValue, gameId: gameId, tick: state.ticks, alive: false,
+                phase: phase.rawValue, gameId: gameId, tick: displayTick, alive: false,
                 x: 0, y: 0, headingDegrees: 0, speed: 0, armour: 0, shells: 0, mines: 0, trees: 0,
                 boat: false, terrain: [], nearby: [], events: events
             )
@@ -46,7 +46,7 @@ enum ObserveBuilder {
         }
 
         return ObserveResponse(
-            phase: phase.rawValue, gameId: gameId, tick: state.ticks, alive: !me.dead,
+            phase: phase.rawValue, gameId: gameId, tick: displayTick, alive: !me.dead,
             x: me.tank.x, y: me.tank.y, headingDegrees: me.dir * 180 / kPif, speed: me.speed,
             armour: stats.armour, shells: stats.shells, mines: Int(me.mines), trees: Int(me.trees),
             boat: me.boat, terrain: TerrainWindow.render(around: tankTile, terrain: state.terrain),

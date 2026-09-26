@@ -115,8 +115,7 @@ final class ControlServer: @unchecked Sendable {
             return (true, (try? encoder.encode(AckResponse(ok: true, message: nil))) ?? Data())
 
         case "note":
-            let (_, _, gameId, _) = stateBox.snapshot
-            anomalyLog.note(seat: seat.rawValue, gameId: gameId, text: request.text ?? "")
+            anomalyLog.note(seat: seat.rawValue, gameId: stateBox.snapshot.gameId, text: request.text ?? "")
             return (true, (try? encoder.encode(AckResponse(ok: true, message: nil))) ?? Data())
 
         case "newgame":
@@ -124,8 +123,7 @@ final class ControlServer: @unchecked Sendable {
                 return (false, (try? encoder.encode(ErrorResponse(error: "newgame is host-seat only"))) ?? Data())
             }
             await lifecycle.newGame()
-            let (_, _, gameId, _) = stateBox.snapshot
-            return (true, (try? encoder.encode(NewGameResponse(ok: true, gameId: gameId, message: nil))) ?? Data())
+            return (true, (try? encoder.encode(NewGameResponse(ok: true, gameId: stateBox.snapshot.gameId, message: nil))) ?? Data())
 
         default:
             return (false, (try? encoder.encode(ErrorResponse(error: "unknown cmd \(request.cmd)"))) ?? Data())
