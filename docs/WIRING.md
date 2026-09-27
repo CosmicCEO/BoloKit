@@ -313,5 +313,4 @@ before committing to the architecture change.
 | [STATUS.md](STATUS.md) | Ship version, open PRs, milestones |
 | [CONSTRAINTS.md](CONSTRAINTS.md) | Physics constants, fog deviation |
 | [ORACLE_COVERAGE.md](ORACLE_COVERAGE.md) | C-function coverage snapshot |
-| [notes/HOSTMODELS.md](notes/HOSTMODELS.md) | In-process host vs dedicated server |
-| [TEST_TWO_MAC_FOG.md](TEST_TWO_MAC_FOG.md) | Two-Mac fog checklist |
+| [HOSTMODELS.md](HOSTMODELS.md) | In-process host vs dedicated server |
