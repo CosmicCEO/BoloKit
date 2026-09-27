@@ -690,6 +690,7 @@ public final class HostGameEngine: @unchecked Sendable {
 
         var pendingGameMessages: [String] = []
         let oldPillOwners = state.pills.map(\.owner)
+        let oldPillArmour = state.pills.map(\.armour)
         let oldBaseOwners = state.bases.map(\.owner)
         let oldBuilderStatus = state.players.map(\.builderStatus)
         let playerNames = state.players.map(\.name)
@@ -823,7 +824,10 @@ public final class HostGameEngine: @unchecked Sendable {
         // shells/mines themselves on receipt, matching what `grabTile` just did locally. Not
         // visibility-masked: pills/bases are never fog-hidden (only mines are), matching
         // `recvClGrabTile`'s own unmasked `.all` broadcast.
-        for pill in state.pills.indices where state.pills[pill].owner != oldPillOwners[pill] {
+        // A player picking its own dropped pill back up changes no owner, only ground -> onboard.
+        for pill in state.pills.indices
+        where state.pills[pill].owner != oldPillOwners[pill]
+            || (state.pills[pill].armour == pillOnboard && oldPillArmour[pill] != pillOnboard) {
             pending.append(SRCapturePill(pill: UInt8(pill), owner: state.pills[pill].owner).encode())
         }
         for base in state.bases.indices where state.bases[base].owner != oldBaseOwners[base] {

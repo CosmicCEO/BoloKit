@@ -94,6 +94,20 @@ nonisolated func hostRenderFogState(engineFog: FogState?, hiddenMines: Bool) -> 
     engineFog ?? (hiddenMines ? FogState() : nil)
 }
 
+/// `applyBoloPreamble` spawns the guest locally at a random start, but the host picks its own
+/// start for that guest and teleports it there (`SRTankStatus`). Until then the guest must not be
+/// alive at its own pick: that spot would count as a fog vision source and stick pill/base icons
+/// into unexplored territory. The counter sits in `tankMoveTick`'s no-op band, so no death
+/// animation runs, and an older host that never teleports still gets a local respawn.
+nonisolated func joinPathInitialState(_ state: GameState) -> GameState {
+    var state = state
+    guard state.players.indices.contains(state.localPlayer) else { return state }
+    state.players[state.localPlayer].dead = true
+    state.local.respawnCounter = explodeTicks + 1
+    state.local.spawned = false
+    return state
+}
+
 @MainActor
 public final class GameSession {
     public private(set) var state: GameState
@@ -290,6 +304,7 @@ public final class GameSession {
         tcpSession: TCPSession, udpSession: UDPSession, initialState: GameState,
         tilesImage: CGImage, spritesImage: CGImage
     ) {
+        let initialState = joinPathInitialState(initialState)
         self.state = initialState
         self.ticksSinceLastUpdate = []
         self.hostEngine = nil

@@ -474,6 +474,17 @@ public final class GameRenderView: NSView {
         }
     }
 
+    /// Mirrors `refresh:`'s `client.spawned` check (`GSXBoloController.m:2574-2598`). A joined
+    /// guest is placed by the host's `SRTankStatus` teleport well after this view attached, so the
+    /// one-shot in `viewDidMoveToWindow` alone leaves the camera on a stale position.
+    nonisolated static func localPlayerJustSpawned(previous: GameState, new: GameState) -> Bool {
+        let player = new.localPlayer
+        guard previous.localPlayer == player, previous.players.indices.contains(player),
+            new.players.indices.contains(player)
+        else { return false }
+        return previous.players[player].dead && !new.players[player].dead
+    }
+
     /// 7.3 calls this after each `runTick()`; this view schedules no redraw of its own (D82) --
     /// it only reacts to being handed a new snapshot. `fogState` is the rendering
     /// observer's own fog view (see this property's own doc comment above) -- `nil` unless
@@ -483,6 +494,9 @@ public final class GameRenderView: NSView {
         let previousFogState = self.fogState
         state = newState
         self.fogState = fogState
+        if Self.localPlayerJustSpawned(previous: previousState, new: newState) {
+            centerOnLocalPlayerTank()
+        }
         // Rebuilding the 256x256 grid costs about 9 ms (18 ms with fog) in a Debug build, most of a
         // 20 ms tick, and most ticks change nothing it reads -- so reuse it when nothing did (#89).
         if tileGridRebuildCount == 0

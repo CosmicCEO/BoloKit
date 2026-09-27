@@ -62,7 +62,11 @@ public func applyRemotePlayerUpdate(
     onExplosion: (Vec2f) -> Void = { _ in },
     onSuperboom: () -> Void = {},
     onSmallboom: () -> Void = {},
-    onSpawn: () -> Void = {}
+    onSpawn: () -> Void = {},
+    // A join client passes `false`: the host owns pills, bases and terrain and reports every
+    // change itself (`SRDamage` etc.), so a shell stepped forward here must not damage them a
+    // second time. Player state (positions, shells, explosions, builders) is still kept.
+    extrapolationMutatesWorld: Bool = true
 ) -> (seq: Int32, lastUpdate: Int32)? {
     let player = Int(header.player)
 
@@ -145,12 +149,23 @@ public func applyRemotePlayerUpdate(
         let rawCount = Int(myOwnSeq &- theirBeliefOfMySeq) / 2
         let count = min(max(rawCount, 0), maxDeadReckoningExtrapolationTicks)
         for _ in 0..<count {
-            tankMoveTick(
-                player: player, state: &state,
-                onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
-            )
-            builderTick(player: player, state: &state, onMineExplosion: onMineExplosion)
-            shellTick(player: player, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            if extrapolationMutatesWorld {
+                tankMoveTick(
+                    player: player, state: &state,
+                    onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
+                )
+                builderTick(player: player, state: &state, onMineExplosion: onMineExplosion)
+                shellTick(player: player, state: &state, onMineExplosion: onMineExplosion, onShouldBroadcastDropPill: onShouldBroadcastDropPill)
+            } else {
+                var scratch = state
+                tankMoveTick(
+                    player: player, state: &scratch,
+                    onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
+                )
+                builderTick(player: player, state: &scratch)
+                shellTick(player: player, state: &scratch)
+                state.players = scratch.players
+            }
             // `explosionTick` (Wave 5.5b) only ever drains every
             // connected player's list plus the global one in a single
             // pass -- calling it here, potentially up to
