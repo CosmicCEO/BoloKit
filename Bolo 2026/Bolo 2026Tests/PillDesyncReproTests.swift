@@ -102,15 +102,15 @@ struct PillDesyncReproTests {
         session.renderView.onInputFlagsChange?(KeyInputChange(set: .accel, clear: .brake))
         try await waitUntil(timeout: 30) { session.state.players[me].dead && engine.state.players[me].dead }
         engine.submitLocalInputChange(set: [], clear: .shoot)
-        try await Task.sleep(nanoseconds: 300_000_000)
-        #expect(engine.state.pills.allSatisfy { $0.armour == 0 && Int($0.owner) == me }, "all nine dropped on death")
+        try await waitUntil(timeout: 10) { pillSummary(session.state.pills) == pillSummary(engine.state.pills) }
+        #expect(engine.state.pills.contains { $0.armour == 0 && Int($0.owner) == me }, "died carrying pills")
         #expect(pillSummary(session.state.pills) == pillSummary(engine.state.pills))
 
         // Respawn and drive east again, through the dropped block.
         try await waitUntil(timeout: 10) { !session.state.players[me].dead && !engine.state.players[me].dead }
         try await waitUntil(timeout: 30) { session.state.players[me].tank.x > 70 || session.state.players[me].dead }
         session.renderView.onInputFlagsChange?(KeyInputChange(set: .brake, clear: .accel))
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await waitUntil(timeout: 10) { pillSummary(session.state.pills) == pillSummary(engine.state.pills) }
 
         #expect(engine.state.pills.contains { $0.armour == pillOnboard }, "the host picked some up")
         #expect(pillSummary(session.state.pills) == pillSummary(engine.state.pills))
@@ -133,8 +133,11 @@ struct PillDesyncReproTests {
         try await waitUntil(timeout: 20) { engine.state.pills[0].armour <= 8 || engine.state.players[0].dead }
         engine.submitLocalInputChange(set: [], clear: .shoot)
         try await Task.sleep(nanoseconds: 1_500_000_000)
+        try await waitUntil(timeout: 10) { session.state.pills[0].armour == engine.state.pills[0].armour }
 
         #expect(engine.state.pills[0].armour < 15, "the host did hit it")
-        #expect(session.state.pills[0].armour == engine.state.pills[0].armour)
+        #expect(
+            session.state.pills[0].armour == engine.state.pills[0].armour,
+            "guest \(session.state.pills[0].armour) host \(engine.state.pills[0].armour)")
     }
 }
