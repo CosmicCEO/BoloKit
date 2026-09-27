@@ -168,7 +168,7 @@ public func killBuilder(
 /// bitmask — the shared precondition for `drown`/`smallboom`/`superboom`'s
 /// pill-scatter call. Ported from the identical loop duplicated at each of
 /// their three call sites (client.c:5590, 5624, 5762).
-private func onboardPillMask(state: GameState) -> UInt16 {
+public func onboardPillMask(state: GameState) -> UInt16 {
     let player = state.localPlayer
     var pills: UInt16 = 0
     for j in state.pills.indices where state.pills[j].owner == UInt8(player)

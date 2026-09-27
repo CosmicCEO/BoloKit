@@ -261,15 +261,15 @@ public final class GameSession {
     /// Runs `tankMoveTick` for the local player's own tank each tick -- turning/acceleration/
     /// position/wall-and-terrain collision, matching what the host already trusts a client to
     /// self-report (D114: the host never validates a client's position at all, so there's nothing
-    /// to defer to a round trip for). Deliberately NOT `tankLocalTick`/`shellTick` -- touching a
-    /// pill/mining directly, and shooting, still need a real outbound CL*-message protocol this
-    /// port doesn't have for those two (D116; `shellTick`'s own gap is B.10's follow-on shell-
-    /// impact item, D139, deliberately not closed this pass -- see `docs/AGENT_NOTES.md`'s D139
-    /// pre-brief for why it reverses a documented port-wide design choice and needs its own GO);
-    /// calling those two here would mutate this client's own *local* copy of shared state (pills/
-    /// bases/mines) the host never learns about, an immediate, silent desync. `space` (shoot) is
-    /// left functionally dead for the same reason -- `inputFlags` still records it harmlessly
-    /// (`onInputFlagsChange` below doesn't special-case any bit), nothing yet reads it.
+    /// to defer to a round trip for). Deliberately NOT `tankLocalTick` here -- touching a pill/
+    /// mining directly still needs a real outbound CL*-message protocol this port doesn't have for
+    /// that (D116; `shellTick`'s own former gap was B.10's follow-on shell-impact item, D139,
+    /// closed below). `space` (shoot) is fully functional end-to-end today, just not via this
+    /// file's own tick loop: the host runs `tankLocalTick` (`TankLocalTick.swift`) for each
+    /// connected guest, reading `.shoot` from that guest's synced `inputFlags`
+    /// (`DgramClientApply.swift`), spawns the shell there, reports it back to the shooter via
+    /// `SRTankShots`, and relays it to other guests via a re-assembled `CLUpdate`
+    /// (`HostDgramListener.swift`, "#62 S3").
     ///
     /// **`builderTick` IS now run here (B.10 follow-on, D139)**, with a `joinArrive` override
     /// (`detectJoinBuilderArrival`) that replaces the mutation-applying arrival branch with a
@@ -278,12 +278,14 @@ public final class GameSession {
     /// for the join path specifically. `shift` (lay-mine) has its own separate, already-existing
     /// read-only path (`onLayMineKeyDown` below, B.10/D127) and isn't affected by this change.
     ///
-    /// **Known, disclosed, narrow gap even within `tankMoveTick`'s own scope:** it calls
+    /// **Closed gap, formerly within `tankMoveTick`'s own scope (D116/B.10):** it calls
     /// `superboom()`/`smallboom()` (`TankLocalTick.swift`) when the local player's own death
     /// timer crosses `explodeTicks` -- both drop the dying player's onboard pills onto the map,
-    /// a `state.pills` mutation the host never learns about either. Narrow (fires once, only on
-    /// this client's own death) and not fixable without B.10's same CL*-outbound protocol --
-    /// flagged, not blocked on.
+    /// a `state.pills` mutation the host never learned about, permanently stranding those pills
+    /// at `armour == pillOnboard`. Fixed by self-reporting via `CLDropPills`, the same
+    /// detect-and-send pattern as `onLayMineKeyDown`'s `CLDropMine` below -- see the `.tick`
+    /// handler's `tankMoveTick`/`shellTick` brackets (the latter covers `killTank`'s identical
+    /// shell-kill drop path).
     public init(
         tcpSession: TCPSession, udpSession: UDPSession, initialState: GameState,
         tilesImage: CGImage, spritesImage: CGImage
@@ -699,6 +701,13 @@ public final class GameSession {
                 // own wiring (`tick()` below) for this join client's own locally-predicted death/
                 // explosion sequence. No fog data exists on this path (no FogState tracked here),
                 // so always "near" -- same disclosed limitation as the solo path.
+                //
+                // D116/B.10 fix: `tankMoveTick` can call `superboom()`/`smallboom()` (a dead
+                // tank's explode-timer expiry), which drop this client's onboard pills into
+                // `state.pills` locally -- the host never learns about it on its own. Detect the
+                // drop via a before/after mask diff and self-report it with `CLDropPills`
+                // (dead tank, so `old`'s position -- it doesn't move).
+                let pillMaskBefore = onboardPillMask(state: state)
                 tankMoveTick(
                     player: localPlayer, state: &state,
                     onExplosion: { _ in SoundPlayer.shared.play("explosion") },
@@ -708,6 +717,10 @@ public final class GameSession {
                     onBuilderDeath: { SoundPlayer.shared.play("builderdeath") },
                     onSuperboomTerrain: { _ in SoundPlayer.shared.play("superboom") }
                 )
+                if pillMaskBefore != 0, onboardPillMask(state: state) & pillMaskBefore == 0, let tcpSession {
+                    let message = CLDropPills(x: Float(old.x), y: Float(old.y), pills: pillMaskBefore)
+                    Task { try? await tcpSession.send(message.encode()) }
+                }
             }
 
             // B.10 (D127): read-only detect-and-send analogue of `enter()`'s pill/base/
@@ -781,8 +794,9 @@ public final class GameSession {
             }
 
             // B.10 follow-on (D142): join-path shell simulation -- `shellTick` was not called on
-            // this path at all before this change (shells could spawn via `tankMoveTick`'s own
-            // `.shoot` handling but then never moved/collided/expired). `onSelfReportDamage`
+            // this path at all before this change (shells spawn on `.shoot` via the host's own
+            // `tankLocalTick` simulation of this guest, not here, but this guest still needs to
+            // move/collide/expire them locally). `onSelfReportDamage`
             // (`ShellTick.swift`) mirrors `shellcollisiontest()`'s six `sendcldamage` call sites'
             // `player == client.player` gate -- self-reporting this client's own shell hits to the
             // host via `CLDamage`, while local damage application still runs unconditionally on
@@ -792,6 +806,12 @@ public final class GameSession {
             // `shellcollisiontest()` and are out of scope here (see D142 pre-brief).
             var shellDamageOutbound: [(x: Int, y: Int, boat: Bool)] = []
             if thinning.runsOwnShellTick {
+                // D116/B.10 fix: `shellTick` can kill this client's own tank (`killTank`), which
+                // drops its onboard pills locally the same way `tankMoveTick`'s bracket above
+                // does -- same before/after mask-diff detection and `CLDropPills` self-report,
+                // using the tank's position immediately before this call.
+                let pillMaskBefore = onboardPillMask(state: state)
+                let tankBefore = state.players[localPlayer].tank
                 shellTick(
                     player: localPlayer, state: &state,
                     onMineExplosion: { _ in SoundPlayer.shared.play("explosion") },
@@ -802,6 +822,10 @@ public final class GameSession {
                     onHitTree: { _ in SoundPlayer.shared.play("hittree") },
                     onSelfReportDamage: { x, y, boat in shellDamageOutbound.append((x, y, boat)) }
                 )
+                if pillMaskBefore != 0, onboardPillMask(state: state) & pillMaskBefore == 0, let tcpSession {
+                    let message = CLDropPills(x: Float(tankBefore.x), y: Float(tankBefore.y), pills: pillMaskBefore)
+                    Task { try? await tcpSession.send(message.encode()) }
+                }
             }
             if thinning.sendsShellDamage, !shellDamageOutbound.isEmpty, let tcpSession {
                 let bytes = shellDamageOutbound.map { hit in
