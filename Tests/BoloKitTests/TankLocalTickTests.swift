@@ -358,6 +358,21 @@ func layMineOnKeyDownNoopsOnUnminableTerrain(terrain: Terrain) {
     #expect(state.pills[0].armour == 0)
 }
 
+/// Guards the join-path `CLDropPills` self-report fix (`GameSession.swift`'s `.tick` handler,
+/// D116/B.10): it detects a local death-drop with a before/after `onboardPillMask(state:)` diff
+/// (now `public` for exactly this cross-target use) around `tankMoveTick`/`shellTick` -- "carried
+/// pills, now none of them onboard" means a drop just happened and a `CLDropPills` must be sent.
+/// This proves that precondition/postcondition pair actually holds across `drown` (and by the
+/// same `dropPills` call shared with `smallboom`/`superboom`/`killTank`).
+@Test func onboardPillMaskGoesFromNonzeroToZeroAcrossADeathDrop() {
+    var state = makeState(player: connectedPlayer(boat: true))
+    state.pills = [Pill(x: 0, y: 0, armour: pillOnboard, owner: 0, speed: 0, counter: 0)]
+    let pillMaskBefore = onboardPillMask(state: state)
+    #expect(pillMaskBefore != 0)
+    drown(state: &state)
+    #expect(onboardPillMask(state: state) & pillMaskBefore == 0)
+}
+
 @Test func drownAlreadyDeadPastExplodeTicksIsNoOp() {
     var state = makeState(player: connectedPlayer(dead: true), local: LocalPlayerState(respawnCounter: explodeTicks + 5))
     drown(state: &state)
