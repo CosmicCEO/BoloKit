@@ -77,6 +77,7 @@ struct PlayerStatusGrid: View {
             Section {
                 ForEach(connectedPlayerIndices, id: \.self) { index in
                     playerRow(index, snapshot: snapshot)
+                        .id("player-\(index)")
                 }
             } header: {
                 Label("Players", systemImage: "person.fill")
@@ -84,6 +85,7 @@ struct PlayerStatusGrid: View {
             Section {
                 ForEach(Array(snapshot.pills.enumerated()), id: \.offset) { offset, pill in
                     ownershipRow(name: "Pillbox \(offset)", owner: pill.owner, snapshot: snapshot)
+                        .id("pillbox-\(offset)")
                 }
             } header: {
                 // D154 Wave 2: reuses the same `PillSunburstShape` glyph language as the
@@ -97,6 +99,7 @@ struct PlayerStatusGrid: View {
             Section {
                 ForEach(Array(snapshot.bases.enumerated()), id: \.offset) { offset, base in
                     ownershipRow(name: "Base \(offset)", owner: base.owner, snapshot: snapshot)
+                        .id("base-\(offset)")
                 }
             } header: {
                 // Reuses D152's house/fort silhouette language via the closest-matching SF Symbol

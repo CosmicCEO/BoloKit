@@ -381,7 +381,10 @@ import CXBolo
         )
         let seenBefore = fogState.seenTiles[100 * 256 + 100]
 
-        decreaseVis(makerect(100, 100, 1, 1), state: &fogState)
+        decreaseVis(
+            makerect(100, 100, 1, 1), state: &fogState, terrain: state.terrain,
+            pills: [], bases: [], hiddenMines: true, observer: 0, players: state.players
+        )
 
         #expect(fogState.fog[100 * 256 + 100] == 0)
         #expect(fogState.seenTiles[100 * 256 + 100] == seenBefore, "stale snapshot must persist while re-fogged")
@@ -401,8 +404,46 @@ import CXBolo
         )
         #expect(fogState.fog[100 * 256 + 100] == 2)
 
-        decreaseVis(makerect(99, 99, 3, 3), state: &fogState)
+        decreaseVis(
+            makerect(99, 99, 3, 3), state: &fogState, terrain: state.terrain,
+            pills: [], bases: [], hiddenMines: false, observer: 0, players: state.players
+        )
         #expect(fogState.fog[100 * 256 + 100] == 1, "still covered by the first, wider source")
+    }
+
+    @Test func testDecreaseVisRefreshesTheSnapshotFromLiveGroundTruthWhenVisionIsLost() {
+        // The join/solo client's locally-computed fog (`updateFogVisionTracker`) can race
+        // ahead of the host's separately-timed, wire-delivered terrain redaction
+        // (`SRRevealTerrain`): a cell's 0->1 snapshot may run against a placeholder value
+        // before the real terrain arrives. While the cell stays visible this is invisible
+        // (the live branch in `fogResolvedTileGrid` masks it), but it must not surface as a
+        // bogus revert once vision is lost -- `decreaseVis` should re-sample from whatever is
+        // actually true right before the last observer stops seeing the cell, not trust the
+        // (possibly stale) first-sight snapshot.
+        var state = GameState()
+        state.terrain[100, 100] = .sea // stand-in for a not-yet-arrived reveal packet
+        var fogState = FogState()
+
+        increaseVis(
+            makerect(100, 100, 1, 1), state: &fogState, terrain: state.terrain,
+            pills: [], bases: [], hiddenMines: false, observer: 0, players: state.players
+        )
+        #expect(fogState.seenTiles[100 * 256 + 100] == .sea, "first-sight snapshot reflects the stale terrain")
+
+        // The real terrain arrives while the cell is still visible -- ground truth changes,
+        // but nothing re-snapshots a continuously-covered cell (no second 0->1 transition).
+        state.terrain[100, 100] = .grass0
+
+        decreaseVis(
+            makerect(100, 100, 1, 1), state: &fogState, terrain: state.terrain,
+            pills: [], bases: [], hiddenMines: false, observer: 0, players: state.players
+        )
+
+        #expect(fogState.fog[100 * 256 + 100] == 0)
+        #expect(
+            fogState.seenTiles[100 * 256 + 100] == .grass,
+            "losing vision must refresh the snapshot from live ground truth, not keep the raced stale value"
+        )
     }
 }
 
