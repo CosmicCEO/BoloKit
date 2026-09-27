@@ -116,6 +116,41 @@ struct GameViewFocusRoutingTests {
         #expect(origin() == NSPoint(x: 2000, y: 2000))
     }
 
+    /// A joined guest is placed by the host seconds after the view attached; the camera must
+    /// follow that spawn instead of staying wherever it was first centered.
+    @Test func cameraRecentersWhenTheLocalPlayerSpawnsSomewhereElse() throws {
+        let hosting = NSHostingView(rootView: GameView(initialState: AppRootView.demoState, onQuitToMenu: {}))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hosting
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        let renderView = try #require(findRenderView(hosting), "GameRenderView not found in hosted hierarchy")
+        let scrollView = try #require(renderView.enclosingScrollView, "GameRenderView has no enclosing NSScrollView")
+
+        var state = AppRootView.demoState
+        let me = state.localPlayer
+        state.players[me].dead = true
+        renderView.render(state)
+        // Seeded explicitly: this harness never drains `viewDidMoveToWindow`'s deferred block
+        // before the test body runs (main queue is busy running the test itself).
+        scrollView.contentView.scroll(to: NSPoint(x: 3000, y: 300))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        state.players[me].dead = false
+        state.players[me].tank = Vec2f(x: 60, y: 200)
+        renderView.render(state)
+
+        let after = scrollView.contentView.bounds
+        #expect(abs(after.midX - 60 * 16) < 1, "got \(after)")
+        #expect(abs(after.midY - 200 * 16) < 1, "got \(after)")
+    }
+
     @Test func bottomSafeAreaInsetPushesScrollViewContentInsetsOffZero() throws {
         // D154 Wave 3: `EventLogBar` is a `.safeAreaInset(edge: .bottom)` on `GameView`.
         // SwiftUI's accessibility identifier does not reliably appear on the AppKit

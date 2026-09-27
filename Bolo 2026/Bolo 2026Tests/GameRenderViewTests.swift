@@ -239,3 +239,33 @@ struct TileGridCacheTests {
         #expect(try rebuilds(hiddenMines: true, fogBefore: true, fogAfter: false) { _, _ in } == 2)
     }
 }
+
+struct SpawnRecenterTests {
+    private func state(localDead: Bool, remoteDead: Bool = true, localPlayer: Int = 0) -> GameState {
+        var state = GameState()
+        state.players = [PlayerState(), PlayerState()]
+        state.localPlayer = localPlayer
+        state.players[0].dead = localDead
+        state.players[1].dead = remoteDead
+        return state
+    }
+
+    @Test func deadToAliveIsASpawn() {
+        #expect(GameRenderView.localPlayerJustSpawned(previous: state(localDead: true), new: state(localDead: false)))
+    }
+
+    @Test func stayingAliveOrDyingIsNot() {
+        #expect(!GameRenderView.localPlayerJustSpawned(previous: state(localDead: false), new: state(localDead: false)))
+        #expect(!GameRenderView.localPlayerJustSpawned(previous: state(localDead: false), new: state(localDead: true)))
+        #expect(!GameRenderView.localPlayerJustSpawned(previous: state(localDead: true), new: state(localDead: true)))
+    }
+
+    @Test func aRemotePlayerSpawningIsNot() {
+        #expect(!GameRenderView.localPlayerJustSpawned(
+            previous: state(localDead: false, remoteDead: true), new: state(localDead: false, remoteDead: false)))
+    }
+
+    @Test func aMissingLocalPlayerIsNot() {
+        #expect(!GameRenderView.localPlayerJustSpawned(previous: GameState(), new: state(localDead: false, localPlayer: 5)))
+    }
+}

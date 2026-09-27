@@ -302,6 +302,7 @@ struct GameSessionFogVisionWiringTests {
             state.players[0].used = true
             state.players[0].connected = true
             state.players[0].alliance = 1 << 0
+            state.players[0].dead = false
             state.players[0].tank = Vec2f(x: 100, y: 100)
             state.terrain[100, 100] = .grass0
         }
@@ -435,5 +436,101 @@ struct JoinPathAllianceTests {
         try await Task.sleep(nanoseconds: 3_500_000_000)
         let age = session.connectionAge(for: me)
         #expect(age == 0, "the guest's own player row must never read as stale/dropped -- it needs no network data about itself")
+    }
+}
+
+// MARK: - Guest spawn: the host's pick is the only one
+
+@MainActor
+struct JoinPathSpawnTests {
+
+    private func makeHost() async throws -> (engine: HostGameEngine, port: UInt16) {
+        for _ in 0..<8 {
+            let port = UInt16.random(in: 49_152...65_000)
+            let tcp: HostListener
+            do { tcp = try await HostListener(port: port) } catch { continue }
+            let udp: HostDgramListener
+            do { udp = try await HostDgramListener(port: port) } catch { tcp.cancel(); continue }
+            var state = GameState()
+            var host = PlayerState()
+            host.name = "Host"
+            host.connected = true
+            host.used = true
+            host.dead = true
+            host.alliance = UInt16(1 << 0)
+            state.players = hostPlayerSlots(hostPlayer: host)
+            state.localPlayer = 0
+            state.local.respawnCounter = respawnTicks - 1
+            state.hiddenMines = true
+            state.hostSimulatesRemotePlayers = true
+            for y in 20..<240 { for x in 20..<240 { state.terrain.storage[y * 256 + x] = Terrain.grass0.rawValue } }
+            state.starts = [
+                Start(x: 30, y: 30, dir: 0), Start(x: 220, y: 30, dir: 0),
+                Start(x: 30, y: 220, dir: 0), Start(x: 220, y: 220, dir: 0),
+            ]
+            return (HostGameEngine(initialState: state, listener: tcp, dgramListener: udp), port)
+        }
+        throw JoinHarnessError.noPort
+    }
+
+    private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+    }
+
+    @Test func joinPathInitialStateLeavesTheLocalPlayerDeadAndContributingNoVision() {
+        var state = GameState()
+        state.players = (0..<maxPlayers).map { _ in PlayerState() }
+        state.localPlayer = 3
+        state.hiddenMines = true
+        state.players[3].used = true
+        state.players[3].connected = true
+        state.players[3].alliance = 1 << 3
+        state.starts = [Start(x: 50, y: 50, dir: 0)]
+        spawn(state: &state)
+        #expect(!state.players[3].dead)
+
+        let initial = joinPathInitialState(state)
+        #expect(initial.players[3].dead)
+        #expect(initial.local.respawnCounter > explodeTicks)
+        #expect(initial.local.respawnCounter < respawnTicks)
+
+        var tracker = FogVisionTracker()
+        updateFogVisionTracker(&tracker, observer: 3, state: initial)
+        #expect(!tracker.fogState.fog.contains { $0 != 0 }, "a not-yet-placed guest must not reveal anything")
+    }
+
+    /// The guest used to be alive at its own random start until the host teleported it to a
+    /// different one: camera and fog stayed on the first.
+    @Test func guestIsNeverAliveAnywhereButTheHostsChosenStart() async throws {
+        let (engine, port) = try await makeHost()
+        engine.start()
+        defer { engine.stop() }
+
+        let joined = try await TCPSession.join(host: "127.0.0.1", port: port, name: "Guest", pass: "")
+        var initial = GameState()
+        initial.players = (0..<maxPlayers).map { _ in PlayerState() }
+        #expect(applyBoloPreamble(joined.preamble, mapData: joined.mapData, state: &initial))
+        let udp = try await UDPSession(host: joined.session.remoteHost, port: joined.session.remotePort)
+        let image = makeTrivialImage()
+        let session = GameSession(
+            tcpSession: joined.session, udpSession: udp, initialState: initial,
+            tilesImage: image, spritesImage: image
+        )
+        defer { udp.cancel(); joined.session.cancel() }
+        let me = session.state.localPlayer
+        #expect(session.state.players[me].dead, "the guest waits for the host to place it")
+        session.start()
+
+        var alivePositions: Set<Vec2f> = []
+        try await waitUntil(timeout: 10) {
+            if !session.state.players[me].dead { alivePositions.insert(session.state.players[me].tank) }
+            return !alivePositions.isEmpty && !engine.state.players[me].dead
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        if !session.state.players[me].dead { alivePositions.insert(session.state.players[me].tank) }
+
+        #expect(alivePositions.count == 1, "one spawn point only, got \(alivePositions)")
+        #expect(alivePositions.first == engine.state.players[me].tank, "and it is the host's")
     }
 }
