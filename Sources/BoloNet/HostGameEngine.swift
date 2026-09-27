@@ -1090,7 +1090,11 @@ public final class HostGameEngine: @unchecked Sendable {
                             bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
                             players: state.players
                         )
-                        decreaseVis(previousRect, state: &fogState)
+                        decreaseVis(
+                            previousRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                            bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                            players: state.players
+                        )
                         queueReveals(newlyVisibleTiles(in: currentRect, before: before, after: fogState), to: observer, fogState: fogState)
                         visionSourceRect[key] = currentRect
                     } else if previousRect == nil {
@@ -1111,7 +1115,11 @@ public final class HostGameEngine: @unchecked Sendable {
                     // kicked/was banned. Decrements using the rect they last actually
                     // revealed from, not a value re-derived from their (possibly stale,
                     // possibly already-reset) current state.
-                    decreaseVis(previousRect, state: &fogState)
+                    decreaseVis(
+                        previousRect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                        bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                        players: state.players
+                    )
                     visionSourceRect[key] = nil
                 }
             }
@@ -1167,7 +1175,11 @@ public final class HostGameEngine: @unchecked Sendable {
                 // only ever re-fogs tiles, it never reveals anything new, so there's no
                 // `queueReveals` call here either.
                 for (base, rect) in activeRects {
-                    decreaseVis(rect, state: &fogState)
+                    decreaseVis(
+                        rect, state: &fogState, terrain: state.terrain, pills: state.pills,
+                        bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                        players: state.players
+                    )
                     visionSourceBaseRect[observer]?[base] = nil
                 }
             }

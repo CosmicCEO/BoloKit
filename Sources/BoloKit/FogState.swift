@@ -108,7 +108,10 @@ public func applyVisionSourceTransition(
                 currentRect, state: &fogState, terrain: terrain, pills: pills, bases: bases,
                 hiddenMines: hiddenMines, observer: observer, players: players
             )
-            decreaseVis(previousRect, state: &fogState)
+            decreaseVis(
+                previousRect, state: &fogState, terrain: terrain, pills: pills, bases: bases,
+                hiddenMines: hiddenMines, observer: observer, players: players
+            )
             return currentRect
         } else if previousRect == nil {
             increaseVis(
@@ -119,7 +122,10 @@ public func applyVisionSourceTransition(
         }
         return previousRect // unchanged
     } else if let previousRect {
-        decreaseVis(previousRect, state: &fogState)
+        decreaseVis(
+            previousRect, state: &fogState, terrain: terrain, pills: pills, bases: bases,
+            hiddenMines: hiddenMines, observer: observer, players: players
+        )
         return nil
     }
     return nil
@@ -170,7 +176,24 @@ public func increaseVis(
 /// Ported from `decreasevis()` (`client.c:3850-3874`). Decrements `fog` over the clipped
 /// rect. Does **not** clear `seenTiles` — the last-seen snapshot persists (stale) while
 /// re-fogged, matching C exactly.
-public func decreaseVis(_ r: Recti, state: inout FogState) {
+///
+/// **Deviation, additive to the oracle:** this port gives a join/solo client its own
+/// locally-computed fog (`updateFogVisionTracker`) that races against the host's separately
+/// timed, wire-delivered terrain redaction (`SRRevealTerrain`) -- a coordination problem the
+/// oracle never had, since C's networking always sent full ground truth and kept exactly one
+/// fog tracker per process (this file's own header, above). If a cell's 0->1 snapshot (in
+/// `increaseVis`) races ahead of the matching reveal packet, the wrong (placeholder) value
+/// gets stuck in `seenTiles` -- invisible while the cell stays covered (the live branch in
+/// `fogResolvedTileGrid` masks it), but surfacing as a bogus revert-to-ocean once the
+/// observer moves on and fog drops to 0. Fixed by re-sampling `seenTiles` from live ground
+/// truth at the exact moment a cell's `fog` count reaches 0 -- the last instant its true
+/// state is still knowable before the frozen snapshot becomes what's shown. In the common
+/// case (no race), this just re-writes the same correct value the 0->1 pass already wrote,
+/// so this stays a no-op deviation whenever the original snapshot was already right.
+public func decreaseVis(
+    _ r: Recti, state: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    hiddenMines: Bool, observer: Int, players: [PlayerState]
+) {
     let clipped = intersectionrect(worldRect, r)
     guard clipped.size.width > 0, clipped.size.height > 0 else { return }
 
@@ -181,7 +204,13 @@ public func decreaseVis(_ r: Recti, state: inout FogState) {
 
     for y in minY..<maxY {
         for x in minX..<maxX {
-            state.fog[Int(y) * 256 + Int(x)] -= 1
+            let index = Int(y) * 256 + Int(x)
+            state.fog[index] -= 1
+            guard state.fog[index] <= 0 else { continue }
+            state.seenTiles[index] = fogTileFor(
+                x: x, y: y, previousSeen: state.seenTiles[index], terrain: terrain,
+                pills: pills, bases: bases, hiddenMines: hiddenMines, observer: observer, players: players
+            )
         }
     }
 }
@@ -414,7 +443,11 @@ public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: 
                     bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
                     players: state.players
                 )
-                decreaseVis(previousRect, state: &tracker.fogState)
+                decreaseVis(
+                    previousRect, state: &tracker.fogState, terrain: state.terrain, pills: state.pills,
+                    bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                    players: state.players
+                )
                 tracker.visionSourceRect[mover] = currentRect
             } else if previousRect == nil {
                 increaseVis(
@@ -426,7 +459,11 @@ public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: 
             }
             // previousRect == currentRect (same tile): unchanged, no-op.
         } else if let previousRect {
-            decreaseVis(previousRect, state: &tracker.fogState)
+            decreaseVis(
+                previousRect, state: &tracker.fogState, terrain: state.terrain, pills: state.pills,
+                bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                players: state.players
+            )
             tracker.visionSourceRect[mover] = nil
         }
     }
@@ -461,7 +498,11 @@ public func updateFogVisionTracker(_ tracker: inout FogVisionTracker, observer: 
         // base vision source cleanly (matches the generic diff's own "stopped contributing"
         // branch) rather than leaving stale fog counts stuck incremented forever.
         for (key, rect) in tracker.visionSourceBaseRect {
-            decreaseVis(rect, state: &tracker.fogState)
+            decreaseVis(
+                rect, state: &tracker.fogState, terrain: state.terrain, pills: state.pills,
+                bases: state.bases, hiddenMines: state.hiddenMines, observer: observer,
+                players: state.players
+            )
             tracker.visionSourceBaseRect[key] = nil
         }
     }
