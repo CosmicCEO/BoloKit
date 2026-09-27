@@ -180,7 +180,8 @@ public final class UDPSession: @unchecked Sendable {
             onPlayerLagStatusChanged: onPlayerLagStatusChanged, onTankShotSound: onTankShotSound,
             onPillShotSound: onPillShotSound, onSinkSound: onSinkSound, onBuilderDeathSound: onBuilderDeathSound,
             onShouldBroadcastDropPill: onShouldBroadcastDropPill, onMineExplosion: onMineExplosion, onSuperboomTerrain: onSuperboomTerrain,
-            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn
+            onExplosion: onExplosion, onSuperboom: onSuperboom, onSmallboom: onSmallboom, onSpawn: onSpawn,
+            extrapolationMutatesWorld: false
         ) else { return nil }
         remoteSeqs[player] = result.seq
         remoteLastUpdates[player] = result.lastUpdate
