@@ -132,6 +132,10 @@ public enum BenchStep: Codable, Sendable, Equatable {
     case keys(set: [BenchKey], clear: [BenchKey])
     /// Steers to within `radius` tiles of the centre of tile (`x`, `y`), then brakes.
     case driveTo(x: Int, y: Int, radius: Double, timeoutMs: Int)
+    /// Steers toward tile (`x`, `y`) and holds there, until the condition holds. For a drive
+    /// that something is expected to interrupt, where arriving and the event can come in
+    /// either order.
+    case driveUntil(x: Int, y: Int, radius: Double, BenchCondition, timeoutMs: Int)
     /// Turns on the spot to face tile (`x`, `y`).
     case face(x: Int, y: Int, timeoutMs: Int)
     case layMine

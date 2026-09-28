@@ -15,6 +15,7 @@ import BoloNet
             .until(.carryingAtLeast(pills: 1), timeoutMs: 5_000), .layMine, .builder(tool: .road, x: 110, y: 125),
             .until(.terrain(x: 110, y: 125, anyOf: [Terrain.road.rawValue]), timeoutMs: 20_000),
             .random(seed: 7, seconds: 3), .wait(ms: 250),
+            .driveUntil(x: 115, y: 123, radius: 0.4, .dead, timeoutMs: 90_000),
         ]
     )
     let decoded = try JSONDecoder().decode(BenchScenario.self, from: scenario.encoded())

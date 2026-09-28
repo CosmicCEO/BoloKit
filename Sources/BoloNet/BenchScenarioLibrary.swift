@@ -169,9 +169,9 @@ public enum BenchScenarios {
             .driveTo(x: 108, y: 123, radius: 0.4, timeoutMs: 30_000),
             .until(.carryingAtLeast(pills: 1), timeoutMs: 10_000),
             .mark("collected"),
-            // Each hit knocks the tank back a little, so stop well inside the host's 7-tile range.
-            .driveTo(x: 115, y: 123, radius: 0.4, timeoutMs: 20_000),
-            .until(.dead, timeoutMs: 90_000),
+            // Each hit knocks the tank back a little, so head well inside the host's 7-tile range.
+            // One step, not a drive and then a wait: the host may kill it before it arrives.
+            .driveUntil(x: 115, y: 123, radius: 0.4, .dead, timeoutMs: 90_000),
             .mark("died"),
             .until(.alive, timeoutMs: 30_000),
             .mark("respawned"),

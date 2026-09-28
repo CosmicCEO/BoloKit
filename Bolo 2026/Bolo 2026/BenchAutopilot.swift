@@ -105,19 +105,23 @@ enum BenchAutopilot {
         guard let state = hostState(hiddenMines: config.scenario.hiddenMines) else {
             end(.badConfiguration)
         }
-        do {
-            let listener = try await HostListener(port: config.port)
-            let dgramListener = try await HostDgramListener(port: config.port)
+        // The port may still be held for a moment by the run before this one.
+        for attempt in 0..<10 {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(1)) }
+            guard let listener = try? await HostListener(port: config.port) else { continue }
+            guard let dgramListener = try? await HostDgramListener(port: config.port) else {
+                listener.cancel()
+                continue
+            }
             let engine = HostGameEngine(
                 initialState: networkHostState(from: state), listener: listener, dgramListener: dgramListener
             )
             engine.start()
             return .hosting(engine)
-        } catch {
-            // The app itself falls back to local-only play here. A benchmark run must not.
-            BoloBench.recorder?.record(.mark, sub: BenchMark.hostingFellBack.rawValue)
-            end(.hostingUnavailable)
         }
+        // The app itself falls back to local-only play here. A benchmark run must not.
+        BoloBench.recorder?.record(.mark, sub: BenchMark.hostingFellBack.rawValue)
+        end(.hostingUnavailable)
     }
 
     private static func join(_ config: Config) async -> AppScreen {
@@ -254,6 +258,23 @@ enum BenchAutopilot {
                     pilot.press(wanted: decision.flags, managed: Self.steering, index: index)
                     // Arrived means stopped there, not passing through.
                     return decision.arrived && tank.speed == 0
+                }
+
+            case .driveUntil(let x, let y, let radius, let condition, let timeoutMs):
+                return await poll(timeoutMs: timeoutMs) { pilot in
+                    let state = pilot.state
+                    if benchConditionHolds(condition, player: pilot.me, state: state) {
+                        pilot.press(wanted: [], managed: Self.steering, index: index)
+                        return true
+                    }
+                    guard state.players.indices.contains(pilot.me), !state.players[pilot.me].dead else {
+                        pilot.press(wanted: [], managed: Self.steering, index: index)
+                        return false
+                    }
+                    let tank = state.players[pilot.me]
+                    let decision = benchSteer(tank: tank.tank, dir: tank.dir, x: x, y: y, radius: radius)
+                    pilot.press(wanted: decision.flags, managed: Self.steering, index: index)
+                    return false
                 }
 
             case .face(let x, let y, let timeoutMs):
