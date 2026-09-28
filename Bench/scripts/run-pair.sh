@@ -39,6 +39,16 @@ fi
 # The app is sandboxed: a log it created itself would land in its container, which this script
 # may not read. So this script opens each log and passes it down as descriptor 3.
 
+# Processor time used so far by a process, in seconds, as the system counts it. Measured from
+# outside so it is there whether or not the app is recording.
+cpu_seconds() {
+  ps -o utime=,stime= -p $1 2>/dev/null | awk '{
+    total = 0
+    for (i = 1; i <= NF; i++) { n = split($i, part, ":"); t = 0; for (j = 1; j <= n; j++) t = t * 60 + part[j]; total += t }
+    if (NF) printf "%.2f", total
+  }'
+}
+
 failed=0
 for ((n = first; n < first + runs; n++)); do
   number=$(printf '%02d' $n)
@@ -57,9 +67,14 @@ for ((n = first; n < first + runs; n++)); do
 
   waited=0
   killed=0
+  hostCpu=0
+  guestCpu=0
   while kill -0 $host 2>/dev/null || kill -0 $guest 2>/dev/null; do
     sleep 1
     waited=$((waited + 1))
+    # The last reading before each process exits is its total, to within this second.
+    reading=$(cpu_seconds $host); [[ -n $reading ]] && hostCpu=$reading
+    reading=$(cpu_seconds $guest); [[ -n $reading ]] && guestCpu=$reading
     if ((waited >= limit)); then
       kill $host $guest 2>/dev/null
       killed=1
@@ -69,7 +84,7 @@ for ((n = first; n < first + runs; n++)); do
   wait $host 2>/dev/null; hostStatus=$?
   wait $guest 2>/dev/null; guestStatus=$?
 
-  print -r -- "{\"runId\":\"$id\",\"scenario\":\"$scenario\",\"recording\":$record,\"port\":$port,\"seconds\":$waited,\"killed\":$killed,\"hostExit\":$hostStatus,\"guestExit\":$guestStatus,\"app\":\"$app\",\"binarySHA256\":\"$(shasum -a 256 "$binary" | cut -d' ' -f1)\",\"commit\":\"$(git -C "$root" rev-parse HEAD)\",\"dirty\":$([[ -n $(git -C "$root" status --porcelain) ]] && echo true || echo false),\"powerSource\":\"$(pmset -g batt | head -1 | sed "s/.*'\(.*\)'.*/\1/")\"}" > "$dest/run.json"
+  print -r -- "{\"runId\":\"$id\",\"scenario\":\"$scenario\",\"recording\":$record,\"port\":$port,\"seconds\":$waited,\"killed\":$killed,\"hostExit\":$hostStatus,\"guestExit\":$guestStatus,\"hostCpuSeconds\":$hostCpu,\"guestCpuSeconds\":$guestCpu,\"app\":\"$app\",\"binarySHA256\":\"$(shasum -a 256 "$binary" | cut -d' ' -f1)\",\"commit\":\"$(git -C "$root" rev-parse HEAD)\",\"dirty\":$([[ -n $(git -C "$root" status --porcelain) ]] && echo true || echo false),\"powerSource\":\"$(pmset -g batt | head -1 | sed "s/.*'\(.*\)'.*/\1/")\"}" > "$dest/run.json"
 
   logs=$(find "$dest" -name '*.jsonl' -size +0 | wc -l | tr -d ' ')
   echo "run-$number: ${waited}s host=$hostStatus guest=$guestStatus killed=$killed logs=$logs"

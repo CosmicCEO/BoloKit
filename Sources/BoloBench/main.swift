@@ -10,6 +10,8 @@ import Foundation
 //   BoloBench compare <baseline.json> <candidate.json>
 //   BoloBench scenario <name>                         print a scenario as JSON, with its hash
 //   BoloBench overhead                                measure the recorder's cost per record here
+//   BoloBench observer <recording-dir> <not-recording-dir>
+//                                                     processor time with recording on against off
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("BoloBench: \(message)\n".utf8))
@@ -130,9 +132,56 @@ func overhead() throws {
         Stats.median(perRecord)!, perRecord.min()!, perRecord.max()!))
 }
 
+/// The observer effect: what recording costs the thing being measured. Compares the processor
+/// time each process used, as the run script read it from outside, over runs of one scenario
+/// with recording on and with it off. Runs of different lengths are compared per second.
+func observer(_ arguments: [String]) throws {
+    guard arguments.count >= 2 else { fail("usage: observer <recording-dir> <not-recording-dir>") }
+    func rates(_ path: String, recording: Int) throws -> (host: [Double], guest: [Double]) {
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        var host: [Double] = []
+        var guest: [Double] = []
+        for run in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        where run.lastPathComponent.hasPrefix("run-") {
+            guard let data = try? Data(contentsOf: run.appendingPathComponent("run.json")),
+                let facts = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                facts["recording"] as? Int == recording, (facts["killed"] as? Int ?? 0) == 0,
+                (facts["hostExit"] as? Int ?? 1) == 0, (facts["guestExit"] as? Int ?? 1) == 0,
+                let seconds = facts["seconds"] as? Double, seconds > 0,
+                let hostCpu = facts["hostCpuSeconds"] as? Double, let guestCpu = facts["guestCpuSeconds"] as? Double
+            else { continue }
+            host.append(100 * hostCpu / seconds)
+            guest.append(100 * guestCpu / seconds)
+        }
+        return (host, guest)
+    }
+    let on = try rates(arguments[0], recording: 1)
+    let off = try rates(arguments[1], recording: 0)
+    var report: [String: Any] = [:]
+    for (side, recorded, plain) in [("host", on.host, off.host), ("guest", on.guest, off.guest)] {
+        guard let with = Stats.median(recorded), let without = Stats.median(plain), without > 0 else {
+            fail("no usable runs for the \(side) (recording \(recorded.count), not recording \(plain.count))")
+        }
+        let change = 100 * (with - without) / without
+        let p = Stats.rankSumP(recorded, plain)
+        print(String(
+            format: "%@: %.1f%% of a core recording (n=%d), %.1f%% not (n=%d): %+.1f%%, p %@", side, with,
+            recorded.count, without, plain.count, change, p.map { String(format: "%.3f", $0) } ?? "-"
+        ))
+        report[side] = [
+            "recordingPct": with, "notRecordingPct": without, "changePct": change, "p": p as Any,
+            "recordingRuns": recorded.count, "notRecordingRuns": plain.count, "within3Pct": abs(change) <= 3,
+        ]
+    }
+    if let out = option("--out", in: arguments) {
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+            .write(to: URL(fileURLWithPath: out))
+    }
+}
+
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard let command = arguments.first else {
-    fail("usage: BoloBench analyze|scorecard|compare|scenario|overhead ...")
+    fail("usage: BoloBench analyze|scorecard|compare|scenario|overhead|observer ...")
 }
 do {
     let rest = Array(arguments.dropFirst())
@@ -142,6 +191,7 @@ do {
     case "compare": try compare(rest)
     case "scenario": try scenario(rest)
     case "overhead": try overhead()
+    case "observer": try observer(rest)
     default: fail("unknown command '\(command)'")
     }
 } catch {
