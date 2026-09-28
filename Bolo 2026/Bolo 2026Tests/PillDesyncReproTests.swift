@@ -147,10 +147,11 @@ struct PillDesyncReproTests {
 
     private func treeRow(_ session: GameSession, _ engine: HostGameEngine, _ me: Int) -> String {
         let g = session.state.players[me], h = engine.state.players[me]
-        return "guest trees \(g.trees) carrying \(g.builderTrees) builder \(g.builderStatus) task \(g.builderTask)"
+        return "guest trees \(g.trees) mines \(g.mines) carrying \(g.builderTrees)/\(g.builderMines)"
+            + " builder \(g.builderStatus) task \(g.builderTask)"
             + " at (\(g.builder.x),\(g.builder.y)) -> (\(g.builderTarget.x),\(g.builderTarget.y))"
             + " pending \(String(describing: g.pendingBuilderCommand)) dead \(g.dead)"
-            + " | host trees \(h.trees) builder \(h.builderStatus)"
+            + " | host trees \(h.trees) mines \(h.mines) builder \(h.builderStatus)"
             + " | pill0 guest \(session.state.pills.first?.armour ?? 255) host \(engine.state.pills.first?.armour ?? 255)"
             + " | guest terrain x51...56 y50: "
             + (51...56).map { session.state.terrain[$0, 50].map { "\($0)" } ?? "nil" }.joined(separator: ",")
@@ -229,5 +230,30 @@ struct PillDesyncReproTests {
         let message = "a road should cost \(roadTrees): \(job.before) -> \(job.after)\n"
             + job.rows.joined(separator: "\n")
         #expect(job.after == job.before - roadTrees, Comment(rawValue: message))
+    }
+
+    /// #174: a mine's count is host-authoritative for a guest (`SRTankStatus`), but the guest's
+    /// builder deducts one locally at launch and the host never did, so the two disagreed and any
+    /// later status handed the mine back.
+    @Test(arguments: [false, true])
+    func aGuestMinePlacementCostsAMineOnBothSides(shootMidTrip: Bool) async throws {
+        let (engine, port) = try await makeHost(pills: [], hiddenMines: false)
+        engine.start()
+        defer { engine.stop() }
+        let (session, udp, tcp) = try await join(port)
+        defer { udp.cancel(); tcp.cancel() }
+        let me = session.state.localPlayer
+        try await waitUntil(timeout: 10) { !session.state.players[me].dead && !engine.state.players[me].dead }
+        let before = session.state.players[me].mines
+
+        let job = try await runGuestBuilderJob(
+            .mine, at: BoloKit.Pointi(x: 56, y: 52), session: session, engine: engine, me: me,
+            shootMidTrip: shootMidTrip,
+            done: { engine.state.terrain[56, 52] == .minedGrass })
+
+        let guest = session.state.players[me].mines, host = engine.state.players[me].mines
+        let message = "a placed mine should cost 1 on both sides: \(before) -> guest \(guest), host \(host)\n"
+            + job.rows.joined(separator: "\n")
+        #expect(guest == before - 1 && host == before - 1, Comment(rawValue: message))
     }
 }

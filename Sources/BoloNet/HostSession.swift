@@ -869,6 +869,8 @@ public func dispatchHostMessage(
         // takes no such parameter, matching the C exactly (`RecvCL.swift`'s
         // own doc comment: "costs no trees, always acks 0").
         guard let msg = CLPlaceMine.decode(bytes) else { throw HostSessionError.malformedMessage }
+        // Snapshot before `recvClPlaceMine` takes exclusive access to `state` (as `.dropMine` does).
+        let simulated = state.hostSimulatesRemotePlayers
         recvClPlaceMine(
             player: player, x: Int(msg.x), y: Int(msg.y), state: &state,
             onShouldBroadcastPlaceMine: { p, x, y in
@@ -889,6 +891,14 @@ public func dispatchHostMessage(
                 pending.append(.all(SRDropPill(pill: UInt8(pill), x: UInt8(x), y: UInt8(y)).encode()))
             }
         )
+        // #174: a host-simulated player's mine count is the host's (`SRTankStatus`), but its builder
+        // spent one locally at launch, so the host must spend it too or the next status hands it
+        // back. The C server keeps no mine count (the client owns it), so this is port-only. Spent
+        // whether or not the tile took it: the oracle never refunds a builder-placed mine
+        // (`BuilderTick.swift`'s `placeMineWork` caller zeroes `builderMines` either way).
+        if simulated, state.players.indices.contains(player) {
+            state.players[player].mines = max(0, state.players[player].mines - 1)
+        }
 
     case .damage:
         guard let msg = CLDamage.decode(bytes) else { throw HostSessionError.malformedMessage }

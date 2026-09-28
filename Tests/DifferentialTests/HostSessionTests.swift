@@ -353,6 +353,67 @@ private func simulatedGuestStanding(onMinedTile: Bool) -> GameState {
     return state
 }
 
+// #174: a builder's mine (`CLPlaceMine`) is the same story as a key-down one. The guest spends a mine
+// locally at launch and the host, which owns a simulated player's count, must spend it too.
+
+@Test func dispatchPlaceMineFromAHostSimulatedPlayerSpendsOneOfItsMines() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.hostSimulatesRemotePlayers = true
+    state.terrain[50, 50] = .grass0
+    state.players[1].mines = 5
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+    #expect(state.terrain[50, 50] == .minedGrass)
+    #expect(state.players[1].mines == 4, "the host spends the simulated player's mine")
+}
+
+@Test func dispatchPlaceMineOnATileThatRefusesItStillSpendsTheMine() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.hostSimulatesRemotePlayers = true
+    state.terrain[50, 50] = .sea
+    state.players[1].mines = 5
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+    #expect(state.terrain[50, 50] == .sea)
+    #expect(state.players[1].mines == 4, "the oracle never refunds a builder-placed mine, and the guest already spent it")
+}
+
+@Test func dispatchPlaceMineNeverTakesAHostSimulatedPlayersMinesBelowZero() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.hostSimulatesRemotePlayers = true
+    state.terrain[50, 50] = .grass0
+    state.players[1].mines = 0
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+    #expect(state.players[1].mines == 0)
+}
+
+@Test func dispatchPlaceMineFromAPlayerTheHostDoesNotSimulateLeavesItsMinesAlone() async throws {
+    let (table, links) = try await makeTableWithPlayers(2)
+    defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
+
+    var state = makeState(playerCount: 2)
+    state.hostSimulatesRemotePlayers = false
+    state.terrain[50, 50] = .grass0
+    state.players[1].mines = 5
+
+    try await sendBytes(links[1].clientEnd, CLPlaceMine(x: 50, y: 50, mines: 0).encode())
+    _ = try await receiveAndDispatchOneHostMessage(connection: links[1].serverEnd, player: 1, state: &state, table: table)
+    #expect(state.players[1].mines == 5, "without host simulation the guest owns its mine count, as in the oracle")
+}
+
 @Test func dispatchDropMineFromAHostSimulatedPlayerWithNoMinesPlacesNothing() async throws {
     let (table, links) = try await makeTableWithPlayers(2)
     defer { for l in links { l.listener.cancel(); l.clientEnd.cancel() } }
