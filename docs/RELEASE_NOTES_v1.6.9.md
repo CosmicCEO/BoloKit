@@ -1,6 +1,6 @@
 # v1.6.9 — Guest builder resource accounting
 
-Tagged 2026-09-28.
+Tagged 2026-09-28 on merge commit `7a4f3d6` ([PR #177](https://github.com/CosmicCEO/BoloKit/pull/177)).
 
 ## Summary
 
@@ -45,9 +45,9 @@ pushed back onto the guest. Both were reproduced in that harness before anything
 - `makeHost` in that suite gained a `hiddenMines` parameter (default unchanged): the builder
   tests turn Hidden Mines off, because fog-redacted tiles read as solid sea to a builder.
 
-Live-verified by Jerod on two Macs, 2026-09-28, on a Desktop build of the #171 fix: the tree
-cost stays paid after shots mid-trip and harvested trees survive. **The #174 mine-placement fix
-is harness-verified only; it has not been checked in live two-Mac play.**
+Live-verified by Jerod on two Macs, 2026-09-28: the #171 fix on a Desktop build of that fix
+(the tree cost stays paid after shots mid-trip, harvested trees survive), and the #174 fix on
+the 1.6.9 build (a placed mine costs one and stays spent).
 
 Known, not resolved in this release:
 
