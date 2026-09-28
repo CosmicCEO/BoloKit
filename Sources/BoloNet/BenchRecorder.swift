@@ -1,6 +1,7 @@
 import BoloKit
 import Darwin
 import Foundation
+import Synchronization
 import os
 
 // MARK: - Benchmark recorder (v1.6.9 baseline benchmark)
@@ -145,6 +146,16 @@ public enum BoloBench {
         guard environment["BOLO_BENCH"] == "1" else { return nil }
         let runID = environment["BOLO_BENCH_RUN_ID"] ?? "run-\(Int(Date().timeIntervalSince1970))"
         let role = environment["BOLO_BENCH_ROLE"] ?? "unknown"
+        let recordsState = environment["BOLO_BENCH_STATE"] != "0"
+        // The app is sandboxed, so a file it creates itself lands in its container, which
+        // other processes may not read. A descriptor the launcher opened and passed down is
+        // writable from inside the sandbox and readable by whoever opened it.
+        if let descriptor = environment["BOLO_BENCH_FD"].flatMap(Int32.init), descriptor > 2 {
+            return try? BenchRecorder(
+                handle: FileHandle(fileDescriptor: descriptor, closeOnDealloc: false), role: role, runID: runID,
+                samplesProcess: true, recordsState: recordsState
+            )
+        }
         let directory: URL
         if let out = environment["BOLO_BENCH_OUT"], !out.isEmpty {
             directory = URL(fileURLWithPath: out, isDirectory: true)
@@ -156,8 +167,7 @@ public enum BoloBench {
         let file = directory.appendingPathComponent(runID, isDirectory: true)
             .appendingPathComponent("\(role)-\(getpid()).jsonl")
         return try? BenchRecorder(
-            url: file, role: role, runID: runID, samplesProcess: true,
-            recordsState: environment["BOLO_BENCH_STATE"] != "0"
+            url: file, role: role, runID: runID, samplesProcess: true, recordsState: recordsState
         )
     }()
 
@@ -168,7 +178,8 @@ public enum BoloBench {
 public final class BenchRecorder: @unchecked Sendable {
     public static let defaultCapacity = 1 << 19
 
-    public let url: URL
+    /// `nil` when writing to a descriptor the launcher passed in.
+    public let url: URL?
     public let role: String
     public let runID: String
     /// Off for the scaling sweep (`BOLO_BENCH_STATE=0`), which measures host cost only.
@@ -182,6 +193,9 @@ public final class BenchRecorder: @unchecked Sendable {
     private var written: UInt64 = 0
     private var dropped: UInt64 = 0
     private var selfTime: UInt64 = 0
+    /// Counts calls to decide which ones time themselves. Separate from `written` so the
+    /// decision is made on entry, before the lock.
+    private let calls = Atomic<UInt64>(0)
 
     // Touched only on `writerQueue`.
     private var draining: UnsafeMutablePointer<BenchRecord>
@@ -191,12 +205,28 @@ public final class BenchRecorder: @unchecked Sendable {
     private let writerQueue = DispatchQueue(label: "com.cosmicceo.Bolo-2026.bench", qos: .utility)
 
     private static let drainsPerSecond = 4
-    /// One call in this many times itself, so the estimate costs one extra clock read in 64.
+    /// One call in this many times itself, entry to exit, and counts for all of them.
     private static let selfTimeSampling: UInt64 = 64
 
-    public init(
+    public convenience init(
         url: URL, role: String, runID: String, capacity: Int = BenchRecorder.defaultCapacity,
         samplesProcess: Bool = false, recordsState: Bool = true
+    ) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try self.init(
+            handle: FileHandle(forWritingTo: url), url: url, role: role, runID: runID, capacity: capacity,
+            samplesProcess: samplesProcess, recordsState: recordsState
+        )
+    }
+
+    public init(
+        handle: FileHandle, url: URL? = nil, role: String, runID: String,
+        capacity: Int = BenchRecorder.defaultCapacity, samplesProcess: Bool = false, recordsState: Bool = true
     ) throws {
         self.url = url
         self.role = role
@@ -206,14 +236,8 @@ public final class BenchRecorder: @unchecked Sendable {
         filling = .allocate(capacity: self.capacity)
         draining = .allocate(capacity: self.capacity)
 
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        handle = try FileHandle(forWritingTo: url)
-        try handle?.write(contentsOf: Data((Self.headerLine(role: role, runID: runID) + "\n").utf8))
+        self.handle = handle
+        try handle.write(contentsOf: Data((Self.headerLine(role: role, runID: runID) + "\n").utf8))
 
         let source = DispatchSource.makeTimerSource(queue: writerQueue)
         let interval = 1.0 / Double(Self.drainsPerSecond)
@@ -236,21 +260,27 @@ public final class BenchRecorder: @unchecked Sendable {
         _ kind: BenchKind, sub: UInt8 = 0, id: UInt32 = 0, v0: UInt64 = 0, v1: UInt64 = 0,
         at time: UInt64 = BoloBench.now()
     ) {
-        let sampled: Bool = lock.withLockUnchecked {
+        // `time` is when the recorded thing happened, which may be well before this call, so
+        // the call's own cost is timed from its own entry.
+        let sampled = calls.add(1, ordering: .relaxed).newValue % Self.selfTimeSampling == 0
+        let entry = sampled ? BoloBench.now() : 0
+        lock.withLockUnchecked {
             guard count < capacity else {
                 dropped &+= 1
-                return false
+                return
             }
             filling[count] = BenchRecord(time: time, kind: kind, sub: sub, id: id, v0: v0, v1: v1)
             count += 1
             written &+= 1
-            return written % Self.selfTimeSampling == 0
         }
         if sampled {
-            let spent = BoloBench.now() &- time
+            let spent = BoloBench.now() &- entry
             lock.withLockUnchecked { selfTime &+= spent &* Self.selfTimeSampling }
         }
     }
+
+    /// Estimated nanoseconds spent inside `record` so far.
+    public var estimatedSelfTime: UInt64 { lock.withLockUnchecked { selfTime } }
 
     /// `record(.phase, ...)` for an interval that started at `start` and ends now.
     public func phase(_ phase: BenchPhase, tick: UInt32, since start: UInt64) {

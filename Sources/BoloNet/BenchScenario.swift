@@ -40,6 +40,36 @@ public func benchRandomInputs(_ rng: inout BenchRNG) -> InputFlags {
     return flags
 }
 
+/// One 100 ms step of random play: the keys to hold, and sometimes a mine or a builder order
+/// within four tiles of the tank. The same draws in the same order as the soak test's host
+/// player, so a seed means the same thing in both.
+public struct BenchRandomAction: Equatable, Sendable {
+    public var flags: InputFlags
+    public var layMine: Bool
+    public var builder: BuilderCommandKind?
+    public var target: Pointi
+}
+
+public func benchRandomAction(_ rng: inout BenchRNG, tank: Vec2f) -> BenchRandomAction {
+    var action = BenchRandomAction(
+        flags: benchRandomInputs(&rng), layMine: false, builder: nil, target: Pointi(x: 0, y: 0)
+    )
+    if Double.random(in: 0..<1, using: &rng) < 0.15 { action.layMine = true }
+    if Double.random(in: 0..<1, using: &rng) < 0.10 {
+        let kinds: [BuilderCommandKind] = [.tree, .road, .wall, .pill, .mine]
+        let kind = kinds[Int.random(in: 0..<kinds.count, using: &rng)]
+        let x = Int(tank.x) + Int.random(in: -4...4, using: &rng)
+        let y = Int(tank.y) + Int.random(in: -4...4, using: &rng)
+        if x >= 1, x < 255, y >= 1, y < 255 {
+            action.builder = kind
+            action.target = Pointi(x: Int32(x), y: Int32(y))
+        }
+    }
+    return action
+}
+
+public let benchRandomStepMs = 100
+
 // MARK: - Model
 
 public enum BenchKey: String, Codable, Sendable, CaseIterable {
@@ -80,12 +110,16 @@ public enum BenchCondition: Codable, Sendable, Equatable {
     case dead
     case peerAlive
     case peerDead
+    /// No other player is connected.
+    case peerGone
     /// Within `radius` tiles of the centre of tile (`x`, `y`).
     case at(x: Int, y: Int, radius: Double)
     case peerAt(x: Int, y: Int, radius: Double)
     case carryingAtLeast(pills: Int)
     case pillOwnedByMe(pill: Int)
     case pillArmourAtMost(pill: Int, armour: Int)
+    /// On the ground (not carried) at tile (`x`, `y`).
+    case pillAt(pill: Int, x: Int, y: Int)
     case terrain(x: Int, y: Int, anyOf: [Int32])
     case minesAtMost(Int)
     case treesAtMost(Int)
@@ -164,6 +198,8 @@ public func benchConditionHolds(_ condition: BenchCondition, player: Int, state:
         return peer.map { !$0.dead } ?? false
     case .peerDead:
         return peer.map(\.dead) ?? false
+    case .peerGone:
+        return peer == nil
     case .at(let x, let y, let radius):
         return !me.dead && distance(me.tank, tileCentre(x, y)) <= radius
     case .peerAt(let x, let y, let radius):
@@ -175,6 +211,9 @@ public func benchConditionHolds(_ condition: BenchCondition, player: Int, state:
     case .pillArmourAtMost(let pill, let armour):
         return state.pills.indices.contains(pill) && state.pills[pill].armour != pillOnboard
             && Int(state.pills[pill].armour) <= armour
+    case .pillAt(let pill, let x, let y):
+        return state.pills.indices.contains(pill) && state.pills[pill].armour != pillOnboard
+            && Int(state.pills[pill].x) == x && Int(state.pills[pill].y) == y
     case .terrain(let x, let y, let anyOf):
         guard (0..<256).contains(x), (0..<256).contains(y) else { return false }
         return anyOf.contains(state.terrain.storage[y * 256 + x])

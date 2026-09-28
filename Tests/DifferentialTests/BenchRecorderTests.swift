@@ -91,6 +91,44 @@ private func lines(_ url: URL) throws -> [Substring] {
     )
 }
 
+// How the sandboxed app is given its log: the launcher opens the file and passes the descriptor.
+@Test func aRecorderCanWriteToADescriptorItWasHanded() throws {
+    let url = temporaryLog()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let descriptor = open(url.path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    try #require(descriptor > 2)
+    defer { close(descriptor) }
+
+    let recorder = try BenchRecorder(
+        handle: FileHandle(fileDescriptor: descriptor, closeOnDealloc: false), role: "host", runID: "t"
+    )
+    #expect(recorder.url == nil)
+    recorder.record(.mark, id: 5, at: 9)
+    recorder.flush()
+
+    let all = try lines(url)
+    #expect(all.count == 2)
+    #expect(all.last.flatMap { BenchRecorder.parse($0) } == BenchRecord(time: 9, kind: .mark, id: 5))
+}
+
+// The recorder's own cost is timed from the call, not from the timestamp being recorded: a
+// record stamped long ago must not look like a slow call.
+@Test func selfTimeIsTheCostOfRecordingNotTheAgeOfTheRecord() throws {
+    let url = temporaryLog()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let recorder = try BenchRecorder(url: url, role: "host", runID: "t")
+    let longAgo = BoloBench.now() &- 60_000_000_000
+    let started = BoloBench.now()
+    for index in 0..<6_400 { recorder.record(.state, id: UInt32(index), at: longAgo) }
+    let elapsed = BoloBench.now() &- started
+    recorder.finish()
+
+    #expect(recorder.estimatedSelfTime > 0)
+    // An estimate from one call in 64, so allow it some slack over the measured total.
+    #expect(recorder.estimatedSelfTime <= elapsed &* 4)
+}
+
 @Test func timestampsComeFromOneMonotonicClock() {
     let first = BoloBench.now()
     let second = BoloBench.now()

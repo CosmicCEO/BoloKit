@@ -62,6 +62,12 @@ struct AppRootView: View {
     }
 
     var body: some View {
+        content
+            // v1.6.9 baseline benchmark: does nothing unless started with `BOLO_BENCH_ROLE`.
+            .task { if let launched = await BenchAutopilot.launch() { screen = launched } }
+    }
+
+    @ViewBuilder private var content: some View {
         switch screen {
         case .newGame:
             NewGameView(

@@ -41,6 +41,19 @@ import BoloNet
     #expect(Set(a).count > 8, "the mix should cover many key combinations")
 }
 
+@Test func randomPlayReplaysFromItsSeedAndStaysNearTheTank() {
+    let tank = Vec2f(x: 102.5, y: 121.5)
+    var first = BenchRNG(state: 9)
+    var second = BenchRNG(state: 9)
+    let a = (0..<500).map { _ in benchRandomAction(&first, tank: tank) }
+    let b = (0..<500).map { _ in benchRandomAction(&second, tank: tank) }
+    #expect(a == b)
+    #expect(a.contains { $0.layMine })
+    let orders = a.filter { $0.builder != nil }
+    #expect(!orders.isEmpty)
+    #expect(orders.allSatisfy { abs(Int($0.target.x) - 102) <= 4 && abs(Int($0.target.y) - 121) <= 4 })
+}
+
 @Test func headingErrorIsSignedTheWayTurnLeftTurns() {
     let tank = Vec2f(x: 100.5, y: 100.5)
     // Facing east (0). North on screen is smaller y, a quarter turn to the left.
@@ -127,6 +140,17 @@ func steeringGetsARealTankToItsTarget(x: Int, y: Int) {
     #expect(benchConditionHolds(.pillOwnedByMe(pill: 0), player: 0, state: state))
     #expect(benchConditionHolds(.carryingAtLeast(pills: 1), player: 0, state: state))
     #expect(!benchConditionHolds(.pillArmourAtMost(pill: 0, armour: 15), player: 0, state: state), "a carried pill has no armour")
+
+    state.pills[0].armour = 15
+    state.pills[0].x = 110
+    state.pills[0].y = 121
+    #expect(benchConditionHolds(.pillAt(pill: 0, x: 110, y: 121), player: 0, state: state))
+    #expect(!benchConditionHolds(.pillAt(pill: 0, x: 105, y: 100), player: 0, state: state))
+
+    #expect(!benchConditionHolds(.peerGone, player: 0, state: state))
+    state.players[1].connected = false
+    #expect(benchConditionHolds(.peerGone, player: 0, state: state))
+    state.players[1].connected = true
 
     state.players[0].mines = 3
     #expect(benchConditionHolds(.minesAtMost(3), player: 0, state: state))
