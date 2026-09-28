@@ -29,7 +29,8 @@ struct PillDesyncReproTests {
 
     /// Host tank is placed alive, away from the single start at (50, 50) the guest spawns on.
     private func makeHost(
-        pills: [Pill], hostTank: Vec2f = Vec2f(x: 200.5, y: 200.5), hostDir: Float = 0
+        pills: [Pill], hostTank: Vec2f = Vec2f(x: 200.5, y: 200.5), hostDir: Float = 0,
+        hiddenMines: Bool? = nil
     ) async throws -> (engine: HostGameEngine, port: UInt16) {
         for _ in 0..<8 {
             let port = UInt16.random(in: 49_152...65_000)
@@ -52,6 +53,7 @@ struct PillDesyncReproTests {
             state.local.armour = 40
             state.local.range = 7
             state.hostSimulatesRemotePlayers = true
+            if let hiddenMines { state.hiddenMines = hiddenMines }
             for y in 20..<240 { for x in 20..<240 { state.terrain.storage[y * 256 + x] = Terrain.grass0.rawValue } }
             state.starts = [Start(x: 50, y: 50, dir: 0)]
             state.pills = pills
@@ -139,5 +141,93 @@ struct PillDesyncReproTests {
         #expect(
             session.state.pills[0].armour == engine.state.pills[0].armour,
             "guest \(session.state.pills[0].armour) host \(engine.state.pills[0].armour)")
+    }
+
+    // MARK: - #171: a guest builder's tree cost
+
+    private func treeRow(_ session: GameSession, _ engine: HostGameEngine, _ me: Int) -> String {
+        let g = session.state.players[me], h = engine.state.players[me]
+        return "guest trees \(g.trees) carrying \(g.builderTrees) builder \(g.builderStatus) task \(g.builderTask)"
+            + " at (\(g.builder.x),\(g.builder.y)) -> (\(g.builderTarget.x),\(g.builderTarget.y))"
+            + " pending \(String(describing: g.pendingBuilderCommand)) dead \(g.dead)"
+            + " | host trees \(h.trees) builder \(h.builderStatus)"
+            + " | pill0 guest \(session.state.pills.first?.armour ?? 255) host \(engine.state.pills.first?.armour ?? 255)"
+            + " | guest terrain x51...56 y50: "
+            + (51...56).map { session.state.terrain[$0, 50].map { "\($0)" } ?? "nil" }.joined(separator: ",")
+    }
+
+    /// Sends the guest's builder to `target`, waits for it to finish and come back, lets the host's
+    /// status stream settle, and returns the guest's tree count before and after (`rows` is the
+    /// change-only log of both sides, for the failure message).
+    private func runGuestBuilderJob(
+        _ command: BuilderCommandKind, at target: BoloKit.Pointi,
+        session: GameSession, engine: HostGameEngine, me: Int, shootMidTrip: Bool, done: () -> Bool
+    ) async throws -> (before: Int, after: Int, rows: [String]) {
+        try await waitUntil(timeout: 10) { !session.state.players[me].dead && !engine.state.players[me].dead }
+        // Callers turn Hidden Mines off: redacted tiles read as solid sea to a builder, which
+        // would give up at once and never reach the target.
+        try #require(session.state.terrain[Int(target.x), Int(target.y)] != .sea, "target tile is fogged")
+        let before = session.state.players[me].trees
+        var rows = ["start " + treeRow(session, engine, me)]
+        session.renderView.onBuilderCommand?(command, target)
+        if shootMidTrip {
+            // Any change to the host's record of the guest's combat state makes it resend
+            // `SRTankStatus`, which carries the host's tree count. One shell is enough.
+            try await waitUntil(timeout: 5) { session.state.players[me].builderStatus == .goto }
+            session.renderView.onInputFlagsChange?(KeyInputChange(set: .shoot, clear: []))
+            try await Task.sleep(nanoseconds: 150_000_000)
+            session.renderView.onInputFlagsChange?(KeyInputChange(set: [], clear: .shoot))
+        }
+        try await waitUntil(timeout: 30) {
+            let row = treeRow(session, engine, me)
+            if rows.last?.hasSuffix(row) != true { rows.append("\(rows.count) " + row) }
+            return done() && session.state.players[me].builderStatus == .ready
+        }
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        rows.append("settled " + treeRow(session, engine, me))
+        return (before, session.state.players[me].trees, rows)
+    }
+
+    /// The guest deducts a repair's trees when its builder launches; the host's own count for the
+    /// guest never moved, and the next `SRTankStatus` put the host's count back on the guest.
+    @Test(arguments: [false, true])
+    func aGuestPillRepairCostsItsTrees(shootMidTrip: Bool) async throws {
+        let pills = [Pill(x: 56, y: 50, armour: 0, owner: 1, speed: 100, counter: 0)]
+        let (engine, port) = try await makeHost(pills: pills, hiddenMines: false)
+        engine.start()
+        defer { engine.stop() }
+        let (session, udp, tcp) = try await join(port)
+        defer { udp.cancel(); tcp.cancel() }
+        let me = session.state.localPlayer
+
+        let job = try await runGuestBuilderJob(
+            .pill, at: BoloKit.Pointi(x: 56, y: 50), session: session, engine: engine, me: me,
+            shootMidTrip: shootMidTrip,
+            done: { session.state.pills[0].armour == 15 && engine.state.pills[0].armour == 15 })
+
+        let needed = (maxPillArmour - 0 + 3) / 4
+        let message = "repair should cost \(needed) trees: \(job.before) -> \(job.after)\n"
+            + job.rows.joined(separator: "\n")
+        #expect(job.after == job.before - needed, Comment(rawValue: message))
+    }
+
+    /// Same launch-then-`CL*` shape as repair; checked separately because the issue left it open.
+    @Test(arguments: [false, true])
+    func aGuestRoadCostsItsTrees(shootMidTrip: Bool) async throws {
+        let (engine, port) = try await makeHost(pills: [], hiddenMines: false)
+        engine.start()
+        defer { engine.stop() }
+        let (session, udp, tcp) = try await join(port)
+        defer { udp.cancel(); tcp.cancel() }
+        let me = session.state.localPlayer
+
+        let job = try await runGuestBuilderJob(
+            .road, at: BoloKit.Pointi(x: 56, y: 52), session: session, engine: engine, me: me,
+            shootMidTrip: shootMidTrip,
+            done: { session.state.terrain[56, 52] == .road && engine.state.terrain[56, 52] == .road })
+
+        let message = "a road should cost \(roadTrees): \(job.before) -> \(job.after)\n"
+            + job.rows.joined(separator: "\n")
+        #expect(job.after == job.before - roadTrees, Comment(rawValue: message))
     }
 }

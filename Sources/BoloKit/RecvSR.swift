@@ -205,6 +205,12 @@ public func recvSrRevealTerrain(x: Int, y: Int, terrain: Terrain, state: inout G
 /// player's own slot (the host simulates guest tanks, `docs/CONSTRAINTS.md`). A respawn
 /// `teleport` moves the tank and stops it, so the guest (which owns its movement) jumps to the
 /// host-chosen spawn point atomically.
+///
+/// `trees` is applied only with a `teleport` (a respawn, when the host resets the count). Trees
+/// belong to the guest, as in the oracle, where the server keeps no tree count: the guest spends
+/// them locally when its builder launches and the host is never told, so its own count for the
+/// guest is stale from then on. Applying it on every status handed the guest its old count back
+/// while the builder still carried the spent trees (#171: free repairs and builds, harvests wiped).
 public func recvSrTankStatus(
     armour: Int, shells: Int, mines: Int, trees: Int, range: Float, dead: Bool, boat: Bool,
     kickDir: Float, kickSpeed: Float, teleport: (x: Float, y: Float, dir: Float)?, state: inout GameState
@@ -215,12 +221,12 @@ public func recvSrTankStatus(
     state.local.shells = shells
     state.local.range = range
     state.players[player].mines = mines
-    state.players[player].trees = trees
     state.players[player].dead = dead
     state.players[player].boat = boat
     state.players[player].kickDir = kickDir
     state.players[player].kickSpeed = kickSpeed
     if let teleport {
+        state.players[player].trees = trees
         state.players[player].tank = Vec2f(x: teleport.x, y: teleport.y)
         state.players[player].dir = teleport.dir
         state.players[player].speed = 0
