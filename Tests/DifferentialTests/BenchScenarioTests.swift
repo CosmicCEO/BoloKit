@@ -119,6 +119,30 @@ func steeringGetsARealTankToItsTarget(x: Int, y: Int) {
     #expect(benchConditionHolds(.at(x: x, y: y, radius: 0.4), player: 0, state: state))
 }
 
+/// Turns the real tank on the spot with the aiming's own key choices, then holds still.
+@Test(arguments: [(112, 100), (100, 88), (90, 112), (88, 92), (107, 101)])
+func aimingSettlesOnTheTargetCloselyEnoughToHitIt(x: Int, y: Int) {
+    var state = openField()
+    let steering: InputFlags = [.accel, .brake, .turnL, .turnR]
+    var settledFor = 0
+    for _ in 0..<(50 * 20) {
+        let me = state.players[0]
+        let decision = benchFace(tank: me.tank, dir: me.dir, x: x, y: y)
+        if let change = benchKeyChange(from: me.inputFlags, to: decision.flags, managed: steering) {
+            state.players[0].inputFlags.formUnion(change.set)
+            state.players[0].inputFlags.subtract(change.clear)
+        }
+        settledFor = decision.facing ? settledFor + 1 : 0
+        if settledFor >= 50 { break }
+        tankMoveTick(player: 0, state: &state)
+    }
+    #expect(settledFor >= 50, "never held its aim for a second")
+    let me = state.players[0]
+    let error = benchHeadingError(from: me.tank, dir: me.dir, to: Vec2f(x: Float(x) + 0.5, y: Float(y) + 0.5))
+    #expect(abs(error) <= benchAimTolerance)
+    #expect(Int(me.tank.x) == 100 && Int(me.tank.y) == 100, "aiming must not move the tank off its tile")
+}
+
 @Test func conditionsReadTheStateOfTheSideRunningTheScript() {
     var state = openField()
     #expect(benchPeer(of: 0, state: state) == 1)

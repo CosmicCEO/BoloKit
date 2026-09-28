@@ -241,6 +241,9 @@ public func benchHeadingError(from tank: Vec2f, dir: Float, to target: Vec2f) ->
 public let benchFacingTolerance: Float = kPif / 16
 /// Wider than this off the wanted heading the tank turns on the spot before driving.
 public let benchDriveTolerance: Float = kPif / 4
+/// How closely `face` aims. A shell flies along the tank's exact heading, not the sixteenth it
+/// is drawn at, so at the 7-tile limit of its range this is a quarter of a tile to either side.
+public let benchAimTolerance: Float = 0.035
 
 /// The keys to hold this instant to reach tile (`x`, `y`). Empty flags with `arrived` true once
 /// within `radius`.
@@ -259,7 +262,7 @@ public func benchSteer(
 /// The keys to hold this instant to turn on the spot toward tile (`x`, `y`).
 public func benchFace(tank: Vec2f, dir: Float, x: Int, y: Int) -> (flags: InputFlags, facing: Bool) {
     let error = benchHeadingError(from: tank, dir: dir, to: tileCentre(x, y))
-    if abs(error) <= benchFacingTolerance { return ([.brake], true) }
+    if abs(error) <= benchAimTolerance { return ([.brake], true) }
     return (error > 0 ? [.turnL, .brake] : [.turnR, .brake], false)
 }
 

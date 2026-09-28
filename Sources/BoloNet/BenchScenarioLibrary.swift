@@ -14,7 +14,10 @@ import BoloKit
 // and results from different hashes are never compared.
 
 public enum BenchScenarios {
-    public static let all: [BenchScenario] = [joinAndSpawn, soakOpen, soakHidden]
+    public static let all: [BenchScenario] = [
+        joinAndSpawn, pillPickupAndCapture, mineLaying, building, deathAndRespawn, fogCrossing, sustainedFire,
+        soakOpen, soakHidden,
+    ]
 
     public static func named(_ name: String) -> BenchScenario? {
         all.first { $0.name == name }
@@ -40,6 +43,165 @@ public enum BenchScenarios {
             .until(.alive, timeoutMs: 30_000),
             .mark("spawned"),
             .wait(ms: 3_000),
+        ]
+    )
+
+    /// S2. The guest collects the dead pill, has its builder place it, and the host shoots it.
+    /// Exposes a broadcast keyed on the wrong field (owner, when only armour changed) and
+    /// damage applied twice on the guest.
+    public static let pillPickupAndCapture = BenchScenario(
+        name: "s2-pill-pickup-and-capture", hiddenMines: true,
+        host: hostOpening + [
+            .until(.pillAt(pill: 0, x: 112, y: 121), timeoutMs: 90_000),
+            // Close enough that being knocked back by the pill's own fire leaves it in range.
+            .driveTo(x: 108, y: 121, radius: 0.3, timeoutMs: 20_000),
+            .face(x: 112, y: 121, timeoutMs: 10_000),
+            .mark("firing"),
+            .keys(set: [.shoot], clear: []),
+            .until(.pillArmourAtMost(pill: 0, armour: 12), timeoutMs: 30_000),
+            .keys(set: [], clear: [.shoot]),
+            .mark("ceased"),
+            .driveTo(x: hostPost.x, y: hostPost.y, radius: 0.4, timeoutMs: 30_000),
+        ] + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 30_000),
+            .mark("spawned"),
+            .driveTo(x: 108, y: 123, radius: 0.4, timeoutMs: 30_000),
+            .until(.carryingAtLeast(pills: 1), timeoutMs: 10_000),
+            .mark("collected"),
+            .driveTo(x: 110, y: 123, radius: 0.4, timeoutMs: 20_000),
+            .builder(tool: .pill, x: 112, y: 121),
+            .until(.pillAt(pill: 0, x: 112, y: 121), timeoutMs: 60_000),
+            .mark("placed"),
+            .until(.pillArmourAtMost(pill: 0, armour: 12), timeoutMs: 90_000),
+            .mark("damage-seen"),
+            .wait(ms: 2_000),
+        ]
+    )
+
+    /// S3. One mine laid from the tank, one placed by the builder. Exposes resource accounting
+    /// and a change the host masks from players who cannot see the tile.
+    public static let mineLaying = BenchScenario(
+        name: "s3-mine-laying", hiddenMines: true,
+        host: hostOpening + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 30_000),
+            .mark("spawned"),
+            .driveTo(x: 110, y: 121, radius: 0.4, timeoutMs: 30_000),
+            .layMine,
+            .until(.minesAtMost(39), timeoutMs: 10_000),
+            .mark("laid"),
+            .driveTo(x: 113, y: 121, radius: 0.4, timeoutMs: 20_000),
+            .builder(tool: .mine, x: 113, y: 125),
+            .until(.minesAtMost(38), timeoutMs: 30_000),
+            .until(.builderReady, timeoutMs: 30_000),
+            .mark("placed"),
+            .wait(ms: 2_000),
+        ]
+    )
+
+    /// S4. A road and a wall, with the guest firing while its builder is out. Hidden Mines off,
+    /// as in `PillDesyncReproTests`. Exposes the guest's old tree and mine counts overwriting the
+    /// host's (#171, #174).
+    public static let building = BenchScenario(
+        name: "s4-building", hiddenMines: false,
+        host: hostOpening + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 30_000),
+            .mark("spawned"),
+            .driveTo(x: 110, y: 123, radius: 0.4, timeoutMs: 30_000),
+            .face(x: 125, y: 123, timeoutMs: 10_000),
+            .builder(tool: .road, x: 110, y: 126),
+            .keys(set: [.shoot], clear: []),
+            .until(.terrain(x: 110, y: 126, anyOf: [Terrain.road.rawValue]), timeoutMs: 40_000),
+            .keys(set: [], clear: [.shoot]),
+            .until(.builderReady, timeoutMs: 30_000),
+            .mark("road-built"),
+            .builder(tool: .wall, x: 112, y: 126),
+            .keys(set: [.shoot], clear: []),
+            .until(.terrain(x: 112, y: 126, anyOf: [Terrain.wall.rawValue]), timeoutMs: 40_000),
+            .keys(set: [], clear: [.shoot]),
+            .until(.builderReady, timeoutMs: 30_000),
+            .mark("wall-built"),
+            .wait(ms: 2_000),
+        ]
+    )
+
+    /// S5. The guest collects the pill, drives into the host's fire, dies carrying it and is
+    /// respawned by the host. Exposes dropped-pill sync and the respawn teleport.
+    public static let deathAndRespawn = BenchScenario(
+        name: "s5-death-and-respawn", hiddenMines: true,
+        host: [
+            .until(.alive, timeoutMs: 15_000),
+            .driveTo(x: 118, y: 123, radius: 0.4, timeoutMs: 30_000),
+            .face(x: 108, y: 123, timeoutMs: 10_000),
+            .until(.peerAlive, timeoutMs: 90_000),
+            .mark("peer-alive"),
+            .until(.peerAt(x: 115, y: 123, radius: 2.5), timeoutMs: 90_000),
+            .mark("firing"),
+            .keys(set: [.shoot], clear: []),
+            .until(.peerDead, timeoutMs: 60_000),
+            .keys(set: [], clear: [.shoot]),
+            .mark("peer-dead"),
+            .until(.peerAlive, timeoutMs: 30_000),
+            .mark("peer-respawned"),
+        ] + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 60_000),
+            .mark("spawned"),
+            .driveTo(x: 108, y: 123, radius: 0.4, timeoutMs: 30_000),
+            .until(.carryingAtLeast(pills: 1), timeoutMs: 10_000),
+            .mark("collected"),
+            // Each hit knocks the tank back a little, so stop well inside the host's 7-tile range.
+            .driveTo(x: 115, y: 123, radius: 0.4, timeoutMs: 20_000),
+            .until(.dead, timeoutMs: 90_000),
+            .mark("died"),
+            .until(.alive, timeoutMs: 30_000),
+            .mark("respawned"),
+            .wait(ms: 3_000),
+        ]
+    )
+
+    /// S6. The guest drives out of sight of the start, the host's builder lays a road there, and
+    /// the guest comes back. Exposes a change masked while the tile was out of vision and never
+    /// delivered on its return.
+    public static let fogCrossing = BenchScenario(
+        name: "s6-fog-crossing", hiddenMines: true,
+        host: hostOpening + [
+            .until(.peerAt(x: 128, y: 121, radius: 2), timeoutMs: 90_000),
+            .mark("peer-away"),
+            .builder(tool: .road, x: 106, y: 120),
+            .until(.terrain(x: 106, y: 120, anyOf: [Terrain.road.rawValue]), timeoutMs: 40_000),
+            .mark("road-built"),
+        ] + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 30_000),
+            .mark("spawned"),
+            .driveTo(x: 128, y: 121, radius: 0.4, timeoutMs: 60_000),
+            .mark("away"),
+            .wait(ms: 12_000),
+            .driveTo(x: 108, y: 121, radius: 0.4, timeoutMs: 60_000),
+            .mark("back"),
+            .wait(ms: 3_000),
+        ]
+    )
+
+    /// S7. The guest fires until it has nothing left. Exposes the cost of one reliable message a
+    /// tick while a shell is in flight.
+    public static let sustainedFire = BenchScenario(
+        name: "s7-sustained-fire", hiddenMines: true,
+        host: hostOpening + hostClosing,
+        guest: [
+            .until(.alive, timeoutMs: 30_000),
+            .mark("spawned"),
+            .driveTo(x: 110, y: 121, radius: 0.4, timeoutMs: 30_000),
+            .face(x: 130, y: 121, timeoutMs: 10_000),
+            .mark("firing"),
+            .keys(set: [.shoot], clear: []),
+            .wait(ms: 20_000),
+            .keys(set: [], clear: [.shoot]),
+            .mark("ceased"),
+            .wait(ms: 2_000),
         ]
     )
 
