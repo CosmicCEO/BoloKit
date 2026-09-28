@@ -94,10 +94,13 @@ public struct BenchApply {
 
 extension BenchRecorder {
     /// A message arriving, stamped where it is read, before it waits for the consumer.
-    public func received(_ bytes: [UInt8], channel: BenchChannel, sender: Int, opcode: UInt8? = nil) {
+    /// `size` overrides `bytes.count` when only the start of the message is passed in.
+    public func received(
+        _ bytes: [UInt8], channel: BenchChannel, sender: Int, opcode: UInt8? = nil, size: Int? = nil
+    ) {
         record(
-            .receive, sub: channel.rawValue, id: UInt32(opcode ?? bytes.first ?? 0), v0: UInt64(bytes.count),
-            v1: UInt64(truncatingIfNeeded: sender)
+            .receive, sub: channel.rawValue, id: UInt32(opcode ?? bytes.first ?? 0),
+            v0: UInt64(size ?? bytes.count), v1: UInt64(truncatingIfNeeded: sender)
         )
     }
 
@@ -111,6 +114,26 @@ extension BenchRecorder {
             .datagram, sub: sent ? 0 : 1, id: UInt32(sender), v0: UInt64(UInt32(bitPattern: own)),
             v1: UInt64(UInt32(bitPattern: echo))
         )
+    }
+
+    /// The same stamp for an update about to be sent, read straight from its encoded bytes:
+    /// the sender's slot, then sixteen big-endian sequence numbers.
+    public func datagramSent(_ bytes: [UInt8]) {
+        guard let sender = bytes.first.map(Int.init), sender < maxPlayers, bytes.count >= 1 + 4 * maxPlayers else {
+            return
+        }
+        let offset = 1 + 4 * sender
+        let seq = bytes[offset..<offset + 4].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        record(.datagram, sub: 0, id: UInt32(sender), v0: seq)
+    }
+
+    /// The dead-reckoning ticks `applyRemotePlayerUpdate` runs for this update: the same
+    /// arithmetic, on the same inputs.
+    public func extrapolation(header: CLUpdateHeader, myOwnSeq: Int32, local: Int) {
+        guard header.seq.indices.contains(local), header.seq[local] != 0 else { return }
+        let raw = Int(myOwnSeq &- header.seq[local]) / 2
+        let count = min(max(raw, 0), maxDeadReckoningExtrapolationTicks)
+        record(.extrapolation, id: UInt32(header.player), v0: UInt64(count))
     }
 
     public func rejected(_ cause: BenchReject, player: Int? = nil) {

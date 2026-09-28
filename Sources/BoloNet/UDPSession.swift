@@ -75,6 +75,9 @@ public final class UDPSession: @unchecked Sendable {
     /// decisions" boundary (`RunTick.swift`'s own header disclosure for
     /// the same class of decision).
     public func sendLocalUpdate(_ bytes: [UInt8]) async throws {
+        BoloBench.recorder?.datagramSent(bytes)
+        let bench = BenchSend(bytes, channel: .udp, recipient: -1)
+        defer { bench.done() }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(
                 content: Data(bytes),
@@ -137,6 +140,7 @@ public final class UDPSession: @unchecked Sendable {
                 if let error {
                     continuation.resume(throwing: error)
                 } else if let data {
+                    BoloBench.recorder?.received(Array(data.prefix(1)), channel: .udp, sender: Int(data.first ?? 0), size: data.count)
                     continuation.resume(returning: data)
                 } else {
                     continuation.resume(throwing: UDPSessionError.malformedDatagram)
@@ -166,7 +170,14 @@ public final class UDPSession: @unchecked Sendable {
         onSmallboom: () -> Void = {},
         onSpawn: () -> Void = {}
     ) -> (player: Int, seq: Int32, lastUpdate: Int32)? {
+        let bench = BenchApply(channel: .udp, opcode: data.first ?? 0)
+        var benchApplied = false
+        defer {
+            bench.done()
+            if !benchApplied { BoloBench.recorder?.rejected(.applyReturnedNil, player: data.first.map(Int.init)) }
+        }
         guard let update = CLUpdate.decode(Array(data)) else { return nil }
+        BoloBench.recorder?.datagram(sent: false, header: update.header, local: state.localPlayer)
         let player = Int(update.header.player)
         // `applyRemotePlayerUpdate` itself already bounds-checks `player` against
         // `state.players.indices` -- this guard is only to keep this session's OWN
@@ -185,6 +196,8 @@ public final class UDPSession: @unchecked Sendable {
         ) else { return nil }
         remoteSeqs[player] = result.seq
         remoteLastUpdates[player] = result.lastUpdate
+        benchApplied = true
+        BoloBench.recorder?.extrapolation(header: update.header, myOwnSeq: myOwnSeq, local: state.localPlayer)
         return (player, result.seq, result.lastUpdate)
     }
 

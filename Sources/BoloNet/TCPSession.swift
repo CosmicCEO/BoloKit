@@ -177,6 +177,8 @@ public final class TCPSession: @unchecked Sendable {
     }
 
     public func send(_ bytes: [UInt8]) async throws {
+        let bench = BenchSend(bytes, channel: .tcp, recipient: -1)
+        defer { bench.done() }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(
                 content: Data(bytes),
@@ -246,6 +248,12 @@ public final class TCPSession: @unchecked Sendable {
     /// needs the network *wait* off the critical path that touches shared state, so no `await`
     /// ever spans an actor-isolated mutation.
     public func receiveOneRawMessage() async throws -> RawMessage {
+        let message = try await readOneRawMessage()
+        BoloBench.recorder?.received(message.bytes, channel: .tcp, sender: -1)
+        return message
+    }
+
+    private func readOneRawMessage() async throws -> RawMessage {
         let opcodeByte = try await receiveOneByte()
         guard let opcode = ServerOpcode(rawValue: opcodeByte) else {
             throw TCPSessionError.malformedMessage
@@ -313,6 +321,8 @@ public final class TCPSession: @unchecked Sendable {
     public static func dispatch(
         _ message: RawMessage, state: inout GameState, callbacks: SRDispatchCallbacks = SRDispatchCallbacks()
     ) throws {
+        let bench = BenchApply(channel: .tcp, opcode: message.opcode.rawValue)
+        defer { bench.done() }
         let bytes = message.bytes
         switch message.opcode {
         case .playerJoin:
