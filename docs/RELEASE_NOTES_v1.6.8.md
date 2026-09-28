@@ -1,6 +1,6 @@
 # v1.6.8 — Guest spawn, camera, and pill sync
 
-Not yet tagged. Tag after the PR merges.
+Tagged 2026-09-27 on merge commit `30c39a5` ([PR #168](https://github.com/CosmicCEO/BoloKit/pull/168)).
 
 ## Summary
 
