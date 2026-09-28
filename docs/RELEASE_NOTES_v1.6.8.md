@@ -39,6 +39,9 @@ Nine new tests in `Bolo 2026Tests`: `SpawnRecenterTests` (4), `JoinPathSpawnTest
 `PillDesyncReproTests` (2), and one camera test in `GameViewFocusRoutingTests`. App suite is
 162 tests. Each new test fails with its fix removed.
 
+Live-verified by Jerod on the 1.6.8 Desktop build, 2026-09-27: every previously observed
+issue is gone and nothing new appeared.
+
 Known, not resolved in this release:
 
 - The two `PillDesyncReproTests` and the older
@@ -48,7 +51,6 @@ Known, not resolved in this release:
 - `swift test` hung twice during this work and was stopped. Of the package tests that ran,
   `dispatchBuildRoadTerrainByteMatchesTheNewTerrainD40` failed, including before any package
   source was changed.
-- Not yet verified in live two-Mac play.
 
 ## Found, not fixed
 
