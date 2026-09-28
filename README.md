@@ -18,7 +18,7 @@ differential tests. See `LICENSE` for the full attribution chain and license ter
 
 ## Status
 
-**Current tagged drop:** [`v1.6.8`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.8) — a patch fixing three guest-only defects found in live play: the guest spawning twice (camera and fog left on the wrong start), pickups of a guest's own dropped pills never reaching the guest, and the guest counting pill damage twice. Release notes: [`docs/RELEASE_NOTES_v1.6.8.md`](docs/RELEASE_NOTES_v1.6.8.md).
+**Current tagged drop:** [`v1.6.9`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.9) — a patch fixing two guest-only accounting defects: a guest builder's tree spends being refunded by the host's stale count, and a guest builder's placed mine never costing the host a mine. Release notes: [`docs/RELEASE_NOTES_v1.6.9.md`](docs/RELEASE_NOTES_v1.6.9.md).
 
 The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conventions: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Live board: [`docs/STATUS.md`](docs/STATUS.md).
 
