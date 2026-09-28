@@ -162,6 +162,13 @@ public final class HostGameEngine: @unchecked Sendable {
     /// shell lands or the last explosion ends, which is what clears the guest's copy.
     private var lastTankShots: [Int: SRTankShots] = [:]
 
+    /// v1.6.9 baseline benchmark: measurement only, no gameplay effect. `nil` unless the process
+    /// was started with `BOLO_BENCH=1`; settable so an in-process test can give host and guest a
+    /// log each. Set before `start()`.
+    public var benchRecorder: BenchRecorder? = BoloBench.recorder
+    private var benchTick: UInt32 = 0
+    private var benchState = BenchHostStateProbe()
+
     /// Read-only access to a connected player slot's current `FogState`, for rendering
     /// (Phase 3) and testing. `nil` when `state.hiddenMines` is false or the slot has no
     /// tracked fog state yet.
@@ -239,7 +246,11 @@ public final class HostGameEngine: @unchecked Sendable {
 
         let source = DispatchSource.makeTimerSource(queue: .main)
         source.schedule(deadline: .now(), repeating: 1.0 / Double(ticksPerSec), leeway: .milliseconds(0))
-        source.setEventHandler { continuation.yield(.tick) }
+        let bench = benchRecorder
+        source.setEventHandler {
+            bench?.record(.timerFire)
+            continuation.yield(.tick)
+        }
         source.resume()
         timer = source
 
@@ -253,6 +264,7 @@ public final class HostGameEngine: @unchecked Sendable {
         let dgramPackets = dgramListener.packets
         Task {
             for await (bytes, connection) in dgramPackets {
+                bench?.received(bytes, channel: .udp, sender: bytes.first.map(Int.init) ?? -1)
                 continuation.yield(.dgramPacket(bytes, connection))
             }
         }
@@ -443,10 +455,17 @@ public final class HostGameEngine: @unchecked Sendable {
             // joining player's initial spawn-reveal `FogState` *before* it encodes and sends
             // the map (`HostListener.swift`'s own doc comment on that ordering), so the very
             // first map send is already redacted.
+            let joinStart = BoloBench.now()
+            benchRecorder?.record(.join, sub: 0, at: joinStart)
             let outcome = await processJoinAttempt(
                 connection: connection, serializer: listener.serializer, state: &state, table: table,
                 fogStates: &fogStates
             )
+            if let benchRecorder {
+                var joined = UInt32.max
+                if case .accepted(let player, _) = outcome { joined = UInt32(truncatingIfNeeded: player) }
+                benchRecorder.record(.join, sub: 1, id: joined, v0: BoloBench.now() &- joinStart)
+            }
             // B.5c: on a successful join, spawn this player's own dynamic producer `Task` --
             // I/O-only (just `receiveOneHostMessageBytes`, never touches `state`), matching the
             // three static producers' own discipline. Reads the same `connection`
@@ -457,10 +476,12 @@ public final class HostGameEngine: @unchecked Sendable {
                     await emitGameMessage(rejoin ? EventLogText.rejoined(name) : EventLogText.joined(name))
                 }
                 let continuation = self.continuation
+                let bench = benchRecorder
                 Task {
                     while true {
                         do {
                             let (opcode, bytes) = try await receiveOneHostMessageBytes(from: connection)
+                            bench?.received(bytes, channel: .tcp, sender: player, opcode: opcode.rawValue)
                             continuation?.yield(.clMessage(player: player, opcode: opcode, bytes: bytes))
                             if opcode == .hangUp { break }
                         } catch {
@@ -487,6 +508,8 @@ public final class HostGameEngine: @unchecked Sendable {
             // violation this file's own header already flags for `onSpawn` above.
             let localPlayerIndex = state.localPlayer
             let playerNames = state.players.map(\.name)
+            let benchApply = BenchApply(channel: .tcp, opcode: opcode.rawValue, recorder: benchRecorder)
+            defer { benchApply.done() }
             do {
                 try await dispatchHostMessage(
                     opcode: opcode, bytes: bytes, player: player, state: &state, table: table,
@@ -646,6 +669,9 @@ public final class HostGameEngine: @unchecked Sendable {
     }
 
     private func tick() async {
+        benchTick &+= 1
+        var lap = BenchLap(recorder: benchRecorder, tick: benchTick)
+        defer { lap.finish() }
         var pending: [[UInt8]] = []
         // v1.5.0 #1: terrain-affecting tick-driven broadcasts (regrowth, flood, mine-chain
         // detonations) get masked instead of sent to everyone -- flushed separately below,
@@ -719,7 +745,9 @@ public final class HostGameEngine: @unchecked Sendable {
             return !isFog(x: point.x, y: point.y, fogState: hostFogStateSnapshot)
         }
 
+        lap.mark(.prepare)
         let terrainBeforeTick = state.terrain.storage
+        lap.mark(.terrainDiff)
         let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.runTickName)
         runTick(
             state: &state,
@@ -796,6 +824,7 @@ public final class HostGameEngine: @unchecked Sendable {
             onPillShot: { pendingSounds.append(("pillshot", true)) }
         )
         BoloSignposts.tick.endInterval(BoloSignposts.runTickName, tickSignpost)
+        lap.mark(.runTick)
 
         // Terrain the host's own simulation changed this tick (mine detonations, builder work,
         // shells): `runTick`'s terrain hooks are sound-only or unwired (the documented B.5d gap), so
@@ -813,6 +842,8 @@ public final class HostGameEngine: @unchecked Sendable {
                 maskedPending.append((mask, SRRevealTerrain(x: UInt8(x), y: UInt8(y), terrain: UInt8(sent.rawValue)).encode()))
             }
         }
+
+        lap.mark(.terrainDiff)
 
         // Same B.5d gap as terrain above, for pill/base ownership: `grabTile` (the tile-entry
         // capture path host-simulated remote players now also run through `tankLocalTick`, per
@@ -838,11 +869,13 @@ public final class HostGameEngine: @unchecked Sendable {
         if state.hostSimulatesRemotePlayers {
             statusSends = tankStatusSends() + tankShotsSends()
         }
+        lap.mark(.status)
 
         var fogReveals: [(player: Int, bytes: [UInt8])] = []
         if state.hiddenMines {
             fogReveals = updateFogVision()
         }
+        lap.mark(.fog)
 
         pendingGameMessages.append(contentsOf: EventLogText.captureMessages(
             previousPillOwners: oldPillOwners, pills: state.pills,
@@ -883,6 +916,14 @@ public final class HostGameEngine: @unchecked Sendable {
         for text in pendingGameMessages {
             await emitGameMessage(text)
         }
+        lap.mark(.sendFlush)
+
+        if let benchRecorder, benchRecorder.recordsState {
+            benchState.sample(
+                state: state, fogState: { [fogStates] in fogStates[$0] }, tick: benchTick, recorder: benchRecorder
+            )
+            lap.mark(.digest)
+        }
 
         // B.7 (D108): fires every tick, including paused/time-limit-reached ticks (the guard
         // below returns *after* this) -- the app should keep rendering a paused game, not freeze
@@ -900,6 +941,7 @@ public final class HostGameEngine: @unchecked Sendable {
                 for (name, near) in sounds { onShouldPlaySound(name, near) }
             }
         }
+        lap.mark(.renderHop)
 
         // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,
         // `if (client.timelimitreached || client.basecontrolreached || client.pause)`) skips
@@ -944,10 +986,12 @@ public final class HostGameEngine: @unchecked Sendable {
         let seqSnapshot = await table.allSeqsAsUInt32()
         let update = assembleClUpdate(player: state.localPlayer, state: state, seq: seqSnapshot)
         let bytes = update.encode()
+        benchRecorder?.datagram(sent: true, header: update.header, local: state.localPlayer)
         for player in 0..<maxPlayers where player != state.localPlayer {
             await table.sendDgram(bytes, to: player)
         }
         BoloSignposts.net.endInterval(BoloSignposts.clUpdateName, netSignpost)
+        lap.mark(.updateSend)
     }
 
 

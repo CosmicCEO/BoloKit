@@ -15,9 +15,11 @@ import os
 
 /// What a record describes. Raw values are part of the log format; never renumber.
 ///
-/// Field use per kind (`sub`, `id`, `v0`, `v1`):
+/// Field use per kind (`sub`, `id`, `v0`, `v1`). A position update has no opcode: its first
+/// byte is the sender's player slot, so that is what `id` holds on the UDP channel.
 public enum BenchKind: UInt8, Sendable, CaseIterable {
-    /// Tick handler entry. `id` tick ordinal, `v0` timer-fire-to-entry ns, `v1` events waiting.
+    /// Tick handler entry. `id` tick ordinal. Queue delay and depth are worked out afterwards
+    /// from this, `timerFire` and `receive`/`apply`.
     case tick = 1
     /// One phase of a tick. `sub` `BenchPhase`, `id` tick ordinal, `v0` duration ns.
     case phase = 2
@@ -27,7 +29,8 @@ public enum BenchKind: UInt8, Sendable, CaseIterable {
     case sendDone = 4
     /// Message received. `sub` `BenchChannel`, `id` first payload byte, `v0` bytes, `v1` sender.
     case receive = 5
-    /// Message applied to state. `sub` `BenchChannel`, `id` first payload byte, `v0` duration ns.
+    /// Message handled. `sub` `BenchChannel`, `id` first payload byte, `v0` duration ns,
+    /// `v1` the part of it spent in the state change itself when timed separately.
     case apply = 6
     /// Datagram sequence stamp. `sub` 0 sent / 1 received, `id` sender's player slot,
     /// `v0` sender's sequence number, `v1` the echoed sequence number of the other side.
@@ -57,7 +60,7 @@ public enum BenchKind: UInt8, Sendable, CaseIterable {
     /// The recorder's own cost, once a second. `id` records written (wrapping),
     /// `v0` cumulative estimated ns inside `record`, `v1` cumulative records dropped.
     case recorder = 19
-    /// Tick timer fired. `id` fire ordinal.
+    /// Tick timer fired.
     case timerFire = 20
     /// End-of-run whole-domain hash. `sub` `DigestDomain`, `v0` hash, `v1` whose view.
     case snapshot = 21
@@ -154,7 +157,10 @@ public enum BoloBench {
         }
         let file = directory.appendingPathComponent(runID, isDirectory: true)
             .appendingPathComponent("\(role)-\(getpid()).jsonl")
-        return try? BenchRecorder(url: file, role: role, runID: runID, samplesProcess: true)
+        return try? BenchRecorder(
+            url: file, role: role, runID: runID, samplesProcess: true,
+            recordsState: environment["BOLO_BENCH_STATE"] != "0"
+        )
     }()
 
     /// Nanoseconds on the machine-wide monotonic clock.
@@ -167,6 +173,8 @@ public final class BenchRecorder: @unchecked Sendable {
     public let url: URL
     public let role: String
     public let runID: String
+    /// Off for the scaling sweep (`BOLO_BENCH_STATE=0`), which measures host cost only.
+    public let recordsState: Bool
 
     private let capacity: Int
     private let lock = OSAllocatedUnfairLock()
@@ -190,11 +198,12 @@ public final class BenchRecorder: @unchecked Sendable {
 
     public init(
         url: URL, role: String, runID: String, capacity: Int = BenchRecorder.defaultCapacity,
-        samplesProcess: Bool = false
+        samplesProcess: Bool = false, recordsState: Bool = true
     ) throws {
         self.url = url
         self.role = role
         self.runID = runID
+        self.recordsState = recordsState
         self.capacity = max(capacity, 1)
         filling = .allocate(capacity: self.capacity)
         draining = .allocate(capacity: self.capacity)

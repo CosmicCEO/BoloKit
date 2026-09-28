@@ -167,7 +167,11 @@ private let dgramLogger = Logger(subsystem: BoloSignposts.subsystem, category: B
 public func processDgramPacket(
     bytes: [UInt8], from connection: NWConnection, state: inout GameState, table: HostSessionTable
 ) async {
+    let bench = BenchApply(channel: .udp, opcode: bytes.first ?? 0)
+    var benchInner: UInt64 = 0
+    defer { bench.done(inner: benchInner) }
     guard let senderAddress = peerAddress(from: connection) else {
+        BoloBench.recorder?.rejected(.noPeer)
         if await table.firstTime("dgram.nopeer") {
             dgramLogger.error("UDP datagram dropped: sender endpoint is not an IPv4 hostPort: \(String(describing: connection.endpoint), privacy: .public)")
         }
@@ -180,6 +184,7 @@ public func processDgramPacket(
         try? await sendBytes(bytes, over: connection)
 
     case .malformed:
+        BoloBench.recorder?.rejected(.malformed)
         if await table.firstTime("dgram.malformed") {
             dgramLogger.error("UDP datagram dropped: malformed (\(bytes.count) bytes)")
         }
@@ -187,6 +192,7 @@ public func processDgramPacket(
     case .dropped:
         // Names the cause: the packet's claimed slot, that slot's address seeded from the TCP
         // join next to this datagram's UDP source address, and the last accepted seq.
+        BoloBench.recorder?.rejected(.dropped, player: bytes.first.map(Int.init))
         let claimed = bytes.count > 1 ? Int(bytes[1]) : -1
         if players.indices.contains(claimed), await table.firstTime("dgram.dropped.\(claimed)") {
             let slot = players[claimed]
@@ -209,6 +215,9 @@ public func processDgramPacket(
         var appliedInFull = false
         if let update = CLUpdate.decode(bytes) {
             let hostSeq = await table.seq(for: state.localPlayer)
+            BoloBench.recorder?.datagram(sent: false, header: update.header, local: state.localPlayer)
+            let benchStart = BoloBench.recorder == nil ? 0 : BoloBench.now()
+            defer { if BoloBench.recorder != nil { benchInner = BoloBench.now() &- benchStart } }
             appliedInFull = applyRemotePlayerUpdate(
                 header: update.header, shells: update.shells, explosions: update.explosions,
                 previousRemoteSeq: players[player].seq,
@@ -245,7 +254,9 @@ public func processDgramPacket(
         }
         for target in relayTo {
             if let targetConnection = await table.dgramConnection(for: target) {
+                let benchRelay = BenchSend(relayBytes, channel: .udp, recipient: target)
                 try? await sendBytes(relayBytes, over: targetConnection)
+                benchRelay.done()
             }
         }
     }
