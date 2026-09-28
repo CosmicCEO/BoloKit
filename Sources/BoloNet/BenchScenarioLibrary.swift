@@ -20,8 +20,25 @@ public enum BenchScenarios {
     ]
 
     public static func named(_ name: String) -> BenchScenario? {
-        all.first { $0.name == name }
+        (all + [sweepHost]).first { $0.name == name }
     }
+
+    /// The host's side of the scaling sweep: random play for 90 s against however many
+    /// synthetic guests `BoloBenchSwarm` brings. Not part of `all`: it has no guest script, and
+    /// its results are kept per player count.
+    public static let sweepHost = BenchScenario(
+        name: "sweep-host", hiddenMines: true,
+        host: [
+            .until(.alive, timeoutMs: 15_000),
+            .until(.peerAlive, timeoutMs: 60_000),
+            .mark("peer-alive"),
+            // Long enough for fifteen staggered joins before the measured minute and a half.
+            .wait(ms: 6_000),
+            .mark("all-joined"),
+            .random(seed: 0x5EED ^ 0xA5A5_A5A5, seconds: 90),
+        ],
+        guest: []
+    )
 
     /// Where the host waits, clear of the start and of the guest's routes.
     private static let hostPost = (x: 104, y: 119)

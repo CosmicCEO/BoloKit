@@ -37,6 +37,8 @@ let package = Package(
         // Same Core/executable split as `BoloGlyphs`, so the analysis is testable without I/O.
         .target(name: "BoloBenchCore", dependencies: ["BoloKit", "BoloNet"]),
         .executableTarget(name: "BoloBench", dependencies: ["BoloBenchCore", "BoloNet"]),
+        // Synthetic guests for the scaling sweep: load for the host, never measured themselves.
+        .executableTarget(name: "BoloBenchSwarm", dependencies: ["BoloKit", "BoloNet"]),
         .testTarget(name: "BoloBenchTests", dependencies: ["BoloBenchCore", "BoloKit", "BoloNet"]),
         .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore", "BoloSoundsCore"]),
         .testTarget(

@@ -38,6 +38,7 @@ func analyze(_ arguments: [String]) throws {
     let tier = option("--tier", in: arguments) ?? "pair"
     let host = try BenchLog(contentsOf: directory.appendingPathComponent("host.jsonl"))
     let guestURL = directory.appendingPathComponent("join.jsonl")
+    // Any tier but `pair` is a sweep (`sweep-n04` and so on), which has only the host's log.
     let guest = tier == "pair" ? try BenchLog(contentsOf: guestURL) : nil
 
     // What the run script recorded about how the two processes ended.
