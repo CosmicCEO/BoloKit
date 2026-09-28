@@ -1,0 +1,20 @@
+{
+  "guest" : {
+    "changePct" : 0.98425196850393837,
+    "notRecordingPct" : 26.736842105263158,
+    "notRecordingRuns" : 5,
+    "p" : 0.24462360512698328,
+    "recordingPct" : 27,
+    "recordingRuns" : 10,
+    "within3Pct" : true
+  },
+  "host" : {
+    "changePct" : 0.41198501872660354,
+    "notRecordingPct" : 35.131578947368418,
+    "notRecordingRuns" : 5,
+    "p" : 0.66817016110640715,
+    "recordingPct" : 35.276315789473685,
+    "recordingRuns" : 10,
+    "within3Pct" : true
+  }
+}
