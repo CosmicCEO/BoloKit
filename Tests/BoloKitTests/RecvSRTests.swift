@@ -152,15 +152,41 @@ private func makeState(players: [PlayerState], localPlayer: Int = 0) -> GameStat
 @Test func recvSrTankStatusAppliesHostCombatStateToTheLocalSlotOnly() {
     var state = makeState(players: [connectedPlayer(), connectedPlayer()], localPlayer: 1)
     state.localStats[0].armour = 11
+    state.players[1].trees = 11
     recvSrTankStatus(
         armour: 30, shells: 25, mines: 9, trees: 4, range: 5.5, dead: true, boat: true,
         kickDir: 2, kickSpeed: 1.5, teleport: nil, state: &state
     )
     #expect(state.local.armour == 30 && state.local.shells == 25 && state.local.range == 5.5)
-    #expect(state.players[1].mines == 9 && state.players[1].trees == 4)
+    #expect(state.players[1].mines == 9)
     #expect(state.players[1].dead && state.players[1].boat)
     #expect(state.players[1].kickDir == 2 && state.players[1].kickSpeed == 1.5)
     #expect(state.localStats[0].armour == 11, "another slot's stats must be untouched")
+}
+
+/// #171: the guest spends and harvests its own trees; the host never hears about either, so its
+/// count in an ordinary status is stale and must not overwrite the guest's.
+@Test func recvSrTankStatusLeavesTheGuestsOwnTreesAloneWithoutARespawn() {
+    var state = makeState(players: [connectedPlayer(), connectedPlayer()], localPlayer: 1)
+    state.players[1].trees = 36
+    state.players[1].builderTrees = 4
+    recvSrTankStatus(
+        armour: 40, shells: 39, mines: 40, trees: 40, range: 7, dead: false, boat: false,
+        kickDir: 0, kickSpeed: 0, teleport: nil, state: &state
+    )
+    #expect(state.players[1].trees == 36, "the host's stale 40 must not refund a launched builder's trees")
+    #expect(state.players[1].builderTrees == 4)
+}
+
+/// The one time the host does change a guest's trees is a respawn, and that reset must reach it.
+@Test func recvSrTankStatusRespawnAppliesTheHostsTrees() {
+    var state = makeState(players: [connectedPlayer()], localPlayer: 0)
+    state.players[0].trees = 3
+    recvSrTankStatus(
+        armour: 40, shells: 40, mines: 40, trees: 0, range: 7, dead: false, boat: false,
+        kickDir: 0, kickSpeed: 0, teleport: (x: 105.5, y: 106.5, dir: 4.0), state: &state
+    )
+    #expect(state.players[0].trees == 0)
 }
 
 @Test func recvSrTankStatusTeleportMovesTheTankAndStopsIt() {
