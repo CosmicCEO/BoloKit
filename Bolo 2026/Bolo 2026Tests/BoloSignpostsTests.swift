@@ -24,6 +24,13 @@ struct BoloSignpostsTests {
         #expect(staticStringContents(BoloSignposts.drawName) == "draw")
         #expect(staticStringContents(BoloSignposts.clUpdateName) == "clUpdate")
     }
+
+    @Test func benchmarkIntervalNames() {
+        #expect(staticStringContents(BoloSignposts.guestTickName) == "guestTick")
+        #expect(staticStringContents(BoloSignposts.udpApplyName) == "udpApply")
+        #expect(staticStringContents(BoloSignposts.tcpDispatchName) == "tcpDispatch")
+        #expect(staticStringContents(BoloSignposts.metalFrameName) == "metalFrame")
+    }
 }
 
 private func staticStringContents(_ value: StaticString) -> String {

@@ -17,6 +17,13 @@ import BoloNet
     #expect(staticStringContents(BoloSignposts.clUpdateName) == "clUpdate")
 }
 
+@Test func boloSignpostsBenchmarkIntervalNames() {
+    #expect(staticStringContents(BoloSignposts.guestTickName) == "guestTick")
+    #expect(staticStringContents(BoloSignposts.udpApplyName) == "udpApply")
+    #expect(staticStringContents(BoloSignposts.tcpDispatchName) == "tcpDispatch")
+    #expect(staticStringContents(BoloSignposts.metalFrameName) == "metalFrame")
+}
+
 private func staticStringContents(_ value: StaticString) -> String {
     String(decoding: UnsafeBufferPointer(start: value.utf8Start, count: value.utf8CodeUnitCount), as: UTF8.self)
 }
