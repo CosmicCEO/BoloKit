@@ -161,6 +161,15 @@ public final class GameSession {
     /// host that never sends the message, so the old behaviour is kept there.
     private var hostSimulatesMe = false
 
+    /// v1.6.9 baseline benchmark: measurement only, no gameplay effect. `nil` unless the process
+    /// was started with `BOLO_BENCH=1`; settable so an in-process test can give host and guest a
+    /// log each. Set before `start()`.
+    public var benchRecorder: BenchRecorder? = BoloBench.recorder {
+        didSet { renderView.benchRecorder = benchRecorder }
+    }
+    private var benchTick: UInt32 = 0
+    private var benchState = BenchGuestStateProbe()
+
     /// **#159:** the solo/local-tab and join paths' own client-side fog-of-war tracker --
     /// neither path has a `HostGameEngine` to read `fogState(for:)` from, so each computes
     /// its own fog locally from `state`'s already-known ground truth, matching the C
@@ -653,7 +662,11 @@ public final class GameSession {
 
         let source = DispatchSource.makeTimerSource(queue: .main)
         source.schedule(deadline: .now(), repeating: 1.0 / Double(ticksPerSec), leeway: .milliseconds(0))
-        source.setEventHandler { continuation.yield(.tick) }
+        let bench = benchRecorder
+        source.setEventHandler {
+            bench?.record(.timerFire)
+            continuation.yield(.tick)
+        }
         source.resume()
         timer = source
 
@@ -702,6 +715,12 @@ public final class GameSession {
                 }
             }
             lastTickTime = now
+
+            benchTick &+= 1
+            var lap = BenchLap(recorder: benchRecorder, tick: benchTick)
+            defer { lap.finish() }
+            let tickSignpost = BoloSignposts.tick.beginInterval(BoloSignposts.guestTickName)
+            defer { BoloSignposts.tick.endInterval(BoloSignposts.guestTickName, tickSignpost) }
 
             let localPlayer = state.localPlayer
             let oldTank = state.players[localPlayer].tank
@@ -763,6 +782,8 @@ public final class GameSession {
                 }
             }
 
+            lap.mark(.move)
+
             // B.10 follow-on (D139): join-path builder tick, the uncollapsed round trip --
             // `joinArrive` (`detectJoinBuilderArrival`, BuilderTick.swift) replaces the mutation
             // host/single-process applies on arrival with a detect-and-send call; the actual
@@ -807,6 +828,8 @@ public final class GameSession {
                 }
                 Task { try? await tcpSession.send(bytes) }
             }
+
+            lap.mark(.builder)
 
             // B.10 follow-on (D142): join-path shell simulation -- `shellTick` was not called on
             // this path at all before this change (shells spawn on `.shoot` via the host's own
@@ -853,20 +876,32 @@ public final class GameSession {
                 }
             }
 
+            lap.mark(.shells)
+
             // Age every explosion (global list and each connected player's own) once per tick, as
             // `client.c`'s per-tick `explosionlogic()` calls do. Without this the join path never
             // expired an explosion: they sat on screen, and this client's own list rides out in
             // every `CLUpdate`, so the host (which applies a guest's explosions) re-showed each one
             // at a fresh counter every update, forever.
             explosionTick(state: &state)
+            lap.mark(.explosions)
 
             sendLocalUpdateIfDue(udpSession)
+            lap.mark(.updateSend)
             // #159: same client-side fog tracker as the solo path's `tick()` -- see
             // `fogVisionTracker`'s header.
             updateFogVisionTracker(&fogVisionTracker, observer: state.localPlayer, state: state)
+            lap.mark(.fog)
+            if let benchRecorder, benchRecorder.recordsState {
+                benchState.sample(
+                    state: state, fogState: fogVisionTracker.fogState, tick: benchTick, recorder: benchRecorder
+                )
+                lap.mark(.digest)
+            }
             renderView.render(state, fogState: hostRenderFogState(
                 engineFog: fogVisionTracker.fogState, hiddenMines: state.hiddenMines))
             hudSnapshot.update(from: state)
+            lap.mark(.renderHop)
 
         case .tcpMessage(let message):
             if message.opcode == .tankStatus { hostSimulatesMe = true }

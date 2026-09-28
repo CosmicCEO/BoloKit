@@ -44,6 +44,8 @@ import AppKit
 import Metal
 import MetalKit
 import BoloKit
+import BoloNet
+import os
 
 @MainActor
 final class LiveMetalTerrainOverlay: NSObject, MTKViewDelegate {
@@ -118,6 +120,13 @@ final class LiveMetalTerrainOverlay: NSObject, MTKViewDelegate {
             guard let gameRenderView, let drawable = view.currentDrawable,
                 let commandBuffer = renderer.makeCommandBuffer()
             else { return }
+            let signpost = BoloSignposts.render.beginInterval(BoloSignposts.metalFrameName)
+            defer { BoloSignposts.render.endInterval(BoloSignposts.metalFrameName, signpost) }
+            let bench = gameRenderView.benchRecorder
+            let drawStart = bench == nil ? 0 : BoloBench.now()
+            defer {
+                bench?.record(.frame, sub: 1, id: gameRenderView.benchGeneration, v0: BoloBench.now() &- drawStart)
+            }
             renderer.renderLiveTerrain(
                 tileGrid: gameRenderView.tileGrid, visibleRect: gameRenderView.visibleRect,
                 into: drawable.texture, commandBuffer: commandBuffer, tilesImage: gameRenderView.tilesImage

@@ -157,6 +157,31 @@ extension BenchRecorder {
     }
 }
 
+/// The guest's record of what it actually holds, in the same terms as the host's expectation.
+public struct BenchGuestStateProbe {
+    private var tracker: StateDigestTracker?
+    private var changes: [DigestChange] = []
+
+    public init() {}
+
+    public mutating func sample(state: GameState, fogState: FogState?, tick: UInt32, recorder: BenchRecorder) {
+        let player = state.localPlayer
+        var tracker = self.tracker?.player == player ? self.tracker! : StateDigestTracker(player: player)
+        changes.removeAll(keepingCapacity: true)
+        tracker.sampleSmallDomains(state, into: &changes)
+        if tick % BenchHostStateProbe.gridInterval == 0 {
+            let fog = state.hiddenMines ? fogState : nil
+            tracker.sampleTerrain(
+                view: observedGuestTerrainView(terrain: state.terrain, fogState: fog), into: &changes
+            )
+            if let fog { tracker.sampleFog(fog, into: &changes) }
+        }
+        self.tracker = tracker
+        recorder.changes(changes, view: player)
+        recorder.checkInvariants(player: player, state: state)
+    }
+}
+
 /// The host's record of what each guest should hold: one tracker per connected guest.
 public struct BenchHostStateProbe {
     /// Terrain and fog are 65,536 elements each, so they are sampled at the update rate
@@ -191,17 +216,5 @@ public struct BenchHostStateProbe {
             recorder.checkInvariants(player: player, state: state)
         }
         recorder.checkInvariants(player: state.localPlayer, state: state)
-    }
-
-    /// One whole-domain hash per domain and guest, from the values last sampled.
-    public func snapshot(recorder: BenchRecorder) {
-        for (player, tracker) in trackers {
-            for domain in DigestDomain.allCases {
-                recorder.record(
-                    .snapshot, sub: domain.rawValue, v0: tracker.hash(of: domain),
-                    v1: UInt64(truncatingIfNeeded: player)
-                )
-            }
-        }
     }
 }

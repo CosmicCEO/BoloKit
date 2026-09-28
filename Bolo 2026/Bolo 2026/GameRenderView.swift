@@ -90,6 +90,11 @@ public final class GameRenderView: NSView {
     /// newly-fired shell at the same slot.
     private var remoteBuilderSmoothers: [Int: RemotePositionSmoother] = [:]
 
+    /// v1.6.9 baseline benchmark: measurement only. `benchGeneration` counts the states handed
+    /// to `render`, so a drawn frame can be tied to the state it shows.
+    public var benchRecorder: BenchRecorder? = BoloBench.recorder
+    public private(set) var benchGeneration: UInt32 = 0
+
     /// Set by `GameSession` -- applies a key transition's `InputFlags` change to the session's
     /// own owned `GameState`. Never called from inside a `runTick`/tick-timer call (§2 above).
     public var onInputFlagsChange: ((KeyInputChange) -> Void)?
@@ -499,9 +504,13 @@ public final class GameRenderView: NSView {
         }
         // Rebuilding the 256x256 grid costs about 9 ms (18 ms with fog) in a Debug build, most of a
         // 20 ms tick, and most ticks change nothing it reads -- so reuse it when nothing did (#89).
+        benchGeneration &+= 1
+        benchRecorder?.record(.renderState, id: benchGeneration)
         if tileGridRebuildCount == 0
             || !Self.tileGridInputsEqual(previousState, newState, previousFogState, fogState)
         {
+            let rebuildStart = benchRecorder == nil ? 0 : BoloBench.now()
+            defer { benchRecorder?.record(.rebuild, v0: BoloBench.now() &- rebuildStart) }
             tileGrid = Self.resolvedTileGrid(for: newState, fogState: fogState)
             tileGridRebuildCount += 1
             // v1.6.0 follow-up: `liveMetalOverlay`'s MTKView is on-demand now (see its own
@@ -522,6 +531,8 @@ public final class GameRenderView: NSView {
     public override func draw(_ dirtyRect: NSRect) {
         let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
         defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
+        let drawStart = benchRecorder == nil ? 0 : BoloBench.now()
+        defer { benchRecorder?.record(.frame, sub: 0, id: benchGeneration, v0: BoloBench.now() &- drawStart) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         if liveMetalOverlay != nil {
             // Terrain is drawn live by the floating Metal overlay's own MTKView draw loop --

@@ -62,8 +62,6 @@ public enum BenchKind: UInt8, Sendable, CaseIterable {
     case recorder = 19
     /// Tick timer fired.
     case timerFire = 20
-    /// End-of-run whole-domain hash. `sub` `DigestDomain`, `v0` hash, `v1` whose view.
-    case snapshot = 21
 }
 
 public enum BenchChannel: UInt8, Sendable {
