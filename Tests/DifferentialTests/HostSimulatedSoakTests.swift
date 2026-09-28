@@ -16,16 +16,9 @@ import BoloNet
 
 private let soakEnabled = ProcessInfo.processInfo.environment["BOLO_SOAK"] == "1"
 
-private struct SoakRNG: RandomNumberGenerator {
-    var state: UInt64
-    mutating func next() -> UInt64 {
-        state &+= 0x9E37_79B9_7F4A_7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-        return z ^ (z >> 31)
-    }
-}
+// The generator and the input mix now live in `BenchScenario.swift`, shared with the benchmark
+// scenarios' random phase. Same algorithm, so a seed replays the same choices as before.
+private typealias SoakRNG = BenchRNG
 
 private final class SoakGuestBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -84,20 +77,9 @@ private let minedVariants: Set<Int32> = Set(
     [Terrain.minedSwamp, .minedCrater, .minedRoad, .minedForest, .minedRubble, .minedGrass].map { $0.rawValue }
 )
 
-private func randomInputs(_ rng: inout SoakRNG) -> InputFlags {
-    var flags: InputFlags = []
-    if Double.random(in: 0..<1, using: &rng) < 0.70 { flags.insert(.accel) }
-    if Double.random(in: 0..<1, using: &rng) < 0.10 { flags.insert(.brake) }
-    let turn = Double.random(in: 0..<1, using: &rng)
-    if turn < 0.20 { flags.insert(.turnL) } else if turn < 0.40 { flags.insert(.turnR) }
-    if Double.random(in: 0..<1, using: &rng) < 0.30 { flags.insert(.shoot) }
-    if Double.random(in: 0..<1, using: &rng) < 0.20 { flags.insert(.lmine) }
-    if Double.random(in: 0..<1, using: &rng) < 0.10 { flags.insert(.incre) }
-    if Double.random(in: 0..<1, using: &rng) < 0.10 { flags.insert(.decre) }
-    return flags
-}
+private func randomInputs(_ rng: inout SoakRNG) -> InputFlags { benchRandomInputs(&rng) }
 
-private let allInputFlags: InputFlags = [.accel, .brake, .turnL, .turnR, .lmine, .shoot, .incre, .decre]
+private let allInputFlags = benchAllInputFlags
 
 private func makeSoakHost(hiddenMines: Bool) async throws -> (engine: HostGameEngine, port: UInt16) {
     for _ in 0..<8 {
