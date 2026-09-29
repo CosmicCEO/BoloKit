@@ -39,6 +39,9 @@ fi
 # The app is sandboxed: a log it created itself would land in its container, which this script
 # may not read. So this script opens each log and passes it down as descriptor 3.
 
+# The app is launched ignoring its saved window state. macOS otherwise restores whatever the
+# app last had open, which can be no window at all, and then the scenario never starts.
+
 # Processor time used so far by a process, in seconds, as the system counts it. Measured from
 # outside so it is there whether or not the app is recording.
 cpu_seconds() {
@@ -58,11 +61,11 @@ for ((n = first; n < first + runs; n++)); do
   mkdir -p "$dest"
 
   BOLO_BENCH=$record BOLO_BENCH_FD=3 BOLO_BENCH_ROLE=host BOLO_BENCH_SCENARIO=$scenario \
-    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" 3> "$dest/host.jsonl" > "$dest/host.out" 2>&1 &
+    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" -ApplePersistenceIgnoreState YES 3> "$dest/host.jsonl" > "$dest/host.out" 2>&1 &
   host=$!
   sleep 2
   BOLO_BENCH=$record BOLO_BENCH_FD=3 BOLO_BENCH_ROLE=join BOLO_BENCH_SCENARIO=$scenario \
-    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" 3> "$dest/join.jsonl" > "$dest/join.out" 2>&1 &
+    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" -ApplePersistenceIgnoreState YES 3> "$dest/join.jsonl" > "$dest/join.out" 2>&1 &
   guest=$!
 
   waited=0

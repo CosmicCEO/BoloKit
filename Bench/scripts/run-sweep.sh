@@ -45,6 +45,9 @@ if [[ ! -x $swarm ]]; then
   exit 64
 fi
 
+# The app is launched ignoring its saved window state. macOS otherwise restores whatever the
+# app last had open, which can be no window at all, and then the scenario never starts.
+
 failed=0
 for ((n = first; n < first + runs; n++)); do
   number=$(printf '%02d' $n)
@@ -56,7 +59,7 @@ for ((n = first; n < first + runs; n++)); do
   # State is not recorded: with no guest log there is nothing to compare it with, and the
   # digests would be measurement work inside the very tick being measured.
   BOLO_BENCH=1 BOLO_BENCH_STATE=0 BOLO_BENCH_FD=3 BOLO_BENCH_ROLE=host BOLO_BENCH_SCENARIO=sweep-host \
-    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" 3> "$dest/host.jsonl" > "$dest/host.out" 2>&1 &
+    BOLO_BENCH_PORT=$port BOLO_BENCH_RUN_ID=$id "$binary" -ApplePersistenceIgnoreState YES 3> "$dest/host.jsonl" > "$dest/host.out" 2>&1 &
   host=$!
   sleep 2
   "$swarm" 127.0.0.1 $port $((players - 1)) $limit > "$dest/swarm.json" 2> "$dest/swarm.err" &

@@ -73,7 +73,11 @@ keep() {  # raw-directory results-directory
 echo "== pair runs: $runs per scenario, after one warm-up each"
 export BOLO_BENCH_RUNS=$raw/pair
 for scenario in $("$bench" scenario | awk '{print $1}'); do
-  zsh "$here/run-pair.sh" "$scenario" 1 0 > /dev/null
+  # A warm-up that fails means something is wrong with the setup, not with one run.
+  if ! zsh "$here/run-pair.sh" "$scenario" 1 0 > /dev/null; then
+    echo "run-baseline: the warm-up run of $scenario failed; stopping. See $raw/pair/$scenario/run-00" >&2
+    exit 68
+  fi
   rm -rf "$raw/pair/$scenario/run-00"
   zsh "$here/run-pair.sh" "$scenario" "$runs" 1 | tail -1
   for run in "$raw/pair/$scenario"/run-*(N/); do
@@ -88,7 +92,10 @@ if ((sweepRuns > 0)); then
   export BOLO_BENCH_RUNS=$raw/sweep
   for players in 2 4 8 16; do
     tier=$(printf 'sweep-n%02d' $players)
-    zsh "$here/run-sweep.sh" $players 1 0 > /dev/null
+    if ! zsh "$here/run-sweep.sh" $players 1 0 > /dev/null; then
+      echo "run-baseline: the warm-up run of $tier failed; stopping. See $raw/sweep/$tier/run-00" >&2
+      exit 68
+    fi
     rm -rf "$raw/sweep/$tier/run-00"
     zsh "$here/run-sweep.sh" $players "$sweepRuns" 1 | tail -1
     for run in "$raw/sweep/$tier"/run-*(N/); do
