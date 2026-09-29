@@ -1,6 +1,6 @@
 # Analyze phase
 
-**Status: in progress.** First readout: `READOUT.md`. Proposed specifications: `SPECS.md`
+**Status: in progress.** Current ranking and options: `PROPOSALS.md`. First readout: `READOUT.md`. Proposed specifications: `SPECS.md`
 (awaiting Jerod's approval). Below is what Measure handed over.
 
 The benchmark to analyze against is `../data/measure/v1.6.9-baseline/`. Its headline numbers are

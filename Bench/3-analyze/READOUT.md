@@ -1,5 +1,10 @@
 # Analyze: first readout
 
+> **Corrected 2026-09-29 by `PROPOSALS.md`.** Section 3 ranked areas from the numbers alone.
+> Code reading then showed the fog-memory, remote-tank and mine-count figures were partly
+> produced by how the benchmark compares. Sections 1 and 2 stand, except the spec rows marked
+> withdrawn in `SPECS.md`. Read `PROPOSALS.md` for the current ranking.
+
 **2026-09-29.** Answers three questions from the frozen benchmark. No new runs were made and no
 game code was changed. Figures come from `python3 Bench/scripts/capability.py`.
 

@@ -12,6 +12,17 @@
 | Player count the specifications cover | 2 to 4 |
 | Correctness standard | Zero lasting faults: none over 2 s, none left at the end of a run |
 
+## Withdrawn pending re-analysis
+
+Code reading (`PROPOSALS.md`) showed these rows measure the comparison, not the game. They are
+withdrawn until proposal 0 re-analyses the raw logs.
+
+| Row | Reason |
+|---|---|
+| Guest fog memory, both rows | Host and guest keep separate memories by design; not visible to the player |
+| Builder-placed mine, wrong count | Guest `mines + builderMines` agrees with the host throughout |
+| Host's tank moving on the guest's screen | Counted whole-tile changes, which depend on tank speed |
+
 ## Two kinds of limit
 
 | Limit | Meaning | Source |
