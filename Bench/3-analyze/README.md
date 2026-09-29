@@ -1,6 +1,7 @@
 # Analyze phase
 
-**Status: not started.** This is what Measure handed over. Nothing here is a conclusion yet.
+**Status: in progress.** First readout: `READOUT.md`. Proposed specifications: `SPECS.md`
+(awaiting Jerod's approval). Below is what Measure handed over.
 
 The benchmark to analyze against is `../data/measure/v1.6.9-baseline/`. Its headline numbers are
 in `../2-measure/README.md`.
