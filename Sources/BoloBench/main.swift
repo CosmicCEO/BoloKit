@@ -6,7 +6,9 @@ import Foundation
 // numbers. Never touches a socket or the game.
 //
 //   BoloBench analyze <run-dir> [--tier pair|sweep]   one run: host.jsonl (+ join.jsonl) -> summary.json
-//   BoloBench scorecard <scenario-dir> [--out <file>] every run-NN/summary.json -> scorecard.json
+//   BoloBench scorecard <scenario-dir>... [--out <file>]
+//                                                     every run-NN/summary.json -> scorecard.json;
+//                                                     several directories pool their runs
 //   BoloBench compare <baseline.json> <candidate.json>
 //   BoloBench scenario <name>                         print a scenario as JSON, with its hash
 //   BoloBench overhead                                measure the recorder's cost per record here
@@ -65,13 +67,24 @@ func analyze(_ arguments: [String]) throws {
 }
 
 func scorecard(_ arguments: [String]) throws {
-    guard let path = arguments.first else { fail("usage: scorecard <scenario-dir> [--out <file>]") }
+    var paths: [String] = []
+    var skip = false
+    for argument in arguments {
+        if skip { skip = false } else if argument == "--out" { skip = true } else { paths.append(argument) }
+    }
+    guard let path = paths.first else { fail("usage: scorecard <scenario-dir>... [--out <file>]") }
     let directory = URL(fileURLWithPath: path, isDirectory: true)
-    let runs = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    // Runs of one scenario from several sessions pool into one scorecard, whose spread then
+    // includes how much the numbers move from one session to the next.
+    let runs = try paths.flatMap { path in
+        try FileManager.default.contentsOfDirectory(
+            at: URL(fileURLWithPath: path, isDirectory: true), includingPropertiesForKeys: nil
+        )
         .filter { $0.lastPathComponent.hasPrefix("run-") }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
         .compactMap { try? Data(contentsOf: $0.appendingPathComponent("summary.json")) }
         .map { try JSONDecoder().decode(RunSummary.self, from: $0) }
+    }
     let card = try Repeatability.scorecard(runs)
     let out = option("--out", in: arguments).map { URL(fileURLWithPath: $0) }
         ?? directory.appendingPathComponent("scorecard.json")

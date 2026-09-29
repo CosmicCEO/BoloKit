@@ -1,9 +1,10 @@
 #!/bin/zsh
 # v1.6.9 baseline benchmark: the whole measurement, start to finish, on this Mac.
 #
-#   run-baseline.sh <name> [runs] [sweep-runs] [observer-runs]
+#   run-baseline.sh <phase> <name> [runs] [sweep-runs] [observer-runs]
 #
-#   name            where results go: Bench/results/<name>/   (for example v1.6.9-baseline)
+#   phase           the DMAIC phase this data belongs to: measure, analyze, improve or control
+#   name            where results go: Bench/data/<phase>/<name>/
 #   runs            valid runs wanted per scenario            (default 10)
 #   sweep-runs      runs per player count in the sweep        (default 5, 0 to skip)
 #   observer-runs   runs with recording off, per scenario     (default 5, 0 to skip)
@@ -12,19 +13,24 @@
 # leave the Mac alone until it finishes. Two game windows open and close for each run; they
 # must stay fully visible, because macOS slows the timers of a window it cannot see.
 #
-# Takes about two hours at the defaults. Raw logs stay in Bench/runs/<name>/ (not committed);
-# the summaries, scorecards and manifest in Bench/results/<name>/ are what gets committed.
+# Takes about two hours at the defaults. Raw logs stay in Bench/runs/<phase>/<name>/ (not committed);
+# the summaries, scorecards and manifest in Bench/data/<phase>/<name>/ are what gets committed.
 
 set -u
-name=${1:?usage: run-baseline.sh <name> [runs] [sweep-runs] [observer-runs]}
-runs=${2:-10}
-sweepRuns=${3:-5}
-observerRuns=${4:-5}
+phase=${1:?usage: run-baseline.sh <phase> <name> [runs] [sweep-runs] [observer-runs]}
+name=${2:?usage: run-baseline.sh <phase> <name> [runs] [sweep-runs] [observer-runs]}
+runs=${3:-10}
+sweepRuns=${4:-5}
+observerRuns=${5:-5}
+case $phase in
+  measure|analyze|improve|control) ;;
+  *) echo "run-baseline: phase must be measure, analyze, improve or control" >&2; exit 64 ;;
+esac
 
 here=${0:A:h}
 root=${here:h:h}
-raw=$root/Bench/runs/$name
-results=$root/Bench/results/$name
+raw=$root/Bench/runs/$phase/$name
+results=$root/Bench/data/$phase/$name
 bench=$root/.build/release/BoloBench
 
 if [[ -e $results/FROZEN ]]; then
@@ -126,6 +132,7 @@ memory=$(($(sysctl -n hw.memsize) / 1073741824))
 displays=$(system_profiler SPDisplaysDataType 2>/dev/null | awk -F': ' '/Resolution/ {printf "%s%s", sep, $2; sep="; "}')
 print -r -- "{
   \"name\": \"$name\",
+  \"phase\": \"$phase\",
   \"started\": \"$started\",
   \"finished\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
   \"commit\": \"$(git -C "$root" rev-parse HEAD)\",
