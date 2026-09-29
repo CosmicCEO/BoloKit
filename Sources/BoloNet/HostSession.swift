@@ -214,7 +214,9 @@ public actor HostSessionTable {
     /// (`sendsrplayerexit`, `server.c:3397-3404`).
     public func send(_ bytes: [UInt8], to player: Int) async {
         guard let connection = slots[player].connection else { return }
+        let bench = BenchSend(bytes, channel: .tcp, recipient: player)
         try? await sendBytes(bytes, over: connection)
+        bench.done()
     }
 
     /// Milestone B.5b (D96) -- the UDP-side counterpart of `send(_:to:)`, over
@@ -226,7 +228,9 @@ public actor HostSessionTable {
     /// silent no-op, not an error.
     public func sendDgram(_ bytes: [UInt8], to player: Int) async {
         guard let connection = slots[player].dgramConnection else { return }
+        let bench = BenchSend(bytes, channel: .udp, recipient: player)
         try? await sendBytes(bytes, over: connection)
+        bench.done()
     }
 
     /// Mirrors `sendtoall()` (`server.c:3818-3834`) -- every connected slot.

@@ -33,6 +33,13 @@ let package = Package(
         // `swift run BoloArena` starts a real host+guest game with two control ports two
         // independent Claude agents drive by hand, one seat each.
         .executableTarget(name: "BoloArena", dependencies: ["BoloKit", "BoloNet"]),
+        // v1.6.9 baseline benchmark: the offline analyzer (not shipped game functionality).
+        // Same Core/executable split as `BoloGlyphs`, so the analysis is testable without I/O.
+        .target(name: "BoloBenchCore", dependencies: ["BoloKit", "BoloNet"]),
+        .executableTarget(name: "BoloBench", dependencies: ["BoloBenchCore", "BoloNet"]),
+        // Synthetic guests for the scaling sweep: load for the host, never measured themselves.
+        .executableTarget(name: "BoloBenchSwarm", dependencies: ["BoloKit", "BoloNet"]),
+        .testTarget(name: "BoloBenchTests", dependencies: ["BoloBenchCore", "BoloKit", "BoloNet"]),
         .testTarget(name: "BoloKitTests", dependencies: ["BoloKit", "BoloGlyphsCore", "BoloSoundsCore"]),
         .testTarget(
             name: "DifferentialTests",

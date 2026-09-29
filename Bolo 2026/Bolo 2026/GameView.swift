@@ -92,7 +92,11 @@ struct GameView: View {
             MatchEndOverlay(session: session)
         }
         .frame(minWidth: 480, minHeight: 360)
-        .onAppear { session.start() }
+        .onAppear {
+            session.start()
+            // v1.6.9 baseline benchmark: does nothing unless started with `BOLO_BENCH_ROLE`.
+            BenchAutopilot.attach(to: session)
+        }
         .onDisappear { Task { @MainActor in await session.stop() } }
         .safeAreaInset(edge: .top) {
             HStack {

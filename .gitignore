@@ -6,3 +6,6 @@ xcuserdata/
 DerivedData/
 .claude/
 docs/notes/
+
+# v1.6.9 baseline benchmark: raw run logs (summaries under Bench/results are committed)
+Bench/runs/
