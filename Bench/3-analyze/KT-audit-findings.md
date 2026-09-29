@@ -21,6 +21,15 @@
 | Analyze | Does not close |
 | Improve | Stays closed |
 
+## Decisions by Jerod, 2026-09-29
+
+| Decision | Ruling |
+|---|---|
+| Analyze close | Stays open. P0, backup of raw logs, and one scorecard before any Improve work |
+| Measure headlines | Quarantine all three until P0: `fogSeen` (~300 tiles), builder-mine 1.3 s, remote-tank 141–400 ms tile-step. Not targets, not KT ranks. Tick interval, late ticks, render hop, CPU/traffic still stand |
+| 2B vs 2C | Decide architecture first. Find what blocks the main thread. Score host-frame-drop as UX risk. Do not ship 2B while that is open |
+| Resync / checksum | Park for 2.*. Name it parked depth: the authority-model fix for "host changed state without telling guests." M2 stands. Not "unimportant" |
+
 ## What this file is
 
 The tables under "Original register" are the analyst's scores, copied.
@@ -188,13 +197,11 @@ CPU, memory, and traffic at 2–4 players stay control/watch. They do not buy UX
 
 ## Decisions requested of Jerod
 
+Four rulings are recorded above. One remains.
+
 | Decision | Options |
 |---|---|
-| Accept the UX stack for the rest of DMAIC | 45 / 30 / 25 as above, or name other numbers |
-| Accept that Analyze stays in progress | Close only after the seven items |
-| Accept quarantine of correctness metrics until P0 | Or order a new Measure session instead |
-| 2B vs 2C | Patch now (2B) vs decide architecture before Improve |
-| Resync | Stay parked for 2.*, explicitly as the deep correctness item |
+| Accept the UX stack for the rest of DMAIC | 45 / 30 / 25 as used in this audit, or name other numbers |
 
 ## Housekeeping the register already had (no KPI)
 
