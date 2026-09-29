@@ -47,10 +47,11 @@ Every option must pass all three.
 | | Must |
 |---|---|
 | M1 | The benchmark can prove the result, or the same change makes it able to |
-| M2 | No change to the wire format, so v1.6.9 hosts and guests still play together |
+| M2 | No change to the wire format in a 1.* release, so 1.* hosts and guests still play together |
 | M3 | Complies with `AGENTS.md`: `Float` simulation, 50 Hz tick, no licensed code |
 
-M2 is an assumption made for this document. Removing it admits one more option (3C).
+M2 was decided by Jerod on 2026-09-29: the wire format is closed to 1.* releases and open to
+2.* releases. Option 3C is therefore held for 2.*.
 
 ## Wants and weights
 
@@ -172,7 +173,7 @@ robust. The same holds for 4B and 3B as the lower pair.
 
 | Idea | Reason |
 |---|---|
-| Periodic state checksum or resync | Changes the wire format. Revisit if faults remain after proposals 3 and 4 |
+| Periodic state checksum or resync | Changes the wire format. Held for 2.* |
 | Tank shots off the reliable channel | 88% of reliable traffic, but traffic is within limits at 2 to 4 players |
 | Position relay cost | A cost at 8 and 16 players only |
 | Position send taking 2.4 ms median | Not investigated. Worth a look once proposal 2 is measured |

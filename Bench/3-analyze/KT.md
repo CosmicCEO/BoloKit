@@ -20,7 +20,7 @@ the sum of score times weight, out of 380. Scores are the analyst's judgement.
 | Must | |
 |---|---|
 | M1 | The benchmark can prove the result, or the same change makes it able to |
-| M2 | No change to the wire format (assumed; not yet confirmed by Jerod) |
+| M2 | No change to the wire format in a 1.* release (decided by Jerod, 2026-09-29) |
 | M3 | Complies with `AGENTS.md` |
 
 | Want | | Weight |
@@ -48,18 +48,27 @@ the sum of score times weight, out of 380. Scores are the analyst's judgement.
 | 3 | Guest refreshes fog memory on reveal (4B) | Pass | 6 | 7 | 6 | 7 | 8 | **253** | Terrain faults in 3 of 19 soak runs, to 0; test failing 1 in 12, to 0 | Inferred | Medium |
 | 4 | Status message no longer refunds a mine (3B) | Pass | 4 | 7 | 6 | 8 | 9 | **245** | Resource faults in 8 of 39 soak runs, to 0 | Read; reach inferred | Medium |
 | 5 | Speed up the host's position send | Pass | 4 | 6 | 6 | 8 | 5 | **217** | 2.2 to 3.2 ms median every fifth tick; no target yet | Measured; cause not investigated | Medium |
-| 6 | Relay positions less wastefully | Pass if no wire change | 2 | 5 | 5 | 10 | 4 | 190 | Position traffic 9.5 kB/s at 4 players | Measured | Medium |
+| 6 | Relay positions less wastefully | Pass in 1.* only if no wire change | 2 | 5 | 5 | 10 | 4 | 190 | Position traffic 9.5 kB/s at 4 players | Measured | Medium |
 | 7 | Diagonal pill shell damages the pill | Pass with P2 | 5 | 4 | 4 | 3 | 5 | 160 | None today; pills never diverged | Seen once | Medium |
 | 8 | Terrain comparison by change tracking | Pass | 1 | 3 | 5 | 7 | 5 | 148 | Host tick median 0.35 ms; 21% to 30% of it | Measured | Medium |
 | 9 | Reduce fog array copies | Pass | 1 | 2 | 6 | 6 | 6 | 146 | 3% to 8% of host tick median | Measured | Low |
 | 10 | Drift-corrected clock | Pass | 2 | 1 | 4 | 8 | 5 | 141 | Tick interval 20.9 ms; under 5% available | Measured | Medium |
 | 11 | Join handshake off the host consumer | Pass | 1 | 1 | 4 | 8 | 4 | 126 | Join stall 21 ms, one normal tick | Measured | Medium |
 
-## Out on a must
+## Decisions
 
-Scored for the record, in case M2 is dropped.
+| Decision | By | Date |
+|---|---|---|
+| The wire format is closed to 1.* releases and open to 2.* releases | Jerod | 2026-09-29 |
+| Backward compatibility is expected to arise at 2.0.* in any case | Jerod | 2026-09-29 |
+| The audit is carried out on GitHub, on this file | Jerod | 2026-09-29 |
 
-| Item | Fails | W1 | W2 | W3 | W4 | W5 | Would score | KPI |
+## Held for 2.* releases
+
+These change the wire format, so they fail M2 for any 1.* release. They are candidates for 2.*,
+scored on the same wants.
+
+| Item | Fails in 1.* | W1 | W2 | W3 | W4 | W5 | Score for 2.* | KPI |
 |---|---|---|---|---|---|---|---|---|
 | Tank shots off the reliable channel, or deltas | M2 | 2 | 9 | 4 | 10 | 4 | 214 | 85% to 99% of reliable bytes when firing |
 | Periodic state checksum or resync | M2 | 5 | 7 | 4 | 8 | 2 | 204 | Lasting faults from unknown causes |
