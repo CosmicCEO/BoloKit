@@ -11,7 +11,7 @@ Y: UX. Weights: Responsiveness 45, tick-budget 30, player-visible correctness 25
 
 | Item | Needed by | Status |
 |---|---|---|
-| P0a fogSeen only when not visible; drop `join_to_alive` as a target; re-read into `data/analyze/` | Correctness scorecard | Code and tests on this branch. Re-read of raw logs is the M1 step |
+| P0a fogSeen only when not visible; drop `join_to_alive` as a target; re-read into `data/analyze/` | Correctness scorecard | Helper `FogCompare.swift` on branch. Wire into `comparableParts` and re-read logs on the M1 |
 | P0b digest `mines + builderMines`; optional finer peer position | 3B numeric baseline | Spec only. New runs |
 | P1 drawn-position probe + one soak | 1A | Design only (A4) |
 | `mainHopWait` vs `mainHopWork` | Any 2B patch | Named (A3). Not instrumented |
