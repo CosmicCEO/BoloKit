@@ -261,3 +261,15 @@ None of these is fixed on this branch. Each is a lead for the Analyze phase.
 | The host's dropped-datagram log reads byte 1 as the player slot; the slot is byte 0 | `HostDgramListener.swift`, the `.dropped` case |
 | `usaMapThumbnailIs256AndNotFlat` reads `docs/U.S.A.map`, which is not in the repository | Fails on the untouched tag |
 | Both `PillDesyncReproTests` fail whenever the whole app suite is run | 3 full runs of 3, on the tag and on this branch |
+
+## Decisions on record
+
+| Decision | By | Date |
+|---|---|---|
+| The `Float` rule in `AGENTS.md` covers the simulation. The benchmark's scenario steering uses `Double` and stays as designed | Jerod | 2026-09-28 |
+
+## Reproducibility between sessions
+
+Two sessions of v1.6.9, a day apart, agreed on correctness, traffic and errors, and disagreed on
+durations by about 9% to 25%. A scorecard's interval describes one session only. See
+`Bench/results/v1.6.9-baseline-session2/SUMMARY.md` before comparing durations across sessions.
