@@ -1,0 +1,11 @@
+{
+  "name": "p0a-fog-join",
+  "phase": "analyze",
+  "made": "2026-09-30",
+  "from": "Re-analysis of the frozen raw logs of v1.6.9-baseline-session1 and -session2 (Bench/runs/measure/) with the P0a analyzer: fog memory compared only while a tile is in fog. No new runs.",
+  "analyzer": "analyze/v1.6.9-p0 at 68dbed5",
+  "base": "measure/v1.6.9-baseline",
+  "validRuns": 218,
+  "invalidRuns": 2,
+  "note": "Only correctness.fogSeen.* metrics differ from Bench/data/measure/v1.6.9-baseline/. Every other metric is identical. The builder-mine and whole-tile remote-move metrics are not corrected here and remain quarantined."
+}
