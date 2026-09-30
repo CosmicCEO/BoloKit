@@ -34,9 +34,11 @@ the same pass. Verified: 14 `FogVisionTrackerTests` (7 new) and 3 new live-engin
 
 **Signing:** Apple Development-signed, not notarized. Gatekeeper: right-click → Open.
 
-**Former "environment issue" (fixed):** hosting on any fixed port failed with `NWListener` EINVAL and the app fell back to local-only play with an on-screen notice. It was a bug in this port, not macOS: the listeners set the port twice (`requiredLocalEndpoint` and `NWListener(using:on:)`). Fixed on `fix-listener-einval`; regression test `HostListenerFixedPortTests`. The v1.8.0 issues below were blocked on it and can be picked up again.
+**Former "environment issue" (fixed):** hosting on any fixed port failed with `NWListener` EINVAL and the app fell back to local-only play with an on-screen notice. It was a bug in this port, not macOS: the listeners set the port twice (`requiredLocalEndpoint` and `NWListener(using:on:)`). Fixed on `main` (PR #58, commit `3a0ff8f`); regression test `HostListenerFixedPortTests`. The v1.8.0 issues below were blocked on it and can be picked up again.
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
+
+**2026-09-30, board reorganization (Jerod).** All open issues were regrouped by kind. New patches `v1.6.10` (view and status-panel parity, #172/#142/#144/#100/#101) and `v1.6.11` (tick-budget perf, #162). `v1.7.0` trimmed back to its data-only pack charter. `v1.8.0` retitled and unblocked. Map editor, new combat mechanics, bots and renderer ideas moved to new `Decide:` milestones. `v2.0.0 — Wire v2` created as the first wire-breaking release. See "How we track work" below and issue #43.
 
 ## Roadmap ruling (Jerod, 2026-09-23): 1.6.* is a visual + play parity arc
 
@@ -568,6 +570,8 @@ Source of truth: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43) and
 |------|-------------|----------------|
 | **Release** | `v1.x.0 — …` | Every issue closed → tag `v1.x.0`, GitHub release, update this file. |
 | **Patch** | `v1.x.y — …` (`y ≥ 1`) | Ship-between-sprints work (playability, display, hotfixes). Tag `v1.x.y`, GitHub release. Does not replace the next `v1.x.0` sprint. |
+| **Wire release** | `v2.0.0 — …` | First wire-breaking release. Same close rule as a Release. Scope arrives from Decide rulings. |
+| **Decide** | `Decide: …` | Written ruling, **no code**. Then `not_planned` or move the issue to a future release milestone. Due **3 May 2027**. |
 
 **Release/patch checklist** (missed the version-bump step for `v1.6.0`-`v1.6.5`, see
 [#152](https://github.com/CosmicCEO/BoloKit/issues/152) -- fixed for `v1.6.6`, added here so it
@@ -577,15 +581,14 @@ Debug and Release configs of the main app target, `PRODUCT_BUNDLE_IDENTIFIER =
 com.cosmicceo.Bolo-2026`) to match `vX.Y.Z`, rebuild, verify with `plutil -p
 ".../Info.plist" | grep CFBundleShortVersionString`** → update this file's top line and
 `README.md`'s "Current tagged drop" line.
-| **Decide** | `Decide: …` | Written ruling, **no code**. Then `not_planned` or move the issue to a future release milestone. Due **3 May 2027**. |
 
-New v1.* work: **issue** → release or patch **milestone** → add to [project 1](https://github.com/users/CosmicCEO/projects/1). New Decide work → Decide milestone → [project 2](https://github.com/users/CosmicCEO/projects/2). GitHub MCP `projects_*` may 403; `gh project item-add` is the fallback.
+New v1.* work: **issue** → release or patch **milestone** → add to [project 1](https://github.com/users/CosmicCEO/projects/1). New Decide work → Decide milestone → [project 2](https://github.com/users/CosmicCEO/projects/2). GitHub MCP `projects_*` may 403; `gh project item-add` is the fallback. The project board listing can lag after `item-add`; confirm from the issue side (`projectItems`) instead of re-adding.
 
-**2.0.0** is the tag when the 1.* path is done. It is not a milestone yet.
+**Ruling (Jerod, 2026-09-30): 2.0.0 is the first wire-breaking release, and it is a milestone** ([v2.0.0 — Wire v2](https://github.com/CosmicCEO/BoloKit/milestone/29)), not just an end-of-path tag. Wire-compatible work stays on v1.* releases. Anything that needs a wire or save-format change goes to v2.0.0 once a Decide ruling says so. Project 2 is therefore "path to 2.0.0 plus open Decide issues."
 
 ## Path to 2.0.0 — [project 1](https://github.com/users/CosmicCEO/projects/1)
 
-Current sprint target: **[v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11)** (due 2 Apr 2027).
+Current target: patch **[v1.6.10 View and status-panel parity](https://github.com/CosmicCEO/BoloKit/milestone/30)** (due 30 Oct 2026), then release **[v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11)** (due 5 Feb 2027). Dates rescheduled 2026-09-30 after the v1.6.x arc shipped early; sprint windows skip 25 Dec, 1 Jan and MLK Day.
 
 | Milestone | Due | Issues |
 |-----------|-----|--------|
@@ -593,23 +596,32 @@ Current sprint target: **[v1.7.0 Gameplay packs](https://github.com/CosmicCEO/Bo
 | ~~v1.4.0 Controls, HUD, sound~~ | shipped | **Closed and tagged `v1.4.0`.** [#17](https://github.com/CosmicCEO/BoloKit/issues/17) controller, [#3](https://github.com/CosmicCEO/BoloKit/issues/3) lag tint, [#8](https://github.com/CosmicCEO/BoloKit/issues/8) remaining sounds, [#23](https://github.com/CosmicCEO/BoloKit/issues/23) Observable HUD, [#22](https://github.com/CosmicCEO/BoloKit/issues/22) App Intents, [#16](https://github.com/CosmicCEO/BoloKit/issues/16) OSLog — all closed |
 | ~~v1.5.0 Hidden-mines fog~~ | shipped | **Closed and tagged `v1.5.0`.** [#1](https://github.com/CosmicCEO/BoloKit/issues/1) fog-of-war — closed |
 | ~~v1.6.0 Metal renderer~~ | shipped | **Closed and tagged `v1.6.0`.** [#25](https://github.com/CosmicCEO/BoloKit/issues/25) — followed by the `v1.6.1`-`v1.6.6` themed parity arc (see top of this file), all shipped 2026-09-23/24 |
-| [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 2 Apr 2027 | [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets |
-| [v1.8.0 LAN/WAN discovery (env-blocked)](https://github.com/CosmicCEO/BoloKit/milestone/17) | none | Deferred from v1.3.0 (2026-09-17), all previously blocked on the `NWListener` EINVAL bug (now fixed, see the top of this file; live LAN verification still needs two Macs): [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour (code landed, live LAN unverifiable), [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. Revisit now that hosting binds. |
+| [v1.6.10 View and status-panel parity](https://github.com/CosmicCEO/BoloKit/milestone/30) (patch) | 30 Oct 2026 | Continues the 1.6.* parity arc: [#172](https://github.com/CosmicCEO/BoloKit/issues/172) tank-follow scrolling, [#142](https://github.com/CosmicCEO/BoloKit/issues/142) 16-slot ownership overview, [#144](https://github.com/CosmicCEO/BoloKit/issues/144) single-Mac tabbed-window play. Also the two manual two-Mac QA runs dropped when v1.5.2 closed: [#100](https://github.com/CosmicCEO/BoloKit/issues/100) key bindings, [#101](https://github.com/CosmicCEO/BoloKit/issues/101) controller. |
+| [v1.6.11 Tick-budget perf](https://github.com/CosmicCEO/BoloKit/milestone/31) (patch) | 11 Dec 2026 | [#162](https://github.com/CosmicCEO/BoloKit/issues/162) two always-on full-grid terrain compares. Also the real prerequisite if larger maps are ever ruled in. |
+| [v1.7.0 Gameplay packs](https://github.com/CosmicCEO/BoloKit/milestone/11) | 5 Feb 2027 | Data-only presentation packs, wire unchanged: [#34](https://github.com/CosmicCEO/BoloKit/issues/34) contract, [#39](https://github.com/CosmicCEO/BoloKit/issues/39) load sheets, [#35](https://github.com/CosmicCEO/BoloKit/issues/35) strings, [#38](https://github.com/CosmicCEO/BoloKit/issues/38) pack id, [#32](https://github.com/CosmicCEO/BoloKit/issues/32) Pelagic, [#37](https://github.com/CosmicCEO/BoloKit/issues/37) author guide, [#73](https://github.com/CosmicCEO/BoloKit/issues/73) classic HUD pack, [#133](https://github.com/CosmicCEO/BoloKit/issues/133) map key. Map editor, Tiled path, new combat mechanics and bots moved to Decide milestones 2026-09-30. |
+| [v1.8.0 LAN/WAN discovery](https://github.com/CosmicCEO/BoloKit/milestone/17) | 19 Mar 2027 | Unblocked: the `NWListener` EINVAL bug is fixed on `main` (PR #58, see the top of this file); live LAN verification still needs two Macs. LAN: [#14](https://github.com/CosmicCEO/BoloKit/issues/14) Bonjour, [#21](https://github.com/CosmicCEO/BoloKit/issues/21) AWDL, [#6](https://github.com/CosmicCEO/BoloKit/issues/6) dedicated host. WAN: [#179](https://github.com/CosmicCEO/BoloKit/issues/179) tracker address setting, [#180](https://github.com/CosmicCEO/BoloKit/issues/180) BoloKit heartbeat tracker, [#181](https://github.com/CosmicCEO/BoloKit/issues/181) legacy tracker opt-in, [#182](https://github.com/CosmicCEO/BoloKit/issues/182) invite codes, [#183](https://github.com/CosmicCEO/BoloKit/issues/183) federated trackers, [#184](https://github.com/CosmicCEO/BoloKit/issues/184) safety and privacy guardrails. |
+| [v2.0.0 Wire v2](https://github.com/CosmicCEO/BoloKit/milestone/29) | none | Empty until a Decide ruling moves work here (larger maps, map format, new combat mechanics, physics, any wire or save-format change). Due date set when scope is known. |
 
-Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, and **v1.3.0**/**v1.4.0**/**v1.5.0**/**v1.6.0** (milestones 2/8/3/4).
+Shipped on this path: **v1.2.0** (milestone 1) plus patches **v1.2.1**–**v1.2.3**, **v1.3.0**/**v1.4.0**/**v1.5.0**/**v1.6.0** (milestones 2/8/3/4), and patches **v1.6.1**–**v1.6.9**.
 
 ## Decide — [project 2](https://github.com/users/CosmicCEO/projects/2)
 
-Not coding work until a ruling or a release milestone says so.
+Not coding work until a ruling or a release milestone says so. A ruling that needs a wire or save-format change moves the issue to [v2.0.0](https://github.com/CosmicCEO/BoloKit/milestone/29); otherwise to the next v1.* release.
 
 | Milestone | Issues |
 |-----------|--------|
-| [Decide: WAN directory](https://github.com/CosmicCEO/BoloKit/milestone/5) | [#9](https://github.com/CosmicCEO/BoloKit/issues/9) standalone tracker |
+| [Decide: WAN directory](https://github.com/CosmicCEO/BoloKit/milestone/5) | [#9](https://github.com/CosmicCEO/BoloKit/issues/9) standalone tracker. Likely superseded by [#180](https://github.com/CosmicCEO/BoloKit/issues/180) in v1.8.0; ruling pending. |
 | [Decide: P2P beyond Bonjour+AWDL](https://github.com/CosmicCEO/BoloKit/milestone/6) | [#29](https://github.com/CosmicCEO/BoloKit/issues/29) Wi-Fi Aware |
 | [Decide: Apple Developer Program](https://github.com/CosmicCEO/BoloKit/milestone/7) | [#10](https://github.com/CosmicCEO/BoloKit/issues/10) discovery/invite, [#27](https://github.com/CosmicCEO/BoloKit/issues/27) Game Center, [#28](https://github.com/CosmicCEO/BoloKit/issues/28) SharePlay, [#30](https://github.com/CosmicCEO/BoloKit/issues/30) CloudKit lobby |
 | [Decide: Foundation Models](https://github.com/CosmicCEO/BoloKit/milestone/9) | [#31](https://github.com/CosmicCEO/BoloKit/issues/31) coach |
-| [Decide: Oracle parking lot](https://github.com/CosmicCEO/BoloKit/milestone/10) | [#5](https://github.com/CosmicCEO/BoloKit/issues/5) Q14 explosions owner, [#7](https://github.com/CosmicCEO/BoloKit/issues/7) D155(2) fire on captured base |
+| [Decide: Oracle parking lot](https://github.com/CosmicCEO/BoloKit/milestone/10) | [#5](https://github.com/CosmicCEO/BoloKit/issues/5) Q14 explosions owner |
 | [Decide: Physics](https://github.com/CosmicCEO/BoloKit/milestone/12) | [#40](https://github.com/CosmicCEO/BoloKit/issues/40) worthwhile?, [#41](https://github.com/CosmicCEO/BoloKit/issues/41) blockers, [#42](https://github.com/CosmicCEO/BoloKit/issues/42) combat context |
+| [Decide: Larger maps (512x512)](https://github.com/CosmicCEO/BoloKit/milestone/28) | [#161](https://github.com/CosmicCEO/BoloKit/issues/161) breaking wire/save-format change (feeds v2.0.0) |
+| [Decide: Map format and editor](https://github.com/CosmicCEO/BoloKit/milestone/32) | [#130](https://github.com/CosmicCEO/BoloKit/issues/130) BMAP vs new format (gates the rest), [#131](https://github.com/CosmicCEO/BoloKit/issues/131) map editor, [#132](https://github.com/CosmicCEO/BoloKit/issues/132) Tiled `.tsx`/TMX path |
+| [Decide: New combat mechanics](https://github.com/CosmicCEO/BoloKit/milestone/33) | [#134](https://github.com/CosmicCEO/BoloKit/issues/134) smoke shells, [#135](https://github.com/CosmicCEO/BoloKit/issues/135) water mines, [#136](https://github.com/CosmicCEO/BoloKit/issues/136) 2×2 pill formation unlock |
+| [Decide: Bots and scripting](https://github.com/CosmicCEO/BoloKit/milestone/34) | [#57](https://github.com/CosmicCEO/BoloKit/issues/57) robots plugin and BASIC-style bot language |
+| [Decide: Renderer and tick headroom](https://github.com/CosmicCEO/BoloKit/milestone/35) | [#127](https://github.com/CosmicCEO/BoloKit/issues/127) Metal headroom brainstorm, [#160](https://github.com/CosmicCEO/BoloKit/issues/160) Metal compute offload for fog |
+| [DECIDE: port the macOS game to iOS or tvOS?](https://github.com/CosmicCEO/BoloKit/milestone/16) | [#190](https://github.com/CosmicCEO/BoloKit/issues/190) |
 
 [#43](https://github.com/CosmicCEO/BoloKit/issues/43) is board documentation, not a sprint item.
 
