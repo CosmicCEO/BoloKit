@@ -34,7 +34,7 @@ python3 -c "import json,sys; m=json.load(open(sys.argv[1]))['metrics'][sys.argv[
 ## Rules
 
 - **Data is filed and tagged by the phase that produced it:** `data/<phase>/<name>/`, with
-  `\"phase\"` in its `manifest.json`, and a git tag `<phase>/<name>` once frozen.
+  `"phase"` in its `manifest.json`, and a git tag `<phase>/<name>` once frozen.
 - **A directory holding a `FROZEN` file is never edited or run into again.**
 - **Each phase's `README.md` stays short.** Detail goes in a second file beside it.
 
