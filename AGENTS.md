@@ -53,11 +53,11 @@ Open product work: GitHub issues. **Release** milestones are `v1.x.0` (two-week 
 milestones are `v1.x.y` between sprints. **Decide:** is a ruling, no code. Projects: [1.*](https://github.com/users/CosmicCEO/projects/1) path to 2.0.0, [2.*](https://github.com/users/CosmicCEO/projects/2) decisions. Board: [#43](https://github.com/CosmicCEO/BoloKit/issues/43), `docs/GITHUB_BOARDS.md`.
 
 ## Further reading
+**Source of truth:** issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Read it before creating milestones or projects. Do not clone the issue list onto a new board.
 
 - `docs/STATUS.md` — current state and open backlog
 - `docs/WIRING.md` — mermaid wiring: packages, host/join paths, 50 Hz tick
 - `docs/CONSTRAINTS.md` — fidelity benchmarks and physics constants
 - `docs/ORACLE_COVERAGE.md` — C-function coverage snapshot (verify against `Sources/` before treating a row as still open)
 - `docs/HOSTMODELS.md` — in-process host vs dedicated server research
-- Wave history and the old four-role process: `git show legacy-agent-process:docs/PLAN.md`
-- GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43, `docs/GITHUB_BOARDS.md`
+- `docs/GITHUB_BOARDS.md` — GitHub board (issues, v1.* / Decide milestones, Projects 1.* and 2.*): issue #43
