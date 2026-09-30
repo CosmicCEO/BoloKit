@@ -1,6 +1,7 @@
 # Improvement register (Kepner-Tregoe)
 
-**Status: proposed 2026-09-29, for audit and for Jerod's decision.** Every improvement suggested
+**Status: history. Audited 2026-09-29 (`KT-audit-findings.md`); superseded by `REGISTER.md`.**
+Scores here use the equal-weight Define that the audit replaced. Every improvement suggested
 in Define, Measure or Analyze, scored one way and sorted. Not a plan: translation into sprints
 or backlog is a later discussion.
 

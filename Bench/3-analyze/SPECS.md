@@ -1,58 +1,63 @@
-# Proposed specifications and standards
+# Specifications
 
-**Status: accepted 2026-09-29 (A5).** Built from Measure freeze
-`../data/measure/v1.6.9-baseline/` plus Analyze packets A1–A4.
-Reproduce freeze figures with `python3 Bench/scripts/capability.py`.
+**Status: proposed 2026-09-30 for Jerod's approval.** Supersedes the 2026-09-29 draft; the
+withdrawn rows are gone. Scope 2 to 4 players. Y is player experience (Define, amended).
 
-Y: player-visible UX. Weights: Responsiveness 45, tick-budget 30,
-player-visible correctness 25.
+Sources: pacing, cost and traffic from `../data/measure/v1.6.9-baseline/` (frozen, 218 runs);
+correctness from `../data/analyze/p0a-fog-join/` (the same runs, re-read with fog memory compared
+only in fog); the drawn remote step from the P1 soak (`../data/analyze/p1-drawn-step/`).
 
-## Basis
+## Page 1: player-experience targets
 
-| Decision | Answer |
+A release is judged on these. "Judge on" names the scenarios where the benchmark can prove a
+25% change; elsewhere the metric is reported only.
+
+| CTQ | Metric | Judge on | v1.6.9 | Target | Met |
+|---|---|---|---|---|---|
+| Responsiveness 45 | Drawn step of the host's tank on the guest screen, median (`guest.drawn_remote_step_ms.p50`) | Soak | See P1 row below | 20 ms | No |
+| Responsiveness 45 | Guest key press to frame, 95th percentile | All | 31 to 32 ms | 40 ms | Yes |
+| Responsiveness 45 | Guest frame interval, 95th percentile | All | 33 ms | 35 ms | Yes |
+| Tick budget 30 | Host ticks over 25 ms apart | Soak, sweep | 2.3% to 2.6% at 2; 4.4% at 4 | 1% | No |
+| Tick budget 30 | Host tick, 95th percentile | Soak, 4-player sweep | 13.5 ms at 2; 20.0 ms at 4 | 10 ms | No |
+| Tick budget 30 | Host render hop, 95th percentile, split into wait and work | Soak, 4-player sweep | 12.9 ms at 2; 17.8 ms at 4 (whole) | 5 ms | No |
+| Tick budget 30 | Host and guest tick interval, 95th percentile | All | 20.9 ms; 23.7 ms at 4 | 25 ms | Yes; marginal at 4 |
+| Visible correctness 25 | Fog memory wrong while in fog, tiles at end of run (`correctness.fogSeen.terminal`) | Soak, Hidden Mines | 13 of 19 runs; median 29, max 75 | 0 | No |
+| Visible correctness 25 | Fog memory wrong while in fog, over 2 s (`correctness.fogSeen.persistent`) | Soak, Hidden Mines | 12 of 19 runs; median 2, max 59 | 0 | No |
+| Visible correctness 25 | Terrain wrong over 250 ms | Soak, Hidden Mines | 3 of 19 runs | 0 | No |
+| Visible correctness 25 | Mine count wrong over 250 ms, excluding the builder's carried mine | Soak | 8 of 39 runs (uncorrected; P0b pending) | 0 | No |
+| Visible correctness 25 | Lasting faults in pills, bases, own status, visibility, peers | All | 0 | 0 | Yes |
+
+Correctness targets are pass or fail. Proving an intermittent fault gone needs about 20 clean
+soak runs.
+
+## Page 2: provisional tripwires
+
+Control limits: mean plus three standard deviations of the pooled run values, about 20 values
+per metric, not bell-shaped. A release above a tripwire has got worse and is held for a look. They
+are provisional until a third session exists.
+
+| Metric | v1.6.9 | Tripwire |
+|---|---|---|
+| Host tick interval, 95th percentile | 20.9 ms at 2; 23.7 ms at 4 | 22.4 ms at 2; 25.0 ms at 4 |
+| Guest tick interval, 95th percentile | 20.9 ms | 21.2 ms |
+| Guest key press to frame, 95th percentile | 31 to 32 ms | 38.5 ms |
+| Reliable message sent to applied, 95th percentile | 45 ms | 54.8 ms |
+| Guest joined to alive | 2,010 to 2,030 ms | 2,133 ms |
+| Longest host tick during a join | 21 ms at 2 | 27.4 ms at 2; 35.0 ms sweep |
+| Guest tick, 95th percentile | 0.3 to 0.6 ms | 0.9 ms |
+| Host CPU, share of one core | 32% to 34% at 2; 43% at 4 | 42.7% at 2; 45.0% at 4 |
+| Guest CPU, share of one core | 29% to 31% | 42.6% |
+| Memory, peak | 125 to 157 MB | 178 MB |
+| Host reliable traffic | 6.1 kB/s at 2; 19.0 kB/s at 4 | 7.9 kB/s at 2; 22.9 kB/s at 4 |
+| Host position traffic | 1.2 kB/s at 2; 9.5 kB/s at 4 | 1.2 kB/s at 2; 9.8 kB/s at 4 |
+| UDP loss, unpaired reliable messages, rejects, invariant violations | 0 | 0 |
+
+## Removed from the 2026-09-29 draft
+
+| Row | Why |
 |---|---|
-| Smallest improvement the benchmark must prove | About 25% |
-| Player count these specs cover | 2 to 4 |
-| Player-visible correctness | Disagreement the player can see or act on |
-| Three Measure headlines | Quarantined until P0a/P0b/P1 say otherwise |
-
-## Quarantined (not targets)
-
-| Row | Until |
-|---|---|
-| `correctness.fogSeen.*` (~300 tiles) | P0a scorecard |
-| Builder-mine 1.3 s / s3 `resources.slow` as that story | P0b or a failing 3B test |
-| `guest.remote_move_interval_ms` (141–400 ms tile-step) | P1 baseline of `guest.drawn_remote_step_ms` |
-
-Do not print control limits or "Met today: No" for these rows.
-
-## Tripwires (release fails if it exceeds these)
-
-From the freeze. CPU, memory, traffic stay control-only.
-
-| Metric | Judge on | v1.6.9 | Control limit |
-|---|---|---|---|
-| Lasting faults pills, bases, own status, visibility, peers | Pair | 0 | 0 |
-| UDP loss, unpaired reliable, rejects, invariants | Pair | 0 | 0 |
-| Host tick interval p95 | All | 20.9 ms at 2; 23.7 ms at 4 | 22.4 ms at 2; 25.0 ms at 4 |
-| Guest tick interval p95 | All | 20.9 ms | 21.2 ms |
-| Guest key-to-frame p95 | All | 31–32 ms | 38.5 ms |
-| Guest frame interval p95 | All | 33 ms | 35.1 ms |
-| Reliable send-to-applied p95 | Scripted | 45 ms | 54.8 ms |
-| Host join stall | All | 21 ms at 2 | 27.4 ms at 2 |
-| Host CPU / guest CPU / memory / reliable traffic / position traffic | 2–4 | See freeze | Freeze +3σ |
-
-`guest.join_to_alive_ms` (~2.0 s) is the scripted spawn wait. Informational. Not a tripwire.
-
-## UX targets (not met is allowed)
-
-| Metric | Judge on | v1.6.9 | Target | Met |
-|---|---|---|---|---|
-| Host ticks over 25 ms apart | Soak, 4p sweep | 2.3–2.6% at 2; 4.4% at 4 | 1% | No |
-| Host tick p95 | Soak, 4p sweep | 13.5 ms at 2; 20.0 ms at 4 | 10 ms | No |
-| Host render hop p95 | Soak, 4p sweep | 12.9 ms at 2; 17.8 ms at 4 | Split wait vs work before a hop target | No |
-| `guest.drawn_remote_step_ms` | Soak, after P1 probe | not measured (~100 ms expected) | 20 ms | No probe |
-
-Soak `resources.slow` (8/39) and Hidden Mines `terrain.slow` (3/19) stay **holds**, not targets, until the 3B/4B tests exist.
-
-8- and 16-player traffic stay watch. Out of these specs.
+| Fog memory, about 300 tiles | Compared visible tiles, which are drawn from live terrain. P0a removed it; what survives is on page 1 |
+| Builder-placed mine wrong for 1.3 s | The builder's carried mine was not counted. Replaced by the mine-count row pending P0b |
+| Host's tank moving every 141 to 400 ms | Counted whole-tile changes, which depend on tank speed. Replaced by the drawn step |
+| Position delay host to guest | Not repeatable; reported only |
+| Everything at 8 and 16 players | Watch items outside scope |

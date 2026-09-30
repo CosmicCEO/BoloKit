@@ -1,48 +1,54 @@
 # Analyze register
 
-**Status: accepted 2026-09-29 (A5).** Replaces `KT.md` as the gate register.
-`KT.md` keeps the historical Musts/Wants scores. Do not treat those ranks as the live list.
+**Status: 2026-09-30, the one live register.** Matches `SPECS.md`. `KT.md` keeps the
+2026-09-29 scores as history; `KT-audit-findings.md` is the audit of them; `PROPOSALS.md` and
+`OBSERVED.md` hold the option detail. Do not rank from those files.
 
-Musts unchanged: M1 bench can prove, M2 no 1.* wire change, M3 `AGENTS.md`.
-
-Y: UX. Weights: Responsiveness 45, tick-budget 30, player-visible correctness 25.
+Musts: M1 the benchmark can prove it; M2 no wire change in 1.*; M3 `AGENTS.md`.
+Y: player experience. Weights: responsiveness 45, tick-budget cost 30, visible correctness 25.
 
 ## Prerequisites
 
-| Item | Needed by | Status |
+| Item | Status 2026-09-30 | Evidence |
 |---|---|---|
-| P0a fogSeen only when not visible; drop `join_to_alive` as a target; re-read into `data/analyze/` | Correctness scorecard | Helper `FogCompare.swift` on branch. Wire into `comparableParts` and re-read logs on the M1 |
-| P0b digest `mines + builderMines`; optional finer peer position | 3B numeric baseline | Spec only. New runs |
-| P1 drawn-position probe + one soak | 1A | Design only (A4) |
-| `mainHopWait` vs `mainHopWork` | Any 2B patch | Named (A3). Not instrumented |
-| 3B test: `recvSrTankStatus` refund | Keep or drop 3B | Design only (A4) |
-| 4B test: reveal vs `seenTiles` / `fogTileFor` | Keep or drop 4B | Design only (A4) |
+| P0a fog memory compared only in fog; re-read of all 220 frozen runs | **Done.** `data/analyze/p0a-fog-join/` | Scripted fog faults fall to 0; the Hidden Mines soak keeps median 29 tiles at end of run in 13 of 19 runs |
+| P0b digest `mines + builderMines`; finer peer position | Not done. Needs new runs | Spec only |
+| P1 drawn-position probe plus one soak | See the P1 row in `SPECS.md` | `data/analyze/p1-drawn-step/` |
+| Render hop split into wait and work | Instrumented; measured in the P1 soak | `host.tick_ms.renderHopWait`, `.renderHopWork` |
+| 3B failing test | **Done.** `Tests/DifferentialTests/GuestReceivePathFaultTests.swift` | Demonstrated: with 5 mines and the builder carrying one, a status message leaves the guest at 5 plus 1 |
+| 4B failing test | **Done.** Same file | Demonstrated on the drawing path: a reveal of a mined tile while it is in fog leaves the guest remembering, and drawing, plain grass |
 
-## 1.* after the gate
+The two tests record known issues on v1.6.9 and will fail the moment the fault is fixed.
 
-| Item | Status | UX family | Enter Improve when |
+## 1.* items
+
+| Item | Gate | CTQ | Enters Improve when |
 |---|---|---|---|
-| 1A view-owned smoother clock | Hold for P1 | Responsiveness 45 | Probe + baseline soak exist |
-| 2C engine publishes, view pulls | Architecture choice | Tick-budget 30 + host frames | Jerod accepts 2C and Analyze is closed |
-| 2B snapshot, do not wait | Expedient only | Tick-budget 30 | Wait/work split shows wait dominates and Jerod accepts host-frame-drop |
-| 2A hops after send | Rejected | — | Never |
-| 3B status minus `builderMines` | Hold | Visible correctness 25 | Failing unit test on v1.6.9, then Analyze closed |
-| 4B refresh memory on reveal | Hold | Visible correctness 25 | Failing unit test on v1.6.9, then Analyze closed |
-| Speed up position send | Hold behind 2C/2B | Tick-budget | After hop is off the send path |
-| Relay positions / 8–16 | Drop 1.* / watch | Cost | 2.* or watch |
-| Diagonal pill | Hold | Correctness | Reproduce in a test |
-| Terrain change tracking, fog copies, clock, join-off-consumer | Drop 1.* | Not UX | — |
+| 1A smoother clock owned by the view | Ready once the P1 baseline is on the scorecard | Responsiveness 45 | Analyze closed |
+| 2B versus 2C, host render wait | Architecture choice, after the wait-versus-work split is read | Tick budget 30, plus host frames | Jerod picks one; Analyze closed |
+| 4B guest refreshes fog memory on reveal | Cause demonstrated; baseline measured | Visible correctness 25 | Analyze closed |
+| 3B status message does not refund the builder's mine | Cause demonstrated; baseline pending P0b | Visible correctness 25 | P0b, then Analyze closed |
+| Speed up the position send | Hold behind 2B or 2C | Tick budget | After the hop is off the send path |
+| Relay positions less wastefully | Drop for 1.*; watch at 4 | Cost | 2.* or watch |
+| Diagonal pill shell | Hold | Correctness | Reproduce in a test |
+| Terrain change tracking, fog copies, drift-corrected clock, join off the consumer | Drop for 1.* | Not player experience | Never in 1.* |
 
 ## 2.* parked depth
 
 | Item | Note |
 |---|---|
-| Resync / checksum | Authority-model fix for "host changed state without telling guests." M2. Named depth, not dropped |
-| Shots off reliable / batch reveals | Traffic; control-only at 2–4 |
-| 3C guest reports builder launch | Wire. Alternative to 3B at 2.* |
+| Periodic state checksum or resync | The authority-model fix for "host changed state without telling guests". Named depth, not dropped |
+| Tank shots off the reliable channel; batched terrain reveals | Traffic; control-only at 2 to 4 |
+| 3C guest reports the builder launch | Alternative to 3B once the wire may change |
 
-## Top pair
+## What closes Analyze
 
-**1A** (responsiveness) and **2C** (tick / host-frame architecture). 2B is not the default.
-
-Nothing in this register is Improve-ready. Analyze stays open.
+| Condition | State |
+|---|---|
+| Define amended | Done |
+| Raw logs backed up | Jerod |
+| P0a and one Analyze scorecard | Done |
+| P1 probe and a measured 1A baseline | See `SPECS.md` |
+| Failing tests for 3B and 4B, or their removal | Done, both kept |
+| What owns the main thread, or the wait-versus-work split as the open item | See `SPECS.md` |
+| One register matching one specs page | This file and `SPECS.md` |
