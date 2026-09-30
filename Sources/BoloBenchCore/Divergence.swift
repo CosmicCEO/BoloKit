@@ -46,7 +46,7 @@ public enum CompareDomain: String, CaseIterable, Sendable, Codable {
     }
 }
 
-public enum EpisodeLength: String, Sendable, Codable, CaseIterable {
+public enum EpisodeLength: String, CaseIterable, Sendable, Codable {
     /// Up to 250 ms: the send cadence, a tick and the delivery.
     case inFlight
     /// Over 250 ms and up to 2 s.
@@ -59,7 +59,7 @@ public enum EpisodeLength: String, Sendable, Codable, CaseIterable {
 
 /// A guess at the kind of fault, from the six classes in the `debugging-host-client-desync`
 /// skill. A lead for a person to follow, not a finding.
-public enum CandidateClass: String, Sendable, Codable, CaseIterable {
+public enum CandidateClass: String, CaseIterable, Sendable, Codable {
     case unreportedChange
     case doubleApplication
     case doubleDecision
@@ -109,7 +109,7 @@ func terrainClass(_ raw: UInt64) -> UInt64 {
     }
 }
 
-/// The comparable parts of one logged state value. A `nil` value means "not comparable here"
+/// The comparable parts of one logged state value. A `nil` value means \"not comparable here\"
 /// (a tile outside vision), which ends any divergence on that element without starting one.
 func comparableParts(domain: DigestDomain, element: UInt32, value: UInt64) -> [(CompareDomain, UInt32, UInt64?)] {
     switch domain {
@@ -129,7 +129,7 @@ func comparableParts(domain: DigestDomain, element: UInt32, value: UInt64) -> [(
         if value == digestUnknownTerrain { return [(.terrain, element, nil), (.terrainVariant, element, nil)] }
         return [(.terrain, element, terrainClass(value)), (.terrainVariant, element, value)]
     case .fog:
-        return [(.fogVisible, element, value & 1), (.fogSeen, element, value >> 1)]
+        return fogComparableParts(element: element, value: value)
     case .peers:
         // Bits 0-2 connected, dead and boat; 8-23 tile; 24-31 input flags (not compared).
         return [(.peers, element, value & 7), (.peerPosition, element, (value >> 8) & 0xffff)]
@@ -180,10 +180,10 @@ public func findDivergence(
     let windowEnd = min(host.lastTime, guest.lastTime)
     guard windowEnd > windowStart else { return nil }
 
-    // Host TCP sends to this guest, for telling "never sent" from "sent and not applied".
+    // Host TCP sends to this guest, for telling \"never sent\" from \"sent and not applied\".
     let hostSends = host.of(.send)
         .filter { $0.sub == BenchChannel.tcp.rawValue && Int($0.v1) == slot }
-        .map(\.time)
+        .map(\\.time)
 
     // Merge, host first on a shared timestamp.
     var merged: [(record: BenchRecord, isHost: Bool)] = []
@@ -234,8 +234,6 @@ public func findDivergence(
             if case .some(.some(let hostValue)) = cell.host, case .some(.some(let guestValue)) = cell.guest {
                 divergent = hostValue != guestValue
                 if divergent, let index = cell.open {
-                    // Still divergent, on new values: the episode carries on, and the guess is
-                    // made again from the shape it has now.
                     episodes[index].hostValue = hostValue
                     episodes[index].guestValue = guestValue
                     episodes[index].candidate = candidate(
@@ -264,12 +262,10 @@ public func findDivergence(
     for index in episodes.indices where episodes[index].end == nil {
         episodes[index].length = thresholds.length(of: windowEnd &- episodes[index].start, closed: false)
     }
-    // A guess is only worth making about divergence that outlasted delivery.
     for index in episodes.indices where episodes[index].length == .inFlight || episodes[index].domain.isInformational {
         episodes[index].candidate = nil
     }
     for index in episodes.indices where episodes[index].candidate == .unreportedChange {
-        // "Never sent" can only be said once the episode is over: a send during it rules it out.
         let end = episodes[index].end ?? windowEnd
         if sent(hostSends, from: episodes[index].start &- min(episodes[index].start, 20_000_000), to: end) {
             episodes[index].candidate = .unclassified
@@ -288,7 +284,6 @@ private func sent(_ times: [UInt64], from: UInt64, to: UInt64) -> Bool {
     return low < times.count && times[low] <= to
 }
 
-/// The armour byte of a pill value, or the whole value elsewhere.
 private func quantity(_ value: UInt64, in domain: CompareDomain) -> Int64 {
     domain == .pills ? Int64((value >> 16) & 0xff) : Int64(bitPattern: value)
 }
@@ -297,11 +292,9 @@ private func candidate(
     for episode: Episode, cell: Cell, startedByHost: Bool, windowStart: UInt64, hostSends: [UInt64],
     thresholds: DivergenceThresholds
 ) -> CandidateClass {
-    // Divergent from the first moment the two could be compared.
     if episode.start <= windowStart &+ 100_000_000 { return .oneShotWiring }
 
     if !startedByHost, let previousGuest = cell.previousGuest, let previousHost = cell.previousHost {
-        // The guest held the host's current value, then went back to the host's older one.
         if previousGuest == episode.hostValue, episode.guestValue == previousHost { return .staleOverwrite }
     }
 
@@ -319,21 +312,15 @@ private func candidate(
         return .maskedMessage
     }
 
-    // Both sides changed this element within a tick or two of each other, to different values.
     let gap = cell.hostChanged > cell.guestChanged
         ? cell.hostChanged &- cell.guestChanged : cell.guestChanged &- cell.hostChanged
     if cell.previousHost != nil, cell.previousGuest != nil, gap <= 40_000_000 { return .doubleDecision }
 
-    // Provisional: confirmed or withdrawn once the episode's end is known.
     if startedByHost { return .unreportedChange }
     return .unclassified
 }
 
-// MARK: - Metrics
-
 extension DivergenceResult {
-    /// Milliseconds during which at least one element of `domain` had been divergent for longer
-    /// than the in-flight threshold.
     public func divergentTime(in domain: CompareDomain, thresholds: DivergenceThresholds) -> UInt64 {
         let spans = episodes(in: domain)
             .map { ($0.start &+ thresholds.inFlight, $0.end ?? windowEnd) }
@@ -355,30 +342,30 @@ extension DivergenceResult {
 
     public func metrics(thresholds: DivergenceThresholds = DivergenceThresholds()) -> MetricSet {
         var metrics = MetricSet()
-        metrics.set("correctness.window_s", Double(window) / 1_000_000_000)
+        metrics.set(\"correctness.window_s\", Double(window) / 1_000_000_000)
         var faults = [EpisodeLength: Int]()
         for domain in CompareDomain.allCases {
             let all = episodes(in: domain)
-            let prefix = "correctness.\(domain.rawValue)"
+            let prefix = \"correctness.\\(domain.rawValue)\"
             for length in EpisodeLength.allCases {
                 let count = all.filter { $0.length == length }.count
-                metrics.count("\(prefix).\(length.rawValue)", count)
+                metrics.count(\"\\(prefix).\\(length.rawValue)\", count)
                 if !domain.isInformational { faults[length, default: 0] += count }
             }
             metrics.distribution(
-                "\(prefix).convergence_ms", all.filter { $0.end != nil }.map { $0.duration(until: windowEnd).ms }
+                \"\\(prefix).convergence_ms\", all.filter { $0.end != nil }.map { $0.duration(until: windowEnd).ms }
             )
             metrics.set(
-                "\(prefix).divergent_time_pct",
+                \"\\(prefix).divergent_time_pct\",
                 100 * Double(divergentTime(in: domain, thresholds: thresholds)) / Double(max(window, 1))
             )
         }
         for length in EpisodeLength.allCases {
-            metrics.count("correctness.all.\(length.rawValue)", faults[length, default: 0])
+            metrics.count(\"correctness.all.\\(length.rawValue)\", faults[length, default: 0])
         }
         for candidate in CandidateClass.allCases {
             metrics.count(
-                "correctness.candidate.\(candidate.rawValue)", episodes.filter { $0.candidate == candidate }.count
+                \"correctness.candidate.\\(candidate.rawValue)\", episodes.filter { $0.candidate == candidate }.count
             )
         }
         return metrics

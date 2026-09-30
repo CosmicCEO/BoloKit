@@ -4,9 +4,9 @@ Index only. Read this, then open the one file you need.
 
 | Phase | Status | Read |
 |---|---|---|
-| 1. Define | Closed | `1-define/README.md` |
+| 1. Define | Closed (amended 2026-09-29) | `1-define/README.md` |
 | 2. Measure | Closed 2026-09-29 | `2-measure/README.md` |
-| 3. Analyze | Not started | `3-analyze/README.md` |
+| 3. Analyze | In progress | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md`, `3-analyze/KT-audit-findings.md` |
 | 4. Improve | Not started | `4-improve/README.md` |
 | 5. Control | Not started | `5-control/README.md` |
 
@@ -14,12 +14,14 @@ Index only. Read this, then open the one file you need.
 
 | Need | File | Size |
 |---|---|---|
+| Remote lead ↔ on-system Grok | `DISPATCH.md` | Small |
 | The benchmark's headline numbers | `2-measure/README.md` | Small |
 | How the measurement system works, every metric defined | `2-measure/SYSTEM.md` | Medium |
 | One metric's value, interval and run values | `data/measure/v1.6.9-baseline/<tier>/<scenario>/scorecard.json` | Large: query it, do not read it whole |
 | One run's metrics | `data/<phase>/<name>/<tier>/<scenario>/run-NN/summary.json` | Large |
 | What a session was run on | `data/<phase>/<name>/manifest.json` | Small |
-| Findings and hypotheses | `3-analyze/README.md` | Small |
+| Gate register and specs | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md` | Small |
+| Historical KT scores | `3-analyze/KT.md` | Medium |
 | Raw logs | `runs/<phase>/<name>/` on the benchmark machine, not in git | 2.3 GB a session |
 
 Query a scorecard instead of reading it:
