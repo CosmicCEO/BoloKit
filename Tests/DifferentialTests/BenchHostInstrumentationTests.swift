@@ -139,17 +139,24 @@ private func latest(_ records: [BenchRecord], _ domain: DigestDomain, element: I
     let whole = phases.filter { $0.sub == BenchPhase.whole.rawValue }
     // The last tick may still have been running when the engine stopped.
     #expect(whole.count >= ticks.count - 1)
-    for phase in [BenchPhase.prepare, .runTick, .terrainDiff, .status, .fog, .sendFlush, .renderHop, .digest] {
+    for phase in [BenchPhase.prepare, .runTick, .terrainDiff, .status, .fog, .sendFlush, .renderHop, .renderHopWork, .digest] {
         #expect(phases.contains { $0.sub == phase.rawValue }, "missing phase \(phase)")
     }
     #expect(phases.contains { $0.sub == BenchPhase.updateSend.rawValue }, "the 10 Hz update must be timed")
 
     // The phases of a tick are parts of it, so they cannot add up to more than the whole.
+    // `renderHopWork` is a part of `renderHop`, not of the tick, so it is left out of the sum.
     let tick = try #require(whole.dropFirst(5).first?.id)
-    let parts = phases.filter { $0.id == tick && $0.sub != BenchPhase.whole.rawValue }.reduce(0) { $0 + $1.v0 }
+    let parts = phases
+        .filter { $0.id == tick && $0.sub != BenchPhase.whole.rawValue && $0.sub != BenchPhase.renderHopWork.rawValue }
+        .reduce(0) { $0 + $1.v0 }
     let total = try #require(whole.first { $0.id == tick }?.v0)
     #expect(parts <= total)
     #expect(total < 1_000_000_000)
+    // The work inside the hop's closures is part of the hop.
+    let hop = try #require(phases.first { $0.id == tick && $0.sub == BenchPhase.renderHop.rawValue }?.v0)
+    let work = try #require(phases.first { $0.id == tick && $0.sub == BenchPhase.renderHopWork.rawValue }?.v0)
+    #expect(work <= hop)
 }
 
 @Test(.timeLimit(.minutes(1))) func theJoinAndTheGuestsDatagramsAreRecorded() async throws {

@@ -29,6 +29,12 @@ public struct BenchLap {
         last = now
     }
 
+    /// Records `duration` as `phase` without moving the clock: for a part of the phase the
+    /// next `mark` will close, timed on its own.
+    public func note(_ phase: BenchPhase, duration: UInt64) {
+        recorder?.record(.phase, sub: phase.rawValue, id: tick, v0: duration)
+    }
+
     /// Restarts the clock without recording, to leave out time that belongs to no phase.
     public mutating func skip() {
         guard recorder != nil else { return }
@@ -154,6 +160,32 @@ extension BenchRecorder {
                 v0: UInt64(bitPattern: Int64(value))
             )
         }
+    }
+}
+
+/// Where the render view drew each remote tank (P1 probe): one `drawn` record per tank per
+/// frame in which its drawn position moved. The simulation logs only raw positions; this is
+/// the smoothed one the player sees.
+public struct BenchDrawnProbe {
+    /// Units per tile in a `drawn` record's coordinates: a sixteenth of a tile.
+    public static let unitsPerTile: Float = 16
+
+    private var last: [Int: (x: UInt64, y: UInt64)] = [:]
+
+    public init() {}
+
+    /// `value` in tiles as a fixed-point count of `unitsPerTile`ths, rounded to nearest.
+    public static func fixed(_ value: Float) -> UInt64 {
+        guard value.isFinite else { return 0 }
+        let scaled: Float = min(max((value * unitsPerTile).rounded(), 0), 1_048_576)
+        return UInt64(scaled)
+    }
+
+    public mutating func drew(player: Int, at position: Vec2f, time: UInt64, recorder: BenchRecorder) {
+        let point = (x: Self.fixed(position.x), y: Self.fixed(position.y))
+        if let previous = last[player], previous == point { return }
+        last[player] = point
+        recorder.record(.drawn, id: UInt32(truncatingIfNeeded: player), v0: point.x, v1: point.y, at: time)
     }
 }
 
