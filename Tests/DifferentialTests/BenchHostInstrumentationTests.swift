@@ -148,7 +148,7 @@ private func latest(_ records: [BenchRecord], _ domain: DigestDomain, element: I
     // `renderHopWork` is a part of `renderHop`, not of the tick, so it is left out of the sum.
     let tick = try #require(whole.dropFirst(5).first?.id)
     let parts = phases
-        .filter { $0.id == tick && $0.sub != BenchPhase.whole.rawValue && $0.sub != BenchPhase.renderHopWork.rawValue }
+        .filter { $0.id == tick && $0.sub != BenchPhase.whole.rawValue && $0.sub < BenchPhase.renderHopWork.rawValue }
         .reduce(0) { $0 + $1.v0 }
     let total = try #require(whole.first { $0.id == tick }?.v0)
     #expect(parts <= total)

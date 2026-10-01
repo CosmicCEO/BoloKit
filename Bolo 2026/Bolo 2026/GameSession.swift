@@ -264,10 +264,24 @@ public final class GameSession {
             hostEngine.submitLocalBuilderCommand(command: command, target: target)
         }
         hostEngine.onTickRendered = { [weak self, weak view, weak hostEngine] renderedState in
+            // Benchmark: the three parts of this closure are timed on their own, so the analyzer
+            // can say which one makes `renderHopWork` slow. Nothing else changes.
+            let bench = self?.benchRecorder
+            let tick = UInt32(truncatingIfNeeded: renderedState.ticks)
+            var t = bench == nil ? 0 : BoloBench.now()
+            func note(_ phase: BenchPhase) {
+                guard let bench else { return }
+                let now = BoloBench.now()
+                bench.record(.phase, sub: phase.rawValue, id: tick, v0: now &- t)
+                t = now
+            }
             view?.render(renderedState, fogState: hostRenderFogState(
                 engineFog: hostEngine?.fogState(for: renderedState.localPlayer), hiddenMines: renderedState.hiddenMines))
+            note(.hopRender)
             self?.hudSnapshot.update(from: renderedState)
+            note(.hopHud)
             self?.hostLiveState = renderedState
+            note(.hopLiveState)
         }
         hostEngine.onMessageReceived = { [weak self] message in
             self?.messages.append(message)

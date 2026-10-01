@@ -100,7 +100,9 @@ public func digestResources(player: Int, state: GameState) -> [UInt64] {
     let p = state.players[player]
     return [
         UInt64(truncatingIfNeeded: stats.armour), UInt64(truncatingIfNeeded: stats.shells),
-        UInt64(truncatingIfNeeded: p.mines), UInt64(truncatingIfNeeded: p.trees),
+        // P0b: the builder carries a mine the guest has already spent and the host has not yet,
+        // so the count that both sides should agree on includes it.
+        UInt64(truncatingIfNeeded: p.mines + p.builderMines), UInt64(truncatingIfNeeded: p.trees),
     ]
 }
 

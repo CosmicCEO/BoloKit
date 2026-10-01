@@ -92,6 +92,12 @@ public enum BenchPhase: UInt8, Sendable, CaseIterable {
     case digest = 13
     /// The part of `renderHop` spent inside the main-actor closures; the rest is waiting.
     case renderHopWork = 14
+    /// The three parts of the host's `onTickRendered` closure, recorded by the app against the
+    /// rendered state's tick count (not the engine's lap tick): drawing, the status display, and
+    /// publishing the live state.
+    case hopRender = 15
+    case hopHud = 16
+    case hopLiveState = 17
 }
 
 public enum BenchInput: UInt8, Sendable {
