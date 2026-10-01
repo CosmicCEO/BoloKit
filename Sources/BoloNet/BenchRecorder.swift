@@ -98,6 +98,8 @@ public enum BenchPhase: UInt8, Sendable, CaseIterable {
     case hopRender = 15
     case hopHud = 16
     case hopLiveState = 17
+    /// The host's sound closure (`onShouldPlaySound`), the second main-actor hop of a tick.
+    case hopSound = 18
 }
 
 public enum BenchInput: UInt8, Sendable {

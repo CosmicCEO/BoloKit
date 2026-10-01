@@ -50,6 +50,12 @@ if [[ ${lowPower:-0} != 0 ]]; then
   exit 65
 fi
 
+# A covered window is throttled by macOS to about 20 frames a second, which invalidates every
+# run (seen 2026-09-30: a 5-minute screensaver). Declare user activity every two minutes for
+# as long as this session runs; the loop ends when the session's shell does.
+( while kill -0 $$ 2> /dev/null; do caffeinate -u -t 10; sleep 110; done ) > /dev/null 2>&1 &
+caffeinate -d -i -w $$ > /dev/null 2>&1 &
+
 echo "== building"
 xcodebuild -project "$root/Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -configuration Release build \
   > "$root/Bench/runs/build.log" 2>&1 || { mkdir -p "$root/Bench/runs"; echo "app build failed" >&2; exit 66; }

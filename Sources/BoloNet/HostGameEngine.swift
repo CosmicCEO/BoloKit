@@ -945,11 +945,15 @@ public final class HostGameEngine: @unchecked Sendable {
         // queued this tick, not one hop per sound.
         if let onShouldPlaySound, !pendingSounds.isEmpty {
             let sounds = pendingSounds
-            hopWork &+= await MainActor.run {
+            let soundWork: UInt64 = await MainActor.run {
                 let start = timed ? BoloBench.now() : 0
                 for (name, near) in sounds { onShouldPlaySound(name, near) }
                 return timed ? BoloBench.now() &- start : 0
             }
+            hopWork &+= soundWork
+            // Benchmark: the sound closure on its own. In the soak the render closure's parts
+            // total under 0.5 ms while `renderHopWork` is 9 to 13 ms, so this is the suspect.
+            if timed { lap.note(.hopSound, duration: soundWork) }
         }
         lap.note(.renderHopWork, duration: hopWork)
         lap.mark(.renderHop)
