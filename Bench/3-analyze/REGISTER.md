@@ -13,8 +13,8 @@ Y: player experience. Weights: responsiveness 45, tick-budget cost 30, visible c
 |---|---|---|
 | P0a fog memory compared only in fog; re-read of all 220 frozen runs | **Done.** `data/analyze/p0a-fog-join/` | Scripted fog faults fall to 0; the Hidden Mines soak keeps median 29 tiles at end of run in 13 of 19 runs |
 | P0b digest `mines + builderMines`; finer peer position | Not done. Needs new runs | Spec only |
-| P1 drawn-position probe plus one soak | See the P1 row in `SPECS.md` | `data/analyze/p1-drawn-step/` |
-| Render hop split into wait and work | Instrumented; measured in the P1 soak | `host.tick_ms.renderHopWait`, `.renderHopWork` |
+| P1 drawn-position probe plus one soak | **Done.** `data/analyze/p1-drawn-step/` | Drawn step median 100 ms, 95th percentile 132 ms, 0.2 tiles a step. The whole-tile metric read 400 ms in the same run |
+| Render hop split into wait and work | **Done, one run.** `host.tick_ms.renderHopWait`, `.renderHopWork` | Work 9.0 ms and wait 2.4 ms at the 95th percentile; work max 181 ms. The time is inside the host's render closure, not waiting for the main thread |
 | 3B failing test | **Done.** `Tests/DifferentialTests/GuestReceivePathFaultTests.swift` | Demonstrated: with 5 mines and the builder carrying one, a status message leaves the guest at 5 plus 1 |
 | 4B failing test | **Done.** Same file | Demonstrated on the drawing path: a reveal of a mined tile while it is in fog leaves the guest remembering, and drawing, plain grass |
 
@@ -25,7 +25,7 @@ The two tests record known issues on v1.6.9 and will fail the moment the fault i
 | Item | Gate | CTQ | Enters Improve when |
 |---|---|---|---|
 | 1A smoother clock owned by the view | Ready once the P1 baseline is on the scorecard | Responsiveness 45 | Analyze closed |
-| 2B versus 2C, host render wait | Architecture choice, after the wait-versus-work split is read | Tick budget 30, plus host frames | Jerod picks one; Analyze closed |
+| 2B versus 2C, host render hop | **Reframed by the split.** The hop is work, not waiting: 9.0 of 11.8 ms at the 95th percentile is spent inside the closure (`view.render`, the status display, `hostLiveState`), while the drawing itself is under 1 ms. Neither 2B nor 2C removes that work; both only move it off the tick and leave the host's own screen paying it. The Analyze item is now: find which part of the closure is slow | Tick budget 30, plus host frames | The slow part is named; Jerod picks a fix; Analyze closed |
 | 4B guest refreshes fog memory on reveal | Cause demonstrated; baseline measured | Visible correctness 25 | Analyze closed |
 | 3B status message does not refund the builder's mine | Cause demonstrated; baseline pending P0b | Visible correctness 25 | P0b, then Analyze closed |
 | Speed up the position send | Hold behind 2B or 2C | Tick budget | After the hop is off the send path |
@@ -48,7 +48,7 @@ The two tests record known issues on v1.6.9 and will fail the moment the fault i
 | Define amended | Done |
 | Raw logs backed up | Jerod |
 | P0a and one Analyze scorecard | Done |
-| P1 probe and a measured 1A baseline | See `SPECS.md` |
+| P1 probe and a measured 1A baseline | Done, one run; a full session before any Improve claim |
 | Failing tests for 3B and 4B, or their removal | Done, both kept |
-| What owns the main thread, or the wait-versus-work split as the open item | See `SPECS.md` |
+| What owns the main thread, or the wait-versus-work split as the open item | Split measured: the host's own render closure owns it. Which part is slow stays open |
 | One register matching one specs page | This file and `SPECS.md` |

@@ -1,0 +1,7425 @@
+{
+  "invalidReasons" : [
+
+  ],
+  "invalidRuns" : 0,
+  "metrics" : {
+    "correctness.all.inFlight" : {
+      "high" : 13444,
+      "low" : 13444,
+      "median" : 13444,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        13444
+      ]
+    },
+    "correctness.all.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.all.slow" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        1
+      ]
+    },
+    "correctness.all.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.convergence_ms.n" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.inFlight" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.bases.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.doubleApplication" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.doubleDecision" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.maskedMessage" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.oneShotWiring" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.staleOverwrite" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.candidate.unclassified" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        1
+      ]
+    },
+    "correctness.candidate.unreportedChange" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogSeen.convergence_ms.max" : {
+      "high" : 9.016375,
+      "low" : 9.016375,
+      "median" : 9.016375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.016375
+      ]
+    },
+    "correctness.fogSeen.convergence_ms.n" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2
+      ]
+    },
+    "correctness.fogSeen.convergence_ms.p50" : {
+      "high" : 8.873709,
+      "low" : 8.873709,
+      "median" : 8.873709,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        8.873709
+      ]
+    },
+    "correctness.fogSeen.convergence_ms.p95" : {
+      "high" : 9.016375,
+      "low" : 9.016375,
+      "median" : 9.016375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.016375
+      ]
+    },
+    "correctness.fogSeen.convergence_ms.p99" : {
+      "high" : 9.016375,
+      "low" : 9.016375,
+      "median" : 9.016375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.016375
+      ]
+    },
+    "correctness.fogSeen.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogSeen.inFlight" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        2
+      ]
+    },
+    "correctness.fogSeen.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogSeen.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogSeen.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogVisible.convergence_ms.max" : {
+      "high" : 131.114958,
+      "low" : 131.114958,
+      "median" : 131.114958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        131.114958
+      ]
+    },
+    "correctness.fogVisible.convergence_ms.n" : {
+      "high" : 12787,
+      "low" : 12787,
+      "median" : 12787,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12787
+      ]
+    },
+    "correctness.fogVisible.convergence_ms.p50" : {
+      "high" : 11.038625,
+      "low" : 11.038625,
+      "median" : 11.038625,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        11.038625
+      ]
+    },
+    "correctness.fogVisible.convergence_ms.p95" : {
+      "high" : 90.102083,
+      "low" : 90.102083,
+      "median" : 90.102083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        90.102083
+      ]
+    },
+    "correctness.fogVisible.convergence_ms.p99" : {
+      "high" : 91.3355,
+      "low" : 91.3355,
+      "median" : 91.3355,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.3355
+      ]
+    },
+    "correctness.fogVisible.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogVisible.inFlight" : {
+      "high" : 12787,
+      "low" : 12787,
+      "median" : 12787,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        12787
+      ]
+    },
+    "correctness.fogVisible.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogVisible.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fogVisible.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fog_over_reveal_tiles" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.fog_under_reveal_tiles" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peerPosition.convergence_ms.max" : {
+      "high" : 200.806125,
+      "low" : 200.806125,
+      "median" : 200.806125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        200.806125
+      ]
+    },
+    "correctness.peerPosition.convergence_ms.n" : {
+      "high" : 129,
+      "low" : 129,
+      "median" : 129,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        129
+      ]
+    },
+    "correctness.peerPosition.convergence_ms.p50" : {
+      "high" : 50.367166,
+      "low" : 50.367166,
+      "median" : 50.367166,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        50.367166
+      ]
+    },
+    "correctness.peerPosition.convergence_ms.p95" : {
+      "high" : 91.031834,
+      "low" : 91.031834,
+      "median" : 91.031834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.031834
+      ]
+    },
+    "correctness.peerPosition.convergence_ms.p99" : {
+      "high" : 109.68475,
+      "low" : 109.68475,
+      "median" : 109.68475,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        109.68475
+      ]
+    },
+    "correctness.peerPosition.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peerPosition.inFlight" : {
+      "high" : 129,
+      "low" : 129,
+      "median" : 129,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        129
+      ]
+    },
+    "correctness.peerPosition.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peerPosition.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peerPosition.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peers.convergence_ms.max" : {
+      "high" : 200.806125,
+      "low" : 200.806125,
+      "median" : 200.806125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        200.806125
+      ]
+    },
+    "correctness.peers.convergence_ms.n" : {
+      "high" : 11,
+      "low" : 11,
+      "median" : 11,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        11
+      ]
+    },
+    "correctness.peers.convergence_ms.p50" : {
+      "high" : 69.948167,
+      "low" : 69.948167,
+      "median" : 69.948167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        69.948167
+      ]
+    },
+    "correctness.peers.convergence_ms.p95" : {
+      "high" : 200.806125,
+      "low" : 200.806125,
+      "median" : 200.806125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        200.806125
+      ]
+    },
+    "correctness.peers.convergence_ms.p99" : {
+      "high" : 200.806125,
+      "low" : 200.806125,
+      "median" : 200.806125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        200.806125
+      ]
+    },
+    "correctness.peers.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peers.inFlight" : {
+      "high" : 11,
+      "low" : 11,
+      "median" : 11,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        11
+      ]
+    },
+    "correctness.peers.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peers.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.peers.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.pills.convergence_ms.max" : {
+      "high" : 9.553166,
+      "low" : 9.553166,
+      "median" : 9.553166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.553166
+      ]
+    },
+    "correctness.pills.convergence_ms.n" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2
+      ]
+    },
+    "correctness.pills.convergence_ms.p50" : {
+      "high" : 1.607875,
+      "low" : 1.607875,
+      "median" : 1.607875,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        1.607875
+      ]
+    },
+    "correctness.pills.convergence_ms.p95" : {
+      "high" : 9.553166,
+      "low" : 9.553166,
+      "median" : 9.553166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.553166
+      ]
+    },
+    "correctness.pills.convergence_ms.p99" : {
+      "high" : 9.553166,
+      "low" : 9.553166,
+      "median" : 9.553166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.553166
+      ]
+    },
+    "correctness.pills.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.pills.inFlight" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        2
+      ]
+    },
+    "correctness.pills.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.pills.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.pills.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.position.convergence_ms.max" : {
+      "high" : 771.539708,
+      "low" : 771.539708,
+      "median" : 771.539708,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        771.539708
+      ]
+    },
+    "correctness.position.convergence_ms.n" : {
+      "high" : 186,
+      "low" : 186,
+      "median" : 186,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        186
+      ]
+    },
+    "correctness.position.convergence_ms.p50" : {
+      "high" : 10.211292,
+      "low" : 10.211292,
+      "median" : 10.211292,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        10.211292
+      ]
+    },
+    "correctness.position.convergence_ms.p95" : {
+      "high" : 80.061083,
+      "low" : 80.061083,
+      "median" : 80.061083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        80.061083
+      ]
+    },
+    "correctness.position.convergence_ms.p99" : {
+      "high" : 330.539208,
+      "low" : 330.539208,
+      "median" : 330.539208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        330.539208
+      ]
+    },
+    "correctness.position.divergent_time_pct" : {
+      "high" : 1.0026351117802998,
+      "low" : 1.0026351117802998,
+      "median" : 1.0026351117802998,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.0026351117802998
+      ]
+    },
+    "correctness.position.inFlight" : {
+      "high" : 183,
+      "low" : 183,
+      "median" : 183,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        183
+      ]
+    },
+    "correctness.position.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.position.slow" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        3
+      ]
+    },
+    "correctness.position.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.resources.convergence_ms.max" : {
+      "high" : 260.651209,
+      "low" : 260.651209,
+      "median" : 260.651209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        260.651209
+      ]
+    },
+    "correctness.resources.convergence_ms.n" : {
+      "high" : 175,
+      "low" : 175,
+      "median" : 175,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        175
+      ]
+    },
+    "correctness.resources.convergence_ms.p50" : {
+      "high" : 10.958417,
+      "low" : 10.958417,
+      "median" : 10.958417,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        10.958417
+      ]
+    },
+    "correctness.resources.convergence_ms.p95" : {
+      "high" : 16.526417,
+      "low" : 16.526417,
+      "median" : 16.526417,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        16.526417
+      ]
+    },
+    "correctness.resources.convergence_ms.p99" : {
+      "high" : 19.594166,
+      "low" : 19.594166,
+      "median" : 19.594166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        19.594166
+      ]
+    },
+    "correctness.resources.divergent_time_pct" : {
+      "high" : 0.01639941442798706,
+      "low" : 0.01639941442798706,
+      "median" : 0.01639941442798706,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.01639941442798706
+      ]
+    },
+    "correctness.resources.inFlight" : {
+      "high" : 174,
+      "low" : 174,
+      "median" : 174,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        174
+      ]
+    },
+    "correctness.resources.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.resources.slow" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        1
+      ]
+    },
+    "correctness.resources.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.selfStatus.convergence_ms.max" : {
+      "high" : 19.442917,
+      "low" : 19.442917,
+      "median" : 19.442917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        19.442917
+      ]
+    },
+    "correctness.selfStatus.convergence_ms.n" : {
+      "high" : 16,
+      "low" : 16,
+      "median" : 16,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        16
+      ]
+    },
+    "correctness.selfStatus.convergence_ms.p50" : {
+      "high" : 11.029583,
+      "low" : 11.029583,
+      "median" : 11.029583,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        11.029583
+      ]
+    },
+    "correctness.selfStatus.convergence_ms.p95" : {
+      "high" : 19.442917,
+      "low" : 19.442917,
+      "median" : 19.442917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        19.442917
+      ]
+    },
+    "correctness.selfStatus.convergence_ms.p99" : {
+      "high" : 19.442917,
+      "low" : 19.442917,
+      "median" : 19.442917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        19.442917
+      ]
+    },
+    "correctness.selfStatus.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.selfStatus.inFlight" : {
+      "high" : 16,
+      "low" : 16,
+      "median" : 16,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        16
+      ]
+    },
+    "correctness.selfStatus.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.selfStatus.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.selfStatus.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.terrain.convergence_ms.max" : {
+      "high" : 91.623875,
+      "low" : 91.623875,
+      "median" : 91.623875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.623875
+      ]
+    },
+    "correctness.terrain.convergence_ms.n" : {
+      "high" : 452,
+      "low" : 452,
+      "median" : 452,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        452
+      ]
+    },
+    "correctness.terrain.convergence_ms.p50" : {
+      "high" : 91.041167,
+      "low" : 91.041167,
+      "median" : 91.041167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        91.041167
+      ]
+    },
+    "correctness.terrain.convergence_ms.p95" : {
+      "high" : 91.041167,
+      "low" : 91.041167,
+      "median" : 91.041167,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.041167
+      ]
+    },
+    "correctness.terrain.convergence_ms.p99" : {
+      "high" : 91.221,
+      "low" : 91.221,
+      "median" : 91.221,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.221
+      ]
+    },
+    "correctness.terrain.divergent_time_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.terrain.inFlight" : {
+      "high" : 452,
+      "low" : 452,
+      "median" : 452,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        452
+      ]
+    },
+    "correctness.terrain.persistent" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.terrain.slow" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.terrain.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.terrainVariant.convergence_ms.max" : {
+      "high" : 6131.567125,
+      "low" : 6131.567125,
+      "median" : 6131.567125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6131.567125
+      ]
+    },
+    "correctness.terrainVariant.convergence_ms.n" : {
+      "high" : 510,
+      "low" : 510,
+      "median" : 510,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        510
+      ]
+    },
+    "correctness.terrainVariant.convergence_ms.p50" : {
+      "high" : 91.041167,
+      "low" : 91.041167,
+      "median" : 91.041167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        91.041167
+      ]
+    },
+    "correctness.terrainVariant.convergence_ms.p95" : {
+      "high" : 91.495542,
+      "low" : 91.495542,
+      "median" : 91.495542,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        91.495542
+      ]
+    },
+    "correctness.terrainVariant.convergence_ms.p99" : {
+      "high" : 3821.369417,
+      "low" : 3821.369417,
+      "median" : 3821.369417,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3821.369417
+      ]
+    },
+    "correctness.terrainVariant.divergent_time_pct" : {
+      "high" : 25.16713493041894,
+      "low" : 25.16713493041894,
+      "median" : 25.16713493041894,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        25.16713493041894
+      ]
+    },
+    "correctness.terrainVariant.inFlight" : {
+      "high" : 487,
+      "low" : 487,
+      "median" : 487,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        487
+      ]
+    },
+    "correctness.terrainVariant.persistent" : {
+      "high" : 14,
+      "low" : 14,
+      "median" : 14,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        14
+      ]
+    },
+    "correctness.terrainVariant.slow" : {
+      "high" : 9,
+      "low" : 9,
+      "median" : 9,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        9
+      ]
+    },
+    "correctness.terrainVariant.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.trees.convergence_ms.max" : {
+      "high" : 20279.980875,
+      "low" : 20279.980875,
+      "median" : 20279.980875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        20279.980875
+      ]
+    },
+    "correctness.trees.convergence_ms.n" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4
+      ]
+    },
+    "correctness.trees.convergence_ms.p50" : {
+      "high" : 8019.070292,
+      "low" : 8019.070292,
+      "median" : 8019.070292,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        8019.070292
+      ]
+    },
+    "correctness.trees.convergence_ms.p95" : {
+      "high" : 20279.980875,
+      "low" : 20279.980875,
+      "median" : 20279.980875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        20279.980875
+      ]
+    },
+    "correctness.trees.convergence_ms.p99" : {
+      "high" : 20279.980875,
+      "low" : 20279.980875,
+      "median" : 20279.980875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        20279.980875
+      ]
+    },
+    "correctness.trees.divergent_time_pct" : {
+      "high" : 62.09087909000078,
+      "low" : 62.09087909000078,
+      "median" : 62.09087909000078,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        62.09087909000078
+      ]
+    },
+    "correctness.trees.inFlight" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.trees.persistent" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        3
+      ]
+    },
+    "correctness.trees.slow" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        1
+      ]
+    },
+    "correctness.trees.terminal" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "correctness.window_s" : {
+      "high" : 64.948715375,
+      "low" : 64.948715375,
+      "median" : 64.948715375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        64.948715375
+      ]
+    },
+    "guest.apply_us.tcp.max" : {
+      "high" : 47.209,
+      "low" : 47.209,
+      "median" : 47.209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        47.209
+      ]
+    },
+    "guest.apply_us.tcp.n" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9964
+      ]
+    },
+    "guest.apply_us.tcp.op0.max" : {
+      "high" : 33.791,
+      "low" : 33.791,
+      "median" : 33.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        33.791
+      ]
+    },
+    "guest.apply_us.tcp.op0.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "guest.apply_us.tcp.op0.p50" : {
+      "high" : 33.791,
+      "low" : 33.791,
+      "median" : 33.791,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        33.791
+      ]
+    },
+    "guest.apply_us.tcp.op0.p95" : {
+      "high" : 33.791,
+      "low" : 33.791,
+      "median" : 33.791,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        33.791
+      ]
+    },
+    "guest.apply_us.tcp.op0.p99" : {
+      "high" : 33.791,
+      "low" : 33.791,
+      "median" : 33.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        33.791
+      ]
+    },
+    "guest.apply_us.tcp.op10.max" : {
+      "high" : 9.583,
+      "low" : 9.583,
+      "median" : 9.583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.583
+      ]
+    },
+    "guest.apply_us.tcp.op10.n" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3
+      ]
+    },
+    "guest.apply_us.tcp.op10.p50" : {
+      "high" : 9.25,
+      "low" : 9.25,
+      "median" : 9.25,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        9.25
+      ]
+    },
+    "guest.apply_us.tcp.op10.p95" : {
+      "high" : 9.583,
+      "low" : 9.583,
+      "median" : 9.583,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        9.583
+      ]
+    },
+    "guest.apply_us.tcp.op10.p99" : {
+      "high" : 9.583,
+      "low" : 9.583,
+      "median" : 9.583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.583
+      ]
+    },
+    "guest.apply_us.tcp.op12.max" : {
+      "high" : 12.375,
+      "low" : 12.375,
+      "median" : 12.375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12.375
+      ]
+    },
+    "guest.apply_us.tcp.op12.n" : {
+      "high" : 23,
+      "low" : 23,
+      "median" : 23,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23
+      ]
+    },
+    "guest.apply_us.tcp.op12.p50" : {
+      "high" : 9,
+      "low" : 9,
+      "median" : 9,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        9
+      ]
+    },
+    "guest.apply_us.tcp.op12.p95" : {
+      "high" : 11.208,
+      "low" : 11.208,
+      "median" : 11.208,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        11.208
+      ]
+    },
+    "guest.apply_us.tcp.op12.p99" : {
+      "high" : 12.375,
+      "low" : 12.375,
+      "median" : 12.375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12.375
+      ]
+    },
+    "guest.apply_us.tcp.op18.max" : {
+      "high" : 3.709,
+      "low" : 3.709,
+      "median" : 3.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.709
+      ]
+    },
+    "guest.apply_us.tcp.op18.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "guest.apply_us.tcp.op18.p50" : {
+      "high" : 3.709,
+      "low" : 3.709,
+      "median" : 3.709,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        3.709
+      ]
+    },
+    "guest.apply_us.tcp.op18.p95" : {
+      "high" : 3.709,
+      "low" : 3.709,
+      "median" : 3.709,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        3.709
+      ]
+    },
+    "guest.apply_us.tcp.op18.p99" : {
+      "high" : 3.709,
+      "low" : 3.709,
+      "median" : 3.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.709
+      ]
+    },
+    "guest.apply_us.tcp.op19.max" : {
+      "high" : 1.5,
+      "low" : 1.5,
+      "median" : 1.5,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.5
+      ]
+    },
+    "guest.apply_us.tcp.op19.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "guest.apply_us.tcp.op19.p50" : {
+      "high" : 1.5,
+      "low" : 1.5,
+      "median" : 1.5,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.5
+      ]
+    },
+    "guest.apply_us.tcp.op19.p95" : {
+      "high" : 1.5,
+      "low" : 1.5,
+      "median" : 1.5,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        1.5
+      ]
+    },
+    "guest.apply_us.tcp.op19.p99" : {
+      "high" : 1.5,
+      "low" : 1.5,
+      "median" : 1.5,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.5
+      ]
+    },
+    "guest.apply_us.tcp.op21.max" : {
+      "high" : 1.833,
+      "low" : 1.833,
+      "median" : 1.833,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.833
+      ]
+    },
+    "guest.apply_us.tcp.op21.n" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        30
+      ]
+    },
+    "guest.apply_us.tcp.op21.p50" : {
+      "high" : 0.292,
+      "low" : 0.292,
+      "median" : 0.292,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.292
+      ]
+    },
+    "guest.apply_us.tcp.op21.p95" : {
+      "high" : 1.583,
+      "low" : 1.583,
+      "median" : 1.583,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        1.583
+      ]
+    },
+    "guest.apply_us.tcp.op21.p99" : {
+      "high" : 1.833,
+      "low" : 1.833,
+      "median" : 1.833,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.833
+      ]
+    },
+    "guest.apply_us.tcp.op26.max" : {
+      "high" : 1.709,
+      "low" : 1.709,
+      "median" : 1.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.709
+      ]
+    },
+    "guest.apply_us.tcp.op26.n" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5
+      ]
+    },
+    "guest.apply_us.tcp.op26.p50" : {
+      "high" : 1.375,
+      "low" : 1.375,
+      "median" : 1.375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.375
+      ]
+    },
+    "guest.apply_us.tcp.op26.p95" : {
+      "high" : 1.709,
+      "low" : 1.709,
+      "median" : 1.709,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        1.709
+      ]
+    },
+    "guest.apply_us.tcp.op26.p99" : {
+      "high" : 1.709,
+      "low" : 1.709,
+      "median" : 1.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.709
+      ]
+    },
+    "guest.apply_us.tcp.op27.max" : {
+      "high" : 13.667,
+      "low" : 13.667,
+      "median" : 13.667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        13.667
+      ]
+    },
+    "guest.apply_us.tcp.op27.n" : {
+      "high" : 27,
+      "low" : 27,
+      "median" : 27,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        27
+      ]
+    },
+    "guest.apply_us.tcp.op27.p50" : {
+      "high" : 10.084,
+      "low" : 10.084,
+      "median" : 10.084,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        10.084
+      ]
+    },
+    "guest.apply_us.tcp.op27.p95" : {
+      "high" : 12.209,
+      "low" : 12.209,
+      "median" : 12.209,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        12.209
+      ]
+    },
+    "guest.apply_us.tcp.op27.p99" : {
+      "high" : 13.667,
+      "low" : 13.667,
+      "median" : 13.667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        13.667
+      ]
+    },
+    "guest.apply_us.tcp.op34.max" : {
+      "high" : 47.209,
+      "low" : 47.209,
+      "median" : 47.209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        47.209
+      ]
+    },
+    "guest.apply_us.tcp.op34.n" : {
+      "high" : 7550,
+      "low" : 7550,
+      "median" : 7550,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7550
+      ]
+    },
+    "guest.apply_us.tcp.op34.p50" : {
+      "high" : 0.125,
+      "low" : 0.125,
+      "median" : 0.125,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.125
+      ]
+    },
+    "guest.apply_us.tcp.op34.p95" : {
+      "high" : 0.25,
+      "low" : 0.25,
+      "median" : 0.25,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.25
+      ]
+    },
+    "guest.apply_us.tcp.op34.p99" : {
+      "high" : 9.958,
+      "low" : 9.958,
+      "median" : 9.958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.958
+      ]
+    },
+    "guest.apply_us.tcp.op35.max" : {
+      "high" : 5.084,
+      "low" : 5.084,
+      "median" : 5.084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5.084
+      ]
+    },
+    "guest.apply_us.tcp.op35.n" : {
+      "high" : 510,
+      "low" : 510,
+      "median" : 510,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        510
+      ]
+    },
+    "guest.apply_us.tcp.op35.p50" : {
+      "high" : 2.125,
+      "low" : 2.125,
+      "median" : 2.125,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        2.125
+      ]
+    },
+    "guest.apply_us.tcp.op35.p95" : {
+      "high" : 3.083,
+      "low" : 3.083,
+      "median" : 3.083,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        3.083
+      ]
+    },
+    "guest.apply_us.tcp.op35.p99" : {
+      "high" : 3.834,
+      "low" : 3.834,
+      "median" : 3.834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.834
+      ]
+    },
+    "guest.apply_us.tcp.op36.max" : {
+      "high" : 22.916,
+      "low" : 22.916,
+      "median" : 22.916,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        22.916
+      ]
+    },
+    "guest.apply_us.tcp.op36.n" : {
+      "high" : 1813,
+      "low" : 1813,
+      "median" : 1813,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1813
+      ]
+    },
+    "guest.apply_us.tcp.op36.p50" : {
+      "high" : 3.167,
+      "low" : 3.167,
+      "median" : 3.167,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        3.167
+      ]
+    },
+    "guest.apply_us.tcp.op36.p95" : {
+      "high" : 4.458,
+      "low" : 4.458,
+      "median" : 4.458,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        4.458
+      ]
+    },
+    "guest.apply_us.tcp.op36.p99" : {
+      "high" : 6.084,
+      "low" : 6.084,
+      "median" : 6.084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6.084
+      ]
+    },
+    "guest.apply_us.tcp.p50" : {
+      "high" : 0.167,
+      "low" : 0.167,
+      "median" : 0.167,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.167
+      ]
+    },
+    "guest.apply_us.tcp.p95" : {
+      "high" : 3.959,
+      "low" : 3.959,
+      "median" : 3.959,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        3.959
+      ]
+    },
+    "guest.apply_us.tcp.p99" : {
+      "high" : 9.958,
+      "low" : 9.958,
+      "median" : 9.958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.958
+      ]
+    },
+    "guest.apply_us.udp.max" : {
+      "high" : 38.875,
+      "low" : 38.875,
+      "median" : 38.875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        38.875
+      ]
+    },
+    "guest.apply_us.udp.n" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        647
+      ]
+    },
+    "guest.apply_us.udp.p50" : {
+      "high" : 6.084,
+      "low" : 6.084,
+      "median" : 6.084,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        6.084
+      ]
+    },
+    "guest.apply_us.udp.p95" : {
+      "high" : 13.584,
+      "low" : 13.584,
+      "median" : 13.584,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        13.584
+      ]
+    },
+    "guest.apply_us.udp.p99" : {
+      "high" : 19.709,
+      "low" : 19.709,
+      "median" : 19.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        19.709
+      ]
+    },
+    "guest.apply_us.udp_state_change.n" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "guest.cpu_pct.max" : {
+      "high" : 40.23753869890679,
+      "low" : 40.23753869890679,
+      "median" : 40.23753869890679,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        40.23753869890679
+      ]
+    },
+    "guest.cpu_pct.mean" : {
+      "high" : 25.91608344146617,
+      "low" : 25.91608344146617,
+      "median" : 25.91608344146617,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        25.91608344146617
+      ]
+    },
+    "guest.cpu_pct.n" : {
+      "high" : 64,
+      "low" : 64,
+      "median" : 64,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        64
+      ]
+    },
+    "guest.cpu_pct.p50" : {
+      "high" : 25.42333451486292,
+      "low" : 25.42333451486292,
+      "median" : 25.42333451486292,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        25.42333451486292
+      ]
+    },
+    "guest.cpu_pct.p95" : {
+      "high" : 30.378124390679375,
+      "low" : 30.378124390679375,
+      "median" : 30.378124390679375,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        30.378124390679375
+      ]
+    },
+    "guest.cpu_pct.p99" : {
+      "high" : 40.23753869890679,
+      "low" : 40.23753869890679,
+      "median" : 40.23753869890679,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        40.23753869890679
+      ]
+    },
+    "guest.datagram_rejects" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.datagram_rejects.applyReturnedNil" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.datagram_rejects.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.datagram_rejects.malformed" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.datagram_rejects.noPeer" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.draw_ms.sprites.max" : {
+      "high" : 8.094958,
+      "low" : 8.094958,
+      "median" : 8.094958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        8.094958
+      ]
+    },
+    "guest.draw_ms.sprites.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.draw_ms.sprites.p50" : {
+      "high" : 0.06375,
+      "low" : 0.06375,
+      "median" : 0.06375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.06375
+      ]
+    },
+    "guest.draw_ms.sprites.p95" : {
+      "high" : 0.10175,
+      "low" : 0.10175,
+      "median" : 0.10175,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.10175
+      ]
+    },
+    "guest.draw_ms.sprites.p99" : {
+      "high" : 0.114209,
+      "low" : 0.114209,
+      "median" : 0.114209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.114209
+      ]
+    },
+    "guest.draw_ms.terrain.max" : {
+      "high" : 1.173541,
+      "low" : 1.173541,
+      "median" : 1.173541,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.173541
+      ]
+    },
+    "guest.draw_ms.terrain.n" : {
+      "high" : 255,
+      "low" : 255,
+      "median" : 255,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        255
+      ]
+    },
+    "guest.draw_ms.terrain.p50" : {
+      "high" : 0.202416,
+      "low" : 0.202416,
+      "median" : 0.202416,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.202416
+      ]
+    },
+    "guest.draw_ms.terrain.p95" : {
+      "high" : 0.250417,
+      "low" : 0.250417,
+      "median" : 0.250417,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.250417
+      ]
+    },
+    "guest.draw_ms.terrain.p99" : {
+      "high" : 0.301792,
+      "low" : 0.301792,
+      "median" : 0.301792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.301792
+      ]
+    },
+    "guest.drawn_remote_step_ms.max" : {
+      "high" : 300.168625,
+      "low" : 300.168625,
+      "median" : 300.168625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        300.168625
+      ]
+    },
+    "guest.drawn_remote_step_ms.n" : {
+      "high" : 538,
+      "low" : 538,
+      "median" : 538,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        538
+      ]
+    },
+    "guest.drawn_remote_step_ms.p50" : {
+      "high" : 100.024541,
+      "low" : 100.024541,
+      "median" : 100.024541,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        100.024541
+      ]
+    },
+    "guest.drawn_remote_step_ms.p95" : {
+      "high" : 132.263541,
+      "low" : 132.263541,
+      "median" : 132.263541,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        132.263541
+      ]
+    },
+    "guest.drawn_remote_step_ms.p99" : {
+      "high" : 216.875166,
+      "low" : 216.875166,
+      "median" : 216.875166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        216.875166
+      ]
+    },
+    "guest.drawn_remote_step_tiles.max" : {
+      "high" : 0.4192627457812106,
+      "low" : 0.4192627457812106,
+      "median" : 0.4192627457812106,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.4192627457812106
+      ]
+    },
+    "guest.drawn_remote_step_tiles.n" : {
+      "high" : 538,
+      "low" : 538,
+      "median" : 538,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        538
+      ]
+    },
+    "guest.drawn_remote_step_tiles.p50" : {
+      "high" : 0.19764235376052372,
+      "low" : 0.19764235376052372,
+      "median" : 0.19764235376052372,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.19764235376052372
+      ]
+    },
+    "guest.drawn_remote_step_tiles.p95" : {
+      "high" : 0.2795084971874737,
+      "low" : 0.2795084971874737,
+      "median" : 0.2795084971874737,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.2795084971874737
+      ]
+    },
+    "guest.drawn_remote_step_tiles.p99" : {
+      "high" : 0.3535533905932738,
+      "low" : 0.3535533905932738,
+      "median" : 0.3535533905932738,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.3535533905932738
+      ]
+    },
+    "guest.extrapolation_ticks.max" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4
+      ]
+    },
+    "guest.extrapolation_ticks.n" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        647
+      ]
+    },
+    "guest.extrapolation_ticks.p50" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0
+      ]
+    },
+    "guest.extrapolation_ticks.p95" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        2
+      ]
+    },
+    "guest.extrapolation_ticks.p99" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2
+      ]
+    },
+    "guest.frame_interval_ms.max" : {
+      "high" : 130.477625,
+      "low" : 130.477625,
+      "median" : 130.477625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        130.477625
+      ]
+    },
+    "guest.frame_interval_ms.n" : {
+      "high" : 3243,
+      "low" : 3243,
+      "median" : 3243,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3243
+      ]
+    },
+    "guest.frame_interval_ms.p50" : {
+      "high" : 16.729667,
+      "low" : 16.729667,
+      "median" : 16.729667,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        16.729667
+      ]
+    },
+    "guest.frame_interval_ms.p95" : {
+      "high" : 33.42375,
+      "low" : 33.42375,
+      "median" : 33.42375,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        33.42375
+      ]
+    },
+    "guest.frame_interval_ms.p99" : {
+      "high" : 33.638917,
+      "low" : 33.638917,
+      "median" : 33.638917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        33.638917
+      ]
+    },
+    "guest.frames_per_s" : {
+      "high" : 49.9050472347191,
+      "low" : 49.9050472347191,
+      "median" : 49.9050472347191,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        49.9050472347191
+      ]
+    },
+    "guest.input_to_frame_ms.max" : {
+      "high" : 37.837542,
+      "low" : 37.837542,
+      "median" : 37.837542,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        37.837542
+      ]
+    },
+    "guest.input_to_frame_ms.n" : {
+      "high" : 671,
+      "low" : 671,
+      "median" : 671,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        671
+      ]
+    },
+    "guest.input_to_frame_ms.p50" : {
+      "high" : 16.273916,
+      "low" : 16.273916,
+      "median" : 16.273916,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        16.273916
+      ]
+    },
+    "guest.input_to_frame_ms.p95" : {
+      "high" : 30.676375,
+      "low" : 30.676375,
+      "median" : 30.676375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        30.676375
+      ]
+    },
+    "guest.input_to_frame_ms.p99" : {
+      "high" : 35.201,
+      "low" : 35.201,
+      "median" : 35.201,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        35.201
+      ]
+    },
+    "guest.invariant_violations" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.join_handshake_ms.n" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "guest.join_to_alive_ms" : {
+      "high" : 2050.612791,
+      "low" : 2050.612791,
+      "median" : 2050.612791,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        2050.612791
+      ]
+    },
+    "guest.memory_mb.max" : {
+      "high" : 230.07929229736328,
+      "low" : 230.07929229736328,
+      "median" : 230.07929229736328,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        230.07929229736328
+      ]
+    },
+    "guest.memory_mb.n" : {
+      "high" : 65,
+      "low" : 65,
+      "median" : 65,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        65
+      ]
+    },
+    "guest.memory_mb.p50" : {
+      "high" : 189.3136444091797,
+      "low" : 189.3136444091797,
+      "median" : 189.3136444091797,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        189.3136444091797
+      ]
+    },
+    "guest.memory_mb.p95" : {
+      "high" : 221.81366729736328,
+      "low" : 221.81366729736328,
+      "median" : 221.81366729736328,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        221.81366729736328
+      ]
+    },
+    "guest.memory_mb.p99" : {
+      "high" : 230.07929229736328,
+      "low" : 230.07929229736328,
+      "median" : 230.07929229736328,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        230.07929229736328
+      ]
+    },
+    "guest.queue_depth.max" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2
+      ]
+    },
+    "guest.queue_depth.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.queue_depth.p50" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0
+      ]
+    },
+    "guest.queue_depth.p95" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0
+      ]
+    },
+    "guest.queue_depth.p99" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "guest.recorder.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "guest.recorder.self_ms" : {
+      "high" : 7.337152,
+      "low" : 7.337152,
+      "median" : 7.337152,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.337152
+      ]
+    },
+    "guest.recorder.self_us_per_tick" : {
+      "high" : 2.2617607891491986,
+      "low" : 2.2617607891491986,
+      "median" : 2.2617607891491986,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.2617607891491986
+      ]
+    },
+    "guest.records" : {
+      "high" : 224999,
+      "low" : 224999,
+      "median" : 224999,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        224999
+      ]
+    },
+    "guest.remote_move_interval_ms.max" : {
+      "high" : 900.059042,
+      "low" : 900.059042,
+      "median" : 900.059042,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        900.059042
+      ]
+    },
+    "guest.remote_move_interval_ms.n" : {
+      "high" : 119,
+      "low" : 119,
+      "median" : 119,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        119
+      ]
+    },
+    "guest.remote_move_interval_ms.p50" : {
+      "high" : 400.047375,
+      "low" : 400.047375,
+      "median" : 400.047375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        400.047375
+      ]
+    },
+    "guest.remote_move_interval_ms.p95" : {
+      "high" : 720.313583,
+      "low" : 720.313583,
+      "median" : 720.313583,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        720.313583
+      ]
+    },
+    "guest.remote_move_interval_ms.p99" : {
+      "high" : 900.005125,
+      "low" : 900.005125,
+      "median" : 900.005125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        900.005125
+      ]
+    },
+    "guest.run_s" : {
+      "high" : 65.204049875,
+      "low" : 65.204049875,
+      "median" : 65.204049875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        65.204049875
+      ]
+    },
+    "guest.rx.tcp.bytes" : {
+      "high" : 428370,
+      "low" : 428370,
+      "median" : 428370,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        428370
+      ]
+    },
+    "guest.rx.tcp.bytes_per_s" : {
+      "high" : 6569.683950938792,
+      "low" : 6569.683950938792,
+      "median" : 6569.683950938792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6569.683950938792
+      ]
+    },
+    "guest.rx.tcp.messages" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9964
+      ]
+    },
+    "guest.rx.tcp.messages_per_s" : {
+      "high" : 152.81259398920122,
+      "low" : 152.81259398920122,
+      "median" : 152.81259398920122,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        152.81259398920122
+      ]
+    },
+    "guest.rx.tcp.op0.bytes" : {
+      "high" : 50,
+      "low" : 50,
+      "median" : 50,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        50
+      ]
+    },
+    "guest.rx.tcp.op0.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.rx.tcp.op10.bytes" : {
+      "high" : 12,
+      "low" : 12,
+      "median" : 12,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        12
+      ]
+    },
+    "guest.rx.tcp.op10.messages" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3
+      ]
+    },
+    "guest.rx.tcp.op12.bytes" : {
+      "high" : 69,
+      "low" : 69,
+      "median" : 69,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        69
+      ]
+    },
+    "guest.rx.tcp.op12.messages" : {
+      "high" : 23,
+      "low" : 23,
+      "median" : 23,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        23
+      ]
+    },
+    "guest.rx.tcp.op18.bytes" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3
+      ]
+    },
+    "guest.rx.tcp.op18.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.rx.tcp.op19.bytes" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "guest.rx.tcp.op19.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.rx.tcp.op21.bytes" : {
+      "high" : 60,
+      "low" : 60,
+      "median" : 60,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        60
+      ]
+    },
+    "guest.rx.tcp.op21.messages" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        30
+      ]
+    },
+    "guest.rx.tcp.op26.bytes" : {
+      "high" : 20,
+      "low" : 20,
+      "median" : 20,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        20
+      ]
+    },
+    "guest.rx.tcp.op26.messages" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "guest.rx.tcp.op27.bytes" : {
+      "high" : 108,
+      "low" : 108,
+      "median" : 108,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        108
+      ]
+    },
+    "guest.rx.tcp.op27.messages" : {
+      "high" : 27,
+      "low" : 27,
+      "median" : 27,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        27
+      ]
+    },
+    "guest.rx.tcp.op34.bytes" : {
+      "high" : 30200,
+      "low" : 30200,
+      "median" : 30200,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        30200
+      ]
+    },
+    "guest.rx.tcp.op34.messages" : {
+      "high" : 7550,
+      "low" : 7550,
+      "median" : 7550,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7550
+      ]
+    },
+    "guest.rx.tcp.op35.bytes" : {
+      "high" : 15300,
+      "low" : 15300,
+      "median" : 15300,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        15300
+      ]
+    },
+    "guest.rx.tcp.op35.messages" : {
+      "high" : 510,
+      "low" : 510,
+      "median" : 510,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        510
+      ]
+    },
+    "guest.rx.tcp.op36.bytes" : {
+      "high" : 382543,
+      "low" : 382543,
+      "median" : 382543,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        382543
+      ]
+    },
+    "guest.rx.tcp.op36.messages" : {
+      "high" : 1813,
+      "low" : 1813,
+      "median" : 1813,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1813
+      ]
+    },
+    "guest.rx.udp.bytes" : {
+      "high" : 81269,
+      "low" : 81269,
+      "median" : 81269,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        81269
+      ]
+    },
+    "guest.rx.udp.bytes_per_s" : {
+      "high" : 1246.379636783259,
+      "low" : 1246.379636783259,
+      "median" : 1246.379636783259,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1246.379636783259
+      ]
+    },
+    "guest.rx.udp.messages" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        647
+      ]
+    },
+    "guest.rx.udp.messages_per_s" : {
+      "high" : 9.922696538640423,
+      "low" : 9.922696538640423,
+      "median" : 9.922696538640423,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.922696538640423
+      ]
+    },
+    "guest.send_completion_us.tcp.max" : {
+      "high" : 133.25,
+      "low" : 133.25,
+      "median" : 133.25,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        133.25
+      ]
+    },
+    "guest.send_completion_us.tcp.n" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        30
+      ]
+    },
+    "guest.send_completion_us.tcp.p50" : {
+      "high" : 79.209,
+      "low" : 79.209,
+      "median" : 79.209,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        79.209
+      ]
+    },
+    "guest.send_completion_us.tcp.p95" : {
+      "high" : 131.75,
+      "low" : 131.75,
+      "median" : 131.75,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        131.75
+      ]
+    },
+    "guest.send_completion_us.tcp.p99" : {
+      "high" : 133.25,
+      "low" : 133.25,
+      "median" : 133.25,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        133.25
+      ]
+    },
+    "guest.send_completion_us.udp.max" : {
+      "high" : 388.917,
+      "low" : 388.917,
+      "median" : 388.917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        388.917
+      ]
+    },
+    "guest.send_completion_us.udp.n" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        648
+      ]
+    },
+    "guest.send_completion_us.udp.p50" : {
+      "high" : 94.208,
+      "low" : 94.208,
+      "median" : 94.208,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        94.208
+      ]
+    },
+    "guest.send_completion_us.udp.p95" : {
+      "high" : 126.084,
+      "low" : 126.084,
+      "median" : 126.084,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        126.084
+      ]
+    },
+    "guest.send_completion_us.udp.p99" : {
+      "high" : 267.791,
+      "low" : 267.791,
+      "median" : 267.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        267.791
+      ]
+    },
+    "guest.thermal_state.max" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "guest.tick_interval_ms.max" : {
+      "high" : 116.032292,
+      "low" : 116.032292,
+      "median" : 116.032292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        116.032292
+      ]
+    },
+    "guest.tick_interval_ms.n" : {
+      "high" : 3243,
+      "low" : 3243,
+      "median" : 3243,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3243
+      ]
+    },
+    "guest.tick_interval_ms.over_25_pct" : {
+      "high" : 0.061671292013567684,
+      "low" : 0.061671292013567684,
+      "median" : 0.061671292013567684,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.061671292013567684
+      ]
+    },
+    "guest.tick_interval_ms.p50" : {
+      "high" : 20.003791,
+      "low" : 20.003791,
+      "median" : 20.003791,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        20.003791
+      ]
+    },
+    "guest.tick_interval_ms.p95" : {
+      "high" : 20.885083,
+      "low" : 20.885083,
+      "median" : 20.885083,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        20.885083
+      ]
+    },
+    "guest.tick_interval_ms.p99" : {
+      "high" : 21.022917,
+      "low" : 21.022917,
+      "median" : 21.022917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        21.022917
+      ]
+    },
+    "guest.tick_ms.builder.max" : {
+      "high" : 0.018666,
+      "low" : 0.018666,
+      "median" : 0.018666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.018666
+      ]
+    },
+    "guest.tick_ms.builder.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.builder.p50" : {
+      "high" : 0.001916,
+      "low" : 0.001916,
+      "median" : 0.001916,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.001916
+      ]
+    },
+    "guest.tick_ms.builder.p95" : {
+      "high" : 0.00375,
+      "low" : 0.00375,
+      "median" : 0.00375,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.00375
+      ]
+    },
+    "guest.tick_ms.builder.p99" : {
+      "high" : 0.0055,
+      "low" : 0.0055,
+      "median" : 0.0055,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.0055
+      ]
+    },
+    "guest.tick_ms.digest.max" : {
+      "high" : 3.032,
+      "low" : 3.032,
+      "median" : 3.032,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.032
+      ]
+    },
+    "guest.tick_ms.digest.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.digest.p50" : {
+      "high" : 0.004209,
+      "low" : 0.004209,
+      "median" : 0.004209,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.004209
+      ]
+    },
+    "guest.tick_ms.digest.p95" : {
+      "high" : 0.338708,
+      "low" : 0.338708,
+      "median" : 0.338708,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.338708
+      ]
+    },
+    "guest.tick_ms.digest.p99" : {
+      "high" : 0.382125,
+      "low" : 0.382125,
+      "median" : 0.382125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.382125
+      ]
+    },
+    "guest.tick_ms.explosions.max" : {
+      "high" : 0.008458,
+      "low" : 0.008458,
+      "median" : 0.008458,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.008458
+      ]
+    },
+    "guest.tick_ms.explosions.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.explosions.p50" : {
+      "high" : 0.000708,
+      "low" : 0.000708,
+      "median" : 0.000708,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.000708
+      ]
+    },
+    "guest.tick_ms.explosions.p95" : {
+      "high" : 0.00175,
+      "low" : 0.00175,
+      "median" : 0.00175,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.00175
+      ]
+    },
+    "guest.tick_ms.explosions.p99" : {
+      "high" : 0.002291,
+      "low" : 0.002291,
+      "median" : 0.002291,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.002291
+      ]
+    },
+    "guest.tick_ms.fog.max" : {
+      "high" : 0.586459,
+      "low" : 0.586459,
+      "median" : 0.586459,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.586459
+      ]
+    },
+    "guest.tick_ms.fog.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.fog.p50" : {
+      "high" : 0.011084,
+      "low" : 0.011084,
+      "median" : 0.011084,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.011084
+      ]
+    },
+    "guest.tick_ms.fog.p95" : {
+      "high" : 0.022125,
+      "low" : 0.022125,
+      "median" : 0.022125,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.022125
+      ]
+    },
+    "guest.tick_ms.fog.p99" : {
+      "high" : 0.030375,
+      "low" : 0.030375,
+      "median" : 0.030375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.030375
+      ]
+    },
+    "guest.tick_ms.game.max" : {
+      "high" : 111.668583,
+      "low" : 111.668583,
+      "median" : 111.668583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        111.668583
+      ]
+    },
+    "guest.tick_ms.game.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.game.p50" : {
+      "high" : 0.077501,
+      "low" : 0.077501,
+      "median" : 0.077501,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.077501
+      ]
+    },
+    "guest.tick_ms.game.p95" : {
+      "high" : 0.380249,
+      "low" : 0.380249,
+      "median" : 0.380249,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.380249
+      ]
+    },
+    "guest.tick_ms.game.p99" : {
+      "high" : 0.441334,
+      "low" : 0.441334,
+      "median" : 0.441334,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.441334
+      ]
+    },
+    "guest.tick_ms.move.max" : {
+      "high" : 111.321083,
+      "low" : 111.321083,
+      "median" : 111.321083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        111.321083
+      ]
+    },
+    "guest.tick_ms.move.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.move.p50" : {
+      "high" : 0.006,
+      "low" : 0.006,
+      "median" : 0.006,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.006
+      ]
+    },
+    "guest.tick_ms.move.p95" : {
+      "high" : 0.009667,
+      "low" : 0.009667,
+      "median" : 0.009667,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.009667
+      ]
+    },
+    "guest.tick_ms.move.p99" : {
+      "high" : 0.01375,
+      "low" : 0.01375,
+      "median" : 0.01375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.01375
+      ]
+    },
+    "guest.tick_ms.renderHop.max" : {
+      "high" : 0.626209,
+      "low" : 0.626209,
+      "median" : 0.626209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.626209
+      ]
+    },
+    "guest.tick_ms.renderHop.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.renderHop.p50" : {
+      "high" : 0.053,
+      "low" : 0.053,
+      "median" : 0.053,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.053
+      ]
+    },
+    "guest.tick_ms.renderHop.p95" : {
+      "high" : 0.351791,
+      "low" : 0.351791,
+      "median" : 0.351791,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.351791
+      ]
+    },
+    "guest.tick_ms.renderHop.p99" : {
+      "high" : 0.402291,
+      "low" : 0.402291,
+      "median" : 0.402291,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.402291
+      ]
+    },
+    "guest.tick_ms.shells.max" : {
+      "high" : 0.00225,
+      "low" : 0.00225,
+      "median" : 0.00225,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.00225
+      ]
+    },
+    "guest.tick_ms.shells.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.shells.p50" : {
+      "high" : 0.000167,
+      "low" : 0.000167,
+      "median" : 0.000167,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.000167
+      ]
+    },
+    "guest.tick_ms.shells.p95" : {
+      "high" : 0.000333,
+      "low" : 0.000333,
+      "median" : 0.000333,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.000333
+      ]
+    },
+    "guest.tick_ms.shells.p99" : {
+      "high" : 0.000417,
+      "low" : 0.000417,
+      "median" : 0.000417,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.000417
+      ]
+    },
+    "guest.tick_ms.updateSend.max" : {
+      "high" : 0.019833,
+      "low" : 0.019833,
+      "median" : 0.019833,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.019833
+      ]
+    },
+    "guest.tick_ms.updateSend.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.updateSend.p50" : {
+      "high" : 0.000209,
+      "low" : 0.000209,
+      "median" : 0.000209,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.000209
+      ]
+    },
+    "guest.tick_ms.updateSend.p95" : {
+      "high" : 0.009125,
+      "low" : 0.009125,
+      "median" : 0.009125,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.009125
+      ]
+    },
+    "guest.tick_ms.updateSend.p99" : {
+      "high" : 0.01075,
+      "low" : 0.01075,
+      "median" : 0.01075,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.01075
+      ]
+    },
+    "guest.tick_ms.whole.max" : {
+      "high" : 111.671875,
+      "low" : 111.671875,
+      "median" : 111.671875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        111.671875
+      ]
+    },
+    "guest.tick_ms.whole.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_ms.whole.p50" : {
+      "high" : 0.084791,
+      "low" : 0.084791,
+      "median" : 0.084791,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.084791
+      ]
+    },
+    "guest.tick_ms.whole.p95" : {
+      "high" : 0.443791,
+      "low" : 0.443791,
+      "median" : 0.443791,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.443791
+      ]
+    },
+    "guest.tick_ms.whole.p99" : {
+      "high" : 0.707834,
+      "low" : 0.707834,
+      "median" : 0.707834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.707834
+      ]
+    },
+    "guest.tick_queue_delay_ms.max" : {
+      "high" : 12.000875,
+      "low" : 12.000875,
+      "median" : 12.000875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12.000875
+      ]
+    },
+    "guest.tick_queue_delay_ms.n" : {
+      "high" : 3244,
+      "low" : 3244,
+      "median" : 3244,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3244
+      ]
+    },
+    "guest.tick_queue_delay_ms.p50" : {
+      "high" : 0.035208,
+      "low" : 0.035208,
+      "median" : 0.035208,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.035208
+      ]
+    },
+    "guest.tick_queue_delay_ms.p95" : {
+      "high" : 0.052292,
+      "low" : 0.052292,
+      "median" : 0.052292,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.052292
+      ]
+    },
+    "guest.tick_queue_delay_ms.p99" : {
+      "high" : 0.064834,
+      "low" : 0.064834,
+      "median" : 0.064834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.064834
+      ]
+    },
+    "guest.tick_rate_hz" : {
+      "high" : 49.94752740561062,
+      "low" : 49.94752740561062,
+      "median" : 49.94752740561062,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        49.94752740561062
+      ]
+    },
+    "guest.ticks_lost" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "guest.tile_grid_rebuild_ms.max" : {
+      "high" : 0.376042,
+      "low" : 0.376042,
+      "median" : 0.376042,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.376042
+      ]
+    },
+    "guest.tile_grid_rebuild_ms.n" : {
+      "high" : 255,
+      "low" : 255,
+      "median" : 255,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        255
+      ]
+    },
+    "guest.tile_grid_rebuild_ms.p50" : {
+      "high" : 0.297208,
+      "low" : 0.297208,
+      "median" : 0.297208,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.297208
+      ]
+    },
+    "guest.tile_grid_rebuild_ms.p95" : {
+      "high" : 0.33675,
+      "low" : 0.33675,
+      "median" : 0.33675,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.33675
+      ]
+    },
+    "guest.tile_grid_rebuild_ms.p99" : {
+      "high" : 0.375458,
+      "low" : 0.375458,
+      "median" : 0.375458,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.375458
+      ]
+    },
+    "guest.tile_grid_rebuilds_per_s" : {
+      "high" : 3.910800026821187,
+      "low" : 3.910800026821187,
+      "median" : 3.910800026821187,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.910800026821187
+      ]
+    },
+    "guest.tx.tcp.bytes" : {
+      "high" : 150,
+      "low" : 150,
+      "median" : 150,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        150
+      ]
+    },
+    "guest.tx.tcp.bytes_per_s" : {
+      "high" : 2.300470604012463,
+      "low" : 2.300470604012463,
+      "median" : 2.300470604012463,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.300470604012463
+      ]
+    },
+    "guest.tx.tcp.messages" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        30
+      ]
+    },
+    "guest.tx.tcp.messages_per_s" : {
+      "high" : 0.46009412080249257,
+      "low" : 0.46009412080249257,
+      "median" : 0.46009412080249257,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.46009412080249257
+      ]
+    },
+    "guest.tx.tcp.op10.bytes" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        4
+      ]
+    },
+    "guest.tx.tcp.op10.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.tx.tcp.op11.bytes" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "guest.tx.tcp.op11.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.tx.tcp.op13.bytes" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        4
+      ]
+    },
+    "guest.tx.tcp.op13.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.tx.tcp.op4.bytes" : {
+      "high" : 72,
+      "low" : 72,
+      "median" : 72,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        72
+      ]
+    },
+    "guest.tx.tcp.op4.messages" : {
+      "high" : 24,
+      "low" : 24,
+      "median" : 24,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        24
+      ]
+    },
+    "guest.tx.tcp.op8.bytes" : {
+      "high" : 8,
+      "low" : 8,
+      "median" : 8,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        8
+      ]
+    },
+    "guest.tx.tcp.op8.messages" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2
+      ]
+    },
+    "guest.tx.tcp.op88.bytes" : {
+      "high" : 57,
+      "low" : 57,
+      "median" : 57,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        57
+      ]
+    },
+    "guest.tx.tcp.op88.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "guest.tx.udp.bytes" : {
+      "high" : 77914,
+      "low" : 77914,
+      "median" : 77914,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        77914
+      ]
+    },
+    "guest.tx.udp.bytes_per_s" : {
+      "high" : 1194.9257776068469,
+      "low" : 1194.9257776068469,
+      "median" : 1194.9257776068469,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1194.9257776068469
+      ]
+    },
+    "guest.tx.udp.messages" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        648
+      ]
+    },
+    "guest.tx.udp.messages_per_s" : {
+      "high" : 9.93803300933384,
+      "low" : 9.93803300933384,
+      "median" : 9.93803300933384,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.93803300933384
+      ]
+    },
+    "host.apply_us.tcp.max" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.tcp.n" : {
+      "high" : 29,
+      "low" : 29,
+      "median" : 29,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        29
+      ]
+    },
+    "host.apply_us.tcp.op10.max" : {
+      "high" : 104.917,
+      "low" : 104.917,
+      "median" : 104.917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        104.917
+      ]
+    },
+    "host.apply_us.tcp.op10.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.apply_us.tcp.op10.p50" : {
+      "high" : 104.917,
+      "low" : 104.917,
+      "median" : 104.917,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        104.917
+      ]
+    },
+    "host.apply_us.tcp.op10.p95" : {
+      "high" : 104.917,
+      "low" : 104.917,
+      "median" : 104.917,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        104.917
+      ]
+    },
+    "host.apply_us.tcp.op10.p99" : {
+      "high" : 104.917,
+      "low" : 104.917,
+      "median" : 104.917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        104.917
+      ]
+    },
+    "host.apply_us.tcp.op11.max" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.tcp.op11.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.apply_us.tcp.op11.p50" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.tcp.op11.p95" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.tcp.op11.p99" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.tcp.op13.max" : {
+      "high" : 72.709,
+      "low" : 72.709,
+      "median" : 72.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        72.709
+      ]
+    },
+    "host.apply_us.tcp.op13.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.apply_us.tcp.op13.p50" : {
+      "high" : 72.709,
+      "low" : 72.709,
+      "median" : 72.709,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        72.709
+      ]
+    },
+    "host.apply_us.tcp.op13.p95" : {
+      "high" : 72.709,
+      "low" : 72.709,
+      "median" : 72.709,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        72.709
+      ]
+    },
+    "host.apply_us.tcp.op13.p99" : {
+      "high" : 72.709,
+      "low" : 72.709,
+      "median" : 72.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        72.709
+      ]
+    },
+    "host.apply_us.tcp.op4.max" : {
+      "high" : 25.541,
+      "low" : 25.541,
+      "median" : 25.541,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        25.541
+      ]
+    },
+    "host.apply_us.tcp.op4.n" : {
+      "high" : 24,
+      "low" : 24,
+      "median" : 24,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        24
+      ]
+    },
+    "host.apply_us.tcp.op4.p50" : {
+      "high" : 12.417,
+      "low" : 12.417,
+      "median" : 12.417,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        12.417
+      ]
+    },
+    "host.apply_us.tcp.op4.p95" : {
+      "high" : 16.25,
+      "low" : 16.25,
+      "median" : 16.25,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        16.25
+      ]
+    },
+    "host.apply_us.tcp.op4.p99" : {
+      "high" : 25.541,
+      "low" : 25.541,
+      "median" : 25.541,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        25.541
+      ]
+    },
+    "host.apply_us.tcp.op8.max" : {
+      "high" : 116.666,
+      "low" : 116.666,
+      "median" : 116.666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        116.666
+      ]
+    },
+    "host.apply_us.tcp.op8.n" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2
+      ]
+    },
+    "host.apply_us.tcp.op8.p50" : {
+      "high" : 102.958,
+      "low" : 102.958,
+      "median" : 102.958,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        102.958
+      ]
+    },
+    "host.apply_us.tcp.op8.p95" : {
+      "high" : 116.666,
+      "low" : 116.666,
+      "median" : 116.666,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        116.666
+      ]
+    },
+    "host.apply_us.tcp.op8.p99" : {
+      "high" : 116.666,
+      "low" : 116.666,
+      "median" : 116.666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        116.666
+      ]
+    },
+    "host.apply_us.tcp.p50" : {
+      "high" : 12.708,
+      "low" : 12.708,
+      "median" : 12.708,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        12.708
+      ]
+    },
+    "host.apply_us.tcp.p95" : {
+      "high" : 116.666,
+      "low" : 116.666,
+      "median" : 116.666,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        116.666
+      ]
+    },
+    "host.apply_us.tcp.p99" : {
+      "high" : 121.791,
+      "low" : 121.791,
+      "median" : 121.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        121.791
+      ]
+    },
+    "host.apply_us.udp.max" : {
+      "high" : 72.333,
+      "low" : 72.333,
+      "median" : 72.333,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        72.333
+      ]
+    },
+    "host.apply_us.udp.n" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        648
+      ]
+    },
+    "host.apply_us.udp.p50" : {
+      "high" : 18.083,
+      "low" : 18.083,
+      "median" : 18.083,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        18.083
+      ]
+    },
+    "host.apply_us.udp.p95" : {
+      "high" : 23.75,
+      "low" : 23.75,
+      "median" : 23.75,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        23.75
+      ]
+    },
+    "host.apply_us.udp.p99" : {
+      "high" : 34.75,
+      "low" : 34.75,
+      "median" : 34.75,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        34.75
+      ]
+    },
+    "host.apply_us.udp_state_change.max" : {
+      "high" : 21.625,
+      "low" : 21.625,
+      "median" : 21.625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        21.625
+      ]
+    },
+    "host.apply_us.udp_state_change.n" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        648
+      ]
+    },
+    "host.apply_us.udp_state_change.p50" : {
+      "high" : 1.584,
+      "low" : 1.584,
+      "median" : 1.584,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.584
+      ]
+    },
+    "host.apply_us.udp_state_change.p95" : {
+      "high" : 2.333,
+      "low" : 2.333,
+      "median" : 2.333,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        2.333
+      ]
+    },
+    "host.apply_us.udp_state_change.p99" : {
+      "high" : 3.292,
+      "low" : 3.292,
+      "median" : 3.292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.292
+      ]
+    },
+    "host.cpu_pct.max" : {
+      "high" : 44.03626787846766,
+      "low" : 44.03626787846766,
+      "median" : 44.03626787846766,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        44.03626787846766
+      ]
+    },
+    "host.cpu_pct.mean" : {
+      "high" : 28.791594273480694,
+      "low" : 28.791594273480694,
+      "median" : 28.791594273480694,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        28.791594273480694
+      ]
+    },
+    "host.cpu_pct.n" : {
+      "high" : 68,
+      "low" : 68,
+      "median" : 68,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        68
+      ]
+    },
+    "host.cpu_pct.p50" : {
+      "high" : 28.44738628873098,
+      "low" : 28.44738628873098,
+      "median" : 28.44738628873098,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        28.44738628873098
+      ]
+    },
+    "host.cpu_pct.p95" : {
+      "high" : 31.95368849108094,
+      "low" : 31.95368849108094,
+      "median" : 31.95368849108094,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        31.95368849108094
+      ]
+    },
+    "host.cpu_pct.p99" : {
+      "high" : 44.03626787846766,
+      "low" : 44.03626787846766,
+      "median" : 44.03626787846766,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        44.03626787846766
+      ]
+    },
+    "host.datagram_rejects" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.datagram_rejects.applyReturnedNil" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.datagram_rejects.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.datagram_rejects.malformed" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.datagram_rejects.noPeer" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.draw_ms.sprites.max" : {
+      "high" : 7.777834,
+      "low" : 7.777834,
+      "median" : 7.777834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.777834
+      ]
+    },
+    "host.draw_ms.sprites.n" : {
+      "high" : 3441,
+      "low" : 3441,
+      "median" : 3441,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3441
+      ]
+    },
+    "host.draw_ms.sprites.p50" : {
+      "high" : 0.031333,
+      "low" : 0.031333,
+      "median" : 0.031333,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.031333
+      ]
+    },
+    "host.draw_ms.sprites.p95" : {
+      "high" : 0.097917,
+      "low" : 0.097917,
+      "median" : 0.097917,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.097917
+      ]
+    },
+    "host.draw_ms.sprites.p99" : {
+      "high" : 0.111834,
+      "low" : 0.111834,
+      "median" : 0.111834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.111834
+      ]
+    },
+    "host.draw_ms.terrain.max" : {
+      "high" : 1.551125,
+      "low" : 1.551125,
+      "median" : 1.551125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.551125
+      ]
+    },
+    "host.draw_ms.terrain.n" : {
+      "high" : 305,
+      "low" : 305,
+      "median" : 305,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        305
+      ]
+    },
+    "host.draw_ms.terrain.p50" : {
+      "high" : 0.213375,
+      "low" : 0.213375,
+      "median" : 0.213375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.213375
+      ]
+    },
+    "host.draw_ms.terrain.p95" : {
+      "high" : 0.273958,
+      "low" : 0.273958,
+      "median" : 0.273958,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.273958
+      ]
+    },
+    "host.draw_ms.terrain.p99" : {
+      "high" : 0.307292,
+      "low" : 0.307292,
+      "median" : 0.307292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.307292
+      ]
+    },
+    "host.extrapolation_ticks.n" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "host.frame_interval_ms.max" : {
+      "high" : 230.341042,
+      "low" : 230.341042,
+      "median" : 230.341042,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        230.341042
+      ]
+    },
+    "host.frame_interval_ms.n" : {
+      "high" : 3440,
+      "low" : 3440,
+      "median" : 3440,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3440
+      ]
+    },
+    "host.frame_interval_ms.p50" : {
+      "high" : 16.749,
+      "low" : 16.749,
+      "median" : 16.749,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        16.749
+      ]
+    },
+    "host.frame_interval_ms.p95" : {
+      "high" : 33.498042,
+      "low" : 33.498042,
+      "median" : 33.498042,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        33.498042
+      ]
+    },
+    "host.frame_interval_ms.p99" : {
+      "high" : 36.409958,
+      "low" : 36.409958,
+      "median" : 36.409958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        36.409958
+      ]
+    },
+    "host.frames_per_s" : {
+      "high" : 49.49758176836868,
+      "low" : 49.49758176836868,
+      "median" : 49.49758176836868,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        49.49758176836868
+      ]
+    },
+    "host.input_to_frame_ms.max" : {
+      "high" : 192.710083,
+      "low" : 192.710083,
+      "median" : 192.710083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        192.710083
+      ]
+    },
+    "host.input_to_frame_ms.n" : {
+      "high" : 683,
+      "low" : 683,
+      "median" : 683,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        683
+      ]
+    },
+    "host.input_to_frame_ms.p50" : {
+      "high" : 17.22725,
+      "low" : 17.22725,
+      "median" : 17.22725,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        17.22725
+      ]
+    },
+    "host.input_to_frame_ms.p95" : {
+      "high" : 31.915625,
+      "low" : 31.915625,
+      "median" : 31.915625,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        31.915625
+      ]
+    },
+    "host.input_to_frame_ms.p99" : {
+      "high" : 41.177291,
+      "low" : 41.177291,
+      "median" : 41.177291,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        41.177291
+      ]
+    },
+    "host.invariant_violations" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.join_handshake_ms.max" : {
+      "high" : 2.067541,
+      "low" : 2.067541,
+      "median" : 2.067541,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.067541
+      ]
+    },
+    "host.join_handshake_ms.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.join_handshake_ms.p50" : {
+      "high" : 2.067541,
+      "low" : 2.067541,
+      "median" : 2.067541,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        2.067541
+      ]
+    },
+    "host.join_handshake_ms.p95" : {
+      "high" : 2.067541,
+      "low" : 2.067541,
+      "median" : 2.067541,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        2.067541
+      ]
+    },
+    "host.join_handshake_ms.p99" : {
+      "high" : 2.067541,
+      "low" : 2.067541,
+      "median" : 2.067541,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.067541
+      ]
+    },
+    "host.join_stall_ms" : {
+      "high" : 24.240042,
+      "low" : 24.240042,
+      "median" : 24.240042,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        24.240042
+      ]
+    },
+    "host.memory_mb.max" : {
+      "high" : 221.47003173828125,
+      "low" : 221.47003173828125,
+      "median" : 221.47003173828125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        221.47003173828125
+      ]
+    },
+    "host.memory_mb.n" : {
+      "high" : 69,
+      "low" : 69,
+      "median" : 69,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        69
+      ]
+    },
+    "host.memory_mb.p50" : {
+      "high" : 206.84503173828125,
+      "low" : 206.84503173828125,
+      "median" : 206.84503173828125,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        206.84503173828125
+      ]
+    },
+    "host.memory_mb.p95" : {
+      "high" : 216.20440673828125,
+      "low" : 216.20440673828125,
+      "median" : 216.20440673828125,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        216.20440673828125
+      ]
+    },
+    "host.memory_mb.p99" : {
+      "high" : 221.47003173828125,
+      "low" : 221.47003173828125,
+      "median" : 221.47003173828125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        221.47003173828125
+      ]
+    },
+    "host.queue_depth.max" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.queue_depth.n" : {
+      "high" : 3462,
+      "low" : 3462,
+      "median" : 3462,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3462
+      ]
+    },
+    "host.queue_depth.p50" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0
+      ]
+    },
+    "host.queue_depth.p95" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0
+      ]
+    },
+    "host.queue_depth.p99" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "host.recorder.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "host.recorder.self_ms" : {
+      "high" : 8.265472,
+      "low" : 8.265472,
+      "median" : 8.265472,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        8.265472
+      ]
+    },
+    "host.recorder.self_us_per_tick" : {
+      "high" : 2.387484690930098,
+      "low" : 2.387484690930098,
+      "median" : 2.387484690930098,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.387484690930098
+      ]
+    },
+    "host.records" : {
+      "high" : 239213,
+      "low" : 239213,
+      "median" : 239213,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        239213
+      ]
+    },
+    "host.run_s" : {
+      "high" : 69.675018208,
+      "low" : 69.675018208,
+      "median" : 69.675018208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        69.675018208
+      ]
+    },
+    "host.rx.tcp.bytes" : {
+      "high" : 93,
+      "low" : 93,
+      "median" : 93,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        93
+      ]
+    },
+    "host.rx.tcp.bytes_per_s" : {
+      "high" : 1.3347682195413026,
+      "low" : 1.3347682195413026,
+      "median" : 1.3347682195413026,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.3347682195413026
+      ]
+    },
+    "host.rx.tcp.messages" : {
+      "high" : 29,
+      "low" : 29,
+      "median" : 29,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        29
+      ]
+    },
+    "host.rx.tcp.messages_per_s" : {
+      "high" : 0.41621804695373954,
+      "low" : 0.41621804695373954,
+      "median" : 0.41621804695373954,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.41621804695373954
+      ]
+    },
+    "host.rx.tcp.op10.bytes" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        4
+      ]
+    },
+    "host.rx.tcp.op10.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.rx.tcp.op11.bytes" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "host.rx.tcp.op11.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.rx.tcp.op13.bytes" : {
+      "high" : 4,
+      "low" : 4,
+      "median" : 4,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        4
+      ]
+    },
+    "host.rx.tcp.op13.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.rx.tcp.op4.bytes" : {
+      "high" : 72,
+      "low" : 72,
+      "median" : 72,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        72
+      ]
+    },
+    "host.rx.tcp.op4.messages" : {
+      "high" : 24,
+      "low" : 24,
+      "median" : 24,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        24
+      ]
+    },
+    "host.rx.tcp.op8.bytes" : {
+      "high" : 8,
+      "low" : 8,
+      "median" : 8,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        8
+      ]
+    },
+    "host.rx.tcp.op8.messages" : {
+      "high" : 2,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2
+      ]
+    },
+    "host.rx.udp.bytes" : {
+      "high" : 77914,
+      "low" : 77914,
+      "median" : 77914,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        77914
+      ]
+    },
+    "host.rx.udp.bytes_per_s" : {
+      "high" : 1118.248721046678,
+      "low" : 1118.248721046678,
+      "median" : 1118.248721046678,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1118.248721046678
+      ]
+    },
+    "host.rx.udp.messages" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        648
+      ]
+    },
+    "host.rx.udp.messages_per_s" : {
+      "high" : 9.300320497449077,
+      "low" : 9.300320497449077,
+      "median" : 9.300320497449077,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.300320497449077
+      ]
+    },
+    "host.send_completion_us.tcp.max" : {
+      "high" : 6503.041,
+      "low" : 6503.041,
+      "median" : 6503.041,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6503.041
+      ]
+    },
+    "host.send_completion_us.tcp.n" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9964
+      ]
+    },
+    "host.send_completion_us.tcp.p50" : {
+      "high" : 37.375,
+      "low" : 37.375,
+      "median" : 37.375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        37.375
+      ]
+    },
+    "host.send_completion_us.tcp.p95" : {
+      "high" : 94.459,
+      "low" : 94.459,
+      "median" : 94.459,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        94.459
+      ]
+    },
+    "host.send_completion_us.tcp.p99" : {
+      "high" : 125.458,
+      "low" : 125.458,
+      "median" : 125.458,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        125.458
+      ]
+    },
+    "host.send_completion_us.udp.max" : {
+      "high" : 7370.875,
+      "low" : 7370.875,
+      "median" : 7370.875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7370.875
+      ]
+    },
+    "host.send_completion_us.udp.n" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        647
+      ]
+    },
+    "host.send_completion_us.udp.p50" : {
+      "high" : 1962.083,
+      "low" : 1962.083,
+      "median" : 1962.083,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1962.083
+      ]
+    },
+    "host.send_completion_us.udp.p95" : {
+      "high" : 4046.333,
+      "low" : 4046.333,
+      "median" : 4046.333,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        4046.333
+      ]
+    },
+    "host.send_completion_us.udp.p99" : {
+      "high" : 5014.209,
+      "low" : 5014.209,
+      "median" : 5014.209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5014.209
+      ]
+    },
+    "host.thermal_state.max" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0
+      ]
+    },
+    "host.tick_interval_ms.max" : {
+      "high" : 189.09775,
+      "low" : 189.09775,
+      "median" : 189.09775,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        189.09775
+      ]
+    },
+    "host.tick_interval_ms.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_interval_ms.over_25_pct" : {
+      "high" : 1.5891360878358856,
+      "low" : 1.5891360878358856,
+      "median" : 1.5891360878358856,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.5891360878358856
+      ]
+    },
+    "host.tick_interval_ms.p50" : {
+      "high" : 20.001834,
+      "low" : 20.001834,
+      "median" : 20.001834,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        20.001834
+      ]
+    },
+    "host.tick_interval_ms.p95" : {
+      "high" : 20.989834,
+      "low" : 20.989834,
+      "median" : 20.989834,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        20.989834
+      ]
+    },
+    "host.tick_interval_ms.p99" : {
+      "high" : 27.735625,
+      "low" : 27.735625,
+      "median" : 27.735625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        27.735625
+      ]
+    },
+    "host.tick_ms.digest.max" : {
+      "high" : 3.259666,
+      "low" : 3.259666,
+      "median" : 3.259666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.259666
+      ]
+    },
+    "host.tick_ms.digest.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.digest.p50" : {
+      "high" : 0.004417,
+      "low" : 0.004417,
+      "median" : 0.004417,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.004417
+      ]
+    },
+    "host.tick_ms.digest.p95" : {
+      "high" : 0.339041,
+      "low" : 0.339041,
+      "median" : 0.339041,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.339041
+      ]
+    },
+    "host.tick_ms.digest.p99" : {
+      "high" : 0.383917,
+      "low" : 0.383917,
+      "median" : 0.383917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.383917
+      ]
+    },
+    "host.tick_ms.fog.max" : {
+      "high" : 0.169666,
+      "low" : 0.169666,
+      "median" : 0.169666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.169666
+      ]
+    },
+    "host.tick_ms.fog.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.fog.p50" : {
+      "high" : 0.011209,
+      "low" : 0.011209,
+      "median" : 0.011209,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.011209
+      ]
+    },
+    "host.tick_ms.fog.p95" : {
+      "high" : 0.035,
+      "low" : 0.035,
+      "median" : 0.035,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.035
+      ]
+    },
+    "host.tick_ms.fog.p99" : {
+      "high" : 0.0525,
+      "low" : 0.0525,
+      "median" : 0.0525,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.0525
+      ]
+    },
+    "host.tick_ms.game.max" : {
+      "high" : 188.640083,
+      "low" : 188.640083,
+      "median" : 188.640083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        188.640083
+      ]
+    },
+    "host.tick_ms.game.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.game.p50" : {
+      "high" : 0.34975,
+      "low" : 0.34975,
+      "median" : 0.34975,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.34975
+      ]
+    },
+    "host.tick_ms.game.p95" : {
+      "high" : 13.135791,
+      "low" : 13.135791,
+      "median" : 13.135791,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        13.135791
+      ]
+    },
+    "host.tick_ms.game.p99" : {
+      "high" : 23.215958,
+      "low" : 23.215958,
+      "median" : 23.215958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23.215958
+      ]
+    },
+    "host.tick_ms.prepare.max" : {
+      "high" : 0.029291,
+      "low" : 0.029291,
+      "median" : 0.029291,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.029291
+      ]
+    },
+    "host.tick_ms.prepare.n" : {
+      "high" : 3462,
+      "low" : 3462,
+      "median" : 3462,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3462
+      ]
+    },
+    "host.tick_ms.prepare.p50" : {
+      "high" : 0.004917,
+      "low" : 0.004917,
+      "median" : 0.004917,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.004917
+      ]
+    },
+    "host.tick_ms.prepare.p95" : {
+      "high" : 0.008125,
+      "low" : 0.008125,
+      "median" : 0.008125,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.008125
+      ]
+    },
+    "host.tick_ms.prepare.p99" : {
+      "high" : 0.010958,
+      "low" : 0.010958,
+      "median" : 0.010958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.010958
+      ]
+    },
+    "host.tick_ms.renderHop.max" : {
+      "high" : 184.215958,
+      "low" : 184.215958,
+      "median" : 184.215958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        184.215958
+      ]
+    },
+    "host.tick_ms.renderHop.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.renderHop.p50" : {
+      "high" : 0.114584,
+      "low" : 0.114584,
+      "median" : 0.114584,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.114584
+      ]
+    },
+    "host.tick_ms.renderHop.p95" : {
+      "high" : 11.802042,
+      "low" : 11.802042,
+      "median" : 11.802042,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        11.802042
+      ]
+    },
+    "host.tick_ms.renderHop.p99" : {
+      "high" : 21.148333,
+      "low" : 21.148333,
+      "median" : 21.148333,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        21.148333
+      ]
+    },
+    "host.tick_ms.renderHopWait.max" : {
+      "high" : 17.251375,
+      "low" : 17.251375,
+      "median" : 17.251375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        17.251375
+      ]
+    },
+    "host.tick_ms.renderHopWait.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.renderHopWait.p50" : {
+      "high" : 0.026375,
+      "low" : 0.026375,
+      "median" : 0.026375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.026375
+      ]
+    },
+    "host.tick_ms.renderHopWait.p95" : {
+      "high" : 2.386,
+      "low" : 2.386,
+      "median" : 2.386,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        2.386
+      ]
+    },
+    "host.tick_ms.renderHopWait.p99" : {
+      "high" : 4.449084,
+      "low" : 4.449084,
+      "median" : 4.449084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4.449084
+      ]
+    },
+    "host.tick_ms.renderHopWork.max" : {
+      "high" : 180.930582,
+      "low" : 180.930582,
+      "median" : 180.930582,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        180.930582
+      ]
+    },
+    "host.tick_ms.renderHopWork.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.renderHopWork.p50" : {
+      "high" : 0.087,
+      "low" : 0.087,
+      "median" : 0.087,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.087
+      ]
+    },
+    "host.tick_ms.renderHopWork.p95" : {
+      "high" : 8.975667,
+      "low" : 8.975667,
+      "median" : 8.975667,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        8.975667
+      ]
+    },
+    "host.tick_ms.renderHopWork.p99" : {
+      "high" : 18.134624,
+      "low" : 18.134624,
+      "median" : 18.134624,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        18.134624
+      ]
+    },
+    "host.tick_ms.runTick.max" : {
+      "high" : 0.914375,
+      "low" : 0.914375,
+      "median" : 0.914375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.914375
+      ]
+    },
+    "host.tick_ms.runTick.n" : {
+      "high" : 3462,
+      "low" : 3462,
+      "median" : 3462,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3462
+      ]
+    },
+    "host.tick_ms.runTick.p50" : {
+      "high" : 0.040375,
+      "low" : 0.040375,
+      "median" : 0.040375,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.040375
+      ]
+    },
+    "host.tick_ms.runTick.p95" : {
+      "high" : 0.055667,
+      "low" : 0.055667,
+      "median" : 0.055667,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.055667
+      ]
+    },
+    "host.tick_ms.runTick.p99" : {
+      "high" : 0.078667,
+      "low" : 0.078667,
+      "median" : 0.078667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.078667
+      ]
+    },
+    "host.tick_ms.sendFlush.max" : {
+      "high" : 30.399375,
+      "low" : 30.399375,
+      "median" : 30.399375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        30.399375
+      ]
+    },
+    "host.tick_ms.sendFlush.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.sendFlush.p50" : {
+      "high" : 0.076,
+      "low" : 0.076,
+      "median" : 0.076,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.076
+      ]
+    },
+    "host.tick_ms.sendFlush.p95" : {
+      "high" : 0.21575,
+      "low" : 0.21575,
+      "median" : 0.21575,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.21575
+      ]
+    },
+    "host.tick_ms.sendFlush.p99" : {
+      "high" : 1.380916,
+      "low" : 1.380916,
+      "median" : 1.380916,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1.380916
+      ]
+    },
+    "host.tick_ms.status.max" : {
+      "high" : 0.036375,
+      "low" : 0.036375,
+      "median" : 0.036375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.036375
+      ]
+    },
+    "host.tick_ms.status.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.status.p50" : {
+      "high" : 0.005292,
+      "low" : 0.005292,
+      "median" : 0.005292,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.005292
+      ]
+    },
+    "host.tick_ms.status.p95" : {
+      "high" : 0.007625,
+      "low" : 0.007625,
+      "median" : 0.007625,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.007625
+      ]
+    },
+    "host.tick_ms.status.p99" : {
+      "high" : 0.011209,
+      "low" : 0.011209,
+      "median" : 0.011209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.011209
+      ]
+    },
+    "host.tick_ms.terrainDiff.max" : {
+      "high" : 0.329417,
+      "low" : 0.329417,
+      "median" : 0.329417,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.329417
+      ]
+    },
+    "host.tick_ms.terrainDiff.n" : {
+      "high" : 3462,
+      "low" : 3462,
+      "median" : 3462,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3462
+      ]
+    },
+    "host.tick_ms.terrainDiff.p50" : {
+      "high" : 0.064708,
+      "low" : 0.064708,
+      "median" : 0.064708,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.064708
+      ]
+    },
+    "host.tick_ms.terrainDiff.p95" : {
+      "high" : 0.1005,
+      "low" : 0.1005,
+      "median" : 0.1005,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.1005
+      ]
+    },
+    "host.tick_ms.terrainDiff.p99" : {
+      "high" : 0.115625,
+      "low" : 0.115625,
+      "median" : 0.115625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.115625
+      ]
+    },
+    "host.tick_ms.updateSend.max" : {
+      "high" : 7.38675,
+      "low" : 7.38675,
+      "median" : 7.38675,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.38675
+      ]
+    },
+    "host.tick_ms.updateSend.n" : {
+      "high" : 692,
+      "low" : 692,
+      "median" : 692,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        692
+      ]
+    },
+    "host.tick_ms.updateSend.p50" : {
+      "high" : 1.9565,
+      "low" : 1.9565,
+      "median" : 1.9565,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.9565
+      ]
+    },
+    "host.tick_ms.updateSend.p95" : {
+      "high" : 4.042333,
+      "low" : 4.042333,
+      "median" : 4.042333,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        4.042333
+      ]
+    },
+    "host.tick_ms.updateSend.p99" : {
+      "high" : 5.030375,
+      "low" : 5.030375,
+      "median" : 5.030375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5.030375
+      ]
+    },
+    "host.tick_ms.whole.max" : {
+      "high" : 189.046292,
+      "low" : 189.046292,
+      "median" : 189.046292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        189.046292
+      ]
+    },
+    "host.tick_ms.whole.n" : {
+      "high" : 3461,
+      "low" : 3461,
+      "median" : 3461,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3461
+      ]
+    },
+    "host.tick_ms.whole.p50" : {
+      "high" : 0.354417,
+      "low" : 0.354417,
+      "median" : 0.354417,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.354417
+      ]
+    },
+    "host.tick_ms.whole.p95" : {
+      "high" : 13.140708,
+      "low" : 13.140708,
+      "median" : 13.140708,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        13.140708
+      ]
+    },
+    "host.tick_ms.whole.p99" : {
+      "high" : 23.509625,
+      "low" : 23.509625,
+      "median" : 23.509625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23.509625
+      ]
+    },
+    "host.tick_queue_delay_ms.max" : {
+      "high" : 34.250333,
+      "low" : 34.250333,
+      "median" : 34.250333,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        34.250333
+      ]
+    },
+    "host.tick_queue_delay_ms.n" : {
+      "high" : 3462,
+      "low" : 3462,
+      "median" : 3462,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3462
+      ]
+    },
+    "host.tick_queue_delay_ms.p50" : {
+      "high" : 0.028167,
+      "low" : 0.028167,
+      "median" : 0.028167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.028167
+      ]
+    },
+    "host.tick_queue_delay_ms.p95" : {
+      "high" : 0.047375,
+      "low" : 0.047375,
+      "median" : 0.047375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.047375
+      ]
+    },
+    "host.tick_queue_delay_ms.p99" : {
+      "high" : 0.058542,
+      "low" : 0.058542,
+      "median" : 0.058542,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.058542
+      ]
+    },
+    "host.tick_rate_hz" : {
+      "high" : 49.825522344861525,
+      "low" : 49.825522344861525,
+      "median" : 49.825522344861525,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        49.825522344861525
+      ]
+    },
+    "host.ticks_lost" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "host.tile_grid_rebuild_ms.max" : {
+      "high" : 0.502209,
+      "low" : 0.502209,
+      "median" : 0.502209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.502209
+      ]
+    },
+    "host.tile_grid_rebuild_ms.n" : {
+      "high" : 305,
+      "low" : 305,
+      "median" : 305,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        305
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p50" : {
+      "high" : 0.298167,
+      "low" : 0.298167,
+      "median" : 0.298167,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.298167
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p95" : {
+      "high" : 0.373917,
+      "low" : 0.373917,
+      "median" : 0.373917,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        0.373917
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p99" : {
+      "high" : 0.392291,
+      "low" : 0.392291,
+      "median" : 0.392291,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.392291
+      ]
+    },
+    "host.tile_grid_rebuilds_per_s" : {
+      "high" : 4.3774656662376055,
+      "low" : 4.3774656662376055,
+      "median" : 4.3774656662376055,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4.3774656662376055
+      ]
+    },
+    "host.tx.tcp.bytes" : {
+      "high" : 428370,
+      "low" : 428370,
+      "median" : 428370,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        428370
+      ]
+    },
+    "host.tx.tcp.bytes_per_s" : {
+      "high" : 6148.1146473646,
+      "low" : 6148.1146473646,
+      "median" : 6148.1146473646,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6148.1146473646
+      ]
+    },
+    "host.tx.tcp.messages" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9964
+      ]
+    },
+    "host.tx.tcp.messages_per_s" : {
+      "high" : 143.00677999472623,
+      "low" : 143.00677999472623,
+      "median" : 143.00677999472623,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        143.00677999472623
+      ]
+    },
+    "host.tx.tcp.op0.bytes" : {
+      "high" : 50,
+      "low" : 50,
+      "median" : 50,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        50
+      ]
+    },
+    "host.tx.tcp.op0.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.tx.tcp.op10.bytes" : {
+      "high" : 12,
+      "low" : 12,
+      "median" : 12,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        12
+      ]
+    },
+    "host.tx.tcp.op10.messages" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3
+      ]
+    },
+    "host.tx.tcp.op12.bytes" : {
+      "high" : 69,
+      "low" : 69,
+      "median" : 69,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        69
+      ]
+    },
+    "host.tx.tcp.op12.messages" : {
+      "high" : 23,
+      "low" : 23,
+      "median" : 23,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        23
+      ]
+    },
+    "host.tx.tcp.op18.bytes" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3
+      ]
+    },
+    "host.tx.tcp.op18.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.tx.tcp.op19.bytes" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "host.tx.tcp.op19.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.tx.tcp.op21.bytes" : {
+      "high" : 60,
+      "low" : 60,
+      "median" : 60,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        60
+      ]
+    },
+    "host.tx.tcp.op21.messages" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        30
+      ]
+    },
+    "host.tx.tcp.op26.bytes" : {
+      "high" : 20,
+      "low" : 20,
+      "median" : 20,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        20
+      ]
+    },
+    "host.tx.tcp.op26.messages" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        5
+      ]
+    },
+    "host.tx.tcp.op27.bytes" : {
+      "high" : 108,
+      "low" : 108,
+      "median" : 108,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        108
+      ]
+    },
+    "host.tx.tcp.op27.messages" : {
+      "high" : 27,
+      "low" : 27,
+      "median" : 27,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        27
+      ]
+    },
+    "host.tx.tcp.op34.bytes" : {
+      "high" : 30200,
+      "low" : 30200,
+      "median" : 30200,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        30200
+      ]
+    },
+    "host.tx.tcp.op34.messages" : {
+      "high" : 7550,
+      "low" : 7550,
+      "median" : 7550,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7550
+      ]
+    },
+    "host.tx.tcp.op35.bytes" : {
+      "high" : 15300,
+      "low" : 15300,
+      "median" : 15300,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        15300
+      ]
+    },
+    "host.tx.tcp.op35.messages" : {
+      "high" : 510,
+      "low" : 510,
+      "median" : 510,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        510
+      ]
+    },
+    "host.tx.tcp.op36.bytes" : {
+      "high" : 382543,
+      "low" : 382543,
+      "median" : 382543,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        382543
+      ]
+    },
+    "host.tx.tcp.op36.messages" : {
+      "high" : 1813,
+      "low" : 1813,
+      "median" : 1813,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1813
+      ]
+    },
+    "host.tx.udp.bytes" : {
+      "high" : 81269,
+      "low" : 81269,
+      "median" : 81269,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        81269
+      ]
+    },
+    "host.tx.udp.bytes_per_s" : {
+      "high" : 1166.4008433752917,
+      "low" : 1166.4008433752917,
+      "median" : 1166.4008433752917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1166.4008433752917
+      ]
+    },
+    "host.tx.udp.messages" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        647
+      ]
+    },
+    "host.tx.udp.messages_per_s" : {
+      "high" : 9.285968151002395,
+      "low" : 9.285968151002395,
+      "median" : 9.285968151002395,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9.285968151002395
+      ]
+    },
+    "link.ack_age_ms.guest.max" : {
+      "high" : 191.9445,
+      "low" : 191.9445,
+      "median" : 191.9445,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        191.9445
+      ]
+    },
+    "link.ack_age_ms.guest.n" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        648
+      ]
+    },
+    "link.ack_age_ms.guest.p50" : {
+      "high" : 7.915167,
+      "low" : 7.915167,
+      "median" : 7.915167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        7.915167
+      ]
+    },
+    "link.ack_age_ms.guest.p95" : {
+      "high" : 90.173375,
+      "low" : 90.173375,
+      "median" : 90.173375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        90.173375
+      ]
+    },
+    "link.ack_age_ms.guest.p99" : {
+      "high" : 108.237625,
+      "low" : 108.237625,
+      "median" : 108.237625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        108.237625
+      ]
+    },
+    "link.ack_age_ms.host.max" : {
+      "high" : 133.032208,
+      "low" : 133.032208,
+      "median" : 133.032208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        133.032208
+      ]
+    },
+    "link.ack_age_ms.host.n" : {
+      "high" : 646,
+      "low" : 646,
+      "median" : 646,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        646
+      ]
+    },
+    "link.ack_age_ms.host.p50" : {
+      "high" : 92.610167,
+      "low" : 92.610167,
+      "median" : 92.610167,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        92.610167
+      ]
+    },
+    "link.ack_age_ms.host.p95" : {
+      "high" : 95.933458,
+      "low" : 95.933458,
+      "median" : 95.933458,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        95.933458
+      ]
+    },
+    "link.ack_age_ms.host.p99" : {
+      "high" : 108.320084,
+      "low" : 108.320084,
+      "median" : 108.320084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        108.320084
+      ]
+    },
+    "link.position_delay_ms.guest_to_host.max" : {
+      "high" : 808.166916,
+      "low" : 808.166916,
+      "median" : 808.166916,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        808.166916
+      ]
+    },
+    "link.position_delay_ms.guest_to_host.n" : {
+      "high" : 53,
+      "low" : 53,
+      "median" : 53,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        53
+      ]
+    },
+    "link.position_delay_ms.guest_to_host.p50" : {
+      "high" : 57.595375,
+      "low" : 57.595375,
+      "median" : 57.595375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        57.595375
+      ]
+    },
+    "link.position_delay_ms.guest_to_host.p95" : {
+      "high" : 348.394042,
+      "low" : 348.394042,
+      "median" : 348.394042,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        348.394042
+      ]
+    },
+    "link.position_delay_ms.guest_to_host.p99" : {
+      "high" : 808.166916,
+      "low" : 808.166916,
+      "median" : 808.166916,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        808.166916
+      ]
+    },
+    "link.position_delay_ms.host_to_guest.max" : {
+      "high" : 331.051125,
+      "low" : 331.051125,
+      "median" : 331.051125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        331.051125
+      ]
+    },
+    "link.position_delay_ms.host_to_guest.n" : {
+      "high" : 127,
+      "low" : 127,
+      "median" : 127,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        127
+      ]
+    },
+    "link.position_delay_ms.host_to_guest.p50" : {
+      "high" : 50.940333,
+      "low" : 50.940333,
+      "median" : 50.940333,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        50.940333
+      ]
+    },
+    "link.position_delay_ms.host_to_guest.p95" : {
+      "high" : 91.111959,
+      "low" : 91.111959,
+      "median" : 91.111959,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        91.111959
+      ]
+    },
+    "link.position_delay_ms.host_to_guest.p99" : {
+      "high" : 200.806125,
+      "low" : 200.806125,
+      "median" : 200.806125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        200.806125
+      ]
+    },
+    "link.tcp.mismatched" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.tcp.read" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9964
+      ]
+    },
+    "link.tcp.send_to_applied_ms.max" : {
+      "high" : 265.938791,
+      "low" : 265.938791,
+      "median" : 265.938791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        265.938791
+      ]
+    },
+    "link.tcp.send_to_applied_ms.n" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9964
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op0.max" : {
+      "high" : 265.938791,
+      "low" : 265.938791,
+      "median" : 265.938791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        265.938791
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op0.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op0.p50" : {
+      "high" : 265.938791,
+      "low" : 265.938791,
+      "median" : 265.938791,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        265.938791
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op0.p95" : {
+      "high" : 265.938791,
+      "low" : 265.938791,
+      "median" : 265.938791,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        265.938791
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op0.p99" : {
+      "high" : 265.938791,
+      "low" : 265.938791,
+      "median" : 265.938791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        265.938791
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op10.max" : {
+      "high" : 0.181792,
+      "low" : 0.181792,
+      "median" : 0.181792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.181792
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op10.n" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op10.p50" : {
+      "high" : 0.174833,
+      "low" : 0.174833,
+      "median" : 0.174833,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.174833
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op10.p95" : {
+      "high" : 0.181792,
+      "low" : 0.181792,
+      "median" : 0.181792,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.181792
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op10.p99" : {
+      "high" : 0.181792,
+      "low" : 0.181792,
+      "median" : 0.181792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.181792
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op12.max" : {
+      "high" : 0.391083,
+      "low" : 0.391083,
+      "median" : 0.391083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.391083
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op12.n" : {
+      "high" : 23,
+      "low" : 23,
+      "median" : 23,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op12.p50" : {
+      "high" : 0.255625,
+      "low" : 0.255625,
+      "median" : 0.255625,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.255625
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op12.p95" : {
+      "high" : 0.320375,
+      "low" : 0.320375,
+      "median" : 0.320375,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.320375
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op12.p99" : {
+      "high" : 0.391083,
+      "low" : 0.391083,
+      "median" : 0.391083,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.391083
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op18.max" : {
+      "high" : 0.197917,
+      "low" : 0.197917,
+      "median" : 0.197917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.197917
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op18.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op18.p50" : {
+      "high" : 0.197917,
+      "low" : 0.197917,
+      "median" : 0.197917,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.197917
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op18.p95" : {
+      "high" : 0.197917,
+      "low" : 0.197917,
+      "median" : 0.197917,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.197917
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op18.p99" : {
+      "high" : 0.197917,
+      "low" : 0.197917,
+      "median" : 0.197917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.197917
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op19.max" : {
+      "high" : 0.193459,
+      "low" : 0.193459,
+      "median" : 0.193459,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.193459
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op19.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op19.p50" : {
+      "high" : 0.193459,
+      "low" : 0.193459,
+      "median" : 0.193459,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.193459
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op19.p95" : {
+      "high" : 0.193459,
+      "low" : 0.193459,
+      "median" : 0.193459,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.193459
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op19.p99" : {
+      "high" : 0.193459,
+      "low" : 0.193459,
+      "median" : 0.193459,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.193459
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op21.max" : {
+      "high" : 2.698041,
+      "low" : 2.698041,
+      "median" : 2.698041,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.698041
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op21.n" : {
+      "high" : 30,
+      "low" : 30,
+      "median" : 30,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        30
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op21.p50" : {
+      "high" : 0.511708,
+      "low" : 0.511708,
+      "median" : 0.511708,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.511708
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op21.p95" : {
+      "high" : 2.67,
+      "low" : 2.67,
+      "median" : 2.67,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        2.67
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op21.p99" : {
+      "high" : 2.698041,
+      "low" : 2.698041,
+      "median" : 2.698041,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.698041
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op26.max" : {
+      "high" : 0.233334,
+      "low" : 0.233334,
+      "median" : 0.233334,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.233334
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op26.n" : {
+      "high" : 5,
+      "low" : 5,
+      "median" : 5,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op26.p50" : {
+      "high" : 0.200125,
+      "low" : 0.200125,
+      "median" : 0.200125,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.200125
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op26.p95" : {
+      "high" : 0.233334,
+      "low" : 0.233334,
+      "median" : 0.233334,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.233334
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op26.p99" : {
+      "high" : 0.233334,
+      "low" : 0.233334,
+      "median" : 0.233334,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.233334
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op27.max" : {
+      "high" : 3.640958,
+      "low" : 3.640958,
+      "median" : 3.640958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.640958
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op27.n" : {
+      "high" : 27,
+      "low" : 27,
+      "median" : 27,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        27
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op27.p50" : {
+      "high" : 0.263417,
+      "low" : 0.263417,
+      "median" : 0.263417,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.263417
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op27.p95" : {
+      "high" : 3.604583,
+      "low" : 3.604583,
+      "median" : 3.604583,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        3.604583
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op27.p99" : {
+      "high" : 3.640958,
+      "low" : 3.640958,
+      "median" : 3.640958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.640958
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op34.max" : {
+      "high" : 38.670583,
+      "low" : 38.670583,
+      "median" : 38.670583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        38.670583
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op34.n" : {
+      "high" : 7550,
+      "low" : 7550,
+      "median" : 7550,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7550
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op34.p50" : {
+      "high" : 3.205917,
+      "low" : 3.205917,
+      "median" : 3.205917,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        3.205917
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op34.p95" : {
+      "high" : 35.804459,
+      "low" : 35.804459,
+      "median" : 35.804459,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        35.804459
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op34.p99" : {
+      "high" : 38.0705,
+      "low" : 38.0705,
+      "median" : 38.0705,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        38.0705
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op35.max" : {
+      "high" : 253.991292,
+      "low" : 253.991292,
+      "median" : 253.991292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        253.991292
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op35.n" : {
+      "high" : 510,
+      "low" : 510,
+      "median" : 510,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        510
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op35.p50" : {
+      "high" : 0.244875,
+      "low" : 0.244875,
+      "median" : 0.244875,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.244875
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op35.p95" : {
+      "high" : 1.454083,
+      "low" : 1.454083,
+      "median" : 1.454083,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        1.454083
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op35.p99" : {
+      "high" : 12.902375,
+      "low" : 12.902375,
+      "median" : 12.902375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12.902375
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op36.max" : {
+      "high" : 107.099375,
+      "low" : 107.099375,
+      "median" : 107.099375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        107.099375
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op36.n" : {
+      "high" : 1813,
+      "low" : 1813,
+      "median" : 1813,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1813
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op36.p50" : {
+      "high" : 0.249458,
+      "low" : 0.249458,
+      "median" : 0.249458,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.249458
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op36.p95" : {
+      "high" : 1.803417,
+      "low" : 1.803417,
+      "median" : 1.803417,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        1.803417
+      ]
+    },
+    "link.tcp.send_to_applied_ms.op36.p99" : {
+      "high" : 3.079,
+      "low" : 3.079,
+      "median" : 3.079,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3.079
+      ]
+    },
+    "link.tcp.send_to_applied_ms.p50" : {
+      "high" : 1.337875,
+      "low" : 1.337875,
+      "median" : 1.337875,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        1.337875
+      ]
+    },
+    "link.tcp.send_to_applied_ms.p95" : {
+      "high" : 35.048708,
+      "low" : 35.048708,
+      "median" : 35.048708,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        35.048708
+      ]
+    },
+    "link.tcp.send_to_applied_ms.p99" : {
+      "high" : 38.0025,
+      "low" : 38.0025,
+      "median" : 38.0025,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        38.0025
+      ]
+    },
+    "link.tcp.send_to_read_ms.max" : {
+      "high" : 242.616,
+      "low" : 242.616,
+      "median" : 242.616,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        242.616
+      ]
+    },
+    "link.tcp.send_to_read_ms.n" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9964
+      ]
+    },
+    "link.tcp.send_to_read_ms.p50" : {
+      "high" : 1.222459,
+      "low" : 1.222459,
+      "median" : 1.222459,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        1.222459
+      ]
+    },
+    "link.tcp.send_to_read_ms.p95" : {
+      "high" : 35.017,
+      "low" : 35.017,
+      "median" : 35.017,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        35.017
+      ]
+    },
+    "link.tcp.send_to_read_ms.p99" : {
+      "high" : 37.983167,
+      "low" : 37.983167,
+      "median" : 37.983167,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        37.983167
+      ]
+    },
+    "link.tcp.sent" : {
+      "high" : 9964,
+      "low" : 9964,
+      "median" : 9964,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9964
+      ]
+    },
+    "link.tcp.unpaired" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.guest_to_host.delay_ms.max" : {
+      "high" : 96.780834,
+      "low" : 96.780834,
+      "median" : 96.780834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        96.780834
+      ]
+    },
+    "link.udp.guest_to_host.delay_ms.n" : {
+      "high" : 648,
+      "low" : 648,
+      "median" : 648,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        648
+      ]
+    },
+    "link.udp.guest_to_host.delay_ms.p50" : {
+      "high" : 0.220333,
+      "low" : 0.220333,
+      "median" : 0.220333,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.220333
+      ]
+    },
+    "link.udp.guest_to_host.delay_ms.p95" : {
+      "high" : 2.016209,
+      "low" : 2.016209,
+      "median" : 2.016209,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        2.016209
+      ]
+    },
+    "link.udp.guest_to_host.delay_ms.p99" : {
+      "high" : 16.68275,
+      "low" : 16.68275,
+      "median" : 16.68275,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        16.68275
+      ]
+    },
+    "link.udp.guest_to_host.loss_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.guest_to_host.lost" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.guest_to_host.reordered" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.guest_to_host.sent" : {
+      "high" : 643,
+      "low" : 643,
+      "median" : 643,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        643
+      ]
+    },
+    "link.udp.host_to_guest.delay_ms.max" : {
+      "high" : 88.276917,
+      "low" : 88.276917,
+      "median" : 88.276917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        88.276917
+      ]
+    },
+    "link.udp.host_to_guest.delay_ms.n" : {
+      "high" : 647,
+      "low" : 647,
+      "median" : 647,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        647
+      ]
+    },
+    "link.udp.host_to_guest.delay_ms.p50" : {
+      "high" : 0.178125,
+      "low" : 0.178125,
+      "median" : 0.178125,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.178125
+      ]
+    },
+    "link.udp.host_to_guest.delay_ms.p95" : {
+      "high" : 0.272792,
+      "low" : 0.272792,
+      "median" : 0.272792,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0.272792
+      ]
+    },
+    "link.udp.host_to_guest.delay_ms.p99" : {
+      "high" : 2.579,
+      "low" : 2.579,
+      "median" : 2.579,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.579
+      ]
+    },
+    "link.udp.host_to_guest.loss_pct" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "within10ms",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.host_to_guest.lost" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.host_to_guest.reordered" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : false,
+      "rule" : "verdict",
+      "values" : [
+        0
+      ]
+    },
+    "link.udp.host_to_guest.sent" : {
+      "high" : 642,
+      "low" : 642,
+      "median" : 642,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        642
+      ]
+    }
+  },
+  "model" : "MacBookPro17,1",
+  "osBuild" : "26A428",
+  "scenario" : "s8-soak-hidden",
+  "scenarioHash" : "f39741038e936c36",
+  "schema" : 1,
+  "tier" : "pair",
+  "validRuns" : 1
+}

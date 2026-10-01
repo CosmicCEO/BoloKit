@@ -14,12 +14,12 @@ A release is judged on these. "Judge on" names the scenarios where the benchmark
 
 | CTQ | Metric | Judge on | v1.6.9 | Target | Met |
 |---|---|---|---|---|---|
-| Responsiveness 45 | Drawn step of the host's tank on the guest screen, median (`guest.drawn_remote_step_ms.p50`) | Soak | See P1 row below | 20 ms | No |
+| Responsiveness 45 | Drawn step of the host's tank on the guest screen, median (`guest.drawn_remote_step_ms.p50`) | Soak | 100 ms median, 132 ms at the 95th percentile, 0.2 tiles a step (one run) | 20 ms | No |
 | Responsiveness 45 | Guest key press to frame, 95th percentile | All | 31 to 32 ms | 40 ms | Yes |
 | Responsiveness 45 | Guest frame interval, 95th percentile | All | 33 ms | 35 ms | Yes |
 | Tick budget 30 | Host ticks over 25 ms apart | Soak, sweep | 2.3% to 2.6% at 2; 4.4% at 4 | 1% | No |
 | Tick budget 30 | Host tick, 95th percentile | Soak, 4-player sweep | 13.5 ms at 2; 20.0 ms at 4 | 10 ms | No |
-| Tick budget 30 | Host render hop, 95th percentile, split into wait and work | Soak, 4-player sweep | 12.9 ms at 2; 17.8 ms at 4 (whole) | 5 ms | No |
+| Tick budget 30 | Host render hop, 95th percentile, split into wait and work | Soak, 4-player sweep | 12.9 ms at 2; 17.8 ms at 4 (whole). Split, one run: work 9.0 ms, wait 2.4 ms | 5 ms | No |
 | Tick budget 30 | Host and guest tick interval, 95th percentile | All | 20.9 ms; 23.7 ms at 4 | 25 ms | Yes; marginal at 4 |
 | Visible correctness 25 | Fog memory wrong while in fog, tiles at end of run (`correctness.fogSeen.terminal`) | Soak, Hidden Mines | 13 of 19 runs; median 29, max 75 | 0 | No |
 | Visible correctness 25 | Fog memory wrong while in fog, over 2 s (`correctness.fogSeen.persistent`) | Soak, Hidden Mines | 12 of 19 runs; median 2, max 59 | 0 | No |
