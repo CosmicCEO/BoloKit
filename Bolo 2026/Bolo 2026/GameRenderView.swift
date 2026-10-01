@@ -94,6 +94,10 @@ public final class GameRenderView: NSView {
     /// to `render`, so a drawn frame can be tied to the state it shows.
     public var benchRecorder: BenchRecorder? = BoloBench.recorder
     public private(set) var benchGeneration: UInt32 = 0
+    /// P1 probe: where each remote tank was drawn, written only when it moved. The frame's
+    /// start is the timestamp, so every tank drawn in one frame shares it.
+    private var benchDrawn = BenchDrawnProbe()
+    private var benchFrameStart: UInt64 = 0
 
     /// Set by `GameSession` -- applies a key transition's `InputFlags` change to the session's
     /// own owned `GameState`. Never called from inside a `runTick`/tick-timer call (§2 above).
@@ -532,6 +536,7 @@ public final class GameRenderView: NSView {
         let signpost = BoloSignposts.render.beginInterval(BoloSignposts.drawName)
         defer { BoloSignposts.render.endInterval(BoloSignposts.drawName, signpost) }
         let drawStart = benchRecorder == nil ? 0 : BoloBench.now()
+        benchFrameStart = drawStart
         defer { benchRecorder?.record(.frame, sub: 0, id: benchGeneration, v0: BoloBench.now() &- drawStart) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         if liveMetalOverlay != nil {
@@ -947,6 +952,9 @@ public final class GameRenderView: NSView {
             // Falls back to the raw position only if `render(_:)` hasn't run yet for this index,
             // which shouldn't happen since it always runs immediately before `draw(_:)`.
             let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
+            if let benchRecorder {
+                benchDrawn.drew(player: i, at: smoothed, time: benchFrameStart, recorder: benchRecorder)
+            }
             // `GSBoloView.m:315,322,325`: calcvis for a remote tank's own sprite.
             let vis = visFraction(at: smoothed, useForestTerm: true)
             drawSprite(base + headingColumn(other.dir), at: smoothed, ctx, fraction: vis)

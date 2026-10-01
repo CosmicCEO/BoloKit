@@ -1,7 +1,7 @@
 # Define phase
 
-**Status: closed.** Amended 2026-09-29 (Y and CTQ weights). Problem and measurement
-scope are unchanged.
+**Status: closed 2026-09-28; amended 2026-09-29 at the Analyze gate.** The amendment changes
+the Y and the CTQ weights. The problem and the measurement scope are unchanged.
 
 ## Problem
 
@@ -66,6 +66,9 @@ telling guests." It changes the wire format. It is parked for 2.* as named depth
 | Full scorecard at two players; host-cost sweep at 2, 4, 8 and 16 | Jerod | 2026-09-28 |
 | Instrumentation always compiled, recording off by default | Jerod | 2026-09-28 |
 | The `Float` rule in `AGENTS.md` covers the simulation; the benchmark's steering stays in `Double` | Jerod | 2026-09-28 |
+| The benchmark must prove improvements of about 25%; finer gains are not claimed | Jerod | 2026-09-29 |
+| Specifications and the improvement register cover 2 to 4 players; 8 and 16 stay watch items | Jerod | 2026-09-29 |
+| Correctness standard: zero lasting faults, none over 2 s and none left at the end of a run | Jerod | 2026-09-29 |
 | Wire format closed to 1.*; open at 2.* | Jerod | 2026-09-29 |
 | Analyze stays open until P0 and one scorecard | Jerod | 2026-09-29 |
 | Three Measure headlines quarantined until P0 | Jerod | 2026-09-29 |

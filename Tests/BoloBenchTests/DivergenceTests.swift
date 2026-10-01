@@ -180,11 +180,23 @@ func anEpisodeIsNamedByHowLongItLasted(duration: Int, expected: EpisodeLength) t
     #expect(try #require(findDivergence(host: host2, guest: guest2)).episodes(in: .selfStatus).count == 1)
 }
 
-@Test func fogIsComparedAsVisibleNowAndAsLastSeen() throws {
+// P0a: host and guest each keep their own memory of a fogged tile, and a visible tile is drawn
+// from live terrain, so the memory is compared only while the tile is in fog.
+@Test func fogMemoryIsIgnoredWhileTheTileIsVisible() throws {
     let visibleGrass = digestFogValue(fog: 1, seen: .grass)
     let visibleSea = digestFogValue(fog: 1, seen: .sea)
     let host = BenchLog(header: header("host"), records: [state(.fog, 9, visibleGrass, at: 0), mark(at: 10 * second)])
     let guest = BenchLog(header: header("join"), records: [state(.fog, 9, visibleSea, at: 0), mark(at: 10 * second)])
+    let result = try #require(findDivergence(host: host, guest: guest))
+    #expect(result.episodes(in: .fogVisible).isEmpty)
+    #expect(result.episodes(in: .fogSeen).isEmpty)
+}
+
+@Test func fogMemoryIsComparedOnlyWhileTheTileIsInFog() throws {
+    let foggedGrass = digestFogValue(fog: 0, seen: .grass)
+    let foggedSea = digestFogValue(fog: 0, seen: .sea)
+    let host = BenchLog(header: header("host"), records: [state(.fog, 9, foggedGrass, at: 0), mark(at: 10 * second)])
+    let guest = BenchLog(header: header("join"), records: [state(.fog, 9, foggedSea, at: 0), mark(at: 10 * second)])
     let result = try #require(findDivergence(host: host, guest: guest))
     #expect(result.episodes(in: .fogVisible).isEmpty)
     #expect(result.episodes(in: .fogSeen).count == 1)

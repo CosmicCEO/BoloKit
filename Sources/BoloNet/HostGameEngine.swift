@@ -928,19 +928,30 @@ public final class HostGameEngine: @unchecked Sendable {
         // B.7 (D108): fires every tick, including paused/time-limit-reached ticks (the guard
         // below returns *after* this) -- the app should keep rendering a paused game, not freeze
         // on its last pre-pause frame.
+        // Benchmark (P1): `renderHop` times both hops whole; the work inside the closures is
+        // timed on its own so the analyzer can separate the wait (`renderHopWait`) from it.
+        let timed = benchRecorder != nil
+        var hopWork: UInt64 = 0
         if let onTickRendered {
             let snapshot = state
-            await MainActor.run { onTickRendered(snapshot) }
+            hopWork &+= await MainActor.run {
+                let start = timed ? BoloBench.now() : 0
+                onTickRendered(snapshot)
+                return timed ? BoloBench.now() &- start : 0
+            }
         }
 
         // #149: same shape as `onTickRendered` above -- one main-actor hop for every sound
         // queued this tick, not one hop per sound.
         if let onShouldPlaySound, !pendingSounds.isEmpty {
             let sounds = pendingSounds
-            await MainActor.run {
+            hopWork &+= await MainActor.run {
+                let start = timed ? BoloBench.now() : 0
                 for (name, near) in sounds { onShouldPlaySound(name, near) }
+                return timed ? BoloBench.now() &- start : 0
             }
         }
+        lap.note(.renderHopWork, duration: hopWork)
         lap.mark(.renderHop)
 
         // D98 (PARITY finding): `runclient()`'s early return (`client.c:430-434`,

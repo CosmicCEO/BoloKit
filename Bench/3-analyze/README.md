@@ -12,13 +12,13 @@ A1 charter and A5 integrator accepted 2026-09-29. Improve is closed.
 UX. Responsiveness 45, tick-budget cost 30, player-visible correctness 25.
 Define (amended) is the source. Equal weight is superseded.
 
-## Quarantined until P0 / P1
+## Quarantine, resolved 2026-09-30
 
-These Measure headlines are not findings and not targets:
-
-- Guest fog memory ~300 tiles
-- Builder-placed mine wrong for 1.3 s
-- Host tank on the guest screen every 141–400 ms (whole-tile)
+| Measure headline | Outcome |
+|---|---|
+| Guest fog memory ~300 tiles | Comparison artifact. After P0a: 0 in scripted play; median 29 tiles in fog at end of the Hidden Mines soak, 13 of 19 runs. That residue is a target |
+| Builder-placed mine wrong for 1.3 s | Comparison artifact; the refund fault behind it is demonstrated by test. Baseline awaits P0b |
+| Host tank on the guest screen every 141–400 ms | Whole-tile artifact. Replaced by the drawn step measured in the P1 soak |
 
 ## Still in force from Measure
 
@@ -33,9 +33,9 @@ Resync / periodic checksum — 2.*, wire change, authority model.
 
 | Item | Status |
 |---|---|
-| P0a fogSeen filter + join target; re-read into `data/analyze/` | Spec in A2. Not executed |
+| P0a fogSeen filter; re-read into `data/analyze/p0a-fog-join/` | Done 2026-09-30 |
 | P0b digest `mines + builderMines` | Spec. Needs new runs |
-| 2C architecture; 2B gated on wait/work split | A3 accepted as Analyze |
-| P1 drawn-position probe; 3B/4B unit tests | Designed in A4. Not in the tree |
+| 2C architecture; 2B gated on wait/work split | Split instrumented and measured in the P1 soak; choice open |
+| P1 drawn-position probe; 3B/4B unit tests | In the tree 2026-09-30; see `REGISTER.md` |
 
 Improve is closed.

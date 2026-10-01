@@ -1,0 +1,11 @@
+{
+  "name": "p1-drawn-step",
+  "phase": "analyze",
+  "made": "2026-09-30",
+  "from": "One s8-soak-hidden pair run with the P1 drawn-position probe and the render-hop wait/work split. Same machine and conditions as the frozen baseline, except that it ran once, not twenty times.",
+  "build": "analyze/v1.6.9-p0 at 9c1a4bd, Release",
+  "base": "measure/v1.6.9-baseline",
+  "validRuns": 1,
+  "invalidRuns": 0,
+  "note": "A single run: no repeatability verdicts. Use it as the first measured baseline for guest.drawn_remote_step_ms and host.tick_ms.renderHopWait/Work, to be replaced by a full session before Improve claims a change. Every other metric agrees with the frozen baseline within its spread (host late ticks 1.6%, tick interval p95 21.0 ms)."
+}

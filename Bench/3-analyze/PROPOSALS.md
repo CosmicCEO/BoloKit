@@ -1,6 +1,6 @@
 # Improvement proposals
 
-**Status: proposed 2026-09-29, for Jerod's decision.** High level only: no design, no code
+**Status: option detail for `REGISTER.md`; its ranking is history.** High level only: no design, no code
 changed. Scope is 2 to 4 players. Decision charts follow the Kepner-Tregoe method: options must
 pass every must, then are scored on weighted wants, then checked for adverse consequences.
 

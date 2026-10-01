@@ -89,3 +89,4 @@ Notes:
 | When | Who | What |
 |---|---|
 | 2026-09-29 | remote-lead | Opened mailbox. Queued JOB-001 (P0a). |
+| 2026-09-30 | claude (Jerod's session) | JOB-001 done outside this mailbox: P0a wired, tests added, logs re-read into Bench/data/analyze/p0a-fog-join/. See branch analyze/v1.6.9-p0 and its pull request. |

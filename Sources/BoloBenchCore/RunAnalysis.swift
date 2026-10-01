@@ -80,6 +80,12 @@ public enum RunAnalysis {
             guard let durations = byPhase[phase.rawValue] else { continue }
             metrics.distribution("\(name).tick_ms.\(phase)", durations.values.map(\.ms))
         }
+        // P1: the main-actor hop's wait is the hop less the work done inside its closures.
+        if let hop = byPhase[BenchPhase.renderHop.rawValue], let work = byPhase[BenchPhase.renderHopWork.rawValue] {
+            metrics.distribution(
+                "\(name).tick_ms.renderHopWait", hop.map { ($0.value &- min(work[$0.key] ?? 0, $0.value)).ms }
+            )
+        }
         // The instrument's own work inside the tick, taken out of the whole.
         if let whole = byPhase[BenchPhase.whole.rawValue] {
             let digest = byPhase[BenchPhase.digest.rawValue] ?? [:]
@@ -361,6 +367,34 @@ public enum RunAnalysis {
         return metrics
     }
 
+    // MARK: What the guest drew
+
+    /// P1: the host's tank (always slot 0) as the guest's render view drew it, from the `drawn`
+    /// records written each frame its smoothed position moved. Steps more than a second apart
+    /// are left out of both metrics, as for `remote_move_interval_ms`, so a tank that stood
+    /// still (or respawned elsewhere) does not count as one slow, long step.
+    static func drawn(guest: BenchLog) -> MetricSet {
+        var metrics = MetricSet()
+        var steps: [BenchRecord] = []
+        for record in guest.of(.drawn) where record.id == 0 {
+            if let last = steps.last, last.v0 == record.v0, last.v1 == record.v1 { continue }
+            steps.append(record)
+        }
+        var intervals: [Double] = []
+        var sizes: [Double] = []
+        for (earlier, later) in zip(steps, steps.dropFirst()) {
+            let interval = (later.time &- earlier.time).ms
+            guard interval <= 1_000 else { continue }
+            intervals.append(interval)
+            let dx = Double(later.v0) - Double(earlier.v0)
+            let dy = Double(later.v1) - Double(earlier.v1)
+            sizes.append((dx * dx + dy * dy).squareRoot() / Double(BenchDrawnProbe.unitsPerTile))
+        }
+        metrics.distribution("guest.drawn_remote_step_ms", intervals)
+        metrics.distribution("guest.drawn_remote_step_tiles", sizes)
+        return metrics
+    }
+
     // MARK: Whole run
 
     public struct RunFacts: Sendable {
@@ -422,6 +456,7 @@ public enum RunAnalysis {
         var episodes: [Episode] = []
         if let guest {
             metrics.merge(side(guest, name: "guest").values) { _, new in new }
+            metrics.merge(drawn(guest: guest).values) { _, new in new }
             if let divergence = findDivergence(host: host, guest: guest) {
                 metrics.merge(divergence.metrics().values) { _, new in new }
                 metrics.merge(link(host: host, guest: guest, slot: divergence.guest).values) { _, new in new }
