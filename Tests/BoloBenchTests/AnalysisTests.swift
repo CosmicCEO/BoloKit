@@ -120,6 +120,50 @@ private func record(_ kind: BenchKind, at time: UInt64, sub: UInt8 = 0, id: UInt
     #expect(metrics["host.tick_ms.terrainDiff.p50"] == 0.5)
 }
 
+@Test func theHopsWaitIsTheHopLessTheWorkInsideIt() {
+    var records: [BenchRecord] = []
+    // Four ticks whose main-actor hop takes 12 ms, with 1, 2, 3 and 4 ms of work inside it.
+    for tick in 1...4 {
+        let at = UInt64(tick) * 20 * ms
+        records.append(record(.tick, at: at, id: UInt32(tick)))
+        records.append(record(.phase, at: at + 1 * ms, sub: BenchPhase.renderHopWork.rawValue, id: UInt32(tick), v0: UInt64(tick) * ms))
+        records.append(record(.phase, at: at + 13 * ms, sub: BenchPhase.renderHop.rawValue, id: UInt32(tick), v0: 12 * ms))
+    }
+    let metrics = RunAnalysis.side(BenchLog(header: header("host"), records: records), name: "host")
+    #expect(metrics["host.tick_ms.renderHop.n"] == 4)
+    #expect(metrics["host.tick_ms.renderHop.max"] == 12)
+    #expect(metrics["host.tick_ms.renderHopWork.n"] == 4)
+    #expect(metrics["host.tick_ms.renderHopWork.max"] == 4)
+    #expect(metrics["host.tick_ms.renderHopWait.n"] == 4)
+    #expect(metrics["host.tick_ms.renderHopWait.max"] == 11)
+    #expect(metrics["host.tick_ms.renderHopWait.p50"] == 9)
+}
+
+@Test func drawnStepsAreTheFramesInWhichTheHostsTankMovedOnTheGuestsScreen() {
+    let records = [
+        record(.drawn, at: 0, id: 0, v0: 160, v1: 160),
+        // A sixteenth of a tile, 20 ms later.
+        record(.drawn, at: 20 * ms, id: 0, v0: 161, v1: 160),
+        // Another player's tank does not count.
+        record(.drawn, at: 40 * ms, id: 1, v0: 999, v1: 999),
+        // A whole tile, 40 ms later.
+        record(.drawn, at: 60 * ms, id: 0, v0: 161, v1: 176),
+        // The same spot again is no step.
+        record(.drawn, at: 80 * ms, id: 0, v0: 161, v1: 176),
+        // After standing still for two seconds: neither the interval nor the jump counts.
+        record(.drawn, at: 60 * ms + 2 * second, id: 0, v0: 200, v1: 176),
+        // Five sixteenths (3, 4), 100 ms later.
+        record(.drawn, at: 60 * ms + 2 * second + 100 * ms, id: 0, v0: 203, v1: 180),
+    ]
+    let metrics = RunAnalysis.drawn(guest: BenchLog(header: header("join"), records: records))
+    #expect(metrics["guest.drawn_remote_step_ms.n"] == 3)
+    #expect(metrics["guest.drawn_remote_step_ms.p50"] == 40)
+    #expect(metrics["guest.drawn_remote_step_ms.max"] == 100)
+    #expect(metrics["guest.drawn_remote_step_tiles.n"] == 3)
+    #expect(metrics["guest.drawn_remote_step_tiles.p50"] == 0.3125)
+    #expect(metrics["guest.drawn_remote_step_tiles.max"] == 1)
+}
+
 @Test func trafficIsCountedPerChannelDirectionAndOpcode() {
     let tcp = BenchChannel.tcp.rawValue
     let udp = BenchChannel.udp.rawValue

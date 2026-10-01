@@ -63,6 +63,10 @@ public enum BenchKind: UInt8, Sendable, CaseIterable {
     case recorder = 19
     /// Tick timer fired.
     case timerFire = 20
+    /// A remote tank drawn somewhere new (P1 probe). `id` player index, `v0` x and `v1` y in
+    /// `BenchDrawnProbe.unitsPerTile`ths of a tile, `time` the frame's start. Written only
+    /// when the drawn position differs from the previous frame's.
+    case drawn = 21
 }
 
 public enum BenchChannel: UInt8, Sendable {
@@ -86,6 +90,8 @@ public enum BenchPhase: UInt8, Sendable, CaseIterable {
     case shells = 11
     case explosions = 12
     case digest = 13
+    /// The part of `renderHop` spent inside the main-actor closures; the rest is waiting.
+    case renderHopWork = 14
 }
 
 public enum BenchInput: UInt8, Sendable {
