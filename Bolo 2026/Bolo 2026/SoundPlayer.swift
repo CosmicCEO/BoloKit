@@ -71,7 +71,19 @@
 //  with no far entry (`mine`/`pillshot`/`bubbles`/`msgreceived` -- matches the oracle, which has
 //  no `kFarMineSound` etc. either) always plays its near clip regardless of `near`.
 //
+//  **2026-10-02 (Improve item 2D): the pool is now preloaded `AVAudioPlayerNode` slots on one**
+//  **`AVAudioEngine`, not `NSSound`s.** `NSSound(byReference: true)` re-read and re-decoded its
+//  AIFF from disk inside every `play()`, measured at 19 to 26 ms (p95) on the main thread for a
+//  tick that plays a sound -- enough to make the host's 20 ms tick late. Loading into memory
+//  (`byReference: false`) did not help (`NSSound.play()` still ~10 ms median) and neither did a
+//  prepared `AVAudioPlayer` (`play()` ~15 ms: it starts its own I/O synchronously). So each clip
+//  is decoded once into an `AVAudioPCMBuffer`, each pool slot is a node already attached to a
+//  running engine, and `play()` is just `scheduleBuffer` (~0.02 ms). A slot is busy until
+//  `now + clip duration` (a lock-guarded deadline; no completion-handler thread). Pool
+//  sizes, names, round-robin (first free slot, skip if all busy) and the mute check are unchanged.
+//
 
+import AVFoundation
 import AppKit
 
 final class SoundPlayer {
@@ -99,7 +111,20 @@ final class SoundPlayer {
         "builderdeath": "fbuilderdeath", "tree": "ftree", "sink": "fsink", "tankshot": "fshot",
     ]
 
-    private var pools: [String: [NSSound]] = [:]
+    /// One pool slot: a node permanently attached to `engine`, the clip's decoded buffer, and
+    /// the instant the last scheduled play ends (replaces `NSSound.isPlaying`).
+    private struct Slot {
+        let node: AVAudioPlayerNode
+        let buffer: AVAudioPCMBuffer
+        let duration: Duration
+        var busyUntil: ContinuousClock.Instant
+    }
+
+    private let engine = AVAudioEngine()
+    private let clock = ContinuousClock()
+    private var pools: [String: [Slot]] = [:]
+    private let lock = NSLock()  // `play()` may be called from a host tick thread
+    private var configObserver: NSObjectProtocol?
 
     private init() {
         for (name, count) in Self.poolSizes {
@@ -108,11 +133,37 @@ final class SoundPlayer {
                 loadPool(farName, count: count)
             }
         }
+        startEngine()
+        // A device change stops the engine; bring it back so `play()` stays silent-failure free.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.startEngine() }
+        }
+    }
+
+    private func startEngine() {
+        guard (try? engine.start()) != nil else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        for slots in pools.values {
+            for slot in slots { slot.node.play() }
+        }
     }
 
     private func loadPool(_ name: String, count: Int) {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "aiff") else { return }
-        pools[name] = (0..<count).compactMap { _ in NSSound(contentsOf: url, byReference: true) }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "aiff"),
+              let file = try? AVAudioFile(forReading: url),
+              let buffer = AVAudioPCMBuffer(
+                pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+              (try? file.read(into: buffer)) != nil else { return }
+        let duration = Duration.seconds(Double(file.length) / file.processingFormat.sampleRate)
+        pools[name] = (0..<count).map { _ in
+            let node = AVAudioPlayerNode()
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
+            return Slot(node: node, buffer: buffer, duration: duration, busyUntil: .now)
+        }
     }
 
     /// Plays `name` (or its far variant, if `near` is false and one exists) on the first
@@ -125,9 +176,14 @@ final class SoundPlayer {
     func play(_ name: String, near: Bool = true) {
         guard !UserDefaults.standard.bool(forKey: "GSMuteBool") else { return }
         let resolvedName = (!near ? Self.farNames[name] : nil) ?? name
-        guard let pool = pools[resolvedName] else { return }
-        for sound in pool where !sound.isPlaying {
-            sound.play()
+        lock.lock()
+        defer { lock.unlock() }
+        guard var pool = pools[resolvedName] else { return }
+        let now = clock.now
+        for i in pool.indices where pool[i].busyUntil <= now {
+            pool[i].node.scheduleBuffer(pool[i].buffer, at: nil, options: .interrupts)
+            pool[i].busyUntil = now + pool[i].duration
+            pools[resolvedName] = pool
             return
         }
     }
