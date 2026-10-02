@@ -90,6 +90,11 @@ public final class GameRenderView: NSView {
     /// newly-fired shell at the same slot.
     private var remoteBuilderSmoothers: [Int: RemotePositionSmoother] = [:]
 
+    /// The smoothers' clock: advances once per `render(_:)` (one per 50 Hz game tick). Not
+    /// `state.ticks`, which a join client never advances (only `runTick` does), so the smoothers
+    /// saw no elapsed time there and snapped. Host and guest both use this counter.
+    private var smootherTick: UInt64 = 0
+
     /// v1.6.9 baseline benchmark: measurement only. `benchGeneration` counts the states handed
     /// to `render`, so a drawn frame can be tied to the state it shows.
     public var benchRecorder: BenchRecorder? = BoloBench.recorder
@@ -522,12 +527,13 @@ public final class GameRenderView: NSView {
             // actually changed, not every tick.
             liveMetalOverlay?.mtkView.needsDisplay = true
         }
+        smootherTick &+= 1
         for i in newState.players.indices
         where newState.players[i].connected && i != newState.localPlayer {
             remoteTankSmoothers[i, default: RemotePositionSmoother()]
-                .update(rawPosition: newState.players[i].tank, tick: newState.ticks)
+                .update(rawPosition: newState.players[i].tank, tick: smootherTick)
             remoteBuilderSmoothers[i, default: RemotePositionSmoother()]
-                .update(rawPosition: newState.players[i].builder, tick: newState.ticks)
+                .update(rawPosition: newState.players[i].builder, tick: smootherTick)
         }
         needsDisplay = true
     }
@@ -933,7 +939,7 @@ public final class GameRenderView: NSView {
             let player = state.players[i]
             let position = i == state.localPlayer
                 ? player.builder
-                : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? player.builder)
+                : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: smootherTick) ?? player.builder)
             drawBuilder(player, at: position, ctx)
         }
 
@@ -951,7 +957,7 @@ public final class GameRenderView: NSView {
             // (jerky, ~10Hz-relay-frozen) one -- see `remoteTankSmoothers`'s own doc comment.
             // Falls back to the raw position only if `render(_:)` hasn't run yet for this index,
             // which shouldn't happen since it always runs immediately before `draw(_:)`.
-            let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
+            let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: smootherTick) ?? other.tank
             if let benchRecorder {
                 benchDrawn.drew(player: i, at: smoothed, time: benchFrameStart, recorder: benchRecorder)
             }
