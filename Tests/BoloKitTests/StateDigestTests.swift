@@ -58,6 +58,16 @@ private func changes(_ tracker: inout StateDigestTracker, _ state: GameState) ->
     #expect(changes(&tracker, state).isEmpty)
 }
 
+// P0b: a mine the builder carries has left `mines` on the guest but not yet on the host.
+@Test func theBuildersCarriedMineCountsAsAMine() {
+    var state = sampleState()
+    var tracker = StateDigestTracker(player: 1)
+    _ = changes(&tracker, state)
+    state.players[1].mines -= 1
+    state.players[1].builderMines = 1
+    #expect(changes(&tracker, state).isEmpty)
+}
+
 @Test func eachResourceIsItsOwnElement() {
     var state = sampleState()
     var tracker = StateDigestTracker(player: 1)

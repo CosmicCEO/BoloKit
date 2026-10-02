@@ -1,0 +1,3390 @@
+{
+  "invalidReasons" : [
+
+  ],
+  "invalidRuns" : 0,
+  "metrics" : {
+    "host.apply_us.tcp.max" : {
+      "high" : 306.333,
+      "low" : 21,
+      "median" : 30.583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        31.083,
+        26.167,
+        306.333,
+        30.583,
+        21
+      ]
+    },
+    "host.apply_us.tcp.n" : {
+      "high" : 855,
+      "low" : 804,
+      "median" : 825,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        841,
+        804,
+        825,
+        855,
+        822
+      ]
+    },
+    "host.apply_us.tcp.op2.max" : {
+      "high" : 306.333,
+      "low" : 2.625,
+      "median" : 154.479,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        306.333,
+        2.625
+      ]
+    },
+    "host.apply_us.tcp.op2.n" : {
+      "high" : 3,
+      "low" : 2,
+      "median" : 2.5,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3,
+        2
+      ]
+    },
+    "host.apply_us.tcp.op2.p50" : {
+      "high" : 191.583,
+      "low" : 1.209,
+      "median" : 96.396,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        191.583,
+        1.209
+      ]
+    },
+    "host.apply_us.tcp.op2.p95" : {
+      "high" : 306.333,
+      "low" : 2.625,
+      "median" : 154.479,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        306.333,
+        2.625
+      ]
+    },
+    "host.apply_us.tcp.op2.p99" : {
+      "high" : 306.333,
+      "low" : 2.625,
+      "median" : 154.479,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        306.333,
+        2.625
+      ]
+    },
+    "host.apply_us.tcp.op4.max" : {
+      "high" : 31.083,
+      "low" : 21,
+      "median" : 29.625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        31.083,
+        26.167,
+        29.625,
+        30.583,
+        21
+      ]
+    },
+    "host.apply_us.tcp.op4.n" : {
+      "high" : 855,
+      "low" : 803,
+      "median" : 822,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        841,
+        803,
+        822,
+        855,
+        820
+      ]
+    },
+    "host.apply_us.tcp.op4.p50" : {
+      "high" : 2.958,
+      "low" : 2.667,
+      "median" : 2.792,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        2.792,
+        2.958,
+        2.75,
+        2.833,
+        2.667
+      ]
+    },
+    "host.apply_us.tcp.op4.p95" : {
+      "high" : 12.958,
+      "low" : 12.083,
+      "median" : 12.875,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        12.875,
+        12.958,
+        12.75,
+        12.875,
+        12.083
+      ]
+    },
+    "host.apply_us.tcp.op4.p99" : {
+      "high" : 16.334,
+      "low" : 15.375,
+      "median" : 15.875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        16.334,
+        15.875,
+        15.375,
+        16.333,
+        15.375
+      ]
+    },
+    "host.apply_us.tcp.op6.max" : {
+      "high" : 4.458,
+      "low" : 4.458,
+      "median" : 4.458,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4.458
+      ]
+    },
+    "host.apply_us.tcp.op6.n" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1
+      ]
+    },
+    "host.apply_us.tcp.op6.p50" : {
+      "high" : 4.458,
+      "low" : 4.458,
+      "median" : 4.458,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        4.458
+      ]
+    },
+    "host.apply_us.tcp.op6.p95" : {
+      "high" : 4.458,
+      "low" : 4.458,
+      "median" : 4.458,
+      "repeatable" : false,
+      "rule" : "relative10",
+      "values" : [
+        4.458
+      ]
+    },
+    "host.apply_us.tcp.op6.p99" : {
+      "high" : 4.458,
+      "low" : 4.458,
+      "median" : 4.458,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4.458
+      ]
+    },
+    "host.apply_us.tcp.p50" : {
+      "high" : 2.958,
+      "low" : 2.667,
+      "median" : 2.792,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        2.792,
+        2.958,
+        2.791,
+        2.833,
+        2.667
+      ]
+    },
+    "host.apply_us.tcp.p95" : {
+      "high" : 12.958,
+      "low" : 12.083,
+      "median" : 12.875,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        12.875,
+        12.958,
+        12.833,
+        12.875,
+        12.083
+      ]
+    },
+    "host.apply_us.tcp.p99" : {
+      "high" : 16.334,
+      "low" : 15.375,
+      "median" : 15.917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        16.334,
+        15.875,
+        15.917,
+        16.333,
+        15.375
+      ]
+    },
+    "host.apply_us.udp.max" : {
+      "high" : 23485.916,
+      "low" : 12492.792,
+      "median" : 15533.709,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        12492.792,
+        17443.459,
+        23485.916,
+        15533.709,
+        15479.625
+      ]
+    },
+    "host.apply_us.udp.n" : {
+      "high" : 5903,
+      "low" : 5825,
+      "median" : 5860,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5891,
+        5903,
+        5844,
+        5825,
+        5860
+      ]
+    },
+    "host.apply_us.udp.p50" : {
+      "high" : 260.625,
+      "low" : 250,
+      "median" : 253.75,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        250,
+        252.083,
+        258.625,
+        260.625,
+        253.75
+      ]
+    },
+    "host.apply_us.udp.p95" : {
+      "high" : 3305.125,
+      "low" : 2748.625,
+      "median" : 3291.667,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        2748.625,
+        3305.125,
+        3300.541,
+        3291.667,
+        3256.75
+      ]
+    },
+    "host.apply_us.udp.p99" : {
+      "high" : 6024.709,
+      "low" : 4907.541,
+      "median" : 5829.75,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4907.541,
+        5865,
+        5829.75,
+        6024.709,
+        5298.916
+      ]
+    },
+    "host.apply_us.udp_state_change.max" : {
+      "high" : 21,
+      "low" : 7.542,
+      "median" : 11.542,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        8.084,
+        20.25,
+        7.542,
+        11.542,
+        21
+      ]
+    },
+    "host.apply_us.udp_state_change.n" : {
+      "high" : 5903,
+      "low" : 5825,
+      "median" : 5860,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5891,
+        5903,
+        5844,
+        5825,
+        5860
+      ]
+    },
+    "host.apply_us.udp_state_change.p50" : {
+      "high" : 1.375,
+      "low" : 0.583,
+      "median" : 1.375,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.583,
+        1.375,
+        1.375,
+        1.375,
+        1.375
+      ]
+    },
+    "host.apply_us.udp_state_change.p95" : {
+      "high" : 2.292,
+      "low" : 2.084,
+      "median" : 2.167,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        2.084,
+        2.292,
+        2.125,
+        2.167,
+        2.291
+      ]
+    },
+    "host.apply_us.udp_state_change.p99" : {
+      "high" : 2.791,
+      "low" : 2.459,
+      "median" : 2.666,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.5,
+        2.75,
+        2.459,
+        2.666,
+        2.791
+      ]
+    },
+    "host.cpu_pct.max" : {
+      "high" : 57.19702101003681,
+      "low" : 52.47465683005335,
+      "median" : 55.70481460655757,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        57.19702101003681,
+        52.47465683005335,
+        56.12452528740244,
+        55.70481460655757,
+        54.17140004082371
+      ]
+    },
+    "host.cpu_pct.mean" : {
+      "high" : 44.60616062921976,
+      "low" : 44.3342107412526,
+      "median" : 44.4892912077408,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        44.3342107412526,
+        44.60616062921976,
+        44.4892912077408,
+        44.544780014640885,
+        44.47807311641929
+      ]
+    },
+    "host.cpu_pct.n" : {
+      "high" : 101,
+      "low" : 101,
+      "median" : 101,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        101,
+        101,
+        101,
+        101,
+        101
+      ]
+    },
+    "host.cpu_pct.p50" : {
+      "high" : 44.40758077812591,
+      "low" : 44.00419619874255,
+      "median" : 44.11948452681421,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        44.00419619874255,
+        44.40758077812591,
+        44.11948452681421,
+        44.140837586642576,
+        44.028981097889535
+      ]
+    },
+    "host.cpu_pct.p95" : {
+      "high" : 49.12352958005647,
+      "low" : 47.37205795292725,
+      "median" : 48.05030528868614,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        47.90504033250057,
+        49.12352958005647,
+        47.37205795292725,
+        48.43534516812626,
+        48.05030528868614
+      ]
+    },
+    "host.cpu_pct.p99" : {
+      "high" : 52.97118043948491,
+      "low" : 49.878558541195964,
+      "median" : 52.46387430646926,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        52.97118043948491,
+        49.878558541195964,
+        52.57479470090765,
+        51.929843135552765,
+        52.46387430646926
+      ]
+    },
+    "host.datagram_rejects" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.datagram_rejects.applyReturnedNil" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.datagram_rejects.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.datagram_rejects.malformed" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.datagram_rejects.noPeer" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.draw_ms.sprites.max" : {
+      "high" : 4.996709,
+      "low" : 4.547416,
+      "median" : 4.702,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4.702,
+        4.996709,
+        4.651292,
+        4.547416,
+        4.883083
+      ]
+    },
+    "host.draw_ms.sprites.n" : {
+      "high" : 4949,
+      "low" : 4904,
+      "median" : 4945,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4949,
+        4904,
+        4945,
+        4947,
+        4930
+      ]
+    },
+    "host.draw_ms.sprites.p50" : {
+      "high" : 0.185625,
+      "low" : 0.161375,
+      "median" : 0.164792,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.169458,
+        0.185625,
+        0.163667,
+        0.161375,
+        0.164792
+      ]
+    },
+    "host.draw_ms.sprites.p95" : {
+      "high" : 0.241958,
+      "low" : 0.22325,
+      "median" : 0.231708,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.241958,
+        0.240291,
+        0.223375,
+        0.22325,
+        0.231708
+      ]
+    },
+    "host.draw_ms.sprites.p99" : {
+      "high" : 0.266666,
+      "low" : 0.244334,
+      "median" : 0.25425,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.266666,
+        0.263667,
+        0.244334,
+        0.247292,
+        0.25425
+      ]
+    },
+    "host.draw_ms.terrain.max" : {
+      "high" : 0.840959,
+      "low" : 0.74275,
+      "median" : 0.757583,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.74275,
+        0.757583,
+        0.830917,
+        0.840959,
+        0.754958
+      ]
+    },
+    "host.draw_ms.terrain.n" : {
+      "high" : 783,
+      "low" : 622,
+      "median" : 720,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        783,
+        754,
+        681,
+        622,
+        720
+      ]
+    },
+    "host.draw_ms.terrain.p50" : {
+      "high" : 0.195334,
+      "low" : 0.187541,
+      "median" : 0.193042,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.187541,
+        0.1945,
+        0.195334,
+        0.192625,
+        0.193042
+      ]
+    },
+    "host.draw_ms.terrain.p95" : {
+      "high" : 0.270167,
+      "low" : 0.261875,
+      "median" : 0.267625,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.263709,
+        0.267625,
+        0.269084,
+        0.261875,
+        0.270167
+      ]
+    },
+    "host.draw_ms.terrain.p99" : {
+      "high" : 0.308958,
+      "low" : 0.282208,
+      "median" : 0.300208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.308958,
+        0.293625,
+        0.300208,
+        0.282208,
+        0.300958
+      ]
+    },
+    "host.extrapolation_ticks.n" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.frame_interval_ms.max" : {
+      "high" : 229.058708,
+      "low" : 197.949375,
+      "median" : 205.534209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        211.923333,
+        205.534209,
+        200.716459,
+        229.058708,
+        197.949375
+      ]
+    },
+    "host.frame_interval_ms.n" : {
+      "high" : 4948,
+      "low" : 4903,
+      "median" : 4944,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        4948,
+        4903,
+        4944,
+        4946,
+        4929
+      ]
+    },
+    "host.frame_interval_ms.p50" : {
+      "high" : 16.788833,
+      "low" : 16.749792,
+      "median" : 16.772083,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        16.749792,
+        16.786042,
+        16.771584,
+        16.788833,
+        16.772083
+      ]
+    },
+    "host.frame_interval_ms.p95" : {
+      "high" : 33.860416,
+      "low" : 33.643,
+      "median" : 33.727042,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        33.727042,
+        33.860416,
+        33.715,
+        33.643,
+        33.832625
+      ]
+    },
+    "host.frame_interval_ms.p99" : {
+      "high" : 50.110916,
+      "low" : 48.881375,
+      "median" : 49.344833,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        49.069208,
+        50.110916,
+        49.344833,
+        48.881375,
+        49.4025
+      ]
+    },
+    "host.frames_per_s" : {
+      "high" : 48.1641783870704,
+      "low" : 47.746434220297886,
+      "median" : 48.14605978459342,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        48.1641783870704,
+        47.746434220297886,
+        48.15720567215473,
+        48.14605978459342,
+        47.99126790637512
+      ]
+    },
+    "host.input_to_frame_ms.max" : {
+      "high" : 85.520542,
+      "low" : 62.76675,
+      "median" : 74.209417,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        62.76675,
+        79.805958,
+        69.22675,
+        85.520542,
+        74.209417
+      ]
+    },
+    "host.input_to_frame_ms.n" : {
+      "high" : 1035,
+      "low" : 1031,
+      "median" : 1032,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1031,
+        1031,
+        1032,
+        1035,
+        1032
+      ]
+    },
+    "host.input_to_frame_ms.p50" : {
+      "high" : 18.052292,
+      "low" : 16.886375,
+      "median" : 17.698125,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        17.698125,
+        17.558541,
+        18.052292,
+        17.804041,
+        16.886375
+      ]
+    },
+    "host.input_to_frame_ms.p95" : {
+      "high" : 37.7925,
+      "low" : 33.623125,
+      "median" : 36.613917,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        34.029667,
+        37.7925,
+        33.623125,
+        36.613917,
+        37.196334
+      ]
+    },
+    "host.input_to_frame_ms.p99" : {
+      "high" : 55.928583,
+      "low" : 44.630042,
+      "median" : 48.9135,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        48.9135,
+        55.928583,
+        52.147667,
+        44.630042,
+        47.075208
+      ]
+    },
+    "host.invariant_violations" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.join_handshake_ms.max" : {
+      "high" : 5.186375,
+      "low" : 2.2175,
+      "median" : 5.001708,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.2175,
+        4.607417,
+        5.171209,
+        5.001708,
+        5.186375
+      ]
+    },
+    "host.join_handshake_ms.n" : {
+      "high" : 7,
+      "low" : 7,
+      "median" : 7,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7,
+        7,
+        7,
+        7,
+        7
+      ]
+    },
+    "host.join_handshake_ms.p50" : {
+      "high" : 2.196875,
+      "low" : 1.739541,
+      "median" : 1.865917,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        1.865917,
+        1.832667,
+        2.196875,
+        1.739541,
+        1.902833
+      ]
+    },
+    "host.join_handshake_ms.p95" : {
+      "high" : 5.186375,
+      "low" : 2.2175,
+      "median" : 5.001708,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        2.2175,
+        4.607417,
+        5.171209,
+        5.001708,
+        5.186375
+      ]
+    },
+    "host.join_handshake_ms.p99" : {
+      "high" : 5.186375,
+      "low" : 2.2175,
+      "median" : 5.001708,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2.2175,
+        4.607417,
+        5.171209,
+        5.001708,
+        5.186375
+      ]
+    },
+    "host.join_stall_ms" : {
+      "high" : 25.757292,
+      "low" : 21.612792,
+      "median" : 24.120708,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        25.757292,
+        21.612792,
+        24.093583,
+        24.877333,
+        24.120708
+      ]
+    },
+    "host.memory_mb.max" : {
+      "high" : 193.50121307373047,
+      "low" : 183.36061096191406,
+      "median" : 186.04811096191406,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        183.36061096191406,
+        185.17311096191406,
+        186.04811096191406,
+        193.50121307373047,
+        186.78248596191406
+      ]
+    },
+    "host.memory_mb.n" : {
+      "high" : 102,
+      "low" : 102,
+      "median" : 102,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        102,
+        102,
+        102,
+        102,
+        102
+      ]
+    },
+    "host.memory_mb.p50" : {
+      "high" : 174.67311096191406,
+      "low" : 171.06371307373047,
+      "median" : 173.48561096191406,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        174.67311096191406,
+        173.86061096191406,
+        173.37623596191406,
+        171.06371307373047,
+        173.48561096191406
+      ]
+    },
+    "host.memory_mb.p95" : {
+      "high" : 184.07933807373047,
+      "low" : 179.67311096191406,
+      "median" : 181.39186096191406,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        179.67311096191406,
+        181.39186096191406,
+        180.79811096191406,
+        184.07933807373047,
+        183.26686096191406
+      ]
+    },
+    "host.memory_mb.p99" : {
+      "high" : 189.82933807373047,
+      "low" : 181.43873596191406,
+      "median" : 184.28248596191406,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        181.43873596191406,
+        184.17311096191406,
+        184.28248596191406,
+        189.82933807373047,
+        186.29811096191406
+      ]
+    },
+    "host.queue_depth.max" : {
+      "high" : 12,
+      "low" : 7,
+      "median" : 9,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        9,
+        11,
+        7,
+        12,
+        9
+      ]
+    },
+    "host.queue_depth.n" : {
+      "high" : 5107,
+      "low" : 5077,
+      "median" : 5100,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5104,
+        5077,
+        5100,
+        5107,
+        5089
+      ]
+    },
+    "host.queue_depth.p50" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.queue_depth.p95" : {
+      "high" : 1,
+      "low" : 0,
+      "median" : 1,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    "host.queue_depth.p99" : {
+      "high" : 3,
+      "low" : 2,
+      "median" : 2,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        2,
+        3,
+        3,
+        2,
+        2
+      ]
+    },
+    "host.recorder.dropped" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.recorder.self_ms" : {
+      "high" : 30.628096,
+      "low" : 28.101056,
+      "median" : 28.826624,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        28.7728,
+        30.628096,
+        28.826624,
+        29.559168,
+        28.101056
+      ]
+    },
+    "host.recorder.self_us_per_tick" : {
+      "high" : 6.032715383100256,
+      "low" : 5.52192100609157,
+      "median" : 5.652279215686274,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5.63730407523511,
+        6.032715383100256,
+        5.652279215686274,
+        5.7879710201683965,
+        5.52192100609157
+      ]
+    },
+    "host.records" : {
+      "high" : 448593,
+      "low" : 419799,
+      "median" : 426893,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        419799,
+        448593,
+        426893,
+        423663,
+        429533
+      ]
+    },
+    "host.run_s" : {
+      "high" : 102.86180225,
+      "low" : 102.802264875,
+      "median" : 102.844398667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        102.86180225,
+        102.824866666,
+        102.802264875,
+        102.857790583,
+        102.844398667
+      ]
+    },
+    "host.rx.tcp.bytes" : {
+      "high" : 2565,
+      "low" : 2412,
+      "median" : 2475,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2523,
+        2412,
+        2475,
+        2565,
+        2466
+      ]
+    },
+    "host.rx.tcp.bytes_per_s" : {
+      "high" : 24.93734296120429,
+      "low" : 23.45736083310235,
+      "median" : 24.07534506179818,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        24.528055554266746,
+        23.45736083310235,
+        24.07534506179818,
+        24.93734296120429,
+        23.977970914922302
+      ]
+    },
+    "host.rx.tcp.messages" : {
+      "high" : 855,
+      "low" : 804,
+      "median" : 825,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        841,
+        804,
+        825,
+        855,
+        822
+      ]
+    },
+    "host.rx.tcp.messages_per_s" : {
+      "high" : 8.312447653734763,
+      "low" : 7.819120277700783,
+      "median" : 8.025115020599394,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        8.176018518088915,
+        7.819120277700783,
+        8.025115020599394,
+        8.312447653734763,
+        7.992656971640768
+      ]
+    },
+    "host.rx.tcp.op2.bytes" : {
+      "high" : 9,
+      "low" : 6,
+      "median" : 7.5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9,
+        6
+      ]
+    },
+    "host.rx.tcp.op2.messages" : {
+      "high" : 3,
+      "low" : 2,
+      "median" : 2.5,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3,
+        2
+      ]
+    },
+    "host.rx.tcp.op4.bytes" : {
+      "high" : 2565,
+      "low" : 2409,
+      "median" : 2466,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2523,
+        2409,
+        2466,
+        2565,
+        2460
+      ]
+    },
+    "host.rx.tcp.op4.messages" : {
+      "high" : 855,
+      "low" : 803,
+      "median" : 822,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        841,
+        803,
+        822,
+        855,
+        820
+      ]
+    },
+    "host.rx.tcp.op6.bytes" : {
+      "high" : 3,
+      "low" : 3,
+      "median" : 3,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3
+      ]
+    },
+    "host.rx.tcp.op6.messages" : {
+      "high" : 1,
+      "low" : 1,
+      "median" : 1,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        1
+      ]
+    },
+    "host.rx.udp.bytes" : {
+      "high" : 723583,
+      "low" : 709028,
+      "median" : 717107,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        717107,
+        723583,
+        709028,
+        710161,
+        717342
+      ]
+    },
+    "host.rx.udp.bytes_per_s" : {
+      "high" : 7037.042920273092,
+      "low" : 6897.007579182481,
+      "median" : 6971.557801963362,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        6971.557801963362,
+        7037.042920273092,
+        6897.007579182481,
+        6904.299576870098,
+        6975.022551521572
+      ]
+    },
+    "host.rx.udp.messages" : {
+      "high" : 5903,
+      "low" : 5825,
+      "median" : 5860,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        5891,
+        5903,
+        5844,
+        5825,
+        5860
+      ]
+    },
+    "host.rx.udp.messages_per_s" : {
+      "high" : 57.408292287646425,
+      "low" : 56.63158781638012,
+      "median" : 56.97928206060207,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        57.27101675393793,
+        57.408292287646425,
+        56.84699658228225,
+        56.63158781638012,
+        56.97928206060207
+      ]
+    },
+    "host.send_completion_us.tcp.max" : {
+      "high" : 23143.125,
+      "low" : 4639.833,
+      "median" : 17901.208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        11744.916,
+        17901.208,
+        23143.125,
+        19404.25,
+        4639.833
+      ]
+    },
+    "host.send_completion_us.tcp.n" : {
+      "high" : 119842,
+      "low" : 105364,
+      "median" : 109721,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        105364,
+        119842,
+        109721,
+        106734,
+        110523
+      ]
+    },
+    "host.send_completion_us.tcp.p50" : {
+      "high" : 35.75,
+      "low" : 34.291,
+      "median" : 34.75,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        35.458,
+        34.291,
+        34.667,
+        35.75,
+        34.75
+      ]
+    },
+    "host.send_completion_us.tcp.p95" : {
+      "high" : 54.75,
+      "low" : 51.125,
+      "median" : 53.709,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        54.75,
+        51.125,
+        53.75,
+        53.709,
+        51.291
+      ]
+    },
+    "host.send_completion_us.tcp.p99" : {
+      "high" : 85.042,
+      "low" : 73.792,
+      "median" : 75.958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        85.042,
+        73.875,
+        75.958,
+        77.417,
+        73.792
+      ]
+    },
+    "host.send_completion_us.udp.max" : {
+      "high" : 39006.833,
+      "low" : 18507.209,
+      "median" : 24975.791,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        24975.791,
+        23259.166,
+        27113.542,
+        18507.209,
+        39006.833
+      ]
+    },
+    "host.send_completion_us.udp.n" : {
+      "high" : 42221,
+      "low" : 41798,
+      "median" : 41977,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        42182,
+        42221,
+        41896,
+        41798,
+        41977
+      ]
+    },
+    "host.send_completion_us.udp.p50" : {
+      "high" : 39.125,
+      "low" : 37.834,
+      "median" : 38.375,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        38.375,
+        37.834,
+        38.792,
+        39.125,
+        38.25
+      ]
+    },
+    "host.send_completion_us.udp.p95" : {
+      "high" : 64.333,
+      "low" : 60.042,
+      "median" : 62.958,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        60.042,
+        62.541,
+        64.333,
+        64.25,
+        62.958
+      ]
+    },
+    "host.send_completion_us.udp.p99" : {
+      "high" : 3374.167,
+      "low" : 3232.584,
+      "median" : 3255.875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        3242.792,
+        3232.584,
+        3374.167,
+        3299.791,
+        3255.875
+      ]
+    },
+    "host.thermal_state.max" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.tick_interval_ms.max" : {
+      "high" : 187.402167,
+      "low" : 172.965125,
+      "median" : 175.938084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        175.938084,
+        172.965125,
+        186.843083,
+        187.402167,
+        175.937708
+      ]
+    },
+    "host.tick_interval_ms.n" : {
+      "high" : 5106,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5106,
+        5088
+      ]
+    },
+    "host.tick_interval_ms.over_25_pct" : {
+      "high" : 6.185973207249803,
+      "low" : 4.722712130119538,
+      "median" : 5.236320847224946,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        4.722712130119538,
+        6.185973207249803,
+        5.236320847224946,
+        5.111633372502938,
+        5.581761006289308
+      ]
+    },
+    "host.tick_interval_ms.p50" : {
+      "high" : 20.003833,
+      "low" : 20.001917,
+      "median" : 20.002375,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        20.002375,
+        20.001917,
+        20.001959,
+        20.003292,
+        20.003833
+      ]
+    },
+    "host.tick_interval_ms.p95" : {
+      "high" : 26.485333,
+      "low" : 24.713541,
+      "median" : 25.250334,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        24.713541,
+        26.485333,
+        25.250334,
+        25.202833,
+        25.990208
+      ]
+    },
+    "host.tick_interval_ms.p99" : {
+      "high" : 41.801875,
+      "low" : 36.852833,
+      "median" : 37.989,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        37.045959,
+        41.801875,
+        37.989,
+        36.852833,
+        38.320417
+      ]
+    },
+    "host.tick_ms.fog.max" : {
+      "high" : 0.450333,
+      "low" : 0.290333,
+      "median" : 0.365542,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.450333,
+        0.375584,
+        0.290333,
+        0.365542,
+        0.326417
+      ]
+    },
+    "host.tick_ms.fog.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.fog.p50" : {
+      "high" : 0.156917,
+      "low" : 0.152167,
+      "median" : 0.154125,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.156625,
+        0.152167,
+        0.154125,
+        0.156917,
+        0.152458
+      ]
+    },
+    "host.tick_ms.fog.p95" : {
+      "high" : 0.196334,
+      "low" : 0.192292,
+      "median" : 0.193667,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.194584,
+        0.192583,
+        0.193667,
+        0.196334,
+        0.192292
+      ]
+    },
+    "host.tick_ms.fog.p99" : {
+      "high" : 0.227709,
+      "low" : 0.221375,
+      "median" : 0.22375,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.22425,
+        0.22375,
+        0.221375,
+        0.227709,
+        0.2225
+      ]
+    },
+    "host.tick_ms.game.max" : {
+      "high" : 183.58575,
+      "low" : 168.14175,
+      "median" : 173.788667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        171.313125,
+        168.14175,
+        183.58575,
+        182.901,
+        173.788667
+      ]
+    },
+    "host.tick_ms.game.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.game.p50" : {
+      "high" : 3.31175,
+      "low" : 1.81975,
+      "median" : 1.877834,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.81975,
+        3.31175,
+        1.877834,
+        1.843167,
+        3.169834
+      ]
+    },
+    "host.tick_ms.game.p95" : {
+      "high" : 23.429959,
+      "low" : 21.249834,
+      "median" : 22.028333,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        21.249834,
+        23.429959,
+        21.905042,
+        22.028333,
+        22.67675
+      ]
+    },
+    "host.tick_ms.game.p99" : {
+      "high" : 37.745625,
+      "low" : 33.056167,
+      "median" : 35.138208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        33.056167,
+        37.745625,
+        35.450875,
+        34.297417,
+        35.138208
+      ]
+    },
+    "host.tick_ms.hopHud.max" : {
+      "high" : 0.16375,
+      "low" : 0.150458,
+      "median" : 0.154125,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.154125,
+        0.150458,
+        0.161542,
+        0.153792,
+        0.16375
+      ]
+    },
+    "host.tick_ms.hopHud.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.hopHud.p50" : {
+      "high" : 0.052834,
+      "low" : 0.050625,
+      "median" : 0.052292,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.052292,
+        0.050625,
+        0.052834,
+        0.052833,
+        0.051167
+      ]
+    },
+    "host.tick_ms.hopHud.p95" : {
+      "high" : 0.0635,
+      "low" : 0.060333,
+      "median" : 0.061708,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.061708,
+        0.060333,
+        0.0635,
+        0.062375,
+        0.060417
+      ]
+    },
+    "host.tick_ms.hopHud.p99" : {
+      "high" : 0.070625,
+      "low" : 0.067959,
+      "median" : 0.070209,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.070625,
+        0.068292,
+        0.070209,
+        0.070292,
+        0.067959
+      ]
+    },
+    "host.tick_ms.hopLiveState.max" : {
+      "high" : 0.024292,
+      "low" : 0.017042,
+      "median" : 0.023834,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.024125,
+        0.024292,
+        0.020542,
+        0.023834,
+        0.017042
+      ]
+    },
+    "host.tick_ms.hopLiveState.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.hopLiveState.p50" : {
+      "high" : 0.002625,
+      "low" : 0.002459,
+      "median" : 0.002583,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.002583,
+        0.002625,
+        0.002584,
+        0.002459,
+        0.002459
+      ]
+    },
+    "host.tick_ms.hopLiveState.p95" : {
+      "high" : 0.003333,
+      "low" : 0.003125,
+      "median" : 0.003333,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.003333,
+        0.003333,
+        0.003333,
+        0.003125,
+        0.003125
+      ]
+    },
+    "host.tick_ms.hopLiveState.p99" : {
+      "high" : 0.003834,
+      "low" : 0.003583,
+      "median" : 0.003792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.003834,
+        0.003792,
+        0.003833,
+        0.003583,
+        0.00375
+      ]
+    },
+    "host.tick_ms.hopRender.max" : {
+      "high" : 0.92875,
+      "low" : 0.6205,
+      "median" : 0.72625,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.72625,
+        0.6295,
+        0.730917,
+        0.6205,
+        0.92875
+      ]
+    },
+    "host.tick_ms.hopRender.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.hopRender.p50" : {
+      "high" : 0.04775,
+      "low" : 0.04675,
+      "median" : 0.047583,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.04775,
+        0.046833,
+        0.047708,
+        0.047583,
+        0.04675
+      ]
+    },
+    "host.tick_ms.hopRender.p95" : {
+      "high" : 0.360625,
+      "low" : 0.358542,
+      "median" : 0.358791,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.360625,
+        0.358791,
+        0.358542,
+        0.358959,
+        0.358791
+      ]
+    },
+    "host.tick_ms.hopRender.p99" : {
+      "high" : 0.412916,
+      "low" : 0.4055,
+      "median" : 0.407917,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.407917,
+        0.4055,
+        0.409709,
+        0.412916,
+        0.405667
+      ]
+    },
+    "host.tick_ms.hopSound.max" : {
+      "high" : 179.868125,
+      "low" : 164.648583,
+      "median" : 166.313875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        166.313875,
+        164.648583,
+        177.271959,
+        179.868125,
+        164.692709
+      ]
+    },
+    "host.tick_ms.hopSound.n" : {
+      "high" : 2274,
+      "low" : 1433,
+      "median" : 1570,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1444,
+        2274,
+        1570,
+        1433,
+        2074
+      ]
+    },
+    "host.tick_ms.hopSound.p50" : {
+      "high" : 0.0095,
+      "low" : 0.008458,
+      "median" : 0.009166,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.0095,
+        0.008458,
+        0.009125,
+        0.009333,
+        0.009166
+      ]
+    },
+    "host.tick_ms.hopSound.p95" : {
+      "high" : 19.613791,
+      "low" : 19.111958,
+      "median" : 19.39775,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        19.125542,
+        19.613791,
+        19.588334,
+        19.39775,
+        19.111958
+      ]
+    },
+    "host.tick_ms.hopSound.p99" : {
+      "high" : 33.55225,
+      "low" : 28.885458,
+      "median" : 29.986,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        29.986,
+        33.55225,
+        28.885458,
+        29.429167,
+        31.489416
+      ]
+    },
+    "host.tick_ms.prepare.max" : {
+      "high" : 0.037709,
+      "low" : 0.022,
+      "median" : 0.0295,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.0295,
+        0.026417,
+        0.037709,
+        0.022,
+        0.029625
+      ]
+    },
+    "host.tick_ms.prepare.n" : {
+      "high" : 5107,
+      "low" : 5077,
+      "median" : 5100,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5104,
+        5077,
+        5100,
+        5107,
+        5089
+      ]
+    },
+    "host.tick_ms.prepare.p50" : {
+      "high" : 0.003917,
+      "low" : 0.003583,
+      "median" : 0.003583,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.003917,
+        0.003584,
+        0.003583,
+        0.003583,
+        0.003583
+      ]
+    },
+    "host.tick_ms.prepare.p95" : {
+      "high" : 0.005625,
+      "low" : 0.00525,
+      "median" : 0.005375,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.005625,
+        0.005375,
+        0.005375,
+        0.005459,
+        0.00525
+      ]
+    },
+    "host.tick_ms.prepare.p99" : {
+      "high" : 0.008,
+      "low" : 0.007042,
+      "median" : 0.007167,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.008,
+        0.007042,
+        0.007167,
+        0.007292,
+        0.007084
+      ]
+    },
+    "host.tick_ms.renderHop.max" : {
+      "high" : 181.666042,
+      "low" : 166.7495,
+      "median" : 170.998333,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        168.070875,
+        166.7495,
+        180.366083,
+        181.666042,
+        170.998333
+      ]
+    },
+    "host.tick_ms.renderHop.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.renderHop.p50" : {
+      "high" : 0.394625,
+      "low" : 0.141875,
+      "median" : 0.145208,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        0.143208,
+        0.394625,
+        0.145208,
+        0.141875,
+        0.153834
+      ]
+    },
+    "host.tick_ms.renderHop.p95" : {
+      "high" : 20.013875,
+      "low" : 18.564042,
+      "median" : 19.041583,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        18.722959,
+        20.013875,
+        18.564042,
+        19.041583,
+        19.298959
+      ]
+    },
+    "host.tick_ms.renderHop.p99" : {
+      "high" : 31.418416,
+      "low" : 27.441,
+      "median" : 29.37175,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        27.441,
+        31.418416,
+        29.37175,
+        28.83375,
+        31.092375
+      ]
+    },
+    "host.tick_ms.renderHopWait.max" : {
+      "high" : 39.156625,
+      "low" : 13.201543,
+      "median" : 29.258084,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        39.156625,
+        29.258084,
+        13.201543,
+        21.241666,
+        29.572459
+      ]
+    },
+    "host.tick_ms.renderHopWait.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.renderHopWait.p50" : {
+      "high" : 0.034791,
+      "low" : 0.02925,
+      "median" : 0.029958,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.029583,
+        0.034791,
+        0.029958,
+        0.02925,
+        0.032499
+      ]
+    },
+    "host.tick_ms.renderHopWait.p95" : {
+      "high" : 6.098543,
+      "low" : 5.309917,
+      "median" : 5.591834,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        5.330625,
+        6.098543,
+        5.309917,
+        5.591834,
+        6.061167
+      ]
+    },
+    "host.tick_ms.renderHopWait.p99" : {
+      "high" : 8.315208,
+      "low" : 6.986125,
+      "median" : 7.678416,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.414041,
+        7.678416,
+        6.986125,
+        8.315208,
+        8.19625
+      ]
+    },
+    "host.tick_ms.renderHopWork.max" : {
+      "high" : 179.931667,
+      "low" : 164.795,
+      "median" : 166.377958,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        166.377958,
+        164.932583,
+        177.377834,
+        179.931667,
+        164.795
+      ]
+    },
+    "host.tick_ms.renderHopWork.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.renderHopWork.p50" : {
+      "high" : 0.109042,
+      "low" : 0.106667,
+      "median" : 0.107625,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.108,
+        0.107292,
+        0.109042,
+        0.107625,
+        0.106667
+      ]
+    },
+    "host.tick_ms.renderHopWork.p95" : {
+      "high" : 16.032333,
+      "low" : 14.516209,
+      "median" : 15.118416,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        14.516209,
+        16.032333,
+        15.118416,
+        14.568792,
+        15.750418
+      ]
+    },
+    "host.tick_ms.renderHopWork.p99" : {
+      "high" : 27.168666,
+      "low" : 23.562875,
+      "median" : 25.045584,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23.666499,
+        27.168666,
+        25.045584,
+        23.562875,
+        26.66325
+      ]
+    },
+    "host.tick_ms.runTick.max" : {
+      "high" : 0.434417,
+      "low" : 0.117292,
+      "median" : 0.13475,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.1335,
+        0.117292,
+        0.13475,
+        0.434417,
+        0.175458
+      ]
+    },
+    "host.tick_ms.runTick.n" : {
+      "high" : 5107,
+      "low" : 5077,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5104,
+        5077,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.runTick.p50" : {
+      "high" : 0.062958,
+      "low" : 0.06,
+      "median" : 0.060958,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.062958,
+        0.060416,
+        0.06,
+        0.060958,
+        0.061
+      ]
+    },
+    "host.tick_ms.runTick.p95" : {
+      "high" : 0.074625,
+      "low" : 0.07275,
+      "median" : 0.073958,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.074625,
+        0.073958,
+        0.07275,
+        0.072875,
+        0.074
+      ]
+    },
+    "host.tick_ms.runTick.p99" : {
+      "high" : 0.086667,
+      "low" : 0.082875,
+      "median" : 0.086,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.082875,
+        0.086125,
+        0.086667,
+        0.083542,
+        0.086
+      ]
+    },
+    "host.tick_ms.sendFlush.max" : {
+      "high" : 48.416042,
+      "low" : 35.264791,
+      "median" : 40.709792,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        48.416042,
+        40.365125,
+        41.839042,
+        40.709792,
+        35.264791
+      ]
+    },
+    "host.tick_ms.sendFlush.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.sendFlush.p50" : {
+      "high" : 0.274541,
+      "low" : 0.247125,
+      "median" : 0.267583,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.267583,
+        0.274541,
+        0.247125,
+        0.267584,
+        0.260666
+      ]
+    },
+    "host.tick_ms.sendFlush.p95" : {
+      "high" : 2.026958,
+      "low" : 1.825625,
+      "median" : 1.997959,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        1.9385,
+        1.997959,
+        1.825625,
+        2.026958,
+        2.001583
+      ]
+    },
+    "host.tick_ms.sendFlush.p99" : {
+      "high" : 27.771542,
+      "low" : 13.734,
+      "median" : 24.402167,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        23.520042,
+        27.771542,
+        26.077417,
+        13.734,
+        24.402167
+      ]
+    },
+    "host.tick_ms.status.max" : {
+      "high" : 0.041917,
+      "low" : 0.034792,
+      "median" : 0.04075,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.04075,
+        0.041917,
+        0.034792,
+        0.041,
+        0.04025
+      ]
+    },
+    "host.tick_ms.status.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.status.p50" : {
+      "high" : 0.011084,
+      "low" : 0.01075,
+      "median" : 0.011,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.01075,
+        0.010833,
+        0.011,
+        0.011084,
+        0.011083
+      ]
+    },
+    "host.tick_ms.status.p95" : {
+      "high" : 0.014917,
+      "low" : 0.014125,
+      "median" : 0.014542,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.014542,
+        0.014125,
+        0.014875,
+        0.014917,
+        0.014375
+      ]
+    },
+    "host.tick_ms.status.p99" : {
+      "high" : 0.017333,
+      "low" : 0.016417,
+      "median" : 0.016916,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.016916,
+        0.01725,
+        0.017333,
+        0.016875,
+        0.016417
+      ]
+    },
+    "host.tick_ms.terrainDiff.max" : {
+      "high" : 0.191833,
+      "low" : 0.169041,
+      "median" : 0.171292,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.169041,
+        0.191833,
+        0.171292,
+        0.174334,
+        0.170542
+      ]
+    },
+    "host.tick_ms.terrainDiff.n" : {
+      "high" : 5107,
+      "low" : 5077,
+      "median" : 5100,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5104,
+        5077,
+        5100,
+        5107,
+        5089
+      ]
+    },
+    "host.tick_ms.terrainDiff.p50" : {
+      "high" : 0.071667,
+      "low" : 0.071083,
+      "median" : 0.071292,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.071667,
+        0.071083,
+        0.071542,
+        0.071291,
+        0.071292
+      ]
+    },
+    "host.tick_ms.terrainDiff.p95" : {
+      "high" : 0.114833,
+      "low" : 0.112208,
+      "median" : 0.113541,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.114833,
+        0.114417,
+        0.113541,
+        0.112208,
+        0.113333
+      ]
+    },
+    "host.tick_ms.terrainDiff.p99" : {
+      "high" : 0.136125,
+      "low" : 0.130458,
+      "median" : 0.133708,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.134,
+        0.136125,
+        0.133126,
+        0.133708,
+        0.130458
+      ]
+    },
+    "host.tick_ms.updateSend.max" : {
+      "high" : 40.028084,
+      "low" : 18.820417,
+      "median" : 27.953166,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        29.285916,
+        24.5975,
+        27.953166,
+        18.820417,
+        40.028084
+      ]
+    },
+    "host.tick_ms.updateSend.n" : {
+      "high" : 1021,
+      "low" : 1015,
+      "median" : 1019,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1020,
+        1015,
+        1019,
+        1021,
+        1017
+      ]
+    },
+    "host.tick_ms.updateSend.p50" : {
+      "high" : 3.19,
+      "low" : 2.858584,
+      "median" : 3.17725,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        3.17725,
+        2.858584,
+        3.19,
+        3.189,
+        2.99425
+      ]
+    },
+    "host.tick_ms.updateSend.p95" : {
+      "high" : 6.677209,
+      "low" : 6.134917,
+      "median" : 6.58625,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        6.643291,
+        6.134917,
+        6.58625,
+        6.509417,
+        6.677209
+      ]
+    },
+    "host.tick_ms.updateSend.p99" : {
+      "high" : 7.373041,
+      "low" : 7.245542,
+      "median" : 7.269875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.373041,
+        7.269875,
+        7.269791,
+        7.245542,
+        7.315917
+      ]
+    },
+    "host.tick_ms.whole.max" : {
+      "high" : 183.58575,
+      "low" : 168.14175,
+      "median" : 173.788667,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        171.313125,
+        168.14175,
+        183.58575,
+        182.901,
+        173.788667
+      ]
+    },
+    "host.tick_ms.whole.n" : {
+      "high" : 5107,
+      "low" : 5076,
+      "median" : 5099,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5103,
+        5076,
+        5099,
+        5107,
+        5088
+      ]
+    },
+    "host.tick_ms.whole.p50" : {
+      "high" : 3.31175,
+      "low" : 1.81975,
+      "median" : 1.877834,
+      "repeatable" : false,
+      "rule" : "relative5",
+      "values" : [
+        1.81975,
+        3.31175,
+        1.877834,
+        1.843167,
+        3.169834
+      ]
+    },
+    "host.tick_ms.whole.p95" : {
+      "high" : 23.429959,
+      "low" : 21.249834,
+      "median" : 22.028333,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        21.249834,
+        23.429959,
+        21.905042,
+        22.028333,
+        22.67675
+      ]
+    },
+    "host.tick_ms.whole.p99" : {
+      "high" : 37.745625,
+      "low" : 33.056167,
+      "median" : 35.138208,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        33.056167,
+        37.745625,
+        35.450875,
+        34.297417,
+        35.138208
+      ]
+    },
+    "host.tick_queue_delay_ms.max" : {
+      "high" : 75.517375,
+      "low" : 41.324042,
+      "median" : 59.472875,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        73.508917,
+        59.472875,
+        75.517375,
+        42.409541,
+        41.324042
+      ]
+    },
+    "host.tick_queue_delay_ms.n" : {
+      "high" : 5107,
+      "low" : 5077,
+      "median" : 5100,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        5104,
+        5077,
+        5100,
+        5107,
+        5089
+      ]
+    },
+    "host.tick_queue_delay_ms.p50" : {
+      "high" : 0.025333,
+      "low" : 0.022458,
+      "median" : 0.023125,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        0.025333,
+        0.022458,
+        0.022542,
+        0.023292,
+        0.023125
+      ]
+    },
+    "host.tick_queue_delay_ms.p95" : {
+      "high" : 0.590083,
+      "low" : 0.367167,
+      "median" : 0.506292,
+      "repeatable" : true,
+      "rule" : "within10ms",
+      "values" : [
+        0.487458,
+        0.590083,
+        0.506292,
+        0.367167,
+        0.537958
+      ]
+    },
+    "host.tick_queue_delay_ms.p99" : {
+      "high" : 15.668542,
+      "low" : 10.929292,
+      "median" : 14.052,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        14.052,
+        15.668542,
+        15.448333,
+        10.929292,
+        11.125625
+      ]
+    },
+    "host.tick_rate_hz" : {
+      "high" : 49.721471106453826,
+      "low" : 49.437831723903315,
+      "median" : 49.67188365291836,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        49.682075082386085,
+        49.437831723903315,
+        49.67188365291836,
+        49.721471106453826,
+        49.5444582582645
+      ]
+    },
+    "host.ticks_lost" : {
+      "high" : 0,
+      "low" : 0,
+      "median" : 0,
+      "repeatable" : true,
+      "rule" : "verdict",
+      "values" : [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "host.tile_grid_rebuild_ms.max" : {
+      "high" : 0.825292,
+      "low" : 0.557625,
+      "median" : 0.649416,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.649416,
+        0.560125,
+        0.656,
+        0.557625,
+        0.825292
+      ]
+    },
+    "host.tile_grid_rebuild_ms.n" : {
+      "high" : 786,
+      "low" : 625,
+      "median" : 722,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        786,
+        761,
+        683,
+        625,
+        722
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p50" : {
+      "high" : 0.332417,
+      "low" : 0.303625,
+      "median" : 0.328834,
+      "repeatable" : true,
+      "rule" : "relative5",
+      "values" : [
+        0.332417,
+        0.303625,
+        0.3095,
+        0.332375,
+        0.328834
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p95" : {
+      "high" : 0.3835,
+      "low" : 0.378125,
+      "median" : 0.380084,
+      "repeatable" : true,
+      "rule" : "relative10",
+      "values" : [
+        0.380084,
+        0.378791,
+        0.382041,
+        0.3835,
+        0.378125
+      ]
+    },
+    "host.tile_grid_rebuild_ms.p99" : {
+      "high" : 0.473208,
+      "low" : 0.429334,
+      "median" : 0.448167,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        0.432,
+        0.456542,
+        0.448167,
+        0.473208,
+        0.429334
+      ]
+    },
+    "host.tile_grid_rebuilds_per_s" : {
+      "high" : 7.641320517500461,
+      "low" : 6.076350624075119,
+      "median" : 7.020314274360869,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        7.641320517500461,
+        7.400933496679473,
+        6.64382249584168,
+        6.076350624075119,
+        7.020314274360869
+      ]
+    },
+    "host.tx.tcp.bytes" : {
+      "high" : 4764453,
+      "low" : 4256319,
+      "median" : 4389014,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        4349046,
+        4764453,
+        4256319,
+        4389014,
+        4614841
+      ]
+    },
+    "host.tx.tcp.bytes_per_s" : {
+      "high" : 46335.610776682006,
+      "low" : 41402.96913862132,
+      "median" : 42670.7007327591,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        42280.47637576757,
+        46335.610776682006,
+        41402.96913862132,
+        42670.7007327591,
+        44872.069454578654
+      ]
+    },
+    "host.tx.tcp.messages" : {
+      "high" : 119842,
+      "low" : 105364,
+      "median" : 109721,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        105364,
+        119842,
+        109721,
+        106734,
+        110523
+      ]
+    },
+    "host.tx.tcp.messages_per_s" : {
+      "high" : 1165.4962839803698,
+      "low" : 1024.325820618217,
+      "median" : 1067.3013880911346,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        1024.325820618217,
+        1165.4962839803698,
+        1067.3013880911346,
+        1037.685132016054,
+        1074.6623193146625
+      ]
+    },
+    "host.tx.tcp.op0.bytes" : {
+      "high" : 1400,
+      "low" : 1400,
+      "median" : 1400,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        1400,
+        1400,
+        1400,
+        1400,
+        1400
+      ]
+    },
+    "host.tx.tcp.op0.messages" : {
+      "high" : 28,
+      "low" : 28,
+      "median" : 28,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        28,
+        28,
+        28,
+        28,
+        28
+      ]
+    },
+    "host.tx.tcp.op11.bytes" : {
+      "high" : 669,
+      "low" : 72,
+      "median" : 477,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        648,
+        306,
+        72,
+        669
+      ]
+    },
+    "host.tx.tcp.op11.messages" : {
+      "high" : 223,
+      "low" : 24,
+      "median" : 159,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        216,
+        102,
+        24,
+        223
+      ]
+    },
+    "host.tx.tcp.op12.bytes" : {
+      "high" : 2475,
+      "low" : 1830,
+      "median" : 2178,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2328,
+        2475,
+        2178,
+        1830,
+        1854
+      ]
+    },
+    "host.tx.tcp.op12.messages" : {
+      "high" : 825,
+      "low" : 610,
+      "median" : 726,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        776,
+        825,
+        726,
+        610,
+        618
+      ]
+    },
+    "host.tx.tcp.op15.bytes" : {
+      "high" : 27,
+      "low" : 27,
+      "median" : 27,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        27
+      ]
+    },
+    "host.tx.tcp.op15.messages" : {
+      "high" : 9,
+      "low" : 9,
+      "median" : 9,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        9
+      ]
+    },
+    "host.tx.tcp.op17.bytes" : {
+      "high" : 728,
+      "low" : 728,
+      "median" : 728,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        728
+      ]
+    },
+    "host.tx.tcp.op17.messages" : {
+      "high" : 364,
+      "low" : 364,
+      "median" : 364,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        364
+      ]
+    },
+    "host.tx.tcp.op18.bytes" : {
+      "high" : 42,
+      "low" : 21,
+      "median" : 21,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        21,
+        21,
+        21,
+        21,
+        42
+      ]
+    },
+    "host.tx.tcp.op18.messages" : {
+      "high" : 14,
+      "low" : 7,
+      "median" : 7,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7,
+        7,
+        7,
+        7,
+        14
+      ]
+    },
+    "host.tx.tcp.op20.bytes" : {
+      "high" : 56,
+      "low" : 28,
+      "median" : 28,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        28,
+        28,
+        28,
+        28,
+        56
+      ]
+    },
+    "host.tx.tcp.op20.messages" : {
+      "high" : 14,
+      "low" : 7,
+      "median" : 7,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7,
+        7,
+        7,
+        7,
+        14
+      ]
+    },
+    "host.tx.tcp.op21.bytes" : {
+      "high" : 2772,
+      "low" : 2744,
+      "median" : 2758,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        2744,
+        2758,
+        2758,
+        2758,
+        2772
+      ]
+    },
+    "host.tx.tcp.op21.messages" : {
+      "high" : 1386,
+      "low" : 1372,
+      "median" : 1379,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        1372,
+        1379,
+        1379,
+        1379,
+        1386
+      ]
+    },
+    "host.tx.tcp.op22.bytes" : {
+      "high" : 21,
+      "low" : 21,
+      "median" : 21,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        21
+      ]
+    },
+    "host.tx.tcp.op22.messages" : {
+      "high" : 7,
+      "low" : 7,
+      "median" : 7,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7
+      ]
+    },
+    "host.tx.tcp.op23.bytes" : {
+      "high" : 35,
+      "low" : 35,
+      "median" : 35,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        35
+      ]
+    },
+    "host.tx.tcp.op23.messages" : {
+      "high" : 7,
+      "low" : 7,
+      "median" : 7,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7
+      ]
+    },
+    "host.tx.tcp.op27.bytes" : {
+      "high" : 2624,
+      "low" : 1752,
+      "median" : 2228,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        2540,
+        2624,
+        2108,
+        1752,
+        2228
+      ]
+    },
+    "host.tx.tcp.op27.messages" : {
+      "high" : 656,
+      "low" : 438,
+      "median" : 557,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        635,
+        656,
+        527,
+        438,
+        557
+      ]
+    },
+    "host.tx.tcp.op34.bytes" : {
+      "high" : 357116,
+      "low" : 308608,
+      "median" : 321604,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        308608,
+        357116,
+        328868,
+        314188,
+        321604
+      ]
+    },
+    "host.tx.tcp.op34.messages" : {
+      "high" : 89279,
+      "low" : 77152,
+      "median" : 80401,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        77152,
+        89279,
+        82217,
+        78547,
+        80401
+      ]
+    },
+    "host.tx.tcp.op35.bytes" : {
+      "high" : 234660,
+      "low" : 210540,
+      "median" : 224130,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        210540,
+        234660,
+        216000,
+        224130,
+        230460
+      ]
+    },
+    "host.tx.tcp.op35.messages" : {
+      "high" : 7822,
+      "low" : 7018,
+      "median" : 7471,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        7018,
+        7822,
+        7200,
+        7471,
+        7682
+      ]
+    },
+    "host.tx.tcp.op36.bytes" : {
+      "high" : 4163030,
+      "low" : 3702628,
+      "median" : 3842732,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        3819944,
+        4163030,
+        3702628,
+        3842732,
+        4052888
+      ]
+    },
+    "host.tx.tcp.op36.messages" : {
+      "high" : 19730,
+      "low" : 17548,
+      "median" : 18212,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        18104,
+        19730,
+        17548,
+        18212,
+        19208
+      ]
+    },
+    "host.tx.tcp.op8.bytes" : {
+      "high" : 245,
+      "low" : 35,
+      "median" : 175,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        245,
+        35,
+        175,
+        175,
+        140
+      ]
+    },
+    "host.tx.tcp.op8.messages" : {
+      "high" : 49,
+      "low" : 7,
+      "median" : 35,
+      "repeatable" : false,
+      "rule" : "variation2",
+      "values" : [
+        49,
+        7,
+        35,
+        35,
+        28
+      ]
+    },
+    "host.tx.udp.bytes" : {
+      "high" : 5175469,
+      "low" : 5087526,
+      "median" : 5124875,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        5128030,
+        5175469,
+        5087526,
+        5093964,
+        5124875
+      ]
+    },
+    "host.tx.udp.bytes_per_s" : {
+      "high" : 50332.85398571119,
+      "low" : 49488.46220641206,
+      "median" : 49831.34780722321,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        49853.5888719566,
+        50332.85398571119,
+        49488.46220641206,
+        49524.338128665906,
+        49831.34780722321
+      ]
+    },
+    "host.tx.udp.messages" : {
+      "high" : 42221,
+      "low" : 41798,
+      "median" : 41977,
+      "repeatable" : true,
+      "rule" : "variation2",
+      "values" : [
+        42182,
+        42221,
+        41896,
+        41798,
+        41977
+      ]
+    },
+    "host.tx.udp.messages_per_s" : {
+      "high" : 410.6107925930408,
+      "low" : 406.36688541614694,
+      "median" : 408.1602940371831,
+      "repeatable" : true,
+      "rule" : "reportOnly",
+      "values" : [
+        410.084201105858,
+        410.6107925930408,
+        407.5396592764027,
+        406.36688541614694,
+        408.1602940371831
+      ]
+    }
+  },
+  "model" : "MacBookPro17,1",
+  "osBuild" : "26A428",
+  "scenario" : "sweep-host",
+  "scenarioHash" : "feefe75d6062aee2",
+  "schema" : 1,
+  "tier" : "sweep-n08",
+  "validRuns" : 5
+}
