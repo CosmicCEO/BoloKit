@@ -1,6 +1,6 @@
 # Analyze register
 
-**Status: 2026-10-02, the one live register. Every closing condition except Jerod's decisions is met; see the last table.** Matches `SPECS.md`. `KT.md` keeps the
+**Status: closed 2026-10-02.** Jerod accepted 2D, closed Analyze and opened Improve with 1A, 2D, 4B and 3B. The live list is now `../4-improve/README.md`. Matches `SPECS.md`. `KT.md` keeps the
 2026-09-29 scores as history; `KT-audit-findings.md` is the audit of them; `PROPOSALS.md` and
 `OBSERVED.md` hold the option detail. Do not rank from those files.
 

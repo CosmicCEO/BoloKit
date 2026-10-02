@@ -1,11 +1,13 @@
 # Analyze phase
 
-**Status: in progress.** Not closed.
+**Status: closed 2026-10-02 by Jerod.** Improve is open: `../4-improve/README.md`.
+The Analyze reference data is `../data/analyze/v1.6.9-analyze-session2/` (frozen, tag
+`analyze/v1.6.9-analyze-session2`).
 
 Gate register: `REGISTER.md`. Historical KT scores: `KT.md`.
 Audit of that KT: `KT-audit-findings.md`. SPECS: `SPECS.md`.
 
-A1 charter and A5 integrator accepted 2026-09-29. Improve is closed.
+A1 charter and A5 integrator accepted 2026-09-29. Closing decisions in `REGISTER.md`.
 
 ## Y and weights
 
