@@ -13,8 +13,10 @@
 # leave the Mac alone until it finishes. Two game windows open and close for each run; they
 # must stay fully visible, because macOS slows the timers of a window it cannot see.
 #
-# Takes about two hours at the defaults. Raw logs stay in Bench/runs/<phase>/<name>/ (not committed);
-# the summaries, scorecards and manifest in Bench/data/<phase>/<name>/ are what gets committed.
+# Takes about two hours at the defaults. Raw logs are written to Bench/runs/<phase>/<name>/ (not
+# committed) and, when the session ends, moved to the archive disk ($BOLO_BENCH_ARCHIVE, default
+# /Volumes/Mingus/Xcode/archive/<phase>/<name>) if it is mounted; a MOVED.txt pointer stays behind.
+# The summaries, scorecards and manifest in Bench/data/<phase>/<name>/ are what gets committed.
 
 set -u
 phase=${1:?usage: run-baseline.sh <phase> <name> [runs] [sweep-runs] [observer-runs]}
@@ -31,6 +33,7 @@ here=${0:A:h}
 root=${here:h:h}
 raw=$root/Bench/runs/$phase/$name
 results=$root/Bench/data/$phase/$name
+archive=${BOLO_BENCH_ARCHIVE:-/Volumes/Mingus/Xcode/archive}
 bench=$root/.build/release/BoloBench
 
 if [[ -e $results/FROZEN ]]; then
@@ -166,4 +169,19 @@ print -r -- "{
 }" > "$results/manifest.json"
 
 echo "== done: $results"
-echo "Raw logs are in $raw. Nothing has been frozen or tagged."
+# The raw logs go to the archive disk so the benchmark machine keeps its space. They are recorded
+# to the internal disk first, so a session runs under the same conditions as the frozen baselines
+# whatever the archive disk is doing.
+if [[ -d $archive ]]; then
+  if [[ -e $archive/$phase/$name ]]; then
+    echo "Raw logs are in $raw; $archive/$phase/$name already exists, so they were not moved."
+  else
+    mkdir -p "$archive/$phase" && mv "$raw" "$archive/$phase/$name" \
+      && print -r -- "Moved $(date -u +%Y-%m-%dT%H:%M:%SZ) to $archive/$phase/$name" > "$raw.MOVED.txt" \
+      && echo "Raw logs moved to $archive/$phase/$name." \
+      || echo "Raw logs are in $raw; the move to $archive/$phase/$name failed."
+  fi
+else
+  echo "Raw logs are in $raw. $archive is not mounted, so they were not moved."
+fi
+echo "Nothing has been frozen or tagged."
