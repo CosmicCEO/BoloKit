@@ -6,8 +6,8 @@ Index only. Read this, then open the one file you need.
 |---|---|---|
 | 1. Define | Closed (amended 2026-09-29) | `1-define/README.md` |
 | 2. Measure | Closed 2026-09-29 | `2-measure/README.md` |
-| 3. Analyze | In progress | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md`, `3-analyze/KT-audit-findings.md` |
-| 4. Improve | Not started | `4-improve/README.md` |
+| 3. Analyze | Closed 2026-10-02 | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md`, `3-analyze/KT-audit-findings.md` |
+| 4. Improve | Open 2026-10-02 | `4-improve/README.md` |
 | 5. Control | Not started | `5-control/README.md` |
 
 ## Where things are
