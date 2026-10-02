@@ -1,6 +1,6 @@
 # Analyze register
 
-**Status: 2026-09-30, the one live register.** Matches `SPECS.md`. `KT.md` keeps the
+**Status: 2026-10-02, the one live register. Every closing condition except Jerod's decisions is met; see the last table.** Matches `SPECS.md`. `KT.md` keeps the
 2026-09-29 scores as history; `KT-audit-findings.md` is the audit of them; `PROPOSALS.md` and
 `OBSERVED.md` hold the option detail. Do not rank from those files.
 
@@ -27,7 +27,8 @@ The two tests record known issues on v1.6.9 and will fail the moment the fault i
 | Item | Gate | CTQ | Enters Improve when |
 |---|---|---|---|
 | 1A smoother clock owned by the view | Ready once the P1 baseline is on the scorecard | Responsiveness 45 | Analyze closed |
-| 2B versus 2C, host render hop | **Reframed by the split.** The hop is work, not waiting: 9.0 of 11.8 ms at the 95th percentile is spent inside the closure (`view.render`, the status display, `hostLiveState`), while the drawing itself is under 1 ms. Neither 2B nor 2C removes that work; both only move it off the tick and leave the host's own screen paying it. The render closure is cleared (under 0.5 ms); the sound hop, `SoundPlayer.shared.play` on the main thread, is the remaining suspect and is timed in the next session | Tick budget 30, plus host frames | The slow part is named; Jerod picks a fix; Analyze closed |
+| 2D fix the sound player (new) | **Cause named and measured.** `SoundPlayer.play` on the main thread costs 19 to 26 ms at the 95th percentile and up to 139 ms on the ticks that play a sound (the median varies from 0 to 6 ms with how many sounds are already playing), because the sounds are `NSSound(contentsOf:byReference:)` and are read and decoded from disk at each play. Options: load the sounds into memory once; a preloaded `AVAudioPlayer` pool; play off the main thread. All pass the musts; no wire change, no simulation change | Tick budget 30, plus host frames | Analyze closed |
+| 2B versus 2C, host render hop | **Superseded by 2D.** The hop's cost is the sound closure, not drawing and not waiting; moving the hop off the tick would hide the cost, 2D removes it. Revisit only if the hop is still over 5 ms after 2D. Original note: Reframed by the split. The hop is work, not waiting: 9.0 of 11.8 ms at the 95th percentile is spent inside the closure (`view.render`, the status display, `hostLiveState`), while the drawing itself is under 1 ms. Neither 2B nor 2C removes that work; both only move it off the tick and leave the host's own screen paying it. The render closure is cleared (under 0.5 ms); the sound hop, `SoundPlayer.shared.play` on the main thread, is the remaining suspect and is timed in the next session | Tick budget 30, plus host frames | The slow part is named; Jerod picks a fix; Analyze closed |
 | 4B guest refreshes fog memory on reveal | Cause demonstrated; baseline measured | Visible correctness 25 | Analyze closed |
 | 3B status message does not refund the builder's mine | Cause demonstrated; baseline pending P0b | Visible correctness 25 | P0b, then Analyze closed |
 | Speed up the position send | Hold behind 2B or 2C | Tick budget | After the hop is off the send path |
@@ -50,7 +51,8 @@ The two tests record known issues on v1.6.9 and will fail the moment the fault i
 | Define amended | Done |
 | Raw logs backed up | Jerod |
 | P0a and one Analyze scorecard | Done |
-| P1 probe and a measured 1A baseline | Done, one run; a full session before any Improve claim |
-| Failing tests for 3B and 4B, or their removal | Done, both kept |
-| What owns the main thread, or the wait-versus-work split as the open item | Split measured: the host's own render closure owns it. Which part is slow stays open |
+| P1 probe and a measured 1A baseline | Done: 100 ms in all nine scenarios, repeatable, session 2 (110 runs) |
+| Failing tests for 3B and 4B, or their removal | Done, both kept; both faults also seen in the session 2 soak |
+| What owns the main thread | Answered: the sound closure, `hopSound`, 19 to 26 ms at the 95th percentile on sound ticks. Item 2D |
+| Session conditions | Screensaver off, still wallpaper, keep-awake loop in the script; frame rate checked. Session 2 ran clean |
 | One register matching one specs page | This file and `SPECS.md` |
