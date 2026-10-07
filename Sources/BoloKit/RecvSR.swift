@@ -211,6 +211,11 @@ public func recvSrRevealTerrain(x: Int, y: Int, terrain: Terrain, state: inout G
 /// them locally when its builder launches and the host is never told, so its own count for the
 /// guest is stale from then on. Applying it on every status handed the guest its old count back
 /// while the builder still carried the spent trees (#171: free repairs and builds, harvests wiped).
+///
+/// Mines are the same story (Improve 3B): the guest spends one when its builder launches to lay a
+/// mine and holds it in `builderMines`, but the host spends its own only when `CLPlaceMine`
+/// arrives on builder arrival. A status sent during the walk carries the host's pre-launch count,
+/// so the mine the builder is still carrying is subtracted from it instead of being refunded.
 public func recvSrTankStatus(
     armour: Int, shells: Int, mines: Int, trees: Int, range: Float, dead: Bool, boat: Bool,
     kickDir: Float, kickSpeed: Float, teleport: (x: Float, y: Float, dir: Float)?, state: inout GameState
@@ -220,7 +225,7 @@ public func recvSrTankStatus(
     state.local.armour = armour
     state.local.shells = shells
     state.local.range = range
-    state.players[player].mines = mines
+    state.players[player].mines = max(0, mines - state.players[player].builderMines)
     state.players[player].dead = dead
     state.players[player].boat = boat
     state.players[player].kickDir = kickDir

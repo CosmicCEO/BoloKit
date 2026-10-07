@@ -1,7 +1,18 @@
 # Improve phase
 
 **Status: open 2026-10-02.** Decided by Jerod on closing Analyze. Four items, each with a
-demonstrated cause and a measured, repeatable baseline. Nothing is implemented yet.
+demonstrated cause and a measured, repeatable baseline.
+
+| Item | Implemented | Unit proof | Session proof |
+|---|---|---|---|
+| 2D sound player | Yes, branch `improve/2d-sound-player` | `play()` 20.9 ms to 0.1 ms on the main thread | Waiting: one session for all four items |
+| 1A smoother | Yes, same branch | Two new smoother tests, ten pass | Same |
+| 4B fog memory on reveal | Yes, 2026-10-07: `refreshFogMemoryForRevealedTile`, called from `GameSession` after a reveal | The 4B test is now a plain passing test | Same |
+| 3B status refund | Yes, 2026-10-07: `recvSrTankStatus` subtracts `builderMines` | The 3B test is now a plain passing test | Same |
+
+**Blocker for the session proof:** `run-baseline.sh` runs `check-no-wire-change.sh`, which
+fails on any edited BoloKit file, and 1A, 4B and 3B each edit one. M2 itself holds: the five
+byte-layout files are identical to v1.6.9. Jerod decides how the check is relaxed.
 
 | Rule | |
 |---|---|

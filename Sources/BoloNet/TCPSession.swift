@@ -46,6 +46,9 @@ public struct SRDispatchCallbacks {
     public var onShouldLeaveAlliance: (UInt16) -> Void = { _ in }
     public var onMineExplosion: (Pointi) -> Void = { _ in }
     public var onSuperboomTerrain: (Pointi) -> Void = { _ in }
+    /// Improve 4B: fired after `SRRevealTerrain` has written the tile, so a caller that keeps its
+    /// own fog memory can refresh it for that tile.
+    public var onTerrainRevealed: (Pointi) -> Void = { _ in }
     public var onTankStatusChanged: () -> Void = {}
     /// No `GameState` mutation exists for this opcode (Wave 6.2 finding)
     /// -- this is the entire handling it gets.
@@ -69,6 +72,7 @@ public struct SRDispatchCallbacks {
         onShouldLeaveAlliance: @escaping (UInt16) -> Void = { _ in },
         onMineExplosion: @escaping (Pointi) -> Void = { _ in },
         onSuperboomTerrain: @escaping (Pointi) -> Void = { _ in },
+        onTerrainRevealed: @escaping (Pointi) -> Void = { _ in },
         onTankStatusChanged: @escaping () -> Void = {},
         onSendMesg: @escaping (UInt8, UInt8, String) -> Void = { _, _, _ in },
         onTimeLimit: @escaping (UInt16) -> Void = { _ in },
@@ -83,6 +87,7 @@ public struct SRDispatchCallbacks {
         self.onShouldLeaveAlliance = onShouldLeaveAlliance
         self.onMineExplosion = onMineExplosion
         self.onSuperboomTerrain = onSuperboomTerrain
+        self.onTerrainRevealed = onTerrainRevealed
         self.onTankStatusChanged = onTankStatusChanged
         self.onSendMesg = onSendMesg
         self.onTimeLimit = onTimeLimit
@@ -524,6 +529,7 @@ public final class TCPSession: @unchecked Sendable {
                 throw TCPSessionError.malformedMessage
             }
             recvSrRevealTerrain(x: Int(msg.x), y: Int(msg.y), terrain: terrain, state: &state)
+            callbacks.onTerrainRevealed(Pointi(x: Int32(msg.x), y: Int32(msg.y)))
         case .tankStatus:
             guard let msg = SRTankStatus.decode(bytes) else { throw TCPSessionError.malformedMessage }
             recvSrTankStatus(
