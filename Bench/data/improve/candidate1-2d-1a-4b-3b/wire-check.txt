@@ -1,0 +1,45 @@
+Mode: improve
+REVIEW   Sources/BoloKit/RecvSR.swift (wire-adjacent; not a layout file)
+REVIEW   simulation files that existed at v1.6.9 and differ (the candidate's footprint):
+           Sources/BoloKit/FogState.swift
+           Sources/BoloKit/RecvSR.swift
+           Sources/BoloKit/RemotePositionSmoother.swift
+
+Shipped files this branch modifies (each should add recorder calls and nothing else):
+   Bolo 2026/Bolo 2026/AppRootView.swift             |  6 ++
+   Bolo 2026/Bolo 2026/GameRenderView.swift          | 33 +++++++++--
+   Bolo 2026/Bolo 2026/GameSession.swift             | 68 ++++++++++++++++++++++-
+   Bolo 2026/Bolo 2026/GameView.swift                |  6 +-
+   Bolo 2026/Bolo 2026/LiveMetalTerrainOverlay.swift |  9 +++
+   Bolo 2026/Bolo 2026/SoundPlayer.swift             | 68 +++++++++++++++++++++--
+   Sources/BoloKit/FogState.swift                    | 23 ++++++++
+   Sources/BoloKit/RecvSR.swift                      |  7 ++-
+   Sources/BoloKit/RemotePositionSmoother.swift      |  9 ++-
+   Sources/BoloNet/BoloSignposts.swift               |  6 ++
+   Sources/BoloNet/HostDgramListener.swift           | 11 ++++
+   Sources/BoloNet/HostGameEngine.swift              | 65 +++++++++++++++++++++-
+   Sources/BoloNet/HostSession.swift                 |  4 ++
+   Sources/BoloNet/TCPSession.swift                  | 16 ++++++
+   Sources/BoloNet/UDPSession.swift                  | 13 +++++
+   15 files changed, 327 insertions(+), 17 deletions(-)
+
+Lines removed from shipped files (each should be a line re-added with a recorder call beside it):
+  -                .update(rawPosition: newState.players[i].tank, tick: newState.ticks)
+  -                .update(rawPosition: newState.players[i].builder, tick: newState.ticks)
+  -                : (remoteBuilderSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? player.builder)
+  -            let smoothed = remoteTankSmoothers[i]?.smoothedPosition(atTick: state.ticks) ?? other.tank
+  -        source.setEventHandler { continuation.yield(.tick) }
+  -        .onAppear { session.start() }
+  -    private var pools: [String: [NSSound]] = [:]
+  -        guard let url = Bundle.main.url(forResource: name, withExtension: "aiff") else { return }
+  -        pools[name] = (0..<count).compactMap { _ in NSSound(contentsOf: url, byReference: true) }
+  -        guard let pool = pools[resolvedName] else { return }
+  -        for sound in pool where !sound.isPlaying {
+  -            sound.play()
+  -    state.players[player].mines = mines
+  -        if tick <= target.tick {
+  -        source.setEventHandler { continuation.yield(.tick) }
+  -            await MainActor.run { onTickRendered(snapshot) }
+  -            await MainActor.run {
+
+OK (improve): the five byte-layout files are identical to v1.6.9; the REVIEW lines above are not failures

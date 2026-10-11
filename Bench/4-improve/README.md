@@ -5,10 +5,14 @@ demonstrated cause and a measured, repeatable baseline.
 
 | Item | Implemented | Unit proof | Session proof |
 |---|---|---|---|
-| 2D sound player | Yes, branch `improve/2d-sound-player` | `play()` 20.9 ms to 0.1 ms on the main thread | Waiting: one session for all four items |
-| 1A smoother | Yes, same branch | Two new smoother tests, ten pass | Same |
-| 4B fog memory on reveal | Yes, 2026-10-07: `refreshFogMemoryForRevealedTile`, called from `GameSession` after a reveal | The 4B test is now a plain passing test | Same |
-| 3B status refund | Yes, 2026-10-07: `recvSrTankStatus` subtracts `builderMines` | The 3B test is now a plain passing test | Same |
+| 2D sound player | Yes, branch `improve/2d-sound-player` | `play()` 20.9 ms to 0.1 ms on the main thread | **Met.** Sound hop 19 to 26 ms to 0.05 ms; whole tick p95 down 44 to 63% |
+| 1A smoother | Yes, same branch | Two new smoother tests, ten pass | **Partly met.** Drawn step median 100 to 25 to 32 ms in moving scenarios; target 20 ms |
+| 4B fog memory on reveal | Yes, 2026-10-07: `refreshFogMemoryForRevealedTile`, called from `GameSession` after a reveal | The 4B test is now a plain passing test | **Not shown by the soak.** The soak residue is mostly another fault |
+| 3B status refund | Yes, 2026-10-07: `recvSrTankStatus` subtracts `builderMines` | The 3B test is now a plain passing test | **Met on the mine count:** 10 episodes to 1, persistent 2 to 0 |
+
+Session 1 of Improve (`../data/improve/candidate1-2d-1a-4b-3b/`, frozen) and its reading are in
+`RESULTS.md`. It ran on a newer macOS than the baseline; `RESULTS.md` says what that does and
+does not change, and lists three decisions for Jerod.
 
 **Wire check in Improve (relaxed with Jerod's approval; M2 itself is Jerod's decision of
 2026-09-29, `../3-analyze/KT.md`):** `run-baseline.sh improve ...` runs
