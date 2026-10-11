@@ -10,9 +10,15 @@ demonstrated cause and a measured, repeatable baseline.
 | 4B fog memory on reveal | Yes, 2026-10-07: `refreshFogMemoryForRevealedTile`, called from `GameSession` after a reveal | The 4B test is now a plain passing test | Same |
 | 3B status refund | Yes, 2026-10-07: `recvSrTankStatus` subtracts `builderMines` | The 3B test is now a plain passing test | Same |
 
-**Blocker for the session proof:** `run-baseline.sh` runs `check-no-wire-change.sh`, which
-fails on any edited BoloKit file, and 1A, 4B and 3B each edit one. M2 itself holds: the five
-byte-layout files are identical to v1.6.9. Jerod decides how the check is relaxed.
+**Wire check in Improve (relaxed with Jerod's approval; M2 itself is Jerod's decision of
+2026-09-29, `../3-analyze/KT.md`):** `run-baseline.sh improve ...` runs
+`check-no-wire-change.sh` in improve mode (`BOLO_WIRE_CHECK=improve`). It fails only if one of
+the five byte-layout files differs from v1.6.9, which is M2. The receive, relay and map files
+and every changed BoloKit file are listed as REVIEW, not failed, and the full report is saved
+as `wire-check.txt` beside each session's results. Measure and Analyze runs stay strict.
+Verified 2026-10-11: strict still fails on this branch; improve passes with the footprint
+`FogState.swift`, `RecvSR.swift`, `RemotePositionSmoother.swift`; improve fails against v1.5.0,
+where `ServerMessages.swift` differs.
 
 | Rule | |
 |---|---|

@@ -64,7 +64,10 @@ xcodebuild -project "$root/Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -c
   > "$root/Bench/runs/build.log" 2>&1 || { mkdir -p "$root/Bench/runs"; echo "app build failed" >&2; exit 66; }
 (cd "$root" && swift build -c release --product BoloBench > /dev/null 2>&1) || { echo "BoloBench build failed" >&2; exit 66; }
 (cd "$root" && swift build -c release --product BoloBenchSwarm > /dev/null 2>&1) || { echo "BoloBenchSwarm build failed" >&2; exit 66; }
-zsh "$here/check-no-wire-change.sh" > /dev/null || { echo "the wire protocol differs from v1.6.9" >&2; exit 67; }
+# Improve candidates may change simulation and receive-side code (Jerod's approval); the check
+# then fails only on the five byte-layout files and lists the rest. Every other phase stays strict.
+[[ $phase == improve ]] && export BOLO_WIRE_CHECK=improve
+wireReport=$(zsh "$here/check-no-wire-change.sh") || { echo "$wireReport" | grep -E '^(CHANGED|MISSING|FAILED)' >&2; echo "the wire protocol differs from v1.6.9" >&2; exit 67; }
 
 products=$(xcodebuild -project "$root/Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
   -configuration Release -showBuildSettings 2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2; exit}')
@@ -72,6 +75,9 @@ export BOLO_BENCH_APP="$products/Bolo 2026.app"
 binary="$BOLO_BENCH_APP/Contents/MacOS/Bolo 2026"
 
 mkdir -p "$raw" "$results"
+# The check's full report is kept with the results: in improve mode it is the record of what the
+# candidate changed in shipped code and that no byte-layout file moved.
+print -r -- "$wireReport" > "$results/wire-check.txt"
 started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Copies what is kept of one tier's runs (facts and summary, not the raw logs) into results.
@@ -165,6 +171,7 @@ print -r -- "{
   \"runsPerScenario\": $runs,
   \"sweepRunsPerPlayerCount\": $sweepRuns,
   \"observerRunsPerScenario\": $observerRuns,
+  \"wireCheck\": \"${BOLO_WIRE_CHECK:-strict}\",
   \"recorderOverhead\": \"$overhead\"
 }" > "$results/manifest.json"
 
