@@ -24,6 +24,10 @@
 /// buffer is available before a delayed render tick needs the next real sample.
 public let smoothingDelayTicks: UInt64 = 5
 
+/// A raw-position jump longer than this (tiles, on either axis) is a respawn or teleport, not
+/// travel: the smoother snaps to it instead of gliding across the map.
+public let smoothingSnapDistance: Float = 4
+
 /// Smooths one remote player's drawn tank position across the relay cadence above. See this
 /// file's own header for why a live two-sample lerp alone isn't enough.
 public struct RemotePositionSmoother: Sendable {
@@ -43,7 +47,10 @@ public struct RemotePositionSmoother: Sendable {
         // A join client's `state.ticks` never advances, so consecutive samples can share a tick;
         // interpolating between them would draw the older one forever (a respawned host tank
         // stayed at its death spot). With no elapsed time there is nothing to interpolate: snap.
-        if tick <= target.tick {
+        // Likewise a jump of more than `smoothingSnapDistance` tiles is a respawn: snap.
+        let jumped = abs(rawPosition.x - target.position.x) > smoothingSnapDistance
+            || abs(rawPosition.y - target.position.y) > smoothingSnapDistance
+        if tick <= target.tick || jumped {
             previous = nil
             self.target = (rawPosition, tick)
             return

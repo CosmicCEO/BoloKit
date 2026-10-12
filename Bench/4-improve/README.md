@@ -1,7 +1,28 @@
 # Improve phase
 
 **Status: open 2026-10-02.** Decided by Jerod on closing Analyze. Four items, each with a
-demonstrated cause and a measured, repeatable baseline. Nothing is implemented yet.
+demonstrated cause and a measured, repeatable baseline.
+
+| Item | Implemented | Unit proof | Session proof |
+|---|---|---|---|
+| 2D sound player | Yes, branch `improve/2d-sound-player` | `play()` 20.9 ms to 0.1 ms on the main thread | **Met.** Sound hop 19 to 26 ms to 0.05 ms; whole tick p95 down 44 to 63% |
+| 1A smoother | Yes, same branch | Two new smoother tests, ten pass | **Partly met.** Drawn step median 100 to 25 to 32 ms in moving scenarios; target 20 ms |
+| 4B fog memory on reveal | Yes, 2026-10-07: `refreshFogMemoryForRevealedTile`, called from `GameSession` after a reveal | The 4B test is now a plain passing test | **Not shown by the soak.** The soak residue is mostly another fault |
+| 3B status refund | Yes, 2026-10-07: `recvSrTankStatus` subtracts `builderMines` | The 3B test is now a plain passing test | **Met on the mine count:** 10 episodes to 1, persistent 2 to 0 |
+
+Session 1 of Improve (`../data/improve/candidate1-2d-1a-4b-3b/`, frozen) and its reading are in
+`RESULTS.md`. It ran on a newer macOS than the baseline; `RESULTS.md` says what that does and
+does not change, and lists three decisions for Jerod.
+
+**Wire check in Improve (relaxed with Jerod's approval; M2 itself is Jerod's decision of
+2026-09-29, `../3-analyze/KT.md`):** `run-baseline.sh improve ...` runs
+`check-no-wire-change.sh` in improve mode (`BOLO_WIRE_CHECK=improve`). It fails only if one of
+the five byte-layout files differs from v1.6.9, which is M2. The receive, relay and map files
+and every changed BoloKit file are listed as REVIEW, not failed, and the full report is saved
+as `wire-check.txt` beside each session's results. Measure and Analyze runs stay strict.
+Verified 2026-10-11: strict still fails on this branch; improve passes with the footprint
+`FogState.swift`, `RecvSR.swift`, `RemotePositionSmoother.swift`; improve fails against v1.5.0,
+where `ServerMessages.swift` differs.
 
 | Rule | |
 |---|---|

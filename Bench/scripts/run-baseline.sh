@@ -13,8 +13,10 @@
 # leave the Mac alone until it finishes. Two game windows open and close for each run; they
 # must stay fully visible, because macOS slows the timers of a window it cannot see.
 #
-# Takes about two hours at the defaults. Raw logs stay in Bench/runs/<phase>/<name>/ (not committed);
-# the summaries, scorecards and manifest in Bench/data/<phase>/<name>/ are what gets committed.
+# Takes about two hours at the defaults. Raw logs are written to Bench/runs/<phase>/<name>/ (not
+# committed) and, when the session ends, moved to the archive disk ($BOLO_BENCH_ARCHIVE, default
+# /Volumes/Mingus/Xcode/archive/<phase>/<name>) if it is mounted; a MOVED.txt pointer stays behind.
+# The summaries, scorecards and manifest in Bench/data/<phase>/<name>/ are what gets committed.
 
 set -u
 phase=${1:?usage: run-baseline.sh <phase> <name> [runs] [sweep-runs] [observer-runs]}
@@ -31,6 +33,7 @@ here=${0:A:h}
 root=${here:h:h}
 raw=$root/Bench/runs/$phase/$name
 results=$root/Bench/data/$phase/$name
+archive=${BOLO_BENCH_ARCHIVE:-/Volumes/Mingus/Xcode/archive}
 bench=$root/.build/release/BoloBench
 
 if [[ -e $results/FROZEN ]]; then
@@ -61,7 +64,10 @@ xcodebuild -project "$root/Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" -c
   > "$root/Bench/runs/build.log" 2>&1 || { mkdir -p "$root/Bench/runs"; echo "app build failed" >&2; exit 66; }
 (cd "$root" && swift build -c release --product BoloBench > /dev/null 2>&1) || { echo "BoloBench build failed" >&2; exit 66; }
 (cd "$root" && swift build -c release --product BoloBenchSwarm > /dev/null 2>&1) || { echo "BoloBenchSwarm build failed" >&2; exit 66; }
-zsh "$here/check-no-wire-change.sh" > /dev/null || { echo "the wire protocol differs from v1.6.9" >&2; exit 67; }
+# Improve candidates may change simulation and receive-side code (Jerod's approval); the check
+# then fails only on the five byte-layout files and lists the rest. Every other phase stays strict.
+[[ $phase == improve ]] && export BOLO_WIRE_CHECK=improve
+wireReport=$(zsh "$here/check-no-wire-change.sh") || { echo "$wireReport" | grep -E '^(CHANGED|MISSING|FAILED)' >&2; echo "the wire protocol differs from v1.6.9" >&2; exit 67; }
 
 products=$(xcodebuild -project "$root/Bolo 2026/Bolo 2026.xcodeproj" -scheme "Bolo 2026" \
   -configuration Release -showBuildSettings 2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2; exit}')
@@ -69,6 +75,9 @@ export BOLO_BENCH_APP="$products/Bolo 2026.app"
 binary="$BOLO_BENCH_APP/Contents/MacOS/Bolo 2026"
 
 mkdir -p "$raw" "$results"
+# The check's full report is kept with the results: in improve mode it is the record of what the
+# candidate changed in shipped code and that no byte-layout file moved.
+print -r -- "$wireReport" > "$results/wire-check.txt"
 started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Copies what is kept of one tier's runs (facts and summary, not the raw logs) into results.
@@ -162,8 +171,24 @@ print -r -- "{
   \"runsPerScenario\": $runs,
   \"sweepRunsPerPlayerCount\": $sweepRuns,
   \"observerRunsPerScenario\": $observerRuns,
+  \"wireCheck\": \"${BOLO_WIRE_CHECK:-strict}\",
   \"recorderOverhead\": \"$overhead\"
 }" > "$results/manifest.json"
 
 echo "== done: $results"
-echo "Raw logs are in $raw. Nothing has been frozen or tagged."
+# The raw logs go to the archive disk so the benchmark machine keeps its space. They are recorded
+# to the internal disk first, so a session runs under the same conditions as the frozen baselines
+# whatever the archive disk is doing.
+if [[ -d $archive ]]; then
+  if [[ -e $archive/$phase/$name ]]; then
+    echo "Raw logs are in $raw; $archive/$phase/$name already exists, so they were not moved."
+  else
+    mkdir -p "$archive/$phase" && mv "$raw" "$archive/$phase/$name" \
+      && print -r -- "Moved $(date -u +%Y-%m-%dT%H:%M:%SZ) to $archive/$phase/$name" > "$raw.MOVED.txt" \
+      && echo "Raw logs moved to $archive/$phase/$name." \
+      || echo "Raw logs are in $raw; the move to $archive/$phase/$name failed."
+  fi
+else
+  echo "Raw logs are in $raw. $archive is not mounted, so they were not moved."
+fi
+echo "Nothing has been frozen or tagged."

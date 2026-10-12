@@ -22,7 +22,7 @@ Index only. Read this, then open the one file you need.
 | What a session was run on | `data/<phase>/<name>/manifest.json` | Small |
 | Gate register and specs | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md` | Small |
 | Historical KT scores | `3-analyze/KT.md` | Medium |
-| Raw logs | `runs/<phase>/<name>/` on the benchmark machine, not in git | 2.3 GB a session |
+| Raw logs | `/Volumes/Mingus/Xcode/archive/<phase>/<name>/` on the archive disk; `run-baseline.sh` moves them there when a session ends, leaving `runs/<phase>/<name>.MOVED.txt` behind. Never committed | 2.3 GB a session |
 
 Query a scorecard instead of reading it:
 

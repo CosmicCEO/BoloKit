@@ -21,7 +21,7 @@ struct RemotePositionSmootherTests {
     @Test func `Interpolates strictly between two known samples`() throws {
         var smoother = RemotePositionSmoother()
         smoother.update(rawPosition: Vec2f(x: 0, y: 0), tick: 0)
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 5)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 5)
 
         // Delayed display tick = currentTick - 5, so query ticks 6...9 land strictly inside
         // the (0, 5) sample window, mid-interpolation.
@@ -29,7 +29,7 @@ struct RemotePositionSmootherTests {
         for currentTick in UInt64(6)...9 {
             let x = try #require(smoother.smoothedPosition(atTick: currentTick)).x
             #expect(x > 0, "tick \(currentTick) should be strictly past the earlier sample")
-            #expect(x < 10, "tick \(currentTick) should be strictly before the later sample")
+            #expect(x < 3, "tick \(currentTick) should be strictly before the later sample")
             #expect(x > previousX, "interpolation should be monotonically increasing")
             previousX = x
         }
@@ -38,24 +38,24 @@ struct RemotePositionSmootherTests {
     @Test func `Holds flat at latest sample once query runs past it with no third sample`() {
         var smoother = RemotePositionSmoother()
         smoother.update(rawPosition: Vec2f(x: 0, y: 0), tick: 0)
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 5)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 5)
 
         // Display tick = currentTick - 5; once that exceeds tick 5 (i.e. currentTick > 10)
         // with no third sample, the smoother must hold at the latest sample, not extrapolate.
-        #expect(smoother.smoothedPosition(atTick: 15) == Vec2f(x: 10, y: 0))
-        #expect(smoother.smoothedPosition(atTick: 100) == Vec2f(x: 10, y: 0))
+        #expect(smoother.smoothedPosition(atTick: 15) == Vec2f(x: 3, y: 0))
+        #expect(smoother.smoothedPosition(atTick: 100) == Vec2f(x: 3, y: 0))
     }
 
     @Test func `Unchanged raw position is a no-op and does not reset the interpolation window`() {
         var smoother = RemotePositionSmoother()
         smoother.update(rawPosition: Vec2f(x: 0, y: 0), tick: 0)
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 5)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 5)
         let before = smoother.smoothedPosition(atTick: 7)
 
         // Same raw position repeated on later ticks (no new relay sample) must not disturb the
         // existing previous/target window.
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 6)
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 7)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 6)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 7)
         let after = smoother.smoothedPosition(atTick: 7)
 
         #expect(before == after)
@@ -68,7 +68,7 @@ struct RemotePositionSmootherTests {
     @Test func `Without the render delay a new sample would snap immediately`() {
         var smoother = RemotePositionSmoother()
         smoother.update(rawPosition: Vec2f(x: 0, y: 0), tick: 0)
-        smoother.update(rawPosition: Vec2f(x: 10, y: 0), tick: 5)
+        smoother.update(rawPosition: Vec2f(x: 3, y: 0), tick: 5)
 
         // Querying at the un-delayed tick where the new sample landed: displayTick = 5 - 5 = 0,
         // i.e. still the *previous* sample -- proving the delay is actually doing the work
@@ -94,6 +94,35 @@ struct RemotePositionSmootherTests {
         for x in 1...5 {
             smoother.update(rawPosition: Vec2f(x: Float(x), y: 0), tick: 500)
             #expect(smoother.smoothedPosition(atTick: 500) == Vec2f(x: Float(x), y: 0))
+        }
+    }
+
+    // MARK: - 1A: a per-frame tick the view advances itself
+
+    /// Samples 5 ticks apart (the relay cadence), tick advancing every call: after the delay
+    /// fills in, the drawn x changes on every tick, not only on the tick a sample lands.
+    @Test func `With an advancing tick the drawn position moves every tick between samples`() throws {
+        var smoother = RemotePositionSmoother()
+        var drawn: [Float] = []
+        var raw = Vec2f(x: 0, y: 0)
+        for tick in UInt64(1)...40 {
+            if tick % 5 == 0 { raw = Vec2f(x: Float(tick) * 0.04, y: 0) }  // raw is frozen between samples
+            smoother.update(rawPosition: raw, tick: tick)
+            if tick >= 20 { drawn.append(try #require(smoother.smoothedPosition(atTick: tick)).x) }
+        }
+        for (a, b) in zip(drawn, drawn.dropFirst()) {
+            #expect(b > a, "drawn x must advance every tick, saw \(a) then \(b)")
+        }
+    }
+
+    @Test func `A jump of many tiles snaps instead of gliding`() throws {
+        var smoother = RemotePositionSmoother()
+        smoother.update(rawPosition: Vec2f(x: 10, y: 10), tick: 100)
+        smoother.update(rawPosition: Vec2f(x: 10.2, y: 10), tick: 105)
+        smoother.update(rawPosition: Vec2f(x: 100, y: 80), tick: 110)
+
+        for tick in UInt64(110)...120 {
+            #expect(try #require(smoother.smoothedPosition(atTick: tick)) == Vec2f(x: 100, y: 80))
         }
     }
 }

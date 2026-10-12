@@ -381,6 +381,29 @@ public func revealNearbyHiddenMines(
     }
 }
 
+/// Improve 4B: a tile the guest has already seen and the host now reveals (`SRRevealTerrain`,
+/// from `revealNearbyHiddenMines`) must also update the guest's fog memory. The reveal writes
+/// `terrain` only, so a tile that drops back into fog afterwards was drawn from the stale
+/// unmined `seenTiles` snapshot. Uses `tileFor`, never `fogTileFor`, for the same reason
+/// `revealNearbyHiddenMines` does: the substituting variant would hide the mine again. A tile
+/// never seen (`.unknown`) is left alone, since a reveal must not show the guest ground it has
+/// not looked at; `increaseVis` snapshots it from the terrain when it first comes into view.
+public func refreshFogMemoryForRevealedTile(
+    x: Int, y: Int, state: inout FogState, terrain: TerrainGrid, pills: [Pill], bases: [Base],
+    observer: Int, players: [PlayerState]
+) {
+    guard x >= 0, x < 256, y >= 0, y < 256 else { return }
+    let index = y * 256 + x
+    guard state.seenTiles[index] != .unknown else { return }
+    let revealed = tileFor(
+        x: Int32(x), y: Int32(y), terrain: terrain, pills: pills, bases: bases,
+        localPlayer: observer, players: players
+    )
+    if state.seenTiles[index] != revealed {
+        state.seenTiles[index] = revealed // bumps `revision` via `didSet`
+    }
+}
+
 // MARK: - FogVisionTracker (#159)
 
 /// One observer's fog-vision bookkeeping across ticks: the accumulated `FogState` plus,

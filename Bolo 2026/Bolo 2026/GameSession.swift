@@ -176,6 +176,8 @@ public final class GameSession {
     /// oracle's `client.fog[][]` architecture (`FogState.swift`'s own header). Unused on
     /// the host path, which already renders off `hostEngine.fogState(for:)` directly.
     private var fogVisionTracker = FogVisionTracker()
+    /// Improve 4B: tiles revealed by the dispatch in progress, applied to `fogVisionTracker` once it returns.
+    private var pendingRevealedTiles: [Pointi] = []
 
     /// **1.1 backlog C.4:** the messages panel's own scrollback -- kept here, not on `GameState`,
     /// matching the reference's own design: `printmessage`/`messagesTextView` is a pure display
@@ -924,7 +926,13 @@ public final class GameSession {
             // exclusive `inout` binding, would be a nested-access violation (same reasoning as
             // `HostGameEngine.swift`'s own `onSendMesg` wiring, `HostGameEngine.swift:264-281`).
             let playerNames = state.players.map(\.name)
+            let revealObserver = state.localPlayer
             let callbacks = SRDispatchCallbacks(
+                onTerrainRevealed: { [weak self] tile in
+                    // Improve 4B: the dispatch holds `&state`, so the terrain, pills and bases are
+                    // read in `revealedTiles` below, after it returns.
+                    self?.pendingRevealedTiles.append(tile)
+                },
                 onSendMesg: { [weak self] player, to, text in
                     guard let self else { return }
                     self.nextMessageID += 1
@@ -939,6 +947,15 @@ public final class GameSession {
                 }
             )
             try? TCPSession.dispatch(message, state: &state, callbacks: callbacks)
+            if !pendingRevealedTiles.isEmpty {
+                for tile in pendingRevealedTiles {
+                    refreshFogMemoryForRevealedTile(
+                        x: Int(tile.x), y: Int(tile.y), state: &fogVisionTracker.fogState, terrain: state.terrain,
+                        pills: state.pills, bases: state.bases, observer: revealObserver, players: state.players
+                    )
+                }
+                pendingRevealedTiles.removeAll(keepingCapacity: true)
+            }
 
         case .udpDatagram(let data):
             let playerNames = state.players.map(\.name)

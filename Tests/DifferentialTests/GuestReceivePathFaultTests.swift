@@ -3,8 +3,8 @@ import BoloKit
 
 // Analyze register (v1.6.9 benchmark) items 3B and 4B: two suspected guest receive-path
 // faults, each pinned by the smallest unit test that reaches the fault without a live pair.
-// The `withKnownIssue` wrappers name the register item; a fix flips the test, which is the
-// signal to remove the wrapper.
+// Both were recorded as known issues on v1.6.9 and are fixed in Improve (3B in
+// `recvSrTankStatus`, 4B in `refreshFogMemoryForRevealedTile`); they now pass as plain tests.
 
 private func guestState(mines: Int, tank: BoloKit.Vec2f) -> GameState {
     var state = GameState()
@@ -47,10 +47,8 @@ private func guestState(mines: Int, tank: BoloKit.Vec2f) -> GameState {
 
         let mines = state.players[0].mines
         let builderMines = state.players[0].builderMines
-        withKnownIssue("Analyze register 3B: status message refunds a mine the builder is still carrying") {
-            #expect(mines == n - 1, "mines=\(mines) builderMines=\(builderMines)")
-            #expect(mines + builderMines == n, "mines=\(mines) builderMines=\(builderMines)")
-        }
+        #expect(mines == n - 1, "mines=\(mines) builderMines=\(builderMines)")
+        #expect(mines + builderMines == n, "mines=\(mines) builderMines=\(builderMines)")
     }
 }
 
@@ -83,12 +81,15 @@ private func guestState(mines: Int, tank: BoloKit.Vec2f) -> GameState {
         // `revealNearbyHiddenMines` -> `SRRevealTerrain`) lands after the move.
         recvSrRevealTerrain(x: Int(tile.x), y: Int(tile.y), terrain: .minedGrass, state: &state)
         #expect(state.terrain[Int(tile.x), Int(tile.y)] == .minedGrass)
+        // The dispatch then tells the session, which refreshes its fog memory for that tile.
+        refreshFogMemoryForRevealedTile(
+            x: Int(tile.x), y: Int(tile.y), state: &tracker.fogState, terrain: state.terrain,
+            pills: state.pills, bases: state.bases, observer: 0, players: state.players
+        )
 
         let drawn = Tile(rawValue: fogResolvedTileGrid(for: state, fogState: tracker.fogState)[Int(tile.x), Int(tile.y)])
         let remembered = tracker.fogState.seenTiles[index]
-        withKnownIssue("Analyze register 4B: reveal of a mined tile does not refresh the guest's fog memory") {
-            #expect(remembered == .minedGrass, "seenTiles=\(String(describing: remembered))")
-            #expect(drawn == .minedGrass, "drawn=\(String(describing: drawn))")
-        }
+        #expect(remembered == .minedGrass, "seenTiles=\(String(describing: remembered))")
+        #expect(drawn == .minedGrass, "drawn=\(String(describing: drawn))")
     }
 }
