@@ -1,6 +1,6 @@
 # Improve phase
 
-**Status: open 2026-10-02.** Decided by Jerod on closing Analyze. Four items, each with a
+**Status: open 2026-10-02; paused 2026-10-12 after session 1 and the `v1.6.10` release. Restart: `../RESTART.md`.** Decided by Jerod on closing Analyze. Four items, each with a
 demonstrated cause and a measured, repeatable baseline.
 
 | Item | Implemented | Unit proof | Session proof |
