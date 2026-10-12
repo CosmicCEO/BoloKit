@@ -36,7 +36,8 @@ by 40 to 99%, far more than that shift, but a same-OS control of the old build h
 The render hop's work, `renderHopWork` p95, fell from 9 to 18 ms to 0.5 to 0.8 ms, so the hop is
 now cleared and 2B or 2C need no revisit. The whole-tick median rose 6 to 117% in the same
 tiers. That matches the machine-wide shift above, not the candidate, but only a control run can
-say how much of it is the new audio engine. Audible parity of the new sounds is untested.
+say how much of it is the new audio engine. Audible parity of the new sounds: Jerod playtested the
+merged build on 2026-10-12 and found the sound on target. Closed.
 
 ## 1A, drawn step of the host tank on the guest
 
