@@ -7,13 +7,14 @@ Index only. Read this, then open the one file you need.
 | 1. Define | Closed (amended 2026-09-29) | `1-define/README.md` |
 | 2. Measure | Closed 2026-09-29 | `2-measure/README.md` |
 | 3. Analyze | Closed 2026-10-02 | `3-analyze/REGISTER.md`, `3-analyze/SPECS.md`, `3-analyze/KT-audit-findings.md` |
-| 4. Improve | Open 2026-10-02 | `4-improve/README.md` |
+| 4. Improve | Session 1 done, paused 2026-10-12; `v1.6.10` released | `4-improve/RESULTS.md`, `4-improve/README.md` |
 | 5. Control | Not started | `5-control/README.md` |
 
 ## Where things are
 
 | Need | File | Size |
 |---|---|---|
+| Restart after the 2026-10-12 pause: state, order of work, how to run a session | `RESTART.md` | Small |
 | Remote lead ↔ on-system Grok | `DISPATCH.md` | Small |
 | The benchmark's headline numbers | `2-measure/README.md` | Small |
 | How the measurement system works, every metric defined | `2-measure/SYSTEM.md` | Medium |
