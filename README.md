@@ -18,7 +18,7 @@ differential tests. See `LICENSE` for the full attribution chain and license ter
 
 ## Status
 
-**Current tagged drop:** [`v1.6.9`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.9) — a patch fixing two guest-only accounting defects: a guest builder's tree spends being refunded by the host's stale count, and a guest builder's placed mine never costing the host a mine. Release notes: [`docs/RELEASE_NOTES_v1.6.9.md`](docs/RELEASE_NOTES_v1.6.9.md).
+**Current tagged drop:** [`v1.6.10`](https://github.com/CosmicCEO/BoloKit/releases/tag/v1.6.10) — a patch from the benchmark project: the sound player no longer decodes audio on the main thread, remote tanks are smoothed on a guest, a guest no longer gets a carried mine refunded, and a guest refreshes its fog memory on a reveal. No wire change. Release notes: [`docs/RELEASE_NOTES_v1.6.10.md`](docs/RELEASE_NOTES_v1.6.10.md).
 
 The C-oracle port is done. Open work lives on GitHub, not in wave numbers. Conventions: issue [#43](https://github.com/CosmicCEO/BoloKit/issues/43). Live board: [`docs/STATUS.md`](docs/STATUS.md).
 
