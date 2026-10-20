@@ -38,6 +38,8 @@ the same pass. Verified: 14 `FogVisionTrackerTests` (7 new) and 3 new live-engin
 
 Wave-by-wave history and the retired four-role process live at git tag `legacy-agent-process`. Do not restore those files.
 
+**2026-10-12, benchmark project paused (Jerod).** The Improve phase of the host/client DMAIC project shipped as `v1.6.10` (sound player off the main thread, remote tank smoothing, carried-mine refund fix, fog memory refreshed on a reveal; no wire change). Open: [#197](https://github.com/CosmicCEO/BoloKit/issues/197) same-OS control run, [#198](https://github.com/CosmicCEO/BoloKit/issues/198) decisions on the 4B proof, the 1A targets and three shell-count episodes. Restart plan: `Bench/RESTART.md`; results: `Bench/4-improve/RESULTS.md`. The milestone names `v1.6.10` and `v1.6.11` below now clash with the tag used and are Jerod's to settle on #43.
+
 **2026-09-30, board reorganization (Jerod).** All open issues were regrouped by kind. New patches `v1.6.10` (view and status-panel parity, #172/#142/#144/#100/#101) and `v1.6.11` (tick-budget perf, #162). `v1.7.0` trimmed back to its data-only pack charter. `v1.8.0` retitled and unblocked. Map editor, new combat mechanics, bots and renderer ideas moved to new `Decide:` milestones. `v2.0.0 — Wire v2` created as the first wire-breaking release. See "How we track work" below and issue #43.
 
 ## Roadmap ruling (Jerod, 2026-09-23): 1.6.* is a visual + play parity arc
